@@ -152,6 +152,47 @@
   font-size: 0.875rem;
 }
 
+.passphrase-section {
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.passphrase-label {
+  font-size: 0.875rem;
+  color: #666;
+}
+
+.passphrase {
+  background: #f0f0f0;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.75rem;
+  color: #333;
+  word-break: break-all;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+  font-size: 0.875rem;
+}
+
+.copy-btn:hover {
+  background: #e0e0e0;
+}
+
 .download-link {
   padding: 8px 16px;
   background: #28a745;
@@ -189,5 +230,13 @@
   .download-link {
     align-self: stretch;
     text-align: center;
+  }
+  
+  .passphrase {
+    max-width: 150px;
+  }
+  
+  .passphrase-section {
+    flex-wrap: wrap;
   }
 }

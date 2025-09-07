@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import CryptoJS from 'crypto-js'
 import './App.css'
 
 interface UploadResult {
@@ -15,6 +16,7 @@ function App() {
     originalUrl: string
     downloadUrl: string
     uploadTime: string
+    passphrase: string
   }>>([])
   const [uploading, setUploading] = useState(false)
 
@@ -22,9 +24,42 @@ function App() {
     return originalUrl.replace('http://tmpfiles.org/', 'https://tmpfiles.org/dl/')
   }
 
+  const generatePassphrase = (): string => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?'
+    let passphrase = ''
+    for (let i = 0; i < 32; i++) {
+      passphrase += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return passphrase
+  }
+
+  const encryptFile = async (file: File, passphrase: string): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        try {
+          const arrayBuffer = reader.result as ArrayBuffer
+          const wordArray = CryptoJS.lib.WordArray.create(arrayBuffer)
+          const encrypted = CryptoJS.AES.encrypt(wordArray, passphrase).toString()
+          
+          const blob = new Blob([encrypted], { type: 'text/plain' })
+          const encryptedFile = new File([blob], file.name, { type: 'text/plain' })
+          resolve(encryptedFile)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = reject
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
   const uploadFile = async (file: File) => {
+    const passphrase = generatePassphrase()
+    const encryptedFile = await encryptFile(file, passphrase)
+    
     const formData = new FormData()
-    formData.append('file', file)
+    formData.append('file', encryptedFile)
 
     try {
       const response = await fetch('https://tmpfiles.org/api/v1/upload', {
@@ -44,7 +79,8 @@ function App() {
           name: file.name,
           originalUrl: result.data.url,
           downloadUrl,
-          uploadTime: new Date().toLocaleString()
+          uploadTime: new Date().toLocaleString(),
+          passphrase
         }
         setUploadedFiles(prev => [...prev, fileData])
         return fileData
@@ -94,6 +130,19 @@ function App() {
     handleFiles(e.target.files)
   }
 
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (err) {
+      const textArea = document.createElement('textarea')
+      textArea.value = text
+      document.body.appendChild(textArea)
+      textArea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textArea)
+    }
+  }
+
   return (
     <div className="app">
       <header className="app-header">
@@ -139,6 +188,17 @@ function App() {
                   <div className="file-info">
                     <strong>{file.name}</strong>
                     <small>{file.uploadTime}</small>
+                    <div className="passphrase-section">
+                      <span className="passphrase-label">🔐 Passphrase:</span>
+                      <code className="passphrase">{file.passphrase}</code>
+                      <button 
+                        className="copy-btn"
+                        onClick={() => copyToClipboard(file.passphrase)}
+                        title="Copy passphrase"
+                      >
+                        📋
+                      </button>
+                    </div>
                   </div>
                   <a
                     href={file.downloadUrl}
