@@ -146,11 +146,47 @@
   margin-bottom: 1.5rem;
 }
 
-.scanned-file-card {
+.scanned-file-card,
+.scanned-text-card {
   background: #f8f9fa;
   border-radius: 8px;
   padding: 1.5rem;
   border-left: 4px solid #28a745;
+}
+
+.text-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  justify-content: center;
+}
+
+.text-icon {
+  font-size: 1.5rem;
+}
+
+.text-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+}
+
+.scanned-text {
+  background: #2d3748;
+  color: #e2e8f0;
+  padding: 1rem;
+  border-radius: 6px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+  text-align: left;
 }
 
 .drop-zone {

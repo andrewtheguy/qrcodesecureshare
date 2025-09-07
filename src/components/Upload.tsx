@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
+import { ENCRYPTED_FILE_MAGIC } from '../constants'
 
 interface UploadResult {
   status: string
@@ -191,12 +192,11 @@ const Upload = () => {
     }
   }
 
-  const generateQRCode = useCallback(async (data: any) => {
+  const generateQRCode = useCallback(async (payload: string) => {
     try {
-      const jsonString = JSON.stringify(data)
       const canvas = canvasRef.current
       if (canvas) {
-        await QRCode.toCanvas(canvas, jsonString, {
+        await QRCode.toCanvas(canvas, payload, {
           width: 200,
           margin: 2,
           color: {
@@ -205,7 +205,7 @@ const Upload = () => {
           }
         })
       }
-      const dataUrl = await QRCode.toDataURL(jsonString, {
+      const dataUrl = await QRCode.toDataURL(payload, {
         width: 200,
         margin: 2,
         color: {
@@ -227,7 +227,9 @@ const Upload = () => {
         filename: uploadedFile.name,
         //uploadedAt: uploadedFile.uploadTime
       }
-      generateQRCode(qrData)
+      // Add magic header to indicate this is an encrypted file download QR
+      const qrPayload = ENCRYPTED_FILE_MAGIC + JSON.stringify(qrData)
+      generateQRCode(qrPayload)
     }
   }, [uploadedFile, generateQRCode])
 

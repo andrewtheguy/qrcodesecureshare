@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import QrScanner from 'qr-scanner'
+import { ENCRYPTED_FILE_MAGIC } from '../constants'
 
-interface ScannedData {
+interface EncryptedFileData {
   url: string
   passphrase: string
   filename: string
@@ -9,7 +10,8 @@ interface ScannedData {
 }
 
 const Scan = () => {
-  const [scannedData, setScannedData] = useState<ScannedData | null>(null)
+  const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
+  const [scannedText, setScannedText] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -141,14 +143,26 @@ const Scan = () => {
         videoRef.current,
         (result) => {
           console.log('QR code detected:', result)
-          try {
-            const data = JSON.parse(result.data)
-            console.log('Parsed JSON:', data)
-            setScannedData(data)
+          
+          // Check if QR code contains encrypted file data
+          if (result.data.startsWith(ENCRYPTED_FILE_MAGIC)) {
+            try {
+              const jsonData = result.data.substring(ENCRYPTED_FILE_MAGIC.length)
+              const data = JSON.parse(jsonData) as EncryptedFileData
+              console.log('Parsed encrypted file data:', data)
+              setScannedData(data)
+              setScannedText(null)
+              stopScanning()
+            } catch (error) {
+              console.error('Invalid encrypted file data in QR code:', error)
+              alert('QR code contains invalid encrypted file data')
+            }
+          } else {
+            // Regular text QR code
+            console.log('Regular text QR code:', result.data)
+            setScannedText(result.data)
+            setScannedData(null)
             stopScanning()
-          } catch (error) {
-            console.error('Invalid JSON in QR code:', error)
-            alert('QR code does not contain valid JSON data')
           }
         },
         {
@@ -212,7 +226,7 @@ const Scan = () => {
         
         {scannedData && (
           <div className="scanned-result">
-            <h2>✅ QR Code Scanned</h2>
+            <h2>✅ Encrypted File QR Code Scanned</h2>
             <div className="scanned-file-card">
               <div className="file-header">
                 <strong className="file-name">{scannedData.filename}</strong>
@@ -249,8 +263,46 @@ const Scan = () => {
                 </button>
                 <button 
                   className="new-scan-btn"
-                  onClick={() => setScannedData(null)}
+                  onClick={() => {
+                    setScannedData(null)
+                    setScannedText(null)
+                  }}
                   disabled={decrypting}
+                >
+                  Scan Another QR
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {scannedText && (
+          <div className="scanned-result">
+            <h2>✅ QR Code Scanned</h2>
+            <div className="scanned-text-card">
+              <div className="text-header">
+                <span className="text-icon">📄</span>
+                <strong>Text Content</strong>
+              </div>
+              
+              <div className="text-content">
+                <pre className="scanned-text">{scannedText}</pre>
+                <button 
+                  className="copy-btn"
+                  onClick={() => copyToClipboard(scannedText)}
+                  title="Copy text to clipboard"
+                >
+                  📋 Copy Text
+                </button>
+              </div>
+              
+              <div className="actions">
+                <button 
+                  className="new-scan-btn"
+                  onClick={() => {
+                    setScannedData(null)
+                    setScannedText(null)
+                  }}
                 >
                   Scan Another QR
                 </button>
