@@ -203,6 +203,50 @@
   margin-top: 0.5rem;
 }
 
+.json-section {
+  margin: 1.5rem 0;
+  text-align: left;
+}
+
+.json-label {
+  display: block;
+  font-size: 1rem;
+  color: #333;
+  margin-bottom: 0.75rem;
+  font-weight: 500;
+}
+
+.json-container {
+  position: relative;
+  background: #1a202c;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.json-output {
+  color: #e2e8f0;
+  font-family: 'Courier New', monospace;
+  font-size: 0.875rem;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.json-container .copy-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: #4a5568;
+  font-size: 0.75rem;
+  padding: 6px 12px;
+}
+
+.json-container .copy-btn:hover {
+  background: #2d3748;
+}
+
 .actions {
   display: flex;
   gap: 1rem;
@@ -270,5 +314,15 @@
   .new-upload-btn {
     width: 100%;
     text-align: center;
+  }
+  
+  .json-output {
+    font-size: 0.75rem;
+  }
+  
+  .json-container .copy-btn {
+    position: static;
+    width: 100%;
+    margin-top: 0.5rem;
   }
 }

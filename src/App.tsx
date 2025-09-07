@@ -25,7 +25,7 @@ function App() {
   }
 
   const generatePassphrase = (): string => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+-=[]{}|;:,.<>?'
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%&*()_+-=[]{}|~'
     let passphrase = ''
     for (let i = 0; i < 32; i++) {
       passphrase += chars.charAt(Math.floor(Math.random() * chars.length))
@@ -212,6 +212,36 @@ function App() {
                 <small className="passphrase-note">
                   Save this passphrase - you'll need it to decrypt the file!
                 </small>
+              </div>
+
+              <div className="json-section">
+                <div className="json-label">📄 JSON Output:</div>
+                <div className="json-container">
+                  <pre className="json-output">{JSON.stringify({
+                    status: "success",
+                    data: {
+                      url: uploadedFile.downloadUrl,
+                      passphrase: uploadedFile.passphrase,
+                      filename: uploadedFile.name,
+                      uploadedAt: uploadedFile.uploadTime
+                    }
+                  }, null, 2)}</pre>
+                  <button 
+                    className="copy-btn"
+                    onClick={() => copyToClipboard(JSON.stringify({
+                      status: "success",
+                      data: {
+                        url: uploadedFile.downloadUrl,
+                        passphrase: uploadedFile.passphrase,
+                        filename: uploadedFile.name,
+                        uploadedAt: uploadedFile.uploadTime
+                      }
+                    }, null, 2))}
+                    title="Copy JSON to clipboard"
+                  >
+                    📋 Copy JSON
+                  </button>
+                </div>
               </div>
               
               <div className="actions">
