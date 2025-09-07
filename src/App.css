@@ -103,7 +103,8 @@
 
 .start-scan-btn,
 .stop-scan-btn,
-.new-scan-btn {
+.new-scan-btn,
+.upload-decrypt-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   border: none;
@@ -117,7 +118,8 @@
 
 .start-scan-btn:hover,
 .stop-scan-btn:hover,
-.new-scan-btn:hover {
+.new-scan-btn:hover,
+.upload-decrypt-btn:hover {
   transform: translateY(-2px);
 }
 
@@ -383,6 +385,36 @@
 
 .new-upload-btn:hover {
   background: #5a67d8;
+}
+
+.inline-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top: 2px solid white;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-right: 8px;
+}
+
+.download-link:disabled,
+.new-scan-btn:disabled,
+.upload-decrypt-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.download-link:disabled:hover {
+  transform: none;
+  background: #28a745;
+}
+
+.new-scan-btn:disabled:hover,
+.upload-decrypt-btn:disabled:hover {
+  transform: none;
+  background: #667eea;
 }
 
 .download-link {
