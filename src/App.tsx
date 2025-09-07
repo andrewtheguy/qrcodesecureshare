@@ -17,7 +17,7 @@ function App() {
             className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
             onClick={() => setActiveTab('upload')}
           >
-            📤 Upload
+            📤 Generate QR
           </button>
           <button 
             className={`tab ${activeTab === 'scan' ? 'active' : ''}`}

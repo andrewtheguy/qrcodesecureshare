@@ -22,6 +22,9 @@ const Upload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [uploading, setUploading] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
+  const [mode, setMode] = useState<'file' | 'text'>('file')
+  const [textInput, setTextInput] = useState('')
+  const [textQrGenerated, setTextQrGenerated] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const convertUrl = (originalUrl: string): string => {
@@ -219,6 +222,25 @@ const Upload = () => {
     }
   }, [])
 
+  const generateTextQR = () => {
+    if (textInput.trim()) {
+      // Generate QR code for plain text (no magic header)
+      generateQRCode(textInput.trim())
+      setTextQrGenerated(true)
+    }
+  }
+
+  const resetTextMode = () => {
+    setTextInput('')
+    setTextQrGenerated(false)
+    setQrCodeUrl('')
+  }
+
+  const resetFileMode = () => {
+    setUploadedFile(null)
+    setQrCodeUrl('')
+  }
+
   useEffect(() => {
     if (uploadedFile) {
       const qrData = {
@@ -235,32 +257,76 @@ const Upload = () => {
 
   return (
     <div className="upload-section">
-      <div
-        className={`drop-zone ${isDragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-      >
-        {uploading ? (
-          <div className="upload-status">
-            <div className="spinner"></div>
-            <p>Encrypting and uploading file...</p>
-          </div>
-        ) : (
-          <>
-            <div className="upload-icon">📁</div>
-            <p>Drag & drop a file here or</p>
-            <label className="file-input-label">
-              <input
-                type="file"
-                onChange={handleFileSelect}
-                className="file-input"
-              />
-              <span className="file-input-button">Choose File</span>
-            </label>
-          </>
-        )}
+      <div className="mode-selector">
+        <button 
+          className={`mode-btn ${mode === 'file' ? 'active' : ''}`}
+          onClick={() => {
+            setMode('file')
+            resetTextMode()
+          }}
+        >
+          📁 Upload File
+        </button>
+        <button 
+          className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
+          onClick={() => {
+            setMode('text')
+            resetFileMode()
+          }}
+        >
+          📝 Text QR Code
+        </button>
       </div>
+
+      {mode === 'file' ? (
+        <div
+          className={`drop-zone ${isDragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {uploading ? (
+            <div className="upload-status">
+              <div className="spinner"></div>
+              <p>Encrypting and uploading file...</p>
+            </div>
+          ) : (
+            <>
+              <div className="upload-icon">📁</div>
+              <p>Drag & drop a file here or</p>
+              <label className="file-input-label">
+                <input
+                  type="file"
+                  onChange={handleFileSelect}
+                  className="file-input"
+                />
+                <span className="file-input-button">Choose File</span>
+              </label>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="text-input-zone">
+          <div className="text-input-icon">📝</div>
+          <p>Enter text to generate a QR code</p>
+          <div className="text-input-container">
+            <textarea
+              value={textInput}
+              onChange={(e) => setTextInput(e.target.value)}
+              placeholder="Type your text here..."
+              className="text-input"
+              rows={4}
+            />
+            <button 
+              onClick={generateTextQR}
+              disabled={!textInput.trim()}
+              className="generate-qr-btn"
+            >
+              Generate QR Code
+            </button>
+          </div>
+        </div>
+      )}
 
       {uploadedFile && (
         <div className="uploaded-file">
@@ -323,6 +389,53 @@ const Upload = () => {
                 onClick={() => setUploadedFile(null)}
               >
                 Upload Another File
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {textQrGenerated && qrCodeUrl && (
+        <div className="text-qr-result">
+          <h2>✅ QR Code Generated</h2>
+          <div className="qr-card">
+            <div className="qr-section">
+              <div className="qr-label">📱 Text QR Code:</div>
+              <div className="qr-container">
+                <canvas
+                  ref={canvasRef}
+                  className="qr-canvas"
+                  style={{ display: 'none' }}
+                />
+                <img 
+                  src={qrCodeUrl} 
+                  alt="QR Code with text content"
+                  className="qr-image"
+                />
+                <p className="qr-description">
+                  Scan with your phone to read the text
+                </p>
+              </div>
+            </div>
+            
+            <div className="text-preview">
+              <div className="text-preview-label">Text Content:</div>
+              <pre className="text-preview-content">{textInput}</pre>
+              <button 
+                className="copy-btn"
+                onClick={() => copyToClipboard(textInput)}
+                title="Copy text to clipboard"
+              >
+                📋 Copy Text
+              </button>
+            </div>
+            
+            <div className="actions">
+              <button 
+                className="new-text-btn"
+                onClick={resetTextMode}
+              >
+                Create Another QR Code
               </button>
             </div>
           </div>
