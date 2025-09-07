@@ -200,7 +200,7 @@ const Upload = () => {
       const canvas = canvasRef.current
       if (canvas) {
         await QRCode.toCanvas(canvas, payload, {
-          width: 200,
+          width: 300,
           margin: 2,
           color: {
             dark: '#000000',
@@ -209,7 +209,7 @@ const Upload = () => {
         })
       }
       const dataUrl = await QRCode.toDataURL(payload, {
-        width: 200,
+        width: 300,
         margin: 2,
         color: {
           dark: '#000000',
@@ -409,9 +409,6 @@ const Upload = () => {
                   alt="QR Code with text content"
                   className="qr-image"
                 />
-                <p className="qr-description">
-                  Scan with your phone to read the text
-                </p>
               </div>
             </div>
           </div>
