@@ -197,47 +197,57 @@ const Scan = () => {
   }, [])
 
   return (
-    <div className="scan-section">
-      <div className="scanner-container">
+    <div className="flex flex-col gap-8">
+      <div className="bg-white rounded-xl p-8 shadow-lg text-center">
         {!scanning && !scannedData && (
-          <div className="scanner-intro">
-            <div className="scanner-icon">📷</div>
-            <h2>Scan QR Code</h2>
-            <p>Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase</p>
-            <button className="start-scan-btn" onClick={startScanning}>
+          <div className="flex flex-col items-center gap-4">
+            <div className="text-6xl mb-4">📷</div>
+            <h2 className="text-2xl font-bold text-gray-800">Scan QR Code</h2>
+            <p className="text-gray-600 max-w-md mb-6">
+              Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase
+            </p>
+            <button 
+              className="px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5"
+              onClick={startScanning}
+            >
               Start Camera
             </button>
           </div>
         )}
         
         {scanning && (
-          <div className="scanner-active">
+          <div className="flex flex-col items-center gap-4">
             <video
               ref={videoRef}
-              className="scanner-video"
+              className="w-full max-w-md rounded-lg bg-black"
               playsInline
               muted
             />
-            <button className="stop-scan-btn" onClick={stopScanning}>
+            <button 
+              className="px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5"
+              onClick={stopScanning}
+            >
               Stop Scanning
             </button>
           </div>
         )}
         
         {scannedData && (
-          <div className="scanned-result">
-            <h2>✅ Encrypted File QR Code Scanned</h2>
-            <div className="scanned-file-card">
-              <div className="file-header">
-                <strong className="file-name">{scannedData.filename}</strong>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-6 text-green-600">✅ Encrypted File QR Code Scanned</h2>
+            <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-green-500">
+              <div className="mb-4">
+                <strong className="text-xl text-gray-800">{scannedData.filename}</strong>
               </div>
               
-              <div className="passphrase-section">
-                <div className="passphrase-label">🔐 Decryption Passphrase:</div>
-                <div className="passphrase-container">
-                  <code className="passphrase">{scannedData.passphrase}</code>
+              <div className="my-6">
+                <div className="block text-base text-gray-800 mb-3 font-medium">🔐 Decryption Passphrase:</div>
+                <div className="flex items-center justify-center gap-3 mb-2 flex-wrap">
+                  <code className="bg-gray-800 text-gray-200 px-4 py-3 rounded-md font-mono text-sm break-all">
+                    {scannedData.passphrase}
+                  </code>
                   <button 
-                    className="copy-btn"
+                    className="px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium"
                     onClick={() => copyToClipboard(scannedData.passphrase)}
                     title="Copy passphrase to clipboard"
                   >
@@ -246,15 +256,19 @@ const Scan = () => {
                 </div>
               </div>
               
-              <div className="actions">
+              <div className="flex gap-4 justify-center flex-wrap">
                 <button
                   onClick={downloadDecryptedFile}
                   disabled={decrypting}
-                  className="download-link"
+                  className={`px-6 py-3 rounded-md font-medium text-base transition-all duration-200 ${
+                    decrypting 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-green-600 hover:bg-green-700 hover:-translate-y-0.5'
+                  } text-white flex items-center gap-2`}
                 >
                   {decrypting ? (
                     <>
-                      <div className="inline-spinner"></div>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner"></div>
                       Decrypting...
                     </>
                   ) : (
@@ -262,7 +276,11 @@ const Scan = () => {
                   )}
                 </button>
                 <button 
-                  className="new-scan-btn"
+                  className={`px-6 py-3 rounded-md font-medium transition-colors ${
+                    decrypting 
+                      ? 'bg-gray-400 cursor-not-allowed' 
+                      : 'bg-primary-500 hover:bg-primary-600'
+                  } text-white`}
                   onClick={() => {
                     setScannedData(null)
                     setScannedText(null)
@@ -277,18 +295,20 @@ const Scan = () => {
         )}
 
         {scannedText && (
-          <div className="scanned-result">
-            <h2>✅ QR Code Scanned</h2>
-            <div className="scanned-text-card">
-              <div className="text-header">
-                <span className="text-icon">📄</span>
-                <strong>Text Content</strong>
+          <div className="text-center">
+            <h2 className="text-2xl font-bold mb-6 text-green-600">✅ QR Code Scanned</h2>
+            <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-green-500">
+              <div className="flex items-center gap-2 mb-4 justify-center">
+                <span className="text-2xl">📄</span>
+                <strong className="text-lg">Text Content</strong>
               </div>
               
-              <div className="text-content">
-                <pre className="scanned-text">{scannedText}</pre>
+              <div className="flex flex-col gap-4 items-center">
+                <pre className="bg-gray-800 text-gray-200 p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-w-full max-h-[300px] overflow-y-auto m-0 text-left">
+                  {scannedText}
+                </pre>
                 <button 
-                  className="copy-btn"
+                  className="px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium"
                   onClick={() => copyToClipboard(scannedText)}
                   title="Copy text to clipboard"
                 >
@@ -296,9 +316,9 @@ const Scan = () => {
                 </button>
               </div>
               
-              <div className="actions">
+              <div className="mt-6">
                 <button 
-                  className="new-scan-btn"
+                  className="px-6 py-3 bg-primary-500 text-white rounded-md font-medium hover:bg-primary-600 transition-colors"
                   onClick={() => {
                     setScannedData(null)
                     setScannedText(null)

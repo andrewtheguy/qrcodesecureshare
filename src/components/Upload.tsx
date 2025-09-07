@@ -259,10 +259,14 @@ const Upload = () => {
   }, [uploadedFile, generateQRCode])
 
   return (
-    <div className="upload-section">
-      <div className="mode-selector">
+    <div className="flex flex-col gap-8">
+      <div className="flex justify-center gap-4 mb-4">
         <button 
-          className={`mode-btn ${mode === 'file' ? 'active' : ''}`}
+          className={`px-5 py-3 rounded-full font-medium transition-all duration-300 border-2 flex items-center gap-2 ${
+            mode === 'file' 
+              ? 'gradient-primary text-white border-primary-500' 
+              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+          }`}
           onClick={() => {
             setMode('file')
             resetTextMode()
@@ -271,7 +275,11 @@ const Upload = () => {
           📁 Upload File
         </button>
         <button 
-          className={`mode-btn ${mode === 'text' ? 'active' : ''}`}
+          className={`px-5 py-3 rounded-full font-medium transition-all duration-300 border-2 flex items-center gap-2 ${
+            mode === 'text' 
+              ? 'gradient-primary text-white border-primary-500' 
+              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+          }`}
           onClick={() => {
             setMode('text')
             resetFileMode()
@@ -283,36 +291,44 @@ const Upload = () => {
 
       {mode === 'file' ? (
         <div
-          className={`drop-zone ${isDragging ? 'dragging' : ''} ${uploading ? 'uploading' : ''}`}
+          className={`border-3 border-dashed rounded-xl p-12 text-center transition-all duration-300 cursor-pointer ${
+            isDragging 
+              ? 'border-primary-500 bg-primary-50 scale-105' 
+              : uploading 
+                ? 'border-primary-700 bg-purple-50 cursor-not-allowed'
+                : 'border-gray-300 bg-gray-50 hover:border-gray-400'
+          }`}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
         >
           {uploading ? (
-            <div className="upload-status">
-              <div className="spinner"></div>
-              <p>Encrypting and uploading file...</p>
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-10 h-10 border-4 border-gray-300 border-t-primary-500 rounded-full spinner"></div>
+              <p className="text-gray-600">Encrypting and uploading file...</p>
             </div>
           ) : (
             <>
-              <div className="upload-icon">📁</div>
-              <p>Drag & drop a file here or</p>
-              <label className="file-input-label">
+              <div className="text-5xl mb-4">📁</div>
+              <p className="mb-6 text-lg text-gray-600">Drag & drop a file here or</p>
+              <label className="cursor-pointer">
                 <input
                   type="file"
                   onChange={handleFileSelect}
-                  className="file-input"
+                  className="hidden"
                 />
-                <span className="file-input-button">Choose File</span>
+                <span className="inline-block px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
+                  Choose File
+                </span>
               </label>
             </>
           )}
         </div>
       ) : (
-        <div className="text-input-zone">
-          <div className="text-input-icon">📝</div>
-          <p>Enter text to generate a QR code</p>
-          <div className="text-input-container">
+        <div className="bg-white rounded-xl p-8 shadow-lg text-center">
+          <div className="text-5xl mb-4">📝</div>
+          <p className="mb-6 text-lg text-gray-600">Enter text to generate a QR code</p>
+          <div className="flex flex-col items-center max-w-lg mx-auto">
             <textarea
               value={textInput}
               onChange={(e) => {
@@ -320,7 +336,7 @@ const Upload = () => {
                 generateTextQR(e.target.value)
               }}
               placeholder="Type your text here..."
-              className="text-input"
+              className="w-full p-3 border-2 border-gray-200 rounded-lg text-base resize-y min-h-[100px] transition-colors focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
               rows={4}
             />
           </div>
@@ -395,21 +411,21 @@ const Upload = () => {
       )}
 
       {textQrGenerated && qrCodeUrl && (
-        <div className="text-qr-result">
-          <div className="qr-card">
-            <div className="qr-section">
-              <div className="qr-container">
-                <canvas
-                  ref={canvasRef}
-                  className="qr-canvas"
-                  style={{ display: 'none' }}
-                />
-                <img 
-                  src={qrCodeUrl} 
-                  alt="QR Code with text content"
-                  className="qr-image"
-                />
-              </div>
+        <div className="bg-white rounded-xl shadow-lg">
+          <div className="bg-gray-50 rounded-lg border-l-4 border-green-500">
+            <div className="flex flex-col items-center gap-2">
+              <canvas
+                ref={canvasRef}
+                style={{ display: 'none' }}
+              />
+              <img 
+                src={qrCodeUrl} 
+                alt="QR Code with text content"
+                className="rounded-lg shadow-md"
+              />
+              <p className="text-gray-600 text-sm text-center">
+                Scan with your phone to read the text
+              </p>
             </div>
           </div>
         </div>

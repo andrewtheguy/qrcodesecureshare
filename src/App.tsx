@@ -7,20 +7,32 @@ function App() {
   const [activeTab, setActiveTab] = useState<'upload' | 'scan'>('upload')
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Encrypted File Upload</h1>
-        <p>Upload files with AES encryption or scan QR codes to retrieve file info</p>
+    <div className="max-w-4xl mx-auto px-8 py-8 min-h-screen">
+      <header className="text-center mb-12">
+        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent">
+          Encrypted File Upload
+        </h1>
+        <p className="text-gray-600 text-lg">
+          Upload files with AES encryption or scan QR codes to retrieve file info
+        </p>
         
-        <div className="tabs">
+        <div className="flex justify-center gap-4 mt-8">
           <button 
-            className={`tab ${activeTab === 'upload' ? 'active' : ''}`}
+            className={`px-6 py-3 rounded-full font-medium transition-all duration-300 border-2 ${
+              activeTab === 'upload' 
+                ? 'gradient-primary text-white border-primary-500' 
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
             onClick={() => setActiveTab('upload')}
           >
             📤 Generate QR
           </button>
           <button 
-            className={`tab ${activeTab === 'scan' ? 'active' : ''}`}
+            className={`px-6 py-3 rounded-full font-medium transition-all duration-300 border-2 ${
+              activeTab === 'scan' 
+                ? 'gradient-primary text-white border-primary-500' 
+                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
+            }`}
             onClick={() => setActiveTab('scan')}
           >
             📱 Scan QR
@@ -28,7 +40,7 @@ function App() {
         </div>
       </header>
 
-      <main className="main-section">
+      <main className="mt-8">
         {activeTab === 'upload' ? <Upload /> : <Scan />}
       </main>
     </div>
