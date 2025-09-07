@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import CryptoJS from 'crypto-js'
+import QRCode from 'qrcode'
 import './App.css'
 
 interface UploadResult {
@@ -19,6 +20,8 @@ function App() {
     passphrase: string
   } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
+  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const convertUrl = (originalUrl: string): string => {
     return originalUrl.replace('http://tmpfiles.org/', 'https://tmpfiles.org/dl/')
@@ -153,6 +156,49 @@ function App() {
     }
   }
 
+  const generateQRCode = useCallback(async (data: any) => {
+    try {
+      const jsonString = JSON.stringify(data)
+      const canvas = canvasRef.current
+      if (canvas) {
+        await QRCode.toCanvas(canvas, jsonString, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        })
+      }
+      const dataUrl = await QRCode.toDataURL(jsonString, {
+        width: 200,
+        margin: 2,
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+      setQrCodeUrl(dataUrl)
+    } catch (error) {
+      console.error('QR Code generation failed:', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (uploadedFile) {
+      const qrData = {
+        status: "success",
+        data: {
+          url: uploadedFile.downloadUrl,
+          passphrase: uploadedFile.passphrase,
+          filename: uploadedFile.name,
+          uploadedAt: uploadedFile.uploadTime
+        }
+      }
+      generateQRCode(qrData)
+    }
+  }, [uploadedFile, generateQRCode])
+
   return (
     <div className="app">
       <header className="app-header">
@@ -214,33 +260,24 @@ function App() {
                 </small>
               </div>
 
-              <div className="json-section">
-                <div className="json-label">📄 JSON Output:</div>
-                <div className="json-container">
-                  <pre className="json-output">{JSON.stringify({
-                    status: "success",
-                    data: {
-                      url: uploadedFile.downloadUrl,
-                      passphrase: uploadedFile.passphrase,
-                      filename: uploadedFile.name,
-                      uploadedAt: uploadedFile.uploadTime
-                    }
-                  }, null, 2)}</pre>
-                  <button 
-                    className="copy-btn"
-                    onClick={() => copyToClipboard(JSON.stringify({
-                      status: "success",
-                      data: {
-                        url: uploadedFile.downloadUrl,
-                        passphrase: uploadedFile.passphrase,
-                        filename: uploadedFile.name,
-                        uploadedAt: uploadedFile.uploadTime
-                      }
-                    }, null, 2))}
-                    title="Copy JSON to clipboard"
-                  >
-                    📋 Copy JSON
-                  </button>
+              <div className="qr-section">
+                <div className="qr-label">📱 QR Code:</div>
+                <div className="qr-container">
+                  <canvas
+                    ref={canvasRef}
+                    className="qr-canvas"
+                    style={{ display: 'none' }}
+                  />
+                  {qrCodeUrl && (
+                    <img 
+                      src={qrCodeUrl} 
+                      alt="QR Code with file URL and passphrase"
+                      className="qr-image"
+                    />
+                  )}
+                  <p className="qr-description">
+                    Scan with your phone to get the download URL and passphrase
+                  </p>
                 </div>
               </div>
               
