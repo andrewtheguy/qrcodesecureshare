@@ -40,10 +40,20 @@ function App() {
         try {
           const arrayBuffer = reader.result as ArrayBuffer
           const wordArray = CryptoJS.lib.WordArray.create(arrayBuffer)
-          const encrypted = CryptoJS.AES.encrypt(wordArray, passphrase).toString()
+          const encrypted = CryptoJS.AES.encrypt(wordArray, passphrase)
           
-          const blob = new Blob([encrypted], { type: 'text/plain' })
-          const encryptedFile = new File([blob], file.name, { type: 'text/plain' })
+          // Convert to binary data (Uint8Array) instead of base64 string
+          const encryptedBytes = new Uint8Array(encrypted.ciphertext.words.length * 4)
+          for (let i = 0; i < encrypted.ciphertext.words.length; i++) {
+            const word = encrypted.ciphertext.words[i]
+            encryptedBytes[i * 4] = (word >>> 24) & 0xff
+            encryptedBytes[i * 4 + 1] = (word >>> 16) & 0xff
+            encryptedBytes[i * 4 + 2] = (word >>> 8) & 0xff
+            encryptedBytes[i * 4 + 3] = word & 0xff
+          }
+          
+          const blob = new Blob([encryptedBytes], { type: 'application/octet-stream' })
+          const encryptedFile = new File([blob], `${file.name}.enc`, { type: 'application/octet-stream' })
           resolve(encryptedFile)
         } catch (error) {
           reject(error)
