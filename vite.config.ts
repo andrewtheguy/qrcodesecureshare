@@ -1,6 +1,26 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { copyFileSync } from 'fs'
+import { resolve } from 'path'
+
+// Custom plugin to copy QR scanner worker
+const copyQrWorkerPlugin = () => {
+  return {
+    name: 'copy-qr-worker',
+    buildStart() {
+      // Copy QR scanner worker to public directory during build
+      try {
+        const workerSrc = resolve('node_modules/qr-scanner/qr-scanner-worker.min.js')
+        const workerDest = resolve('public/qr-scanner-worker.min.js')
+        copyFileSync(workerSrc, workerDest)
+        console.log('✓ Copied QR scanner worker to public directory')
+      } catch (error) {
+        console.warn('⚠ Failed to copy QR scanner worker:', error.message)
+      }
+    }
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,6 +32,7 @@ export default defineConfig({
     ]
   },
   plugins: [
+    copyQrWorkerPlugin(),
     react(),
     VitePWA({
       registerType: 'autoUpdate',

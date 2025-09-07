@@ -28,34 +28,47 @@ const Scan = () => {
   }
 
   const startScanning = async () => {
-    if (videoRef.current) {
-      try {
-        setScanning(true)
-        const scanner = new QrScanner(
-          videoRef.current,
-          (result) => {
-            try {
-              const data = JSON.parse(result.data)
-              setScannedData(data)
-              stopScanning()
-            } catch (error) {
-              console.error('Invalid JSON in QR code:', error)
-              alert('QR code does not contain valid JSON data')
-            }
-          },
-          {
-            returnDetailedScanResult: true,
-            highlightScanRegion: true,
-            highlightCodeOutline: true,
-          }
-        )
-        scannerRef.current = scanner
-        await scanner.start()
-      } catch (error) {
-        console.error('Failed to start QR scanner:', error)
-        alert('Failed to access camera. Please ensure camera permissions are granted.')
-        setScanning(false)
+    try {
+      setScanning(true)
+      console.log('Starting QR scanner...')
+      
+      // Set worker path - file is copied by Vite plugin during build
+      QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
+      
+      // Wait for the next render cycle to ensure video element exists
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      if (!videoRef.current) {
+        throw new Error('Video element not available')
       }
+      
+      const scanner = new QrScanner(
+        videoRef.current,
+        (result) => {
+          console.log('QR code detected:', result)
+          try {
+            const data = JSON.parse(result.data)
+            console.log('Parsed JSON:', data)
+            setScannedData(data)
+            stopScanning()
+          } catch (error) {
+            console.error('Invalid JSON in QR code:', error)
+            alert('QR code does not contain valid JSON data')
+          }
+        },
+        {
+          returnDetailedScanResult: true,
+          highlightScanRegion: true,
+          highlightCodeOutline: true,
+        }
+      )
+      scannerRef.current = scanner
+      await scanner.start()
+      console.log('QR scanner started successfully')
+    } catch (error) {
+      console.error('Failed to start QR scanner:', error)
+      alert(`Failed to access camera: ${error.message}. Please ensure camera permissions are granted.`)
+      setScanning(false)
     }
   }
 
