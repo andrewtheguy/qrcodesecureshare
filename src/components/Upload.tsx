@@ -222,11 +222,14 @@ const Upload = () => {
     }
   }, [])
 
-  const generateTextQR = () => {
-    if (textInput.trim()) {
+  const generateTextQR = (text: string) => {
+    if (text.trim()) {
       // Generate QR code for plain text (no magic header)
-      generateQRCode(textInput.trim())
+      generateQRCode(text.trim())
       setTextQrGenerated(true)
+    } else {
+      setTextQrGenerated(false)
+      setQrCodeUrl('')
     }
   }
 
@@ -312,18 +315,14 @@ const Upload = () => {
           <div className="text-input-container">
             <textarea
               value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
+              onChange={(e) => {
+                setTextInput(e.target.value)
+                generateTextQR(e.target.value)
+              }}
               placeholder="Type your text here..."
               className="text-input"
               rows={4}
             />
-            <button 
-              onClick={generateTextQR}
-              disabled={!textInput.trim()}
-              className="generate-qr-btn"
-            >
-              Generate QR Code
-            </button>
           </div>
         </div>
       )}
@@ -397,10 +396,8 @@ const Upload = () => {
 
       {textQrGenerated && qrCodeUrl && (
         <div className="text-qr-result">
-          <h2>✅ QR Code Generated</h2>
           <div className="qr-card">
             <div className="qr-section">
-              <div className="qr-label">📱 Text QR Code:</div>
               <div className="qr-container">
                 <canvas
                   ref={canvasRef}
@@ -416,27 +413,6 @@ const Upload = () => {
                   Scan with your phone to read the text
                 </p>
               </div>
-            </div>
-            
-            <div className="text-preview">
-              <div className="text-preview-label">Text Content:</div>
-              <pre className="text-preview-content">{textInput}</pre>
-              <button 
-                className="copy-btn"
-                onClick={() => copyToClipboard(textInput)}
-                title="Copy text to clipboard"
-              >
-                📋 Copy Text
-              </button>
-            </div>
-            
-            <div className="actions">
-              <button 
-                className="new-text-btn"
-                onClick={resetTextMode}
-              >
-                Create Another QR Code
-              </button>
             </div>
           </div>
         </div>
