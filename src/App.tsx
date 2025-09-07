@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
-import CryptoJS from 'crypto-js'
 import QRCode from 'qrcode'
 import './App.css'
 
@@ -36,24 +35,59 @@ function App() {
     return passphrase
   }
 
+  const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
+    const encoder = new TextEncoder()
+    const passphraseKey = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(passphrase),
+      'PBKDF2',
+      false,
+      ['deriveBits', 'deriveKey']
+    )
+
+    return crypto.subtle.deriveKey(
+      {
+        name: 'PBKDF2',
+        salt: salt,
+        iterations: 100000,
+        hash: 'SHA-256'
+      },
+      passphraseKey,
+      { name: 'AES-GCM', length: 256 },
+      true,
+      ['encrypt', 'decrypt']
+    )
+  }
+
   const encryptFile = async (file: File, passphrase: string): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = () => {
+      reader.onload = async () => {
         try {
           const arrayBuffer = reader.result as ArrayBuffer
-          const wordArray = CryptoJS.lib.WordArray.create(arrayBuffer)
-          const encrypted = CryptoJS.AES.encrypt(wordArray, passphrase)
           
-          // Convert to binary data (Uint8Array) instead of base64 string
-          const encryptedBytes = new Uint8Array(encrypted.ciphertext.words.length * 4)
-          for (let i = 0; i < encrypted.ciphertext.words.length; i++) {
-            const word = encrypted.ciphertext.words[i]
-            encryptedBytes[i * 4] = (word >>> 24) & 0xff
-            encryptedBytes[i * 4 + 1] = (word >>> 16) & 0xff
-            encryptedBytes[i * 4 + 2] = (word >>> 8) & 0xff
-            encryptedBytes[i * 4 + 3] = word & 0xff
-          }
+          // Generate random salt and IV (nonce for GCM)
+          const salt = crypto.getRandomValues(new Uint8Array(16))
+          const iv = crypto.getRandomValues(new Uint8Array(12)) // GCM uses 12-byte IV
+          
+          // Derive key from passphrase
+          const key = await deriveKey(passphrase, salt)
+          
+          // Encrypt the file data using AES-GCM
+          const encryptedData = await crypto.subtle.encrypt(
+            {
+              name: 'AES-GCM',
+              iv: iv
+            },
+            key,
+            arrayBuffer
+          )
+          
+          // Combine salt + iv + encrypted data (includes auth tag)
+          const encryptedBytes = new Uint8Array(salt.length + iv.length + encryptedData.byteLength)
+          encryptedBytes.set(salt, 0)
+          encryptedBytes.set(iv, salt.length)
+          encryptedBytes.set(new Uint8Array(encryptedData), salt.length + iv.length)
           
           const blob = new Blob([encryptedBytes], { type: 'application/octet-stream' })
           const encryptedFile = new File([blob], `${file.name}.enc`, { type: 'application/octet-stream' })
@@ -92,7 +126,7 @@ function App() {
           name: file.name,
           originalUrl: result.data.url,
           downloadUrl,
-          uploadTime: new Date().toLocaleString(),
+          uploadTime: new Date().toISOString(),
           passphrase
         }
         setUploadedFile(fileData)
@@ -187,13 +221,10 @@ function App() {
   useEffect(() => {
     if (uploadedFile) {
       const qrData = {
-        status: "success",
-        data: {
-          url: uploadedFile.downloadUrl,
-          passphrase: uploadedFile.passphrase,
-          filename: uploadedFile.name,
-          uploadedAt: uploadedFile.uploadTime
-        }
+        url: uploadedFile.downloadUrl,
+        passphrase: uploadedFile.passphrase,
+        filename: uploadedFile.name,
+        //uploadedAt: uploadedFile.uploadTime
       }
       generateQRCode(qrData)
     }
