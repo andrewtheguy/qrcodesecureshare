@@ -90,7 +90,7 @@ function App() {
           encryptedBytes.set(new Uint8Array(encryptedData), salt.length + iv.length)
           
           const blob = new Blob([encryptedBytes], { type: 'application/octet-stream' })
-          const encryptedFile = new File([blob], `${file.name}.enc`, { type: 'application/octet-stream' })
+          const encryptedFile = new File([blob], 'file.enc', { type: 'application/octet-stream' })
           resolve(encryptedFile)
         } catch (error) {
           reject(error)
