@@ -11,13 +11,13 @@ interface UploadResult {
 
 function App() {
   const [isDragging, setIsDragging] = useState(false)
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+  const [uploadedFile, setUploadedFile] = useState<{
     name: string
     originalUrl: string
     downloadUrl: string
     uploadTime: string
     passphrase: string
-  }>>([])
+  } | null>(null)
   const [uploading, setUploading] = useState(false)
 
   const convertUrl = (originalUrl: string): string => {
@@ -82,7 +82,7 @@ function App() {
           uploadTime: new Date().toLocaleString(),
           passphrase
         }
-        setUploadedFiles(prev => [...prev, fileData])
+        setUploadedFile(fileData)
         return fileData
       } else {
         throw new Error('Upload failed')
@@ -95,14 +95,14 @@ function App() {
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-
+    
+    const file = files[0]
     setUploading(true)
     
     try {
-      const uploadPromises = Array.from(files).map(file => uploadFile(file))
-      await Promise.all(uploadPromises)
+      await uploadFile(file)
     } catch (error) {
-      alert('Some files failed to upload. Please try again.')
+      alert('File failed to upload. Please try again.')
     } finally {
       setUploading(false)
     }
@@ -146,8 +146,8 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>File Upload PWA</h1>
-        <p>Upload files to tmpfiles.org with instant download links</p>
+        <h1>Encrypted File Upload</h1>
+        <p>Upload one file at a time with AES encryption to tmpfiles.org</p>
       </header>
 
       <main className="upload-section">
@@ -160,56 +160,66 @@ function App() {
           {uploading ? (
             <div className="upload-status">
               <div className="spinner"></div>
-              <p>Uploading files...</p>
+              <p>Encrypting and uploading file...</p>
             </div>
           ) : (
             <>
               <div className="upload-icon">📁</div>
-              <p>Drag & drop files here or</p>
+              <p>Drag & drop a file here or</p>
               <label className="file-input-label">
                 <input
                   type="file"
-                  multiple
                   onChange={handleFileSelect}
                   className="file-input"
                 />
-                <span className="file-input-button">Choose Files</span>
+                <span className="file-input-button">Choose File</span>
               </label>
             </>
           )}
         </div>
 
-        {uploadedFiles.length > 0 && (
-          <div className="uploaded-files">
-            <h2>Uploaded Files</h2>
-            <div className="files-list">
-              {uploadedFiles.map((file, index) => (
-                <div key={index} className="file-item">
-                  <div className="file-info">
-                    <strong>{file.name}</strong>
-                    <small>{file.uploadTime}</small>
-                    <div className="passphrase-section">
-                      <span className="passphrase-label">🔐 Passphrase:</span>
-                      <code className="passphrase">{file.passphrase}</code>
-                      <button 
-                        className="copy-btn"
-                        onClick={() => copyToClipboard(file.passphrase)}
-                        title="Copy passphrase"
-                      >
-                        📋
-                      </button>
-                    </div>
-                  </div>
-                  <a
-                    href={file.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="download-link"
+        {uploadedFile && (
+          <div className="uploaded-file">
+            <h2>✅ File Uploaded Successfully</h2>
+            <div className="file-card">
+              <div className="file-header">
+                <strong className="file-name">{uploadedFile.name}</strong>
+                <small className="upload-time">{uploadedFile.uploadTime}</small>
+              </div>
+              
+              <div className="passphrase-section">
+                <div className="passphrase-label">🔐 Decryption Passphrase:</div>
+                <div className="passphrase-container">
+                  <code className="passphrase">{uploadedFile.passphrase}</code>
+                  <button 
+                    className="copy-btn"
+                    onClick={() => copyToClipboard(uploadedFile.passphrase)}
+                    title="Copy passphrase to clipboard"
                   >
-                    Download
-                  </a>
+                    📋 Copy
+                  </button>
                 </div>
-              ))}
+                <small className="passphrase-note">
+                  Save this passphrase - you'll need it to decrypt the file!
+                </small>
+              </div>
+              
+              <div className="actions">
+                <a
+                  href={uploadedFile.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="download-link"
+                >
+                  📥 Download Encrypted File
+                </a>
+                <button 
+                  className="new-upload-btn"
+                  onClick={() => setUploadedFile(null)}
+                >
+                  Upload Another File
+                </button>
+              </div>
             </div>
           </div>
         )}
