@@ -24,10 +24,131 @@
   font-size: 1.1rem;
 }
 
+.tabs {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.tab {
+  background: none;
+  border: 2px solid #e2e8f0;
+  color: #666;
+  cursor: pointer;
+  padding: 12px 24px;
+  border-radius: 25px;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.tab.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-color: #667eea;
+  color: white;
+}
+
+.tab:hover:not(.active) {
+  background: #f7fafc;
+  border-color: #cbd5e0;
+}
+
+.main-section {
+  margin-top: 2rem;
+}
+
 .upload-section {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+}
+
+.scan-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.scanner-container {
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+.scanner-intro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.scanner-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.scanner-intro h2 {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.scanner-intro p {
+  color: #666;
+  max-width: 400px;
+  margin-bottom: 1.5rem;
+}
+
+.start-scan-btn,
+.stop-scan-btn,
+.new-scan-btn {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 500;
+  transition: transform 0.2s ease;
+}
+
+.start-scan-btn:hover,
+.stop-scan-btn:hover,
+.new-scan-btn:hover {
+  transform: translateY(-2px);
+}
+
+.scanner-active {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.scanner-video {
+  width: 100%;
+  max-width: 400px;
+  border-radius: 8px;
+  background: #000;
+}
+
+.scanned-result {
+  text-align: center;
+}
+
+.scanned-result h2 {
+  color: #28a745;
+  margin-bottom: 1.5rem;
+}
+
+.scanned-file-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 1.5rem;
+  border-left: 4px solid #28a745;
 }
 
 .drop-zone {
@@ -289,6 +410,16 @@
     font-size: 2rem;
   }
   
+  .tabs {
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  
+  .tab {
+    padding: 8px 16px;
+    font-size: 0.9rem;
+  }
+  
   .drop-zone {
     padding: 2rem 1rem;
   }
@@ -315,5 +446,13 @@
   
   .qr-description {
     font-size: 0.8rem;
+  }
+  
+  .scanner-container {
+    padding: 1rem;
+  }
+  
+  .scanner-video {
+    max-width: 300px;
   }
 }
