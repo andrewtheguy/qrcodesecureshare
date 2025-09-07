@@ -12,10 +12,8 @@ const Scan = () => {
   const [scannedData, setScannedData] = useState<ScannedData | null>(null)
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
-  const [showUploadButton, setShowUploadButton] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -86,29 +84,24 @@ const Scan = () => {
     }
   }
 
-  const openDownloadUrl = () => {
+  const downloadDecryptedFile = async () => {
     if (!scannedData) return
-    // Open the encrypted file URL in new tab for download
-    window.open(scannedData.url, '_blank')
-    setShowUploadButton(true)
-  }
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !scannedData) return
     
-    decryptUploadedFile(file)
-  }
-
-  const decryptUploadedFile = async (file: File) => {
     try {
       setDecrypting(true)
       
-      // Read the encrypted file
-      const encryptedData = await file.arrayBuffer()
+      // Use CORS proxy to fetch the encrypted file
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(scannedData.url)}`
+      const response = await fetch(proxyUrl)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status}`)
+      }
+      
+      const encryptedData = await response.arrayBuffer()
       
       // Decrypt the file
-      const { data, filename } = await decryptFile(encryptedData, scannedData!.passphrase)
+      const { data, filename } = await decryptFile(encryptedData, scannedData.passphrase)
       
       // Create blob and download decrypted file
       const blob = new Blob([data])
@@ -121,21 +114,12 @@ const Scan = () => {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
-      
     } catch (error) {
-      console.error('Decryption failed:', error)
-      alert(error instanceof Error ? error.message : 'Failed to decrypt file')
+      console.error('Download and decrypt failed:', error)
+      alert(error instanceof Error ? error.message : 'Failed to decrypt and download file')
     } finally {
       setDecrypting(false)
     }
-  }
-
-  const selectEncryptedFile = () => {
-    fileInputRef.current?.click()
   }
 
   const startScanning = async () => {
@@ -250,45 +234,22 @@ const Scan = () => {
               
               <div className="actions">
                 <button
-                  onClick={openDownloadUrl}
+                  onClick={downloadDecryptedFile}
                   disabled={decrypting}
                   className="download-link"
                 >
-                  📥 Download Encrypted File
+                  {decrypting ? (
+                    <>
+                      <div className="inline-spinner"></div>
+                      Decrypting...
+                    </>
+                  ) : (
+                    '📥 Download Original File'
+                  )}
                 </button>
-                
-                {showUploadButton && (
-                  <>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="*/*"
-                      onChange={handleFileUpload}
-                      style={{ display: 'none' }}
-                    />
-                    <button
-                      onClick={selectEncryptedFile}
-                      disabled={decrypting}
-                      className="upload-decrypt-btn"
-                    >
-                      {decrypting ? (
-                        <>
-                          <div className="inline-spinner"></div>
-                          Decrypting...
-                        </>
-                      ) : (
-                        '🔓 Upload & Decrypt'
-                      )}
-                    </button>
-                  </>
-                )}
-                
                 <button 
                   className="new-scan-btn"
-                  onClick={() => {
-                    setScannedData(null)
-                    setShowUploadButton(false)
-                  }}
+                  onClick={() => setScannedData(null)}
                   disabled={decrypting}
                 >
                   Scan Another QR
