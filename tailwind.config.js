@@ -50,4 +50,17 @@ export default {
     },
   },
   plugins: [],
+  safelist: [
+    'bg-background',
+    'bg-muted', 
+    'bg-card',
+    'bg-primary',
+    'bg-secondary',
+    'text-foreground',
+    'text-muted-foreground',
+    'text-card-foreground',
+    'border-border',
+    'ring-ring',
+    'ring-offset-background',
+  ]
 }
