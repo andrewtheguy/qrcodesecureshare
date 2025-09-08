@@ -4,6 +4,7 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 import path from 'path'
+import tailwindcss from "@tailwindcss/vite"
 
 // Custom plugin to copy QR scanner worker
 const copyQrWorkerPlugin = () => {
@@ -40,6 +41,7 @@ export default defineConfig({
   plugins: [
     copyQrWorkerPlugin(),
     react(),
+    tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
