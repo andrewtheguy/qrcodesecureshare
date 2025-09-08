@@ -28,7 +28,7 @@ const Upload = () => {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [uploading, setUploading] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
-  const [mode, setMode] = useState<'file' | 'text'>('file')
+  const [mode, setMode] = useState<'file' | 'text'>('text')
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
   const [showTextUploadOption, setShowTextUploadOption] = useState(false)
@@ -335,11 +335,11 @@ const Upload = () => {
         }
       }}>
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="file" className="flex items-center gap-2">
-            📁 Upload File
-          </TabsTrigger>
           <TabsTrigger value="text" className="flex items-center gap-2">
             📝 Text QR Code
+          </TabsTrigger>
+          <TabsTrigger value="file" className="flex items-center gap-2">
+            📁 Upload File
           </TabsTrigger>
         </TabsList>
 
