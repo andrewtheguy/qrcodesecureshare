@@ -8,10 +8,10 @@ function App() {
     <div className="max-w-4xl mx-auto px-8 py-8 min-h-screen">
       <header className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
-          Encrypted File Upload
+          Secure Data Share
         </h1>
         <p className="text-muted-foreground text-lg">
-          Upload files with AES encryption or scan QR codes to retrieve file info
+          Share data securely with QR code with encrypted file upload for large data.
         </p>
       </header>
 
