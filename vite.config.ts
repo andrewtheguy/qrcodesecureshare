@@ -50,7 +50,7 @@ export default defineConfig({
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
         name: 'QR Code Secure Data Share',
-        short_name: 'QR Generator',
+        short_name: 'QR Code Share',
         description: 'Progressive Web App for QR Code Secure Data Share with encrypted file upload for large data.',
         theme_color: '#ffffff',
         icons: [
