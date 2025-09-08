@@ -46,6 +46,28 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     }
   }
 
+  const renderTextWithLinks = (text: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g
+    const parts = text.split(urlRegex)
+    
+    return parts.map((part, index) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a
+            key={index}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-blue-600 hover:text-blue-800 underline break-all"
+          >
+            {part}
+          </a>
+        )
+      }
+      return part
+    })
+  }
+
 
   const decryptFile = async (encryptedData: ArrayBuffer, passphrase: string): Promise<{ data: ArrayBuffer, filename: string }> => {
     try {
@@ -441,9 +463,9 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <pre className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
-                {scannedText}
-              </pre>
+              <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
+                {renderTextWithLinks(scannedText)}
+              </div>
               <div className="flex justify-center gap-3">
                 <Button 
                   variant="outline"
