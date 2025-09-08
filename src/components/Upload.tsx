@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { deriveKey } from '@/lib/utils'
 
 interface UploadResult {
   status: string
@@ -70,29 +71,6 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
     return passphrase
   }
 
-  const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
-    const encoder = new TextEncoder()
-    const passphraseKey = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(passphrase),
-      'PBKDF2',
-      false,
-      ['deriveBits', 'deriveKey']
-    )
-
-    return crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: salt,
-        iterations: 100000,
-        hash: 'SHA-256'
-      },
-      passphraseKey,
-      { name: 'AES-GCM', length: 256 },
-      true,
-      ['encrypt', 'decrypt']
-    )
-  }
 
   const encryptFile = async (file: File, passphrase: string): Promise<File> => {
     return new Promise((resolve, reject) => {
