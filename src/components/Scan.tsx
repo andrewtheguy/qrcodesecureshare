@@ -23,8 +23,10 @@ const Scan = () => {
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
+  const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -200,6 +202,52 @@ const Scan = () => {
     setScanning(false)
   }
 
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    try {
+      console.log('Processing uploaded image for QR code...')
+      
+      // Set worker path
+      QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
+      
+      const result = await QrScanner.scanImage(file, {
+        returnDetailedScanResult: true,
+      })
+      
+      console.log('QR code detected from uploaded image:', result)
+      
+      // Check if QR code contains encrypted file data
+      if (result.data.startsWith(ENCRYPTED_FILE_MAGIC)) {
+        try {
+          const jsonData = result.data.substring(ENCRYPTED_FILE_MAGIC.length)
+          const data = JSON.parse(jsonData) as EncryptedFileData
+          console.log('Parsed encrypted file data:', data)
+          setScannedData(data)
+          setScannedText(null)
+          setScanState({ showingDetails: true, confirmDownload: true })
+        } catch (error) {
+          console.error('Invalid encrypted file data in QR code:', error)
+          alert('QR code contains invalid encrypted file data')
+        }
+      } else {
+        // Regular text QR code
+        console.log('Regular text QR code:', result.data)
+        setScannedText(result.data)
+        setScannedData(null)
+      }
+    } catch (error) {
+      console.error('Failed to scan QR code from image:', error)
+      alert('No QR code found in the uploaded image. Please try a different image.')
+    }
+    
+    // Clear the file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   useEffect(() => {
     return () => {
       stopScanning()
@@ -208,8 +256,8 @@ const Scan = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
-        {!scanning && !scannedData && !scannedText && (
+      {!scanning && !scannedData && !scannedText && (
+        <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-6">
               <div className="text-6xl">📷</div>
@@ -219,14 +267,74 @@ const Scan = () => {
                   Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase
                 </p>
               </div>
-              <Button size="lg" onClick={startScanning}>
-                Start Camera
-              </Button>
+              
+              {/* Mode selection */}
+              <div className="flex justify-center gap-2 mb-4">
+                <Button
+                  variant={uploadMode === 'camera' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUploadMode('camera')}
+                >
+                  📷 Camera
+                </Button>
+                <Button
+                  variant={uploadMode === 'file' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setUploadMode('file')}
+                >
+                  📁 Upload Image
+                </Button>
+              </div>
+
+              {uploadMode === 'camera' ? (
+                <div className="space-y-4">
+                  <div 
+                    onClick={startScanning}
+                    className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors"
+                  >
+                    <div className="space-y-2">
+                      <div className="text-4xl">📷</div>
+                      <div className="text-sm text-gray-600">
+                        Click to start camera scanning
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Point camera at QR code to scan
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <label htmlFor="qr-image-upload" className="cursor-pointer">
+                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors">
+                      <div className="space-y-2">
+                        <div className="text-4xl">🖼️</div>
+                        <div className="text-sm text-gray-600">
+                          Click to upload an image containing a QR code
+                        </div>
+                        <div className="text-xs text-gray-500">
+                          Supports JPG, PNG, GIF, WebP
+                        </div>
+                      </div>
+                    </div>
+                  </label>
+                  <input
+                    id="qr-image-upload"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                </div>
+              )}
             </div>
           </CardContent>
-        )}
+        </Card>
+      )}
         
-        {scanning && (
+      {scanning && (
+        <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-4">
               <video
@@ -240,8 +348,8 @@ const Scan = () => {
               </Button>
             </div>
           </CardContent>
-        )}
-      </Card>
+        </Card>
+      )}
         
       {scannedData && scanState.confirmDownload && (
         <Card>
@@ -327,6 +435,7 @@ const Scan = () => {
                   setScannedData(null)
                   setScannedText(null)
                   setScanState({ showingDetails: false, confirmDownload: false })
+                  setUploadMode('camera')
                 }}
                 disabled={decrypting}
               >
@@ -368,6 +477,7 @@ const Scan = () => {
                 onClick={() => {
                   setScannedData(null)
                   setScannedText(null)
+                  setUploadMode('camera')
                 }}
               >
                 Scan Another QR
