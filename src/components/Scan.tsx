@@ -17,7 +17,11 @@ interface ScanState {
   confirmDownload: boolean
 }
 
-const Scan = () => {
+interface ScanProps {
+  onGenerateQR?: (text: string) => void
+}
+
+const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
@@ -462,13 +466,20 @@ const Scan = () => {
               <pre className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {scannedText}
               </pre>
-              <div className="flex justify-center">
+              <div className="flex justify-center gap-3">
                 <Button 
                   variant="outline"
                   onClick={() => copyToClipboard(scannedText)}
                 >
                   📋 Copy Text
                 </Button>
+                {onGenerateQR && (
+                  <Button 
+                    onClick={() => onGenerateQR(scannedText)}
+                  >
+                    🔄 Generate QR Code
+                  </Button>
+                )}
               </div>
             </div>
             

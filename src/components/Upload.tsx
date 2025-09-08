@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import QRCode from 'qrcode'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { Button } from '@/components/ui/button'
@@ -23,7 +23,11 @@ interface UploadedFile {
   passphrase: string
 }
 
-const Upload = () => {
+export interface UploadRef {
+  setTextFromScan: (text: string) => void
+}
+
+const Upload = forwardRef<UploadRef>((props, ref) => {
   const [isDragging, setIsDragging] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -35,6 +39,23 @@ const Upload = () => {
   const [uploadingText, setUploadingText] = useState(false)
   const [textUploadCompleted, setTextUploadCompleted] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useImperativeHandle(ref, () => ({
+    setTextFromScan: (text: string) => {
+      setMode('text')
+      setTextInput(text)
+      // Generate QR code immediately if text is not too long
+      if (text.trim().length <= 700) {
+        generateQRCode(text.trim())
+        setTextQrGenerated(true)
+        setShowTextUploadOption(false)
+      } else {
+        setShowTextUploadOption(true)
+        setTextQrGenerated(false)
+        setQrCodeUrl('')
+      }
+    }
+  }))
 
   const convertUrl = (originalUrl: string): string => {
     return originalUrl.replace('http://tmpfiles.org/', 'https://tmpfiles.org/dl/')
@@ -596,6 +617,6 @@ const Upload = () => {
       )}
     </div>
   )
-}
+})
 
 export default Upload
