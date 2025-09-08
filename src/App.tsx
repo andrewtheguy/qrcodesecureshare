@@ -20,7 +20,7 @@ function App() {
   return (
     <div className="max-w-4xl mx-auto min-h-screen">
       <header className="text-center mb-4">
-        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
+        <h1 className="font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
           QR Code Secure Data Share
         </h1>
       </header>
