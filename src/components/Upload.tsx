@@ -389,7 +389,21 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-sm text-muted-foreground">
-                  <span>Enter your text:</span>
+                  <div className="flex items-center gap-2">
+                    <span>Enter your text:</span>
+                    {textInput.length > 0 && (
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setTextInput('')
+                          generateTextQR('')
+                        }}
+                        className="h-6 px-2 text-xs"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
                   <span className={textInput.length > 700 ? "text-orange-600 font-medium" : ""}>
                     {textInput.length} characters
                   </span>
