@@ -31,6 +31,9 @@ const Upload = () => {
   const [mode, setMode] = useState<'file' | 'text'>('file')
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
+  const [showTextUploadOption, setShowTextUploadOption] = useState(false)
+  const [uploadingText, setUploadingText] = useState(false)
+  const [textUploadCompleted, setTextUploadCompleted] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const convertUrl = (originalUrl: string): string => {
@@ -230,11 +233,20 @@ const Upload = () => {
 
   const generateTextQR = (text: string) => {
     if (text.trim()) {
-      // Generate QR code for plain text (no magic header)
-      generateQRCode(text.trim())
-      setTextQrGenerated(true)
+      if (text.trim().length > 700) {
+        // Show upload option for long text
+        setShowTextUploadOption(true)
+        setTextQrGenerated(false)
+        setQrCodeUrl('')
+      } else {
+        // Generate QR code for plain text (no magic header)
+        generateQRCode(text.trim())
+        setTextQrGenerated(true)
+        setShowTextUploadOption(false)
+      }
     } else {
       setTextQrGenerated(false)
+      setShowTextUploadOption(false)
       setQrCodeUrl('')
     }
   }
@@ -242,12 +254,59 @@ const Upload = () => {
   const resetTextMode = () => {
     setTextInput('')
     setTextQrGenerated(false)
+    setShowTextUploadOption(false)
+    setUploadingText(false)
+    setTextUploadCompleted(false)
     setQrCodeUrl('')
   }
 
   const resetFileMode = () => {
     setUploadedFile(null)
     setQrCodeUrl('')
+  }
+
+  const uploadTextAsFile = async () => {
+    if (!textInput.trim()) return
+    
+    try {
+      setUploadingText(true)
+      setUploading(true)
+      
+      // Create a text file from the input
+      const textBlob = new Blob([textInput.trim()], { type: 'text/plain' })
+      const textFile = new File([textBlob], 'text-content.txt', { type: 'text/plain' })
+      
+      // Use the existing uploadFile logic
+      await uploadFile(textFile)
+      
+      // Don't clear text input - keep it visible and set upload completed state
+      setShowTextUploadOption(false)
+      setUploadingText(false)
+      setTextUploadCompleted(true)
+    } catch (error) {
+      alert('Text failed to upload as encrypted file. Please try again.')
+      setUploadingText(false)
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const cancelTextUpload = () => {
+    setUploadingText(false)
+    setShowTextUploadOption(true)
+  }
+
+  const editTextAgain = () => {
+    setTextUploadCompleted(false)
+    setUploadedFile(null)
+    setQrCodeUrl('')
+    // Re-evaluate the text state to show upload option if needed
+    if (textInput.trim().length > 700) {
+      setShowTextUploadOption(true)
+    } else if (textInput.trim().length > 0) {
+      generateQRCode(textInput.trim())
+      setTextQrGenerated(true)
+    }
   }
 
   useEffect(() => {
@@ -335,16 +394,110 @@ const Upload = () => {
                 Enter text to generate a QR code instantly
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <Textarea
-                value={textInput}
-                onChange={(e) => {
-                  setTextInput(e.target.value)
-                  generateTextQR(e.target.value)
-                }}
-                placeholder="Type your text here..."
-                className="min-h-[100px]"
-              />
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm text-muted-foreground">
+                  <span>Enter your text:</span>
+                  <span className={textInput.length > 700 ? "text-orange-600 font-medium" : ""}>
+                    {textInput.length} characters
+                  </span>
+                </div>
+                <Textarea
+                  value={textInput}
+                  onChange={(e) => {
+                    setTextInput(e.target.value)
+                    generateTextQR(e.target.value)
+                  }}
+                  placeholder="Type your text here..."
+                  className="min-h-[100px]"
+                  readOnly={uploadingText || textUploadCompleted}
+                  disabled={uploadingText || textUploadCompleted}
+                />
+              </div>
+              
+              {showTextUploadOption && !uploadingText && (
+                <Alert>
+                  <AlertDescription className="space-y-3">
+                    <div className="font-medium flex items-center gap-2">
+                      📏 Text is too long for QR code ({textInput.length} characters)
+                    </div>
+                    <p className="text-sm">
+                      QR codes work best with shorter text (under 700 characters). 
+                      Would you like to upload this text as an encrypted file instead?
+                    </p>
+                    <div className="flex gap-3 justify-center flex-wrap pt-2">
+                      <Button
+                        onClick={uploadTextAsFile}
+                        disabled={uploading}
+                        className="flex items-center gap-2"
+                      >
+                        📁 Upload as Encrypted File
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={() => {
+                          setTextInput('')
+                          setShowTextUploadOption(false)
+                        }}
+                        disabled={uploading}
+                      >
+                        Clear Text
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {uploadingText && (
+                <Alert>
+                  <AlertDescription className="space-y-3">
+                    <div className="font-medium flex items-center gap-2">
+                      📤 Uploading text as encrypted file...
+                    </div>
+                    <p className="text-sm">
+                      Your text is being encrypted and uploaded. The text above is now read-only.
+                    </p>
+                    <div className="flex gap-3 justify-center flex-wrap pt-2">
+                      <Button
+                        disabled={true}
+                        className="flex items-center gap-2"
+                      >
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Uploading...
+                      </Button>
+                      <Button 
+                        variant="outline"
+                        onClick={cancelTextUpload}
+                        disabled={uploading}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {textUploadCompleted && (
+                <Alert>
+                  <AlertDescription className="space-y-3">
+                    <div className="font-medium flex items-center gap-2">
+                      ✅ Text uploaded successfully
+                    </div>
+                    <p className="text-sm">
+                      Your text has been uploaded as an encrypted file. The text above shows what was uploaded.
+                    </p>
+                    <div className="flex gap-3 justify-center flex-wrap pt-2">
+                      <Button
+                        onClick={editTextAgain}
+                        variant="outline"
+                        className="flex items-center gap-2"
+                      >
+                        ✏️ Edit Again
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
