@@ -408,9 +408,6 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
         <TabsContent value="text" className="mt-2">
           <Card>
-            <CardHeader className="text-center">
-              <CardTitle>📝Text QR Code Generator</CardTitle>
-            </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-sm text-muted-foreground">
@@ -599,7 +596,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
       {textQrGenerated && qrCodeUrl && (
         <Card>
-          <CardContent className="p-6 text-center">
+          <CardContent className="text-center">
             <canvas
               ref={canvasRef}
               style={{ display: 'none' }}
