@@ -17,7 +17,7 @@ const copyQrWorkerPlugin = () => {
         copyFileSync(workerSrc, workerDest)
         console.log('✓ Copied QR scanner worker to public directory')
       } catch (error) {
-        console.warn('⚠ Failed to copy QR scanner worker:', error.message)
+        console.warn('⚠ Failed to copy QR scanner worker:', (error as Error).message)
       }
     }
   }

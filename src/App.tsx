@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'

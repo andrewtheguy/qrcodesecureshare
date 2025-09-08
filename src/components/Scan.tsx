@@ -4,7 +4,6 @@ import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Progress } from '@/components/ui/progress'
 
 interface EncryptedFileData {
   url: string
@@ -187,7 +186,7 @@ const Scan = () => {
       console.log('QR scanner started successfully')
     } catch (error) {
       console.error('Failed to start QR scanner:', error)
-      alert(`Failed to access camera: ${error.message}. Please ensure camera permissions are granted.`)
+      alert(`Failed to access camera: ${(error as Error).message}. Please ensure camera permissions are granted.`)
       setScanning(false)
     }
   }
