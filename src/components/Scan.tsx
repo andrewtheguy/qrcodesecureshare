@@ -162,7 +162,7 @@ const Scan = () => {
               console.log('Parsed encrypted file data:', data)
               setScannedData(data)
               setScannedText(null)
-              setScanState({ showingDetails: true, confirmDownload: false })
+              setScanState({ showingDetails: true, confirmDownload: true })
               stopScanning()
             } catch (error) {
               console.error('Invalid encrypted file data in QR code:', error)
@@ -244,11 +244,11 @@ const Scan = () => {
         )}
       </Card>
         
-      {scannedData && scanState.showingDetails && !scanState.confirmDownload && (
+      {scannedData && scanState.confirmDownload && (
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-green-600 flex items-center justify-center gap-2">
-              ✅ Encrypted File QR Code Scanned
+              🔐 This QR Code is an Encrypted File
             </CardTitle>
             <CardDescription className="text-lg font-semibold">
               File Details
@@ -286,40 +286,7 @@ const Scan = () => {
                 )}
               </div>
             </div>
-            
-            <div className="flex gap-3 justify-center flex-wrap">
-              <Button
-                onClick={() => setScanState({ showingDetails: true, confirmDownload: true })}
-                className="flex items-center gap-2"
-              >
-                📥 Download File
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => {
-                  setScannedData(null)
-                  setScannedText(null)
-                  setScanState({ showingDetails: false, confirmDownload: false })
-                }}
-              >
-                Scan Another QR
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
-      {scannedData && scanState.confirmDownload && (
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
-              🔐 Ready to Download
-            </CardTitle>
-            <CardDescription className="text-lg font-semibold">
-              {scannedData.filename}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
             <Alert>
               <AlertDescription className="space-y-3">
                 <div className="font-medium flex items-center gap-2">
@@ -354,13 +321,6 @@ const Scan = () => {
                 ) : (
                   '📥 Download Original File'
                 )}
-              </Button>
-              <Button 
-                variant="outline"
-                onClick={() => setScanState({ showingDetails: true, confirmDownload: false })}
-                disabled={decrypting}
-              >
-                ← Back
               </Button>
               <Button 
                 variant="outline"
