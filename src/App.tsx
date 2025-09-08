@@ -5,8 +5,8 @@ import './App.css'
 
 function App() {
   return (
-    <div className="max-w-4xl mx-auto px-8 py-8 min-h-screen">
-      <header className="text-center mb-12">
+    <div className="max-w-4xl mx-auto min-h-screen">
+      <header className="text-center mb-4">
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
           Secure Data Share
         </h1>
@@ -25,10 +25,10 @@ function App() {
               📱 Scan QR
             </TabsTrigger>
           </TabsList>
-          <TabsContent value="upload" className="mt-8">
+          <TabsContent value="upload" className="">
             <Upload />
           </TabsContent>
-          <TabsContent value="scan" className="mt-8">
+          <TabsContent value="scan" className="">
             <Scan />
           </TabsContent>
         </Tabs>

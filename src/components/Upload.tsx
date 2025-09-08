@@ -343,7 +343,7 @@ const Upload = () => {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="file" className="mt-6">
+        <TabsContent value="file" className="mt-2">
           <Card
             className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
               isDragging 
@@ -385,14 +385,10 @@ const Upload = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="text" className="mt-6">
+        <TabsContent value="text" className="mt-2">
           <Card>
             <CardHeader className="text-center">
-              <div className="text-6xl mb-4">📝</div>
-              <CardTitle>Text QR Code Generator</CardTitle>
-              <CardDescription>
-                Enter text to generate a QR code instantly
-              </CardDescription>
+              <CardTitle>📝Text QR Code Generator</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
