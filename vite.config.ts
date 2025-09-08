@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { copyFileSync } from 'fs'
 import { resolve } from 'path'
+import path from 'path'
 
 // Custom plugin to copy QR scanner worker
 const copyQrWorkerPlugin = () => {
@@ -30,6 +31,11 @@ export default defineConfig({
       'localhost',
       '.trycloudflare.com'
     ]
+  },
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
   },
   plugins: [
     copyQrWorkerPlugin(),
