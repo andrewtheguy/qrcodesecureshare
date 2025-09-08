@@ -459,7 +459,7 @@ const Scan = () => {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
-              <pre className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto">
+              <pre className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {scannedText}
               </pre>
               <div className="flex justify-center">
