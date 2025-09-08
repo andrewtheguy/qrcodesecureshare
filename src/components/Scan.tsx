@@ -13,11 +13,17 @@ interface EncryptedFileData {
   uploadedAt?: string
 }
 
+interface ScanState {
+  showingDetails: boolean
+  confirmDownload: boolean
+}
+
 const Scan = () => {
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
+  const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
 
@@ -156,6 +162,7 @@ const Scan = () => {
               console.log('Parsed encrypted file data:', data)
               setScannedData(data)
               setScannedText(null)
+              setScanState({ showingDetails: true, confirmDownload: false })
               stopScanning()
             } catch (error) {
               console.error('Invalid encrypted file data in QR code:', error)
@@ -237,11 +244,76 @@ const Scan = () => {
         )}
       </Card>
         
-      {scannedData && (
+      {scannedData && scanState.showingDetails && !scanState.confirmDownload && (
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-green-600 flex items-center justify-center gap-2">
               ✅ Encrypted File QR Code Scanned
+            </CardTitle>
+            <CardDescription className="text-lg font-semibold">
+              File Details
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="space-y-4">
+              <div className="grid gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground">📄 Filename:</span>
+                  <code className="bg-muted px-2 py-1 rounded font-mono text-sm">
+                    {scannedData.filename}
+                  </code>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="font-medium text-muted-foreground">🔗 URL:</span>
+                  <code className="bg-muted px-2 py-1 rounded font-mono text-xs break-all">
+                    {scannedData.url}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(scannedData.url)}
+                  >
+                    📋
+                  </Button>
+                </div>
+                {scannedData.uploadedAt && (
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-muted-foreground">📅 Uploaded:</span>
+                    <span className="text-sm">
+                      {new Date(scannedData.uploadedAt).toLocaleString()}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Button
+                onClick={() => setScanState({ showingDetails: true, confirmDownload: true })}
+                className="flex items-center gap-2"
+              >
+                📥 Download File
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setScannedData(null)
+                  setScannedText(null)
+                  setScanState({ showingDetails: false, confirmDownload: false })
+                }}
+              >
+                Scan Another QR
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {scannedData && scanState.confirmDownload && (
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
+              🔐 Ready to Download
             </CardTitle>
             <CardDescription className="text-lg font-semibold">
               {scannedData.filename}
@@ -285,9 +357,17 @@ const Scan = () => {
               </Button>
               <Button 
                 variant="outline"
+                onClick={() => setScanState({ showingDetails: true, confirmDownload: false })}
+                disabled={decrypting}
+              >
+                ← Back
+              </Button>
+              <Button 
+                variant="outline"
                 onClick={() => {
                   setScannedData(null)
                   setScannedText(null)
+                  setScanState({ showingDetails: false, confirmDownload: false })
                 }}
                 disabled={decrypting}
               >

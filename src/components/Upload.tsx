@@ -307,16 +307,19 @@ const Upload = () => {
                 <>
                   <div className="text-6xl mb-6">📁</div>
                   <p className="mb-6 text-lg text-muted-foreground">Drag & drop a file here or</p>
-                  <label className="cursor-pointer">
-                    <input
-                      type="file"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                    />
-                    <Button size="lg">
-                      Choose File
-                    </Button>
-                  </label>
+                  <input
+                    type="file"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="file-input"
+                  />
+                  <Button 
+                    size="lg"
+                    onClick={() => document.getElementById('file-input')?.click()}
+                    type="button"
+                  >
+                    Choose File
+                  </Button>
                 </>
               )}
             </CardContent>
