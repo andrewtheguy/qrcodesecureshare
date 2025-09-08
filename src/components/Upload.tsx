@@ -1,6 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Textarea } from '@/components/ui/textarea'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
 
 interface UploadResult {
   status: string
@@ -259,176 +265,182 @@ const Upload = () => {
   }, [uploadedFile, generateQRCode])
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="flex justify-center gap-4 mb-4">
-        <button 
-          className={`px-5 py-3 rounded-full font-medium transition-all duration-300 border-2 flex items-center gap-2 ${
-            mode === 'file' 
-              ? 'gradient-primary text-white border-primary-500' 
-              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-          }`}
-          onClick={() => {
-            setMode('file')
-            resetTextMode()
-          }}
-        >
-          📁 Upload File
-        </button>
-        <button 
-          className={`px-5 py-3 rounded-full font-medium transition-all duration-300 border-2 flex items-center gap-2 ${
-            mode === 'text' 
-              ? 'gradient-primary text-white border-primary-500' 
-              : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-          }`}
-          onClick={() => {
-            setMode('text')
-            resetFileMode()
-          }}
-        >
-          📝 Text QR Code
-        </button>
-      </div>
+    <div className="space-y-6">
+      <Tabs value={mode} onValueChange={(value) => {
+        if (value === 'file') {
+          setMode('file')
+          resetTextMode()
+        } else if (value === 'text') {
+          setMode('text')
+          resetFileMode()
+        }
+      }}>
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="file" className="flex items-center gap-2">
+            📁 Upload File
+          </TabsTrigger>
+          <TabsTrigger value="text" className="flex items-center gap-2">
+            📝 Text QR Code
+          </TabsTrigger>
+        </TabsList>
 
-      {mode === 'file' ? (
-        <div
-          className={`border-3 border-dashed rounded-xl p-12 text-center transition-all duration-300 cursor-pointer ${
-            isDragging 
-              ? 'border-primary-500 bg-primary-50 scale-105' 
-              : uploading 
-                ? 'border-primary-700 bg-purple-50 cursor-not-allowed'
-                : 'border-gray-300 bg-gray-50 hover:border-gray-400'
-          }`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-4">
-              <div className="w-10 h-10 border-4 border-gray-300 border-t-primary-500 rounded-full spinner"></div>
-              <p className="text-gray-600">Encrypting and uploading file...</p>
-            </div>
-          ) : (
-            <>
-              <div className="text-5xl mb-4">📁</div>
-              <p className="mb-6 text-lg text-gray-600">Drag & drop a file here or</p>
-              <label className="cursor-pointer">
-                <input
-                  type="file"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <span className="inline-block px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg">
-                  Choose File
-                </span>
-              </label>
-            </>
-          )}
-        </div>
-      ) : (
-        <div className="bg-white rounded-xl p-8 shadow-lg text-center">
-          <div className="text-5xl mb-4">📝</div>
-          <p className="mb-6 text-lg text-gray-600">Enter text to generate a QR code</p>
-          <div className="flex flex-col items-center max-w-lg mx-auto">
-            <textarea
-              value={textInput}
-              onChange={(e) => {
-                setTextInput(e.target.value)
-                generateTextQR(e.target.value)
-              }}
-              placeholder="Type your text here..."
-              className="w-full p-3 border-2 border-gray-200 rounded-lg text-base resize-y min-h-[100px] transition-colors focus:outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-100"
-              rows={4}
-            />
-          </div>
-        </div>
-      )}
+        <TabsContent value="file" className="mt-6">
+          <Card
+            className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
+              isDragging 
+                ? 'border-primary bg-primary/10 scale-105' 
+                : uploading 
+                  ? 'border-muted cursor-not-allowed'
+                  : 'border-border hover:border-muted-foreground'
+            }`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
+            <CardContent className="p-12 text-center">
+              {uploading ? (
+                <div className="flex flex-col items-center gap-4">
+                  <Progress value={33} className="w-full max-w-xs" />
+                  <p className="text-muted-foreground">Encrypting and uploading file...</p>
+                </div>
+              ) : (
+                <>
+                  <div className="text-6xl mb-6">📁</div>
+                  <p className="mb-6 text-lg text-muted-foreground">Drag & drop a file here or</p>
+                  <label className="cursor-pointer">
+                    <input
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                    />
+                    <Button size="lg">
+                      Choose File
+                    </Button>
+                  </label>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="text" className="mt-6">
+          <Card>
+            <CardHeader className="text-center">
+              <div className="text-6xl mb-4">📝</div>
+              <CardTitle>Text QR Code Generator</CardTitle>
+              <CardDescription>
+                Enter text to generate a QR code instantly
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Textarea
+                value={textInput}
+                onChange={(e) => {
+                  setTextInput(e.target.value)
+                  generateTextQR(e.target.value)
+                }}
+                placeholder="Type your text here..."
+                className="min-h-[100px]"
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       {uploadedFile && (
-        <div className="uploaded-file">
-          <h2>✅ File Uploaded Successfully</h2>
-          <div className="file-card">
-            <div className="file-header">
-              <strong className="file-name">{uploadedFile.name}</strong>
-              <small className="upload-time">{uploadedFile.uploadTime}</small>
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
+              ✅ File Uploaded Successfully
+            </CardTitle>
+            <div className="space-y-1">
+              <p className="font-semibold text-lg">{uploadedFile.name}</p>
+              <p className="text-sm text-muted-foreground">{uploadedFile.uploadTime}</p>
             </div>
-            
-            <div className="passphrase-section">
-              <div className="passphrase-label">🔐 Decryption Passphrase:</div>
-              <div className="passphrase-container">
-                <code className="passphrase">{uploadedFile.passphrase}</code>
-                <button 
-                  className="copy-btn"
-                  onClick={() => copyToClipboard(uploadedFile.passphrase)}
-                  title="Copy passphrase to clipboard"
-                >
-                  📋 Copy
-                </button>
-              </div>
-              <small className="passphrase-note">
-                Save this passphrase - you'll need it to decrypt the file!
-              </small>
-            </div>
-
-            <div className="qr-section">
-              <div className="qr-label">📱 QR Code:</div>
-              <div className="qr-container">
-                <canvas
-                  ref={canvasRef}
-                  className="qr-canvas"
-                  style={{ display: 'none' }}
-                />
-                {qrCodeUrl && (
-                  <img 
-                    src={qrCodeUrl} 
-                    alt="QR Code with file URL and passphrase"
-                    className="qr-image"
-                  />
-                )}
-                <p className="qr-description">
-                  Scan with your phone to get the download URL and passphrase
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Alert>
+              <AlertDescription className="space-y-3">
+                <div className="font-medium flex items-center gap-2">
+                  🔐 Decryption Passphrase:
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
+                    {uploadedFile.passphrase}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => copyToClipboard(uploadedFile.passphrase)}
+                  >
+                    📋 Copy
+                  </Button>
+                </div>
+                <p className="text-sm text-destructive font-medium">
+                  Save this passphrase - you'll need it to decrypt the file!
                 </p>
-              </div>
+              </AlertDescription>
+            </Alert>
+
+            <div className="text-center space-y-4">
+              <Card>
+                <CardContent className="p-6">
+                  <canvas
+                    ref={canvasRef}
+                    style={{ display: 'none' }}
+                  />
+                  {qrCodeUrl && (
+                    <img 
+                      src={qrCodeUrl} 
+                      alt="QR Code with file URL and passphrase"
+                      className="mx-auto rounded-lg shadow-sm"
+                    />
+                  )}
+                  <p className="text-sm text-muted-foreground mt-4 max-w-xs mx-auto">
+                    Scan with your phone to get the download URL and passphrase
+                  </p>
+                </CardContent>
+              </Card>
             </div>
             
-            <div className="actions">
-              <a
-                href={uploadedFile.downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="download-link"
-              >
-                📥 Download Encrypted File
-              </a>
-              <button 
-                className="new-upload-btn"
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Button asChild variant="default">
+                <a
+                  href={uploadedFile.downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  📥 Download Encrypted File
+                </a>
+              </Button>
+              <Button 
+                variant="outline"
                 onClick={() => setUploadedFile(null)}
               >
                 Upload Another File
-              </button>
+              </Button>
             </div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
       {textQrGenerated && qrCodeUrl && (
-        <div className="bg-white rounded-xl shadow-lg">
-          <div className="bg-gray-50 rounded-lg border-l-4 border-green-500">
-            <div className="flex flex-col items-center gap-2">
-              <canvas
-                ref={canvasRef}
-                style={{ display: 'none' }}
-              />
-              <img 
-                src={qrCodeUrl} 
-                alt="QR Code with text content"
-                className="rounded-lg shadow-md"
-              />
-              <p className="text-gray-600 text-sm text-center">
-                Scan with your phone to read the text
-              </p>
-            </div>
-          </div>
-        </div>
+        <Card>
+          <CardContent className="p-6 text-center">
+            <canvas
+              ref={canvasRef}
+              style={{ display: 'none' }}
+            />
+            <img 
+              src={qrCodeUrl} 
+              alt="QR Code with text content"
+              className="mx-auto rounded-lg shadow-sm mb-4"
+            />
+            <p className="text-sm text-muted-foreground">
+              Scan with your phone to read the text
+            </p>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

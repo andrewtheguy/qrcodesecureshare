@@ -1,6 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import QrScanner from 'qr-scanner'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Progress } from '@/components/ui/progress'
 
 interface EncryptedFileData {
   url: string
@@ -197,140 +201,142 @@ const Scan = () => {
   }, [])
 
   return (
-    <div className="flex flex-col gap-8">
-      <div className="bg-white rounded-xl p-8 shadow-lg text-center">
-        {!scanning && !scannedData && (
-          <div className="flex flex-col items-center gap-4">
-            <div className="text-6xl mb-4">📷</div>
-            <h2 className="text-2xl font-bold text-gray-800">Scan QR Code</h2>
-            <p className="text-gray-600 max-w-md mb-6">
-              Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase
-            </p>
-            <button 
-              className="px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5"
-              onClick={startScanning}
-            >
-              Start Camera
-            </button>
-          </div>
+    <div className="space-y-6">
+      <Card>
+        {!scanning && !scannedData && !scannedText && (
+          <CardContent className="p-8 text-center">
+            <div className="space-y-6">
+              <div className="text-6xl">📷</div>
+              <div className="space-y-2">
+                <h2 className="text-2xl font-bold">Scan QR Code</h2>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase
+                </p>
+              </div>
+              <Button size="lg" onClick={startScanning}>
+                Start Camera
+              </Button>
+            </div>
+          </CardContent>
         )}
         
         {scanning && (
-          <div className="flex flex-col items-center gap-4">
-            <video
-              ref={videoRef}
-              className="w-full max-w-md rounded-lg bg-black"
-              playsInline
-              muted
-            />
-            <button 
-              className="px-6 py-3 gradient-primary text-white rounded-lg font-medium transition-all duration-200 hover:-translate-y-0.5"
-              onClick={stopScanning}
-            >
-              Stop Scanning
-            </button>
-          </div>
+          <CardContent className="p-8 text-center">
+            <div className="space-y-4">
+              <video
+                ref={videoRef}
+                className="w-full max-w-md rounded-lg bg-black mx-auto"
+                playsInline
+                muted
+              />
+              <Button variant="outline" onClick={stopScanning}>
+                Stop Scanning
+              </Button>
+            </div>
+          </CardContent>
         )}
+      </Card>
         
-        {scannedData && (
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-6 text-green-600">✅ Encrypted File QR Code Scanned</h2>
-            <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-green-500">
-              <div className="mb-4">
-                <strong className="text-xl text-gray-800">{scannedData.filename}</strong>
-              </div>
-              
-              <div className="my-6">
-                <div className="block text-base text-gray-800 mb-3 font-medium">🔐 Decryption Passphrase:</div>
-                <div className="flex items-center justify-center gap-3 mb-2 flex-wrap">
-                  <code className="bg-gray-800 text-gray-200 px-4 py-3 rounded-md font-mono text-sm break-all">
+      {scannedData && (
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
+              ✅ Encrypted File QR Code Scanned
+            </CardTitle>
+            <CardDescription className="text-lg font-semibold">
+              {scannedData.filename}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <Alert>
+              <AlertDescription className="space-y-3">
+                <div className="font-medium flex items-center gap-2">
+                  🔐 Decryption Passphrase:
+                </div>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
                     {scannedData.passphrase}
                   </code>
-                  <button 
-                    className="px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => copyToClipboard(scannedData.passphrase)}
-                    title="Copy passphrase to clipboard"
                   >
                     📋 Copy
-                  </button>
+                  </Button>
                 </div>
-              </div>
-              
-              <div className="flex gap-4 justify-center flex-wrap">
-                <button
-                  onClick={downloadDecryptedFile}
-                  disabled={decrypting}
-                  className={`px-6 py-3 rounded-md font-medium text-base transition-all duration-200 ${
-                    decrypting 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-green-600 hover:bg-green-700 hover:-translate-y-0.5'
-                  } text-white flex items-center gap-2`}
-                >
-                  {decrypting ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full spinner"></div>
-                      Decrypting...
-                    </>
-                  ) : (
-                    '📥 Download Original File'
-                  )}
-                </button>
-                <button 
-                  className={`px-6 py-3 rounded-md font-medium transition-colors ${
-                    decrypting 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-primary-500 hover:bg-primary-600'
-                  } text-white`}
-                  onClick={() => {
-                    setScannedData(null)
-                    setScannedText(null)
-                  }}
-                  disabled={decrypting}
-                >
-                  Scan Another QR
-                </button>
-              </div>
+              </AlertDescription>
+            </Alert>
+            
+            <div className="flex gap-3 justify-center flex-wrap">
+              <Button
+                onClick={downloadDecryptedFile}
+                disabled={decrypting}
+                className="flex items-center gap-2"
+              >
+                {decrypting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Decrypting...
+                  </>
+                ) : (
+                  '📥 Download Original File'
+                )}
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => {
+                  setScannedData(null)
+                  setScannedText(null)
+                }}
+                disabled={decrypting}
+              >
+                Scan Another QR
+              </Button>
             </div>
-          </div>
-        )}
+          </CardContent>
+        </Card>
+      )}
 
-        {scannedText && (
-          <div className="text-center">
-            <h2 className="text-2xl font-bold mb-6 text-green-600">✅ QR Code Scanned</h2>
-            <div className="bg-gray-50 rounded-lg p-6 border-l-4 border-green-500">
-              <div className="flex items-center gap-2 mb-4 justify-center">
-                <span className="text-2xl">📄</span>
-                <strong className="text-lg">Text Content</strong>
-              </div>
-              
-              <div className="flex flex-col gap-4 items-center">
-                <pre className="bg-gray-800 text-gray-200 p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-w-full max-h-[300px] overflow-y-auto m-0 text-left">
-                  {scannedText}
-                </pre>
-                <button 
-                  className="px-4 py-3 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition-colors text-sm font-medium"
+      {scannedText && (
+        <Card>
+          <CardHeader className="text-center">
+            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
+              ✅ QR Code Scanned
+            </CardTitle>
+            <CardDescription className="flex items-center gap-2 justify-center">
+              <span className="text-2xl">📄</span>
+              <span className="text-lg font-semibold">Text Content</span>
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <pre className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto">
+                {scannedText}
+              </pre>
+              <div className="flex justify-center">
+                <Button 
+                  variant="outline"
                   onClick={() => copyToClipboard(scannedText)}
-                  title="Copy text to clipboard"
                 >
                   📋 Copy Text
-                </button>
-              </div>
-              
-              <div className="mt-6">
-                <button 
-                  className="px-6 py-3 bg-primary-500 text-white rounded-md font-medium hover:bg-primary-600 transition-colors"
-                  onClick={() => {
-                    setScannedData(null)
-                    setScannedText(null)
-                  }}
-                >
-                  Scan Another QR
-                </button>
+                </Button>
               </div>
             </div>
-          </div>
-        )}
-      </div>
+            
+            <div className="text-center">
+              <Button 
+                onClick={() => {
+                  setScannedData(null)
+                  setScannedText(null)
+                }}
+              >
+                Scan Another QR
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

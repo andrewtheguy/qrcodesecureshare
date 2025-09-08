@@ -1,47 +1,38 @@
 import { useState } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './App.css'
 
 function App() {
-  const [activeTab, setActiveTab] = useState<'upload' | 'scan'>('upload')
-
   return (
     <div className="max-w-4xl mx-auto px-8 py-8 min-h-screen">
       <header className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary-500 to-primary-700 bg-clip-text text-transparent">
+        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
           Encrypted File Upload
         </h1>
-        <p className="text-gray-600 text-lg">
+        <p className="text-muted-foreground text-lg">
           Upload files with AES encryption or scan QR codes to retrieve file info
         </p>
-        
-        <div className="flex justify-center gap-4 mt-8">
-          <button 
-            className={`px-6 py-3 rounded-full font-medium transition-all duration-300 border-2 ${
-              activeTab === 'upload' 
-                ? 'gradient-primary text-white border-primary-500' 
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-            }`}
-            onClick={() => setActiveTab('upload')}
-          >
-            📤 Generate QR
-          </button>
-          <button 
-            className={`px-6 py-3 rounded-full font-medium transition-all duration-300 border-2 ${
-              activeTab === 'scan' 
-                ? 'gradient-primary text-white border-primary-500' 
-                : 'bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100'
-            }`}
-            onClick={() => setActiveTab('scan')}
-          >
-            📱 Scan QR
-          </button>
-        </div>
       </header>
 
-      <main className="mt-8">
-        {activeTab === 'upload' ? <Upload /> : <Scan />}
+      <main>
+        <Tabs defaultValue="upload" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="upload" className="flex items-center gap-2">
+              📤 Generate QR
+            </TabsTrigger>
+            <TabsTrigger value="scan" className="flex items-center gap-2">
+              📱 Scan QR
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="upload" className="mt-8">
+            <Upload />
+          </TabsContent>
+          <TabsContent value="scan" className="mt-8">
+            <Scan />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )
