@@ -23,9 +23,6 @@ function App() {
         <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
           QR Code Secure Data Share
         </h1>
-        <p className="text-muted-foreground text-lg">
-          Share data securely with QR code with encrypted file upload for large data.
-        </p>
       </header>
 
       <main>
