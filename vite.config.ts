@@ -49,9 +49,9 @@ export default defineConfig({
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'File Upload PWA',
-        short_name: 'FileUpload',
-        description: 'Progressive Web App for uploading files to tmpfiles.org',
+        name: 'QR Code Secure Data Share',
+        short_name: 'QR Generator',
+        description: 'Progressive Web App for QR Code Secure Data Share with encrypted file upload for large data.',
         theme_color: '#ffffff',
         icons: [
           {
