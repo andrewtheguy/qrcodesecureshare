@@ -386,7 +386,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
         <TabsContent value="text" className="mt-2">
           <Card>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 px-2">
               <div className="space-y-2">
                 <div className="flex justify-between items-center text-sm text-muted-foreground">
                   <div className="flex items-center gap-2">
