@@ -557,7 +557,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                     />
                   )}
                   <p className="text-sm text-muted-foreground mt-4 max-w-xs mx-auto">
-                    Scan with your phone to get the download URL and passphrase
+                    Scan QR code to get the download URL and passphrase
                   </p>
                 </CardContent>
               </Card>
@@ -597,7 +597,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
               className="mx-auto rounded-lg shadow-sm mb-4"
             />
             <p className="text-sm text-muted-foreground">
-              Scan with your phone to read the text
+              Scan QR code to read the text
             </p>
           </CardContent>
         </Card>
