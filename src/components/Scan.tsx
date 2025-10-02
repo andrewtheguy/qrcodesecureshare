@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { deriveKey } from '@/lib/utils'
+import { setPrivateKey as vaultSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
 
 interface EncryptedFileData {
   url: string
@@ -35,6 +36,8 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
   const [privateKeyInput, setPrivateKeyInput] = useState('')
+  // Timer ref to auto-clear private key after inactivity
+  const privateKeyClearTimeoutRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -214,6 +217,16 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
+      // Clear private key immediately after successful asymmetric decryption & download
+      if (scannedData.encryptionType === 'asymmetric') {
+        setPrivateKeyInput('')
+        vaultClearPrivateKey()
+        if (privateKeyClearTimeoutRef.current) {
+          clearTimeout(privateKeyClearTimeoutRef.current)
+          privateKeyClearTimeoutRef.current = null
+        }
+      }
+
     } catch (error) {
       console.error('Download and decrypt failed:', error)
       alert(error instanceof Error ? error.message : 'Failed to decrypt and download file')
@@ -338,6 +351,33 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   useEffect(() => {
     return () => {
       stopScanning()
+    }
+  }, [])
+
+  // Reset inactivity timer whenever private key changes; auto-clear after 5 minutes
+  useEffect(() => {
+    if (privateKeyClearTimeoutRef.current) {
+      clearTimeout(privateKeyClearTimeoutRef.current)
+      privateKeyClearTimeoutRef.current = null
+    }
+    if (privateKeyInput) {
+      // Sync to vault (in-memory) for single-source ephemeral storage
+      vaultSetPrivateKey(privateKeyInput)
+      privateKeyClearTimeoutRef.current = window.setTimeout(() => {
+        setPrivateKeyInput('')
+        vaultClearPrivateKey()
+      }, 5 * 60 * 1000) // 5 minutes
+    } else {
+      // If cleared via UI, also clear vault
+      vaultClearPrivateKey()
+    }
+  }, [privateKeyInput])
+
+  // On mount, hydrate from vault (in case component remounts within tab lifetime)
+  useEffect(() => {
+    const existing = vaultGetPrivateKey()
+    if (existing) {
+      setPrivateKeyInput(existing)
     }
   }, [])
 
@@ -506,7 +546,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                     )}
                     <div className="space-y-2 w-full justify-self-stretch">
                       <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
-                      <div className="w-full">
+                      <div className="w-full flex gap-2 items-start">
                         <Input
                           id="privateKeyDec"
                           type="password"
@@ -515,9 +555,27 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                           placeholder='Paste private key (JWK JSON format)'
                           className="font-mono text-[11px] w-full block !w-full justify-self-stretch"
                         />
+                        {privateKeyInput && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="shrink-0 h-8 text-xs"
+                            onClick={() => {
+                              setPrivateKeyInput('')
+                              vaultClearPrivateKey()
+                              if (privateKeyClearTimeoutRef.current) {
+                                clearTimeout(privateKeyClearTimeoutRef.current)
+                                privateKeyClearTimeoutRef.current = null
+                              }
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        )}
                       </div>
                       {privateKeyInput && (
-                        <p className="text-xs text-green-600">✓ Private key entered</p>
+                        <p className="text-xs text-green-600">✓ Private key stored ephemerally (clears after 5 min inactivity, manual Clear, or after download)</p>
                       )}
                     </div>
                     <p className="text-sm text-muted-foreground">
