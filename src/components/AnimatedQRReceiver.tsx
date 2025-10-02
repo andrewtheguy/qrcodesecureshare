@@ -21,6 +21,7 @@ interface ChunkData {
 
 interface QRChunkData {
   f?: 1 // fountain code marker
+  meta?: 1 // metadata-only marker
   s?: number // seed
   d?: number // degree
   i?: number[] // indices
@@ -113,8 +114,15 @@ export function AnimatedQRReceiver() {
       if (data.trim().startsWith('{')) {
         const parsed: QRChunkData = JSON.parse(data)
 
+        // Check if this is metadata-only chunk
+        if (parsed.f === 1 && parsed.meta === 1 && parsed.m) {
+          addDebugLog('📦 Detected metadata-only chunk')
+          handleMetadataChunk(parsed)
+          return
+        }
+
         // Check if this is a fountain code chunk
-        if (parsed.f === 1 && parsed.s !== undefined && parsed.d !== undefined && parsed.i && parsed.data && parsed.m) {
+        if (parsed.f === 1 && parsed.s !== undefined && parsed.d !== undefined && parsed.i && parsed.data) {
           addDebugLog('🔁 Detected fountain code chunk')
           handleFountainChunk(parsed)
           return
@@ -137,22 +145,14 @@ export function AnimatedQRReceiver() {
     }
   }
 
-  const handleFountainChunk = (parsed: QRChunkData) => {
-    if (!parsed.m || !parsed.data || parsed.s === undefined || parsed.d === undefined || !parsed.i) {
-      throw new Error('Invalid fountain chunk data')
+  const handleMetadataChunk = (parsed: QRChunkData) => {
+    if (!parsed.m) {
+      throw new Error('Invalid metadata chunk')
     }
 
-    // Check for duplicate chunk (same seed)
-    if (receivedChunkSeedsRef.current.has(parsed.s)) {
-      addDebugLog(`⊗ Duplicate fountain chunk seed ${parsed.s}`)
-      return
-    }
-    receivedChunkSeedsRef.current.add(parsed.s)
-
-    // Initialize decoder if this is the first chunk
-    let meta: FountainMetadata
+    // Initialize decoder with metadata
     if (!fountainDecoderRef.current) {
-      meta = {
+      const meta: FountainMetadata = {
         name: parsed.m.name,
         size: parsed.m.size,
         type: parsed.m.type,
@@ -166,9 +166,30 @@ export function AnimatedQRReceiver() {
       setIsFountainMode(true)
       addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
     } else {
-      // Get metadata from existing decoder
-      meta = fountainDecoderRef.current.getMetadata()
+      addDebugLog(`⊗ Metadata already received, ignoring duplicate`)
     }
+  }
+
+  const handleFountainChunk = (parsed: QRChunkData) => {
+    if (!parsed.data || parsed.s === undefined || parsed.d === undefined || !parsed.i) {
+      throw new Error('Invalid fountain chunk data')
+    }
+
+    // Check if decoder is initialized
+    if (!fountainDecoderRef.current) {
+      addDebugLog(`⚠️ Received chunk before metadata - waiting for metadata chunk`)
+      return
+    }
+
+    // Check for duplicate chunk (same seed)
+    if (receivedChunkSeedsRef.current.has(parsed.s)) {
+      addDebugLog(`⊗ Duplicate fountain chunk seed ${parsed.s}`)
+      return
+    }
+    receivedChunkSeedsRef.current.add(parsed.s)
+
+    // Get metadata from decoder
+    const meta = fountainDecoderRef.current.getMetadata()
 
     // Decode base64 chunk data
     const binaryString = atob(parsed.data)

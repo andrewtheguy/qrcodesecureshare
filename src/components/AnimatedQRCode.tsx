@@ -12,15 +12,12 @@ interface AnimatedQRCodeProps {
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
-const CHUNK_SIZE = 1200
+const CHUNK_SIZE = 600
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
-interface QRChunkData {
+interface QRMetadataOnly {
   f: 1 // fountain code marker
-  s: number // seed
-  d: number // degree
-  i: number[] // indices
-  data: string // base64 encoded chunk data
+  meta: 1 // metadata-only marker
   m: { // metadata
     name: string
     size: number
@@ -29,6 +26,15 @@ interface QRChunkData {
     blocks: number // totalSourceBlocks
     bs: number // blockSize
   }
+}
+
+interface QRChunkDataCompact {
+  f: 1 // fountain code marker
+  s: number // seed
+  d: number // degree
+  i: number[] // indices
+  data: string // base64 encoded chunk data
+  // no metadata - sent separately in Chunk #0
 }
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
@@ -91,24 +97,15 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  // Generate and display QR code
-  const generateAndShowNextChunk = async () => {
+  // Generate metadata-only QR code (Chunk #0)
+  const generateMetadataQR = async () => {
     if (!encoder) return
 
     try {
-      // Generate next fountain-coded chunk
-      const chunk = encoder.generateChunk()
-      currentChunkRef.current = chunk
-      setChunkCount(prev => prev + 1)
-
-      // Package chunk for QR code
       const metadata = encoder.getMetadata()
-      const qrData: QRChunkData = {
+      const qrData: QRMetadataOnly = {
         f: 1,
-        s: chunk.seed,
-        d: chunk.degree,
-        i: chunk.indices,
-        data: btoa(String.fromCharCode(...chunk.data)),
+        meta: 1,
         m: {
           name: metadata.name,
           size: metadata.size,
@@ -129,11 +126,54 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         }
       })
       setQrCodeUrl(dataUrl)
+      currentChunkRef.current = null // No chunk data for metadata-only
     } catch (err) {
       console.error('QR generation error:', err)
       setError('Failed to generate QR code')
     }
   }
+
+  // Generate and display fountain-coded chunk
+  const generateAndShowNextChunk = async () => {
+    if (!encoder) return
+
+    try {
+      // Generate next fountain-coded chunk
+      const chunk = encoder.generateChunk()
+      currentChunkRef.current = chunk
+      setChunkCount(prev => prev + 1)
+
+      // Package chunk for QR code (compact format - no metadata)
+      const qrData: QRChunkDataCompact = {
+        f: 1,
+        s: chunk.seed,
+        d: chunk.degree,
+        i: chunk.indices,
+        data: btoa(String.fromCharCode(...chunk.data))
+      }
+
+      const dataUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+        width: 400,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+      setQrCodeUrl(dataUrl)
+    } catch (err) {
+      console.error('QR generation error:', err)
+      setError('Failed to generate QR code')
+    }
+  }
+
+  // Show metadata QR when encoder is ready but not playing
+  useEffect(() => {
+    if (encoder && !isPlaying && chunkCount === 0) {
+      generateMetadataQR()
+    }
+  }, [encoder, isPlaying, chunkCount])
 
   // Animation loop
   useEffect(() => {
@@ -223,7 +263,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           {/* Chunk Counter Overlay */}
           <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
             <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-              Chunk #{chunkCount}
+              {chunkCount === 0 ? 'Metadata Only' : `Chunk #${chunkCount}`}
             </div>
             {isPlaying && (
               <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
@@ -236,7 +276,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         </div>
 
         {/* Chunk details */}
-        {currentChunkRef.current && (
+        {chunkCount === 0 && qrCodeUrl ? (
+          <div className="text-xs text-center text-blue-600 dark:text-blue-400 font-medium">
+            📦 Scan this first to receive file information
+          </div>
+        ) : currentChunkRef.current && (
           <div className="text-xs text-center text-muted-foreground">
             <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
             <span className="mx-2">|</span>
