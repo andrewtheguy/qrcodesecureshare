@@ -26,6 +26,7 @@ interface UploadedFile {
   uploadTime: string
   passphrase?: string
   encryptionType: 'symmetric' | 'asymmetric'
+  publicKeyFingerprint?: string
 }
 
 export interface UploadRef {
@@ -230,6 +231,20 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
       encryptedFile = await encryptFileAsymmetric(file, publicKey)
 
+      // Compute a stable fingerprint for the hardcoded public key (first 8 bytes of SHA-256 over n+e)
+      let publicKeyFingerprint: string | undefined
+      try {
+        const jwkCore = (PUBLIC_KEY_JWK as any)
+        if (jwkCore?.n && jwkCore?.e) {
+          const concat = `${jwkCore.n}.${jwkCore.e}`
+          const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(concat))
+          const hashArr = Array.from(new Uint8Array(hashBuf))
+          publicKeyFingerprint = hashArr.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')
+        }
+      } catch (e) {
+        console.warn('Could not compute public key fingerprint', e)
+      }
+
       const formData = new FormData()
       formData.append('file', encryptedFile)
 
@@ -253,7 +268,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
             originalUrl: result.data.url,
             downloadUrl,
             uploadTime: new Date().toISOString(),
-            encryptionType: 'asymmetric'
+            encryptionType: 'asymmetric',
+            publicKeyFingerprint
           }
           setUploadedFile(fileData)
           return fileData
@@ -434,7 +450,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
         : {
             url: uploadedFile.downloadUrl,
             filename: uploadedFile.name,
-            encryptionType: 'asymmetric'
+            encryptionType: 'asymmetric',
+            publicKeyFingerprint: uploadedFile.publicKeyFingerprint
           }
 
       // Add magic header to indicate this is an encrypted file download QR
@@ -734,6 +751,35 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                   <p className="text-sm text-muted-foreground mt-4 max-w-xs mx-auto">
                     Scan QR code to get the download URL and passphrase
                   </p>
+                  {uploadedFile.encryptionType === 'asymmetric' && qrCodeUrl && (
+                    <div className="mt-6 space-y-2 text-left">
+                      <div className="flex items-center justify-between gap-4">
+                        <p className="text-xs text-muted-foreground font-medium m-0">QR Code Payload (no secrets):</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-6 px-2 text-xs"
+                          onClick={() => copyToClipboard(ENCRYPTED_FILE_MAGIC + JSON.stringify({
+                            url: uploadedFile.downloadUrl,
+                            filename: uploadedFile.name,
+                            encryptionType: 'asymmetric',
+                            publicKeyFingerprint: uploadedFile.publicKeyFingerprint
+                          }))}
+                        >
+                          Copy
+                        </Button>
+                      </div>
+                      <pre className="bg-muted p-3 rounded text-[10px] leading-snug overflow-x-auto whitespace-pre-wrap break-all max-h-40 border border-border">
+{ENCRYPTED_FILE_MAGIC + JSON.stringify({
+  url: uploadedFile.downloadUrl,
+  filename: uploadedFile.name,
+  encryptionType: 'asymmetric',
+  publicKeyFingerprint: uploadedFile.publicKeyFingerprint
+})}
+                      </pre>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

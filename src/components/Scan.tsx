@@ -15,6 +15,7 @@ interface EncryptedFileData {
   filename: string
   uploadedAt?: string
   encryptionType?: 'symmetric' | 'asymmetric'
+  publicKeyFingerprint?: string
 }
 
 interface ScanState {
@@ -34,7 +35,6 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
   const [privateKeyInput, setPrivateKeyInput] = useState('')
-  const [showPrivateKeyInput, setShowPrivateKeyInput] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -482,42 +482,77 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
             </div>
 
             {scannedData.encryptionType === 'asymmetric' ? (
-              <Alert>
-                <AlertDescription className="space-y-3">
-                  <div className="font-medium flex items-center gap-2">
-                    🔑 Enter Private Key to Decrypt:
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowPrivateKeyInput(!showPrivateKeyInput)}
-                        className="h-6 px-2 text-xs"
-                      >
-                        {showPrivateKeyInput ? 'Hide' : 'Show'}
-                      </Button>
+              <>
+                <Alert>
+                  <AlertDescription className="space-y-4">
+                    <div className="font-medium flex items-center gap-2">
+                      🔑 Asymmetric Encryption (RSA-OAEP)
                     </div>
-                    {showPrivateKeyInput && (
-                      <Input
-                        id="privateKeyDec"
-                        type="password"
-                        value={privateKeyInput}
-                        onChange={(e) => setPrivateKeyInput(e.target.value)}
-                        placeholder='Paste private key (JWK format)'
-                        className="font-mono text-xs"
-                      />
+                    {scannedData.publicKeyFingerprint && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-muted-foreground">🆔 Public Key Fingerprint:</span>
+                        <code className="bg-muted px-2 py-1 rounded font-mono text-xs">
+                          {scannedData.publicKeyFingerprint}
+                        </code>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyToClipboard(scannedData.publicKeyFingerprint!)}
+                          className="h-6 px-2 text-xs"
+                        >
+                          Copy
+                        </Button>
+                      </div>
                     )}
-                    {privateKeyInput && (
-                      <p className="text-xs text-green-600">✓ Private key entered</p>
-                    )}
+                    <div className="space-y-2 w-full justify-self-stretch">
+                      <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
+                      <div className="w-full">
+                        <Input
+                          id="privateKeyDec"
+                          type="password"
+                          value={privateKeyInput}
+                          onChange={(e) => setPrivateKeyInput(e.target.value)}
+                          placeholder='Paste private key (JWK JSON format)'
+                          className="font-mono text-[11px] w-full block !w-full justify-self-stretch"
+                        />
+                      </div>
+                      {privateKeyInput && (
+                        <p className="text-xs text-green-600">✓ Private key entered</p>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Provide the matching private key to decrypt the embedded AES key and recover the original file.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+                <div className="mt-6 space-y-2 text-left">
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-xs text-muted-foreground font-medium m-0">QR Payload (no secrets):</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-6 px-2 text-xs"
+                      onClick={() => copyToClipboard(ENCRYPTED_FILE_MAGIC + JSON.stringify({
+                        url: scannedData.url,
+                        filename: scannedData.filename,
+                        encryptionType: 'asymmetric',
+                        publicKeyFingerprint: scannedData.publicKeyFingerprint
+                      }))}
+                    >
+                      Copy
+                    </Button>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    This file uses asymmetric encryption (RSA-OAEP). Enter your private key above to decrypt.
-                  </p>
-                </AlertDescription>
-              </Alert>
+                  <pre className="bg-muted p-3 rounded text-[10px] leading-snug overflow-x-auto whitespace-pre-wrap break-all max-h-40 border border-border">
+{ENCRYPTED_FILE_MAGIC + JSON.stringify({
+  url: scannedData.url,
+  filename: scannedData.filename,
+  encryptionType: 'asymmetric',
+  publicKeyFingerprint: scannedData.publicKeyFingerprint
+})}
+                  </pre>
+                </div>
+              </>
             ) : (
               <Alert>
                 <AlertDescription className="space-y-3">
