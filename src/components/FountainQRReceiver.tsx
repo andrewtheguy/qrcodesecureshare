@@ -43,6 +43,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
 
+  // Auto-start scanning on mount
+  useEffect(() => {
+    setIsScanning(true)
+  }, [])
+
   // Initialize scanner
   useEffect(() => {
     if (!isScanning || !videoRef.current) {

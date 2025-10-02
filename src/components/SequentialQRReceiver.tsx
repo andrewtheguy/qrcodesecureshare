@@ -54,6 +54,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const metadataRef = useRef<ChunkData['meta']>(initialMeta)
   const totalChunksRef = useRef<number>(initialMetadata.totalChunks)
 
+  // Auto-start scanning on mount
+  useEffect(() => {
+    setIsScanning(true)
+  }, [])
+
   // Initialize scanner
   useEffect(() => {
     if (!isScanning || !videoRef.current) {
