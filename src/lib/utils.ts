@@ -32,23 +32,4 @@ export const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<C
   )
 }
 
-// Computes a short fingerprint (first 8 bytes hex of SHA-256 of "n.e") for an RSA public JWK.
-// Throws an Error if required fields are missing or if digest fails.
-export async function computePublicKeyFingerprint(jwk: { n: string; e: string }): Promise<string> {
-  if (!jwk || typeof jwk.n !== 'string' || typeof jwk.e !== 'string' || !jwk.n || !jwk.e) {
-    throw new Error('computePublicKeyFingerprint: missing modulus (n) or exponent (e)')
-  }
-
-  const concat = `${jwk.n}.${jwk.e}`
-  const data = new TextEncoder().encode(concat)
-  let hashBuf: ArrayBuffer
-  try {
-    hashBuf = await crypto.subtle.digest('SHA-256', data)
-  } catch (err) {
-    throw new Error(`computePublicKeyFingerprint: failed to compute digest: ${(err as Error).message}`)
-  }
-
-  return Array.from(new Uint8Array(hashBuf).slice(0, 8))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-}
+// (Legacy computePublicKeyFingerprint removed in favor of SSH-style fingerprint from utils/fingerprint.ts)

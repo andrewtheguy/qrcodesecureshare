@@ -10,7 +10,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { deriveKey, computePublicKeyFingerprint } from '@/lib/utils'
+import { deriveKey } from '@/lib/utils'
+import { getJwkSshFingerprint } from '@/utils/fingerprint'
 
 interface UploadResult {
   status: string
@@ -232,7 +233,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
       encryptedFile = await encryptFileAsymmetric(file, publicKey)
 
       // Compute a stable fingerprint for the hardcoded public key
-      const publicKeyFingerprint = await computePublicKeyFingerprint(PUBLIC_KEY_JWK as any)
+  const publicKeyFingerprint = await getJwkSshFingerprint(JSON.stringify(PUBLIC_KEY_JWK))
 
       const formData = new FormData()
       formData.append('file', encryptedFile)
@@ -449,6 +450,21 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
     }
   }, [uploadedFile, generateQRCode])
 
+  // Pre-compute and show the hardcoded public key fingerprint(s) for user verification.
+  const [publicKeySshFp, setPublicKeySshFp] = useState<string | null>(null)
+  const [publicKeyFpError, setPublicKeyFpError] = useState<string | null>(null)
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const sshFp = await getJwkSshFingerprint(JSON.stringify(PUBLIC_KEY_JWK))
+        setPublicKeySshFp(sshFp)
+      } catch (e) {
+        setPublicKeyFpError((e as Error).message)
+      }
+    })()
+  }, [])
+
   return (
     <div className="space-y-6">
       <Tabs value={mode} onValueChange={(value) => {
@@ -500,8 +516,23 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                         Uses RSA-OAEP encryption with hardcoded public key. Only the private key holder can decrypt.
                       </p>
                       {encryptionType === 'asymmetric' && (
-                        <div className="mt-2">
-                          <p className="text-xs text-green-600">✓ Public key configured (hardcoded in app)</p>
+                        <div className="mt-2 space-y-1">
+                          <p className="text-sm text-green-600 text-left">✓ Public key configured (hardcoded in app)</p>
+                          {publicKeyFpError && (
+                            <p className="text-[10px] text-red-500">Fingerprint error: {publicKeyFpError}</p>
+                          )}
+                          {!publicKeyFpError && (
+                            <>
+                              {publicKeySshFp && (
+                                <div className="flex items-center gap-1 flex-wrap text-sm">
+                                  <span className="text-muted-foreground">Fingerprint:</span>
+                                  <code className="font-mono px-2 py-1 rounded bg-muted/70 dark:bg-zinc-800 text-muted-foreground break-all">
+                                    {publicKeySshFp}
+                                  </code>
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
