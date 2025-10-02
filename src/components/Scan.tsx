@@ -611,9 +611,9 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                       🔑 Asymmetric Encryption (RSA-OAEP)
                     </div>
                     {scannedData.publicKeyFingerprint && (
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex flex-wrap items-center gap-2 w-full overflow-x-auto">
                         <span className="font-medium text-muted-foreground">🆔 Public Key Fingerprint:</span>
-                        <code className="bg-muted px-2 py-1 rounded font-mono text-xs">
+                        <code className="bg-muted px-2 py-1 rounded font-mono text-xs break-all whitespace-pre-wrap w-full max-w-full">
                           {scannedData.publicKeyFingerprint}
                         </code>
                         <Button
@@ -683,9 +683,9 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                           <div className="flex flex-col gap-1">
                             <p className="text-xs text-green-600">✓ Private key imported & stored ephemerally (auto-clears after 5 min inactivity, after download, tab hide, or manual clear)</p>
                             {privateKeyFingerprint && (
-                              <div className="flex items-center gap-2 flex-wrap text-xs">
+                              <div className="flex items-center gap-2 flex-wrap text-xs w-full overflow-x-auto">
                                 <span className="font-medium text-muted-foreground">Fingerprint:</span>
-                                <code className="bg-muted px-2 py-1 rounded font-mono text-[10px] break-all">
+                                <code className="bg-muted px-2 py-1 rounded font-mono text-[10px] break-all whitespace-pre-wrap w-full max-w-full">
                                   {privateKeyFingerprint}
                                 </code>
                                 <Button
@@ -732,7 +732,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                       Copy
                     </Button>
                   </div>
-                  <pre className="bg-muted p-3 rounded text-[10px] leading-snug overflow-x-auto whitespace-pre-wrap break-all max-h-40 border border-border">
+                  <pre className="bg-muted p-3 rounded text-[10px] leading-snug overflow-x-auto whitespace-pre-wrap break-all max-h-40 border border-border w-full max-w-full">
 {ENCRYPTED_FILE_MAGIC + JSON.stringify({
   url: scannedData.url,
   filename: scannedData.filename,
