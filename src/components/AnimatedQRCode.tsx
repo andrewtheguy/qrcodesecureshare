@@ -12,7 +12,7 @@ interface AnimatedQRCodeProps {
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
-const CHUNK_SIZE = 600
+const CHUNK_SIZE = 1200
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
 interface QRChunkData {
@@ -233,13 +233,16 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             )}
           </div>
 
-          {/* Chunk details */}
-          {currentChunkRef.current && (
-            <div className="absolute bottom-2 left-2 bg-blue-500/90 text-white px-2 py-1 rounded text-xs font-medium">
-              Degree: {currentChunkRef.current.degree} | Blocks: {currentChunkRef.current.indices.join(',')}
-            </div>
-          )}
         </div>
+
+        {/* Chunk details */}
+        {currentChunkRef.current && (
+          <div className="text-xs text-center text-muted-foreground">
+            <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
+            <span className="mx-2">|</span>
+            <span>Blocks: {currentChunkRef.current.indices.slice(0, 10).join(', ')}{currentChunkRef.current.indices.length > 10 ? '...' : ''}</span>
+          </div>
+        )}
 
         {/* Progress */}
         {chunkCount > 0 && (
