@@ -3,6 +3,7 @@ import Upload from './components/Upload'
 import Scan from './components/Scan'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './App.css'
+import './utils/generateKeys' // Load key generation utility
 
 function App() {
   const [activeTab, setActiveTab] = useState("upload")
