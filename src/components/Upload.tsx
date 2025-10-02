@@ -1,12 +1,15 @@
 import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import QRCode from 'qrcode'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { PUBLIC_KEY_JWK } from '../config/publicKey'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { deriveKey } from '@/lib/utils'
 
 interface UploadResult {
@@ -21,7 +24,8 @@ interface UploadedFile {
   originalUrl: string
   downloadUrl: string
   uploadTime: string
-  passphrase: string
+  passphrase?: string
+  encryptionType: 'symmetric' | 'asymmetric'
 }
 
 export interface UploadRef {
@@ -39,6 +43,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
   const [showTextUploadOption, setShowTextUploadOption] = useState(false)
   const [uploadingText, setUploadingText] = useState(false)
   const [textUploadCompleted, setTextUploadCompleted] = useState(false)
+  const [encryptionType, setEncryptionType] = useState<'symmetric' | 'asymmetric'>('symmetric')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
@@ -72,20 +77,20 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
   }
 
 
-  const encryptFile = async (file: File, passphrase: string): Promise<File> => {
+  const encryptFileSymmetric = async (file: File, passphrase: string): Promise<File> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = async () => {
         try {
           const arrayBuffer = reader.result as ArrayBuffer
-          
+
           // Generate random salt and IV (nonce for GCM)
           const salt = crypto.getRandomValues(new Uint8Array(16))
           const iv = crypto.getRandomValues(new Uint8Array(12)) // GCM uses 12-byte IV
-          
+
           // Derive key from passphrase
           const key = await deriveKey(passphrase, salt)
-          
+
           // Encrypt the file data using AES-GCM
           const encryptedData = await crypto.subtle.encrypt(
             {
@@ -95,13 +100,67 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
             key,
             arrayBuffer
           )
-          
+
           // Combine salt + iv + encrypted data (includes auth tag)
           const encryptedBytes = new Uint8Array(salt.length + iv.length + encryptedData.byteLength)
           encryptedBytes.set(salt, 0)
           encryptedBytes.set(iv, salt.length)
           encryptedBytes.set(new Uint8Array(encryptedData), salt.length + iv.length)
-          
+
+          const blob = new Blob([encryptedBytes], { type: 'application/octet-stream' })
+          const encryptedFile = new File([blob], 'file.enc', { type: 'application/octet-stream' })
+          resolve(encryptedFile)
+        } catch (error) {
+          reject(error)
+        }
+      }
+      reader.onerror = reject
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
+  const encryptFileAsymmetric = async (file: File, publicKey: CryptoKey): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const arrayBuffer = reader.result as ArrayBuffer
+
+          // For large files, use hybrid encryption: AES-GCM for file, RSA for AES key
+          const aesKey = await crypto.subtle.generateKey(
+            { name: 'AES-GCM', length: 256 },
+            true,
+            ['encrypt', 'decrypt']
+          )
+
+          const iv = crypto.getRandomValues(new Uint8Array(12))
+
+          // Encrypt file with AES-GCM
+          const encryptedData = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv: iv },
+            aesKey,
+            arrayBuffer
+          )
+
+          // Export AES key and encrypt it with RSA public key
+          const rawAesKey = await crypto.subtle.exportKey('raw', aesKey)
+          const encryptedAesKey = await crypto.subtle.encrypt(
+            { name: 'RSA-OAEP' },
+            publicKey,
+            rawAesKey
+          )
+
+          // Combine: encryptedAesKey length (4 bytes) + encrypted AES key + IV + encrypted data
+          const aesKeyLength = new Uint32Array([encryptedAesKey.byteLength])
+          const encryptedBytes = new Uint8Array(
+            4 + encryptedAesKey.byteLength + iv.length + encryptedData.byteLength
+          )
+
+          encryptedBytes.set(new Uint8Array(aesKeyLength.buffer), 0)
+          encryptedBytes.set(new Uint8Array(encryptedAesKey), 4)
+          encryptedBytes.set(iv, 4 + encryptedAesKey.byteLength)
+          encryptedBytes.set(new Uint8Array(encryptedData), 4 + encryptedAesKey.byteLength + iv.length)
+
           const blob = new Blob([encryptedBytes], { type: 'application/octet-stream' })
           const encryptedFile = new File([blob], 'file.enc', { type: 'application/octet-stream' })
           resolve(encryptedFile)
@@ -115,41 +174,96 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
   }
 
   const uploadFile = async (file: File) => {
-    const passphrase = generatePassphrase()
-    const encryptedFile = await encryptFile(file, passphrase)
-    
-    const formData = new FormData()
-    formData.append('file', encryptedFile)
+    let encryptedFile: File
+    let fileData: UploadedFile
 
-    try {
-      const response = await fetch('https://tmpfiles.org/api/v1/upload', {
-        method: 'POST',
-        body: formData,
-      })
+    if (encryptionType === 'symmetric') {
+      const passphrase = generatePassphrase()
+      encryptedFile = await encryptFileSymmetric(file, passphrase)
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
+      const formData = new FormData()
+      formData.append('file', encryptedFile)
 
-      const result: UploadResult = await response.json()
-      
-      if (result.status === 'success') {
-        const downloadUrl = convertUrl(result.data.url)
-        const fileData = {
-          name: file.name,
-          originalUrl: result.data.url,
-          downloadUrl,
-          uploadTime: new Date().toISOString(),
-          passphrase
+      try {
+        const response = await fetch('https://tmpfiles.org/api/v1/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
         }
-        setUploadedFile(fileData)
-        return fileData
-      } else {
-        throw new Error('Upload failed')
+
+        const result: UploadResult = await response.json()
+
+        if (result.status === 'success') {
+          const downloadUrl = convertUrl(result.data.url)
+          fileData = {
+            name: file.name,
+            originalUrl: result.data.url,
+            downloadUrl,
+            uploadTime: new Date().toISOString(),
+            passphrase,
+            encryptionType: 'symmetric'
+          }
+          setUploadedFile(fileData)
+          return fileData
+        } else {
+          throw new Error('Upload failed')
+        }
+      } catch (error) {
+        console.error('Upload error:', error)
+        throw error
       }
-    } catch (error) {
-      console.error('Upload error:', error)
-      throw error
+    } else {
+      // Asymmetric encryption - use hardcoded public key
+      const publicKey = await crypto.subtle.importKey(
+        'jwk',
+        PUBLIC_KEY_JWK,
+        {
+          name: 'RSA-OAEP',
+          hash: 'SHA-256'
+        },
+        true,
+        ['encrypt']
+      )
+
+      encryptedFile = await encryptFileAsymmetric(file, publicKey)
+
+      const formData = new FormData()
+      formData.append('file', encryptedFile)
+
+      try {
+        const response = await fetch('https://tmpfiles.org/api/v1/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+
+        const result: UploadResult = await response.json()
+
+        if (result.status === 'success') {
+          const downloadUrl = convertUrl(result.data.url)
+
+          fileData = {
+            name: file.name,
+            originalUrl: result.data.url,
+            downloadUrl,
+            uploadTime: new Date().toISOString(),
+            encryptionType: 'asymmetric'
+          }
+          setUploadedFile(fileData)
+          return fileData
+        } else {
+          throw new Error('Upload failed')
+        }
+      } catch (error) {
+        console.error('Upload error:', error)
+        throw error
+      }
     }
   }
 
@@ -310,12 +424,19 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
   useEffect(() => {
     if (uploadedFile) {
-      const qrData = {
-        url: uploadedFile.downloadUrl,
-        passphrase: uploadedFile.passphrase,
-        filename: uploadedFile.name,
-        //uploadedAt: uploadedFile.uploadTime
-      }
+      const qrData = uploadedFile.encryptionType === 'symmetric'
+        ? {
+            url: uploadedFile.downloadUrl,
+            passphrase: uploadedFile.passphrase,
+            filename: uploadedFile.name,
+            encryptionType: 'symmetric'
+          }
+        : {
+            url: uploadedFile.downloadUrl,
+            filename: uploadedFile.name,
+            encryptionType: 'asymmetric'
+          }
+
       // Add magic header to indicate this is an encrypted file download QR
       const qrPayload = ENCRYPTED_FILE_MAGIC + JSON.stringify(qrData)
       generateQRCode(qrPayload)
@@ -343,11 +464,52 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
         </TabsList>
 
         <TabsContent value="file" className="mt-2">
+          <Card className="mb-4">
+            <CardContent className="pt-6">
+              <div className="space-y-3">
+                <Label className="text-base font-semibold">Encryption Type</Label>
+                <RadioGroup
+                  value={encryptionType}
+                  onValueChange={(value: 'symmetric' | 'asymmetric') => setEncryptionType(value)}
+                  disabled={uploading}
+                >
+                  <div className="flex items-start space-x-3 space-y-0">
+                    <RadioGroupItem value="symmetric" id="symmetric" />
+                    <div className="space-y-1 leading-none">
+                      <Label htmlFor="symmetric" className="cursor-pointer">
+                        Symmetric (Passphrase-based)
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Uses AES-GCM encryption with a random passphrase. Both sender and receiver use the same passphrase.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start space-x-3 space-y-0">
+                    <RadioGroupItem value="asymmetric" id="asymmetric" />
+                    <div className="space-y-1 leading-none flex-1">
+                      <Label htmlFor="asymmetric" className="cursor-pointer">
+                        Asymmetric (Public/Private Key)
+                      </Label>
+                      <p className="text-sm text-muted-foreground">
+                        Uses RSA-OAEP encryption with hardcoded public key. Only the private key holder can decrypt.
+                      </p>
+                      {encryptionType === 'asymmetric' && (
+                        <div className="mt-2">
+                          <p className="text-xs text-green-600">✓ Public key configured (hardcoded in app)</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
+              </div>
+            </CardContent>
+          </Card>
+
           <Card
             className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
-              isDragging 
-                ? 'border-primary bg-primary/10 scale-105' 
-                : uploading 
+              isDragging
+                ? 'border-primary bg-primary/10 scale-105'
+                : uploading
                   ? 'border-muted cursor-not-allowed'
                   : 'border-border hover:border-muted-foreground'
             }`}
@@ -371,7 +533,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                     className="hidden"
                     id="file-input"
                   />
-                  <Button 
+                  <Button
                     size="lg"
                     onClick={() => document.getElementById('file-input')?.click()}
                     type="button"
@@ -519,28 +681,41 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <Alert>
-              <AlertDescription className="space-y-3">
-                <div className="font-medium flex items-center gap-2">
-                  🔐 Decryption Passphrase:
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
-                    {uploadedFile.passphrase}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(uploadedFile.passphrase)}
-                  >
-                    📋 Copy
-                  </Button>
-                </div>
-                <p className="text-sm text-destructive font-medium">
-                  Save this passphrase - you'll need it to decrypt the file!
-                </p>
-              </AlertDescription>
-            </Alert>
+            {uploadedFile.encryptionType === 'symmetric' ? (
+              <Alert>
+                <AlertDescription className="space-y-3">
+                  <div className="font-medium flex items-center gap-2">
+                    🔐 Decryption Passphrase:
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
+                      {uploadedFile.passphrase}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(uploadedFile.passphrase!)}
+                    >
+                      📋 Copy
+                    </Button>
+                  </div>
+                  <p className="text-sm text-destructive font-medium">
+                    Save this passphrase - you'll need it to decrypt the file!
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert>
+                <AlertDescription className="space-y-3">
+                  <div className="font-medium flex items-center gap-2">
+                    🔑 Asymmetric Encryption Used
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This file was encrypted with a public key. You'll need to provide the corresponding private key when scanning the QR code to decrypt it.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="text-center space-y-4">
               <Card>

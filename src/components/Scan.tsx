@@ -4,13 +4,17 @@ import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { deriveKey } from '@/lib/utils'
 
 interface EncryptedFileData {
   url: string
-  passphrase: string
+  passphrase?: string
+  privateKey?: string
   filename: string
   uploadedAt?: string
+  encryptionType?: 'symmetric' | 'asymmetric'
 }
 
 interface ScanState {
@@ -29,6 +33,8 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [decrypting, setDecrypting] = useState(false)
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
+  const [privateKeyInput, setPrivateKeyInput] = useState('')
+  const [showPrivateKeyInput, setShowPrivateKeyInput] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -69,18 +75,18 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   }
 
 
-  const decryptFile = async (encryptedData: ArrayBuffer, passphrase: string): Promise<{ data: ArrayBuffer, filename: string }> => {
+  const decryptFileSymmetric = async (encryptedData: ArrayBuffer, passphrase: string): Promise<{ data: ArrayBuffer, filename: string }> => {
     try {
       const encryptedBytes = new Uint8Array(encryptedData)
-      
+
       // Extract salt, IV, and encrypted data
       const salt = encryptedBytes.slice(0, 16)
       const iv = encryptedBytes.slice(16, 28) // 12 bytes for GCM
       const encrypted = encryptedBytes.slice(28)
-      
+
       // Derive key from passphrase
       const key = await deriveKey(passphrase, salt)
-      
+
       // Decrypt the data using AES-GCM
       const decryptedData = await crypto.subtle.decrypt(
         {
@@ -90,7 +96,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         key,
         encrypted
       )
-      
+
       return {
         data: decryptedData,
         filename: scannedData?.filename || 'decrypted-file'
@@ -101,25 +107,102 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     }
   }
 
+  const decryptFileAsymmetric = async (encryptedData: ArrayBuffer, privateKeyJwk: string): Promise<{ data: ArrayBuffer, filename: string }> => {
+    try {
+      const encryptedBytes = new Uint8Array(encryptedData)
+
+      // Extract encrypted AES key length (4 bytes)
+      const aesKeyLengthBytes = encryptedBytes.slice(0, 4)
+      const aesKeyLength = new Uint32Array(aesKeyLengthBytes.buffer)[0]
+
+      // Extract encrypted AES key, IV, and encrypted data
+      const encryptedAesKey = encryptedBytes.slice(4, 4 + aesKeyLength)
+      const iv = encryptedBytes.slice(4 + aesKeyLength, 4 + aesKeyLength + 12)
+      const encrypted = encryptedBytes.slice(4 + aesKeyLength + 12)
+
+      // Import private key from JWK
+      const privateKeyData = JSON.parse(privateKeyJwk)
+      const privateKey = await crypto.subtle.importKey(
+        'jwk',
+        privateKeyData,
+        {
+          name: 'RSA-OAEP',
+          hash: 'SHA-256'
+        },
+        false,
+        ['decrypt']
+      )
+
+      // Decrypt the AES key using RSA private key
+      const decryptedAesKeyBytes = await crypto.subtle.decrypt(
+        { name: 'RSA-OAEP' },
+        privateKey,
+        encryptedAesKey
+      )
+
+      // Import the AES key
+      const aesKey = await crypto.subtle.importKey(
+        'raw',
+        decryptedAesKeyBytes,
+        { name: 'AES-GCM', length: 256 },
+        false,
+        ['decrypt']
+      )
+
+      // Decrypt the file data with AES-GCM
+      const decryptedData = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: iv },
+        aesKey,
+        encrypted
+      )
+
+      return {
+        data: decryptedData,
+        filename: scannedData?.filename || 'decrypted-file'
+      }
+    } catch (error) {
+      console.error('Decryption failed:', error)
+      throw new Error('Failed to decrypt file. Please check the private key.')
+    }
+  }
+
   const downloadDecryptedFile = async () => {
     if (!scannedData) return
-    
+
+    // For asymmetric encryption, require private key input
+    if (scannedData.encryptionType === 'asymmetric') {
+      if (!privateKeyInput) {
+        alert('Please enter the private key to decrypt this file')
+        return
+      }
+    }
+
     try {
       setDecrypting(true)
-      
+
       // Use CORS proxy to fetch the encrypted file
       const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(scannedData.url)}`
       const response = await fetch(proxyUrl)
-      
+
       if (!response.ok) {
         throw new Error(`Failed to download file: ${response.status}`)
       }
-      
+
       const encryptedData = await response.arrayBuffer()
-      
-      // Decrypt the file
-      const { data, filename } = await decryptFile(encryptedData, scannedData.passphrase)
-      
+
+      // Decrypt the file based on encryption type
+      let result: { data: ArrayBuffer, filename: string }
+
+      if (scannedData.encryptionType === 'asymmetric') {
+        result = await decryptFileAsymmetric(encryptedData, privateKeyInput)
+      } else if (scannedData.passphrase) {
+        result = await decryptFileSymmetric(encryptedData, scannedData.passphrase)
+      } else {
+        throw new Error('Missing decryption credentials')
+      }
+
+      const { data, filename } = result
+
       // Create blob and download decrypted file
       const blob = new Blob([data])
       const url = URL.createObjectURL(blob)
@@ -130,7 +213,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      
+
     } catch (error) {
       console.error('Download and decrypt failed:', error)
       alert(error instanceof Error ? error.message : 'Failed to decrypt and download file')
@@ -398,30 +481,71 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
               </div>
             </div>
 
-            <Alert>
-              <AlertDescription className="space-y-3">
-                <div className="font-medium flex items-center gap-2">
-                  🔐 Decryption Passphrase:
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
-                    {scannedData.passphrase}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(scannedData.passphrase)}
-                  >
-                    📋 Copy
-                  </Button>
-                </div>
-              </AlertDescription>
-            </Alert>
+            {scannedData.encryptionType === 'asymmetric' ? (
+              <Alert>
+                <AlertDescription className="space-y-3">
+                  <div className="font-medium flex items-center gap-2">
+                    🔑 Enter Private Key to Decrypt:
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowPrivateKeyInput(!showPrivateKeyInput)}
+                        className="h-6 px-2 text-xs"
+                      >
+                        {showPrivateKeyInput ? 'Hide' : 'Show'}
+                      </Button>
+                    </div>
+                    {showPrivateKeyInput && (
+                      <Textarea
+                        id="privateKeyDec"
+                        value={privateKeyInput}
+                        onChange={(e) => setPrivateKeyInput(e.target.value)}
+                        placeholder='{"kty":"RSA","d":"...","n":"...","e":"AQAB",...}'
+                        className="font-mono text-xs h-32"
+                      />
+                    )}
+                    {privateKeyInput && (
+                      <p className="text-xs text-green-600">✓ Private key entered</p>
+                    )}
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This file uses asymmetric encryption (RSA-OAEP). Enter your private key above to decrypt.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <Alert>
+                <AlertDescription className="space-y-3">
+                  <div className="font-medium flex items-center gap-2">
+                    🔐 Decryption Passphrase:
+                  </div>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
+                      {scannedData.passphrase}
+                    </code>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyToClipboard(scannedData.passphrase!)}
+                    >
+                      📋 Copy
+                    </Button>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This file uses symmetric encryption (AES-GCM)
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
             
             <div className="flex gap-3 justify-center flex-wrap">
               <Button
                 onClick={downloadDecryptedFile}
-                disabled={decrypting}
+                disabled={decrypting || (scannedData.encryptionType === 'asymmetric' && !privateKeyInput)}
                 className="flex items-center gap-2"
               >
                 {decrypting ? (

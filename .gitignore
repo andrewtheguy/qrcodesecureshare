@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Private keys - DO NOT COMMIT
+PRIVATE_KEY.md
+*.private.json
+*.pem
