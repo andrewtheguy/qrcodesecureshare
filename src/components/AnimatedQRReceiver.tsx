@@ -44,7 +44,6 @@ export function AnimatedQRReceiver() {
   const [totalChunks, setTotalChunks] = useState(0)
 
   // Fountain code mode state
-  const [fountainDecoder, setFountainDecoder] = useState<FountainDecoder | null>(null)
   const [fountainMetadata, setFountainMetadata] = useState<FountainMetadata | null>(null)
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
@@ -61,6 +60,7 @@ export function AnimatedQRReceiver() {
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
+  const fountainDecoderRef = useRef<FountainDecoder | null>(null)
 
   // Initialize scanner
   useEffect(() => {
@@ -150,8 +150,9 @@ export function AnimatedQRReceiver() {
     receivedChunkSeedsRef.current.add(parsed.s)
 
     // Initialize decoder if this is the first chunk
-    if (!fountainDecoder) {
-      const meta: FountainMetadata = {
+    let meta: FountainMetadata
+    if (!fountainDecoderRef.current) {
+      meta = {
         name: parsed.m.name,
         size: parsed.m.size,
         type: parsed.m.type,
@@ -160,10 +161,13 @@ export function AnimatedQRReceiver() {
         blockSize: parsed.m.bs
       }
       const decoder = new FountainDecoder(meta)
-      setFountainDecoder(decoder)
+      fountainDecoderRef.current = decoder
       setFountainMetadata(meta)
       setIsFountainMode(true)
       addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
+    } else {
+      // Get metadata from existing decoder
+      meta = fountainDecoderRef.current.getMetadata()
     }
 
     // Decode base64 chunk data
@@ -180,13 +184,13 @@ export function AnimatedQRReceiver() {
       data: chunkData
     }
 
-    const decoder = fountainDecoder!
+    const decoder = fountainDecoderRef.current
     const decoded = decoder.addChunk(fountainChunk)
 
     setReceivedFountainChunks(decoder.getReceivedChunkCount())
     setDecodedBlocks(decoder.getDecodedBlockCount())
 
-    addDebugLog(`✓ Fountain chunk #${parsed.s} (degree: ${parsed.d}) - decoded ${decoder.getDecodedBlockCount()}/${fountainMetadata!.totalSourceBlocks} blocks`)
+    addDebugLog(`✓ Fountain chunk #${parsed.s} (degree: ${parsed.d}) - decoded ${decoder.getDecodedBlockCount()}/${meta.totalSourceBlocks} blocks`)
 
     if (decoded) {
       addDebugLog(`🎉 Decoding complete!`)
@@ -285,16 +289,20 @@ export function AnimatedQRReceiver() {
 
   const reconstructFountainFile = (decoder: FountainDecoder) => {
     try {
+      const meta = decoder.getMetadata()
       const decodedData = decoder.getDecodedData()
-      if (!decodedData || !fountainMetadata) {
-        throw new Error('Failed to decode data')
+
+      if (!decodedData) {
+        const decodedCount = decoder.getDecodedBlockCount()
+        addDebugLog(`❌ Decode failed: only ${decodedCount}/${meta.totalSourceBlocks} blocks decoded`)
+        throw new Error(`Failed to decode data: only ${decodedCount}/${meta.totalSourceBlocks} blocks decoded`)
       }
 
       // Create a proper ArrayBuffer from the decoded data
       const bytes = new Uint8Array(decodedData)
 
       // Create blob and download URL
-      const blob = new Blob([bytes], { type: fountainMetadata.type || 'application/octet-stream' })
+      const blob = new Blob([bytes], { type: meta.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -306,9 +314,11 @@ export function AnimatedQRReceiver() {
         scannerRef.current.stop()
       }
 
-      addDebugLog(`✅ File reconstructed: ${fountainMetadata.name}`)
+      addDebugLog(`✅ File reconstructed: ${meta.name} (${bytes.length} bytes)`)
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error'
       console.error('Fountain reconstruction error:', err)
+      addDebugLog(`✗ Reconstruction error: ${errMsg}`)
       setError('Failed to reconstruct file from fountain chunks')
     }
   }
@@ -381,7 +391,7 @@ export function AnimatedQRReceiver() {
     setReceivedChunks(new Map())
     setMetadata(null)
     setTotalChunks(0)
-    setFountainDecoder(null)
+    fountainDecoderRef.current = null
     setFountainMetadata(null)
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)

@@ -184,39 +184,48 @@ export class FountainDecoder {
   }
 
   private attemptDecode(): boolean {
-    // Create a working copy of chunks
-    const workingChunks = this.receivedChunks.map(chunk => ({
-      ...chunk,
+    // Keep original chunks and track which indices are still active
+    interface WorkingChunk {
+      data: Uint8Array
+      activeIndices: Set<number>
+    }
+
+    const workingChunks: WorkingChunk[] = this.receivedChunks.map(chunk => ({
       data: new Uint8Array(chunk.data),
-      indices: [...chunk.indices]
+      activeIndices: new Set(chunk.indices)
     }))
 
     const decoded = new Map<number, Uint8Array>()
 
-    // Iteratively decode using belief propagation
-    let progress = true
-    while (progress) {
-      progress = false
+    // Iteratively decode using belief propagation (peeling decoder)
+    let madeProgress = true
+    while (madeProgress) {
+      madeProgress = false
 
       for (let i = 0; i < workingChunks.length; i++) {
         const chunk = workingChunks[i]
 
-        // Remove already decoded blocks from this chunk
-        chunk.indices = chunk.indices.filter(idx => !decoded.has(idx))
+        // If this chunk has exactly one active (undecoded) index, we can decode it
+        if (chunk.activeIndices.size === 1) {
+          const blockIdx = Array.from(chunk.activeIndices)[0]
 
-        // If degree is 1, we can decode this block directly
-        if (chunk.indices.length === 1) {
-          const blockIdx = chunk.indices[0]
           if (!decoded.has(blockIdx)) {
+            // The chunk data now equals the undecoded block (after all previous XORs)
             decoded.set(blockIdx, new Uint8Array(chunk.data))
-            progress = true
+            madeProgress = true
 
-            // XOR this decoded block out of all other chunks that contain it
+            // XOR this newly decoded block out of all other chunks
             for (let j = 0; j < workingChunks.length; j++) {
-              if (i !== j && workingChunks[j].indices.includes(blockIdx)) {
+              if (j !== i && workingChunks[j].activeIndices.has(blockIdx)) {
+                // XOR the decoded block out of this chunk
                 workingChunks[j].data = xorArrays(workingChunks[j].data, chunk.data)
+                // Remove this block from active indices
+                workingChunks[j].activeIndices.delete(blockIdx)
               }
             }
+
+            // Mark this block as inactive in the current chunk
+            chunk.activeIndices.delete(blockIdx)
           }
         }
       }
@@ -234,6 +243,10 @@ export class FountainDecoder {
 
   isComplete(): boolean {
     return this.isDecoded
+  }
+
+  getMetadata(): FountainMetadata {
+    return this.metadata
   }
 
   // Reconstruct the original data
