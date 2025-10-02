@@ -35,6 +35,8 @@ export function AnimatedQRReceiver() {
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
+  const metadataRef = useRef<ChunkData['meta'] | null>(null)
+  const totalChunksRef = useRef<number>(0)
 
   // Initialize scanner
   useEffect(() => {
@@ -128,6 +130,8 @@ export function AnimatedQRReceiver() {
 
           // Set metadata
           const meta = { name, type, size: fileSize, timestamp: Date.now() }
+          metadataRef.current = meta
+          totalChunksRef.current = totalDataChunks
           setMetadata(meta)
           setTotalChunks(totalDataChunks)
           addDebugLog(`✓ Received metadata: ${name}, ${totalDataChunks} data chunks, ${fileSize} bytes`)
@@ -151,15 +155,15 @@ export function AnimatedQRReceiver() {
 
         addDebugLog(`Data chunk ${chunkIndex + 1} (${chunkData.length} bytes)`)
 
-        if (!metadata || totalChunks === 0) {
+        if (!metadataRef.current || totalChunksRef.current === 0) {
           addDebugLog('⚠ Data chunk received before metadata, ignoring')
           return
         }
 
         const chunk: ChunkData = {
-          meta: metadata,
+          meta: metadataRef.current,
           index: chunkIndex,
-          total: totalChunks,
+          total: totalChunksRef.current,
           data: chunkData
         }
 
@@ -168,9 +172,9 @@ export function AnimatedQRReceiver() {
           const updated = new Map(prev)
           if (!updated.has(chunk.index)) {
             updated.set(chunk.index, chunk)
-            addDebugLog(`✓ Received data chunk ${chunk.index + 1}/${totalChunks}`)
+            addDebugLog(`✓ Received data chunk ${chunk.index + 1}/${totalChunksRef.current}`)
           } else {
-            addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${totalChunks}`)
+            addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${totalChunksRef.current}`)
           }
           return updated
         })
@@ -248,6 +252,8 @@ export function AnimatedQRReceiver() {
     setReceivedChunks(new Map())
     setMetadata(null)
     setTotalChunks(0)
+    metadataRef.current = null
+    totalChunksRef.current = 0
     setError('')
     setSuccess(false)
     setDownloadUrl('')
@@ -267,6 +273,8 @@ export function AnimatedQRReceiver() {
     setReceivedChunks(new Map())
     setMetadata(null)
     setTotalChunks(0)
+    metadataRef.current = null
+    totalChunksRef.current = 0
     setError('')
     setSuccess(false)
     setDownloadUrl('')
