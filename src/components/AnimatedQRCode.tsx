@@ -44,9 +44,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [fps, setFps] = useState(2)
   const [error, setError] = useState<string>('')
   const [chunkCount, setChunkCount] = useState(0)
+  const [skippedChunks, setSkippedChunks] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
+  const lastSuccessfulQrRef = useRef<string>('')
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -185,70 +187,97 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const generateAndShowNextChunk = async () => {
     if (!encoder) return
 
-    try {
-      // Generate next fountain-coded chunk
-      const chunk = encoder.generateChunk()
-      currentChunkRef.current = chunk
-      setChunkCount(prev => prev + 1)
+    const maxRetries = 10 // Maximum attempts to find a chunk that fits
+    let attempt = 0
 
-      // Binary format for fountain chunk:
-      // [0xFF][0xFD] - magic bytes for fountain chunk
-      // [seed(2 bytes)]
-      // [degree(1 byte)]
-      // [numIndices(1 byte)]
-      // [indices... (2 bytes each)]
-      // [chunk data...]
+    while (attempt < maxRetries) {
+      try {
+        // Generate next fountain-coded chunk
+        const chunk = encoder.generateChunk()
 
-      const numIndices = chunk.indices.length
-      const binaryData = new Uint8Array(
-        2 + // magic bytes
-        2 + // seed
-        1 + // degree
-        1 + // numIndices
-        (numIndices * 2) + // indices (2 bytes each)
-        chunk.data.length // chunk data
-      )
+        // Binary format for fountain chunk:
+        // [0xFF][0xFD] - magic bytes for fountain chunk
+        // [seed(2 bytes)]
+        // [degree(1 byte)]
+        // [numIndices(1 byte)]
+        // [indices... (2 bytes each)]
+        // [chunk data...]
 
-      let offset = 0
-      binaryData[offset++] = 0xFF // Magic byte 1
-      binaryData[offset++] = 0xFD // Magic byte 2 (different from metadata)
+        const numIndices = chunk.indices.length
+        const binaryData = new Uint8Array(
+          2 + // magic bytes
+          2 + // seed
+          1 + // degree
+          1 + // numIndices
+          (numIndices * 2) + // indices (2 bytes each)
+          chunk.data.length // chunk data
+        )
 
-      // Seed (2 bytes)
-      binaryData[offset++] = (chunk.seed >> 8) & 0xFF
-      binaryData[offset++] = chunk.seed & 0xFF
+        let offset = 0
+        binaryData[offset++] = 0xFF // Magic byte 1
+        binaryData[offset++] = 0xFD // Magic byte 2 (different from metadata)
 
-      // Degree (1 byte)
-      binaryData[offset++] = chunk.degree & 0xFF
+        // Seed (2 bytes)
+        binaryData[offset++] = (chunk.seed >> 8) & 0xFF
+        binaryData[offset++] = chunk.seed & 0xFF
 
-      // Number of indices (1 byte)
-      binaryData[offset++] = numIndices & 0xFF
+        // Degree (1 byte)
+        binaryData[offset++] = chunk.degree & 0xFF
 
-      // Indices (2 bytes each)
-      for (const idx of chunk.indices) {
-        binaryData[offset++] = (idx >> 8) & 0xFF
-        binaryData[offset++] = idx & 0xFF
-      }
+        // Number of indices (1 byte)
+        binaryData[offset++] = numIndices & 0xFF
 
-      // Chunk data
-      binaryData.set(chunk.data, offset)
-
-      // Convert to string for QR encoding (ISO-8859-1/Latin1)
-      const binaryString = String.fromCharCode(...binaryData)
-
-      const dataUrl = await QRCode.toDataURL(binaryString, {
-        width: 400,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
+        // Indices (2 bytes each)
+        for (const idx of chunk.indices) {
+          binaryData[offset++] = (idx >> 8) & 0xFF
+          binaryData[offset++] = idx & 0xFF
         }
-      })
-      setQrCodeUrl(dataUrl)
-    } catch (err) {
-      console.error('QR generation error:', err)
-      setError('Failed to generate QR code')
+
+        // Chunk data
+        binaryData.set(chunk.data, offset)
+
+        // Convert to string for QR encoding (ISO-8859-1/Latin1)
+        const binaryString = String.fromCharCode(...binaryData)
+
+        const dataUrl = await QRCode.toDataURL(binaryString, {
+          width: 400,
+          margin: 2,
+          errorCorrectionLevel: 'M',
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        })
+
+        // Success! Update state and display
+        currentChunkRef.current = chunk
+        setChunkCount(prev => prev + 1)
+        setQrCodeUrl(dataUrl)
+        lastSuccessfulQrRef.current = dataUrl
+        return // Exit successfully
+
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+
+        // Check if error is about data being too big
+        if (errorMsg.includes('too big') || errorMsg.includes('too large') || errorMsg.includes('too much')) {
+          console.warn(`Chunk too large for QR code (attempt ${attempt + 1}/${maxRetries}), generating new chunk...`)
+          setSkippedChunks(prev => prev + 1)
+          attempt++
+          // Try again with a new chunk
+          continue
+        } else {
+          // Other error, stop and report
+          console.error('QR generation error:', err)
+          setError('Failed to generate QR code: ' + errorMsg)
+          return
+        }
+      }
     }
+
+    // If we exhausted all retries, show warning but keep last successful QR
+    console.error(`Failed to generate QR after ${maxRetries} attempts - data chunks too large`)
+    setError(`Warning: Some chunks are too large for QR codes (${skippedChunks} skipped)`)
   }
 
   // Show metadata QR when encoder is ready but not playing
@@ -275,6 +304,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
       setChunkCount(0) // Reset counter when starting
+      setSkippedChunks(0) // Reset skipped counter
     }
     setIsPlaying(!isPlaying)
   }
@@ -379,11 +409,18 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               <span>{Math.round(progress)}%</span>
             </div>
             <Progress value={progress} />
-            <p className="text-xs text-muted-foreground text-center">
-              {chunkCount >= estimatedChunksNeeded
-                ? '✅ Receiver should have enough chunks to decode'
-                : `${estimatedChunksNeeded - chunkCount} more chunks recommended`}
-            </p>
+            <div className="flex items-center justify-between text-xs">
+              <p className="text-muted-foreground">
+                {chunkCount >= estimatedChunksNeeded
+                  ? '✅ Receiver should have enough chunks to decode'
+                  : `${estimatedChunksNeeded - chunkCount} more chunks recommended`}
+              </p>
+              {skippedChunks > 0 && (
+                <p className="text-amber-600 dark:text-amber-400 font-medium">
+                  ⚠️ Skipped: {skippedChunks}
+                </p>
+              )}
+            </div>
           </div>
         )}
 
@@ -427,6 +464,12 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               <li>Keep playing until receiver shows 100% decoded</li>
               <li>More robust than sequential chunk transfer</li>
             </ol>
+            {skippedChunks > 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
+                <span className="font-medium">⚠️ Note:</span> {skippedChunks} chunk{skippedChunks > 1 ? 's were' : ' was'} too large for QR encoding and {skippedChunks > 1 ? 'were' : 'was'} automatically skipped.
+                This is normal - fountain coding generates new chunks on the fly.
+              </p>
+            )}
           </AlertDescription>
         </Alert>
 
