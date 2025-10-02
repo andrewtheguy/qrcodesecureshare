@@ -97,26 +97,74 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  // Generate metadata-only QR code (Chunk #0)
+  // Generate metadata-only QR code (Chunk #0) in binary format
   const generateMetadataQR = async () => {
     if (!encoder) return
 
     try {
       const metadata = encoder.getMetadata()
-      const qrData: QRMetadataOnly = {
-        f: 1,
-        meta: 1,
-        m: {
-          name: metadata.name,
-          size: metadata.size,
-          type: metadata.type,
-          timestamp: metadata.timestamp,
-          blocks: metadata.totalSourceBlocks,
-          bs: metadata.blockSize
-        }
-      }
 
-      const dataUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+      // Binary format for metadata:
+      // [0xFF][0xFE] - magic bytes for fountain metadata
+      // [nameLen(1)][name bytes...]
+      // [typeLen(1)][type bytes...]
+      // [size(4 bytes)]
+      // [timestamp(4 bytes, seconds)]
+      // [blocks(2 bytes)]
+      // [blockSize(2 bytes)]
+
+      const nameBytes = new TextEncoder().encode(metadata.name)
+      const typeBytes = new TextEncoder().encode(metadata.type)
+
+      const binaryData = new Uint8Array(
+        2 + // magic bytes
+        1 + nameBytes.length +
+        1 + typeBytes.length +
+        4 + // size
+        4 + // timestamp (seconds)
+        2 + // blocks
+        2   // blockSize
+      )
+
+      let offset = 0
+      binaryData[offset++] = 0xFF // Magic byte 1
+      binaryData[offset++] = 0xFE // Magic byte 2
+
+      // Name
+      binaryData[offset++] = nameBytes.length
+      binaryData.set(nameBytes, offset)
+      offset += nameBytes.length
+
+      // Type
+      binaryData[offset++] = typeBytes.length
+      binaryData.set(typeBytes, offset)
+      offset += typeBytes.length
+
+      // Size (4 bytes)
+      binaryData[offset++] = (metadata.size >> 24) & 0xFF
+      binaryData[offset++] = (metadata.size >> 16) & 0xFF
+      binaryData[offset++] = (metadata.size >> 8) & 0xFF
+      binaryData[offset++] = metadata.size & 0xFF
+
+      // Timestamp (4 bytes, as seconds)
+      const timestampSec = Math.floor(metadata.timestamp / 1000)
+      binaryData[offset++] = (timestampSec >> 24) & 0xFF
+      binaryData[offset++] = (timestampSec >> 16) & 0xFF
+      binaryData[offset++] = (timestampSec >> 8) & 0xFF
+      binaryData[offset++] = timestampSec & 0xFF
+
+      // Blocks (2 bytes)
+      binaryData[offset++] = (metadata.totalSourceBlocks >> 8) & 0xFF
+      binaryData[offset++] = metadata.totalSourceBlocks & 0xFF
+
+      // Block size (2 bytes)
+      binaryData[offset++] = (metadata.blockSize >> 8) & 0xFF
+      binaryData[offset++] = metadata.blockSize & 0xFF
+
+      // Convert to string for QR encoding (ISO-8859-1/Latin1)
+      const binaryString = String.fromCharCode(...binaryData)
+
+      const dataUrl = await QRCode.toDataURL(binaryString, {
         width: 400,
         margin: 2,
         errorCorrectionLevel: 'M',
@@ -133,7 +181,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     }
   }
 
-  // Generate and display fountain-coded chunk
+  // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
     if (!encoder) return
 
@@ -143,16 +191,51 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
       currentChunkRef.current = chunk
       setChunkCount(prev => prev + 1)
 
-      // Package chunk for QR code (compact format - no metadata)
-      const qrData: QRChunkDataCompact = {
-        f: 1,
-        s: chunk.seed,
-        d: chunk.degree,
-        i: chunk.indices,
-        data: btoa(String.fromCharCode(...chunk.data))
+      // Binary format for fountain chunk:
+      // [0xFF][0xFD] - magic bytes for fountain chunk
+      // [seed(2 bytes)]
+      // [degree(1 byte)]
+      // [numIndices(1 byte)]
+      // [indices... (2 bytes each)]
+      // [chunk data...]
+
+      const numIndices = chunk.indices.length
+      const binaryData = new Uint8Array(
+        2 + // magic bytes
+        2 + // seed
+        1 + // degree
+        1 + // numIndices
+        (numIndices * 2) + // indices (2 bytes each)
+        chunk.data.length // chunk data
+      )
+
+      let offset = 0
+      binaryData[offset++] = 0xFF // Magic byte 1
+      binaryData[offset++] = 0xFD // Magic byte 2 (different from metadata)
+
+      // Seed (2 bytes)
+      binaryData[offset++] = (chunk.seed >> 8) & 0xFF
+      binaryData[offset++] = chunk.seed & 0xFF
+
+      // Degree (1 byte)
+      binaryData[offset++] = chunk.degree & 0xFF
+
+      // Number of indices (1 byte)
+      binaryData[offset++] = numIndices & 0xFF
+
+      // Indices (2 bytes each)
+      for (const idx of chunk.indices) {
+        binaryData[offset++] = (idx >> 8) & 0xFF
+        binaryData[offset++] = idx & 0xFF
       }
 
-      const dataUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+      // Chunk data
+      binaryData.set(chunk.data, offset)
+
+      // Convert to string for QR encoding (ISO-8859-1/Latin1)
+      const binaryString = String.fromCharCode(...binaryData)
+
+      const dataUrl = await QRCode.toDataURL(binaryString, {
         width: 400,
         margin: 2,
         errorCorrectionLevel: 'M',

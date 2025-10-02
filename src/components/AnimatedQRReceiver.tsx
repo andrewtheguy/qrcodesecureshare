@@ -116,14 +116,14 @@ export function AnimatedQRReceiver() {
 
         // Check if this is metadata-only chunk
         if (parsed.f === 1 && parsed.meta === 1 && parsed.m) {
-          addDebugLog('📦 Detected metadata-only chunk')
+          addDebugLog('📦 Detected metadata-only chunk (JSON)')
           handleMetadataChunk(parsed)
           return
         }
 
         // Check if this is a fountain code chunk
         if (parsed.f === 1 && parsed.s !== undefined && parsed.d !== undefined && parsed.i && parsed.data) {
-          addDebugLog('🔁 Detected fountain code chunk')
+          addDebugLog('🔁 Detected fountain code chunk (JSON)')
           handleFountainChunk(parsed)
           return
         }
@@ -132,7 +132,29 @@ export function AnimatedQRReceiver() {
         addDebugLog('Detected legacy JSON format')
         handleLegacyChunk(data)
       } else {
-        addDebugLog('Detected binary format')
+        // Binary format detection
+        const bytes = new Uint8Array(data.length)
+        for (let i = 0; i < data.length; i++) {
+          bytes[i] = data.charCodeAt(i) & 0xFF
+        }
+
+        // Check for fountain code magic bytes
+        if (bytes.length >= 2 && bytes[0] === 0xFF) {
+          if (bytes[1] === 0xFE) {
+            // Fountain metadata
+            addDebugLog('📦 Detected fountain metadata (binary)')
+            handleBinaryMetadata(bytes)
+            return
+          } else if (bytes[1] === 0xFD) {
+            // Fountain chunk
+            addDebugLog('🔁 Detected fountain chunk (binary)')
+            handleBinaryFountainChunk(bytes)
+            return
+          }
+        }
+
+        // Legacy binary chunk handling
+        addDebugLog('Detected legacy binary format')
         handleLegacyChunk(data)
       }
 
@@ -142,6 +164,53 @@ export function AnimatedQRReceiver() {
       addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
       // Don't show error for every failed scan, as non-chunk QR codes may be scanned
+    }
+  }
+
+  const handleBinaryMetadata = (bytes: Uint8Array) => {
+    // Binary format: [0xFF][0xFE][nameLen][name...][typeLen][type...][size(4)][timestamp(4)][blocks(2)][blockSize(2)]
+    let offset = 2 // Skip magic bytes
+
+    // Read name
+    const nameLen = bytes[offset++]
+    const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
+    offset += nameLen
+
+    // Read type
+    const typeLen = bytes[offset++]
+    const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
+    offset += typeLen
+
+    // Read size (4 bytes)
+    const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
+
+    // Read timestamp (4 bytes, seconds)
+    const timestampSec = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
+    const timestamp = timestampSec * 1000 // Convert to milliseconds
+
+    // Read blocks (2 bytes)
+    const totalSourceBlocks = (bytes[offset++] << 8) | bytes[offset++]
+
+    // Read blockSize (2 bytes)
+    const blockSize = (bytes[offset++] << 8) | bytes[offset++]
+
+    // Initialize decoder with metadata
+    if (!fountainDecoderRef.current) {
+      const meta: FountainMetadata = {
+        name,
+        size,
+        type,
+        timestamp,
+        totalSourceBlocks,
+        blockSize
+      }
+      const decoder = new FountainDecoder(meta)
+      fountainDecoderRef.current = decoder
+      setFountainMetadata(meta)
+      setIsFountainMode(true)
+      addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
+    } else {
+      addDebugLog(`⊗ Metadata already received, ignoring duplicate`)
     }
   }
 
@@ -167,6 +236,66 @@ export function AnimatedQRReceiver() {
       addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
     } else {
       addDebugLog(`⊗ Metadata already received, ignoring duplicate`)
+    }
+  }
+
+  const handleBinaryFountainChunk = (bytes: Uint8Array) => {
+    // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
+    let offset = 2 // Skip magic bytes
+
+    // Read seed (2 bytes)
+    const seed = (bytes[offset++] << 8) | bytes[offset++]
+
+    // Read degree (1 byte)
+    const degree = bytes[offset++]
+
+    // Read numIndices (1 byte)
+    const numIndices = bytes[offset++]
+
+    // Read indices (2 bytes each)
+    const indices: number[] = []
+    for (let i = 0; i < numIndices; i++) {
+      const idx = (bytes[offset++] << 8) | bytes[offset++]
+      indices.push(idx)
+    }
+
+    // Read chunk data (rest of bytes)
+    const chunkData = bytes.slice(offset)
+
+    // Check if decoder is initialized
+    if (!fountainDecoderRef.current) {
+      addDebugLog(`⚠️ Received chunk before metadata - waiting for metadata chunk`)
+      return
+    }
+
+    // Check for duplicate chunk (same seed)
+    if (receivedChunkSeedsRef.current.has(seed)) {
+      addDebugLog(`⊗ Duplicate fountain chunk seed ${seed}`)
+      return
+    }
+    receivedChunkSeedsRef.current.add(seed)
+
+    // Get metadata from decoder
+    const meta = fountainDecoderRef.current.getMetadata()
+
+    const fountainChunk: FountainChunk = {
+      seed,
+      degree,
+      indices,
+      data: chunkData
+    }
+
+    const decoder = fountainDecoderRef.current
+    const decoded = decoder.addChunk(fountainChunk)
+
+    setReceivedFountainChunks(decoder.getReceivedChunkCount())
+    setDecodedBlocks(decoder.getDecodedBlockCount())
+
+    addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${decoder.getDecodedBlockCount()}/${meta.totalSourceBlocks} blocks`)
+
+    if (decoded) {
+      addDebugLog(`🎉 Decoding complete!`)
+      reconstructFountainFile(decoder)
     }
   }
 
