@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { deriveKey } from '@/lib/utils'
 import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
+import { getJwkSshFingerprint } from '@/utils/fingerprint'
 
 interface EncryptedFileData {
   url: string
@@ -37,6 +38,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
   const [privateKeyInput, setPrivateKeyInput] = useState('') // raw input field (cleared after load)
   const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
+  const [privateKeyFingerprint, setPrivateKeyFingerprint] = useState<string | null>(null)
   const [privateKeyError, setPrivateKeyError] = useState<string | null>(null)
   const privateKeyImportDebounceRef = useRef<number | null>(null)
   const pageHiddenAtRef = useRef<number | null>(null)
@@ -220,6 +222,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         setPrivateKeyInput('')
         vaultClearPrivateKey()
         setPrivateKeyStatus('empty')
+        setPrivateKeyFingerprint(null)
         if (privateKeyClearTimeoutRef.current) {
           clearTimeout(privateKeyClearTimeoutRef.current)
           privateKeyClearTimeoutRef.current = null
@@ -364,6 +367,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         setPrivateKeyInput('')
         vaultClearPrivateKey()
         setPrivateKeyStatus('empty')
+        setPrivateKeyFingerprint(null)
       }, 5 * 60 * 1000)
     }
   }, [privateKeyStatus])
@@ -388,6 +392,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
               vaultClearPrivateKey()
               setPrivateKeyStatus('empty')
               setPrivateKeyInput('')
+              setPrivateKeyFingerprint(null)
               if (privateKeyClearTimeoutRef.current) {
                 clearTimeout(privateKeyClearTimeoutRef.current)
                 privateKeyClearTimeoutRef.current = null
@@ -407,6 +412,14 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     setPrivateKeyStatus('importing')
     setPrivateKeyError(null)
     try {
+      // Compute Base58 fingerprint (public portion) before import
+      try {
+  const fp = await getJwkSshFingerprint(candidate)
+        setPrivateKeyFingerprint(fp)
+      } catch (err) {
+        // If fingerprint cannot be computed (unsupported key), we proceed without it
+        setPrivateKeyFingerprint(null)
+      }
       await importAndSetPrivateKey(candidate)
       // Clear raw input immediately after successful import
       setPrivateKeyInput('')
@@ -414,6 +427,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     } catch (e: any) {
       setPrivateKeyStatus('error')
       setPrivateKeyError(e?.message || 'Failed to import private key')
+      setPrivateKeyFingerprint(null)
     }
   }
 
@@ -666,7 +680,26 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                           )}
                         </div>
                         {privateKeyStatus === 'loaded' && (
-                          <p className="text-xs text-green-600">✓ Private key imported & stored ephemerally (auto-clears after 5 min inactivity or after download)</p>
+                          <div className="flex flex-col gap-1">
+                            <p className="text-xs text-green-600">✓ Private key imported & stored ephemerally (auto-clears after 5 min inactivity, after download, tab hide, or manual clear)</p>
+                            {privateKeyFingerprint && (
+                              <div className="flex items-center gap-2 flex-wrap text-xs">
+                                <span className="font-medium text-muted-foreground">Fingerprint:</span>
+                                <code className="bg-muted px-2 py-1 rounded font-mono text-[10px] break-all">
+                                  {privateKeyFingerprint}
+                                </code>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-6 px-2 text-[10px]"
+                                  type="button"
+                                  onClick={() => copyToClipboard(privateKeyFingerprint)}
+                                >
+                                  Copy Full
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         )}
                         {privateKeyStatus === 'error' && (
                           <p className="text-xs text-red-600">{privateKeyError}</p>
