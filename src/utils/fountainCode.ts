@@ -47,17 +47,19 @@ function robustSolitonDistribution(k: number, c: number = 0.1, delta: number = 0
   return probabilities
 }
 
-// Select degree based on distribution
-function selectDegree(probabilities: number[], rng: SeededRandom): number {
+// Select degree based on distribution with optional max cap
+function selectDegree(probabilities: number[], rng: SeededRandom, maxDegree?: number): number {
   const r = rng.next()
   let cumulative = 0
-  for (let i = 0; i < probabilities.length; i++) {
+  const limit = maxDegree ? Math.min(maxDegree, probabilities.length) : probabilities.length
+
+  for (let i = 0; i < limit; i++) {
     cumulative += probabilities[i]
     if (r <= cumulative) {
       return i + 1
     }
   }
-  return probabilities.length
+  return limit
 }
 
 // XOR two Uint8Arrays
@@ -122,12 +124,14 @@ export class FountainEncoder {
   }
 
   // Generate next fountain-coded chunk
-  generateChunk(): FountainChunk {
+  // maxDegree parameter limits the maximum degree to control chunk size
+  generateChunk(maxDegree?: number): FountainChunk {
     const seed = this.chunkCounter++
     const rng = new SeededRandom(seed)
 
     // Select degree (how many blocks to combine)
-    const degree = selectDegree(this.degreeDistribution, rng)
+    // Limit to maxDegree if specified to keep QR codes smaller
+    const degree = selectDegree(this.degreeDistribution, rng, maxDegree)
 
     // Select which blocks to combine
     const indices: number[] = []

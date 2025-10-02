@@ -12,8 +12,15 @@ interface AnimatedQRCodeProps {
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
+// Reduced to 600 bytes to ensure QR codes fit within size limits
+// QR Code capacity at error level M: ~2953 bytes
+// Binary overhead: ~6 bytes fixed + (2 * degree) for indices
+// Target: keep total under 2000 bytes for safety
 const CHUNK_SIZE = 600
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
+
+// Maximum QR code size in bytes (with some safety margin)
+const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
 
 interface QRMetadataOnly {
   f: 1 // fountain code marker
@@ -187,13 +194,14 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const generateAndShowNextChunk = async () => {
     if (!encoder) return
 
-    const maxRetries = 10 // Maximum attempts to find a chunk that fits
+    const maxRetries = 20 // Maximum attempts to find a chunk that fits
     let attempt = 0
 
     while (attempt < maxRetries) {
       try {
         // Generate next fountain-coded chunk
-        const chunk = encoder.generateChunk()
+        // Limit degree to 50 to keep overhead small (50 indices * 2 bytes = 100 bytes overhead max)
+        const chunk = encoder.generateChunk(50)
 
         // Binary format for fountain chunk:
         // [0xFF][0xFD] - magic bytes for fountain chunk
@@ -204,14 +212,23 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         // [chunk data...]
 
         const numIndices = chunk.indices.length
-        const binaryData = new Uint8Array(
+        const expectedSize =
           2 + // magic bytes
           2 + // seed
           1 + // degree
           1 + // numIndices
           (numIndices * 2) + // indices (2 bytes each)
           chunk.data.length // chunk data
-        )
+
+        // Pre-check: Skip chunks that are too large before attempting QR generation
+        if (expectedSize > MAX_QR_DATA_SIZE) {
+          console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit, skipping (attempt ${attempt + 1}/${maxRetries})`)
+          setSkippedChunks(prev => prev + 1)
+          attempt++
+          continue
+        }
+
+        const binaryData = new Uint8Array(expectedSize)
 
         let offset = 0
         binaryData[offset++] = 0xFF // Magic byte 1
