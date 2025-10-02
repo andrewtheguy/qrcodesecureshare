@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
+import OfflineTransferDemo from './components/OfflineTransferDemo'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import './App.css'
 import './utils/generateKeys' // Load key generation utility
@@ -28,12 +29,15 @@ function App() {
 
       <main>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="upload" className="flex items-center gap-2">
               📤 Generate QR
             </TabsTrigger>
             <TabsTrigger value="scan" className="flex items-center gap-2">
               📱 Scan QR
+            </TabsTrigger>
+            <TabsTrigger value="offline" className="flex items-center gap-2">
+              🔄 Offline Transfer
             </TabsTrigger>
           </TabsList>
           <TabsContent value="upload" className="">
@@ -41,6 +45,9 @@ function App() {
           </TabsContent>
           <TabsContent value="scan" className="">
             <Scan onGenerateQR={handleGenerateQRFromScan} />
+          </TabsContent>
+          <TabsContent value="offline" className="">
+            <OfflineTransferDemo />
           </TabsContent>
         </Tabs>
       </main>
