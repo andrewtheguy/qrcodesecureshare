@@ -36,20 +36,17 @@ async function generateRSAKeyPair() {
   privateKeyJwk.ext = true;
   privateKeyJwk.key_ops = ['decrypt'];
 
-  // Compute public and private key fingerprints.
-  // Public fingerprint (legacy short hex - first 8 bytes, retained for continuity)
-  const hash = crypto.createHash('sha256').update(`${publicKeyJwk.n}.${publicKeyJwk.e}`).digest();
-  const publicKeyFingerprint = Array.from(hash.slice(0, 8)).map(b => b.toString(16).padStart(2, '0')).join('');
-
-  // Full canonical public portion fingerprint (Base64 of SHA-256 over JSON of {kty,n,e})
+  // Compute canonical OpenSSH-style SHA256 fingerprint (mirrors getJwkSshFingerprint & print-public-key-fingerprint.cjs)
   const canonicalPublic = JSON.stringify({ kty: publicKeyJwk.kty, n: publicKeyJwk.n, e: publicKeyJwk.e });
-  const fullPublicDigest = crypto.createHash('sha256').update(canonicalPublic).digest();
-  const fullPublicFingerprintB64 = fullPublicDigest.toString('base64');
+  const digest = crypto.createHash('sha256').update(canonicalPublic, 'utf8').digest('base64').replace(/=+$/, '');
+  const sshStyleFingerprint = `SHA256:${digest}`;
 
-  // Since private fingerprint for identification should NOT expose private fields,
-  // we use the same canonical public portion (matching the runtime app logic) to keep identity consistent.
-  // This is effectively the same as fullPublicFingerprintB64.
-  const privateKeyFingerprintB64 = fullPublicFingerprintB64;
+  // Derive an equivalent fingerprint path via the private JWK's public components to assert consistency.
+  const privateDerivedCanonical = JSON.stringify({ kty: privateKeyJwk.kty, n: privateKeyJwk.n, e: privateKeyJwk.e });
+  const privateDerived = 'SHA256:' + crypto.createHash('sha256').update(privateDerivedCanonical, 'utf8').digest('base64').replace(/=+$/, '');
+  if (privateDerived !== sshStyleFingerprint) {
+    throw new Error('Public/private key fingerprint mismatch – aborting.');
+  }
 
   console.log('\n=== RSA Key Pair Generated ===\n');
   console.log('Public Key (copy to src/config/publicKey.ts):');
@@ -61,22 +58,14 @@ async function generateRSAKeyPair() {
   // Output intentionally unformatted (single line) to reduce accidental whitespace issues when storing
   console.log(JSON.stringify(privateKeyJwk));
   console.log('\n');
-  console.log('Public Key Fingerprint (short hex, first 8 bytes of SHA-256 of n.e):');
+  console.log('Public and Private Key Fingerprint (OpenSSH-style SHA256 over canonical {kty,n,e}):');
   console.log('----------------------------------------');
-  console.log(publicKeyFingerprint);
-  console.log('\n');
-  console.log('Public Key Fingerprint (full Base64 SHA-256 over canonical {kty,n,e}):');
-  console.log('----------------------------------------');
-  console.log(fullPublicFingerprintB64);
-  console.log('\n');
-  console.log('Private Key Fingerprint (mirrors public canonical fingerprint for identification):');
-  console.log('----------------------------------------');
-  console.log(privateKeyFingerprintB64);
+  console.log(sshStyleFingerprint);
   console.log('\n');
   console.log('📝 Instructions:');
   console.log('1. Copy the Public Key JSON into src/config/publicKey.ts');
-  console.log('2. Record the Public Key Fingerprints (short + full Base64)');
-  console.log('3. Use the full Base64 fingerprint to match the key in the app UI');
+  console.log('2. Record the SSH-style fingerprint (SHA256:...) and share for verification');
+  console.log('3. This fingerprint is derived from canonical JSON of {kty,n,e} (order fixed)');
   console.log('4. Store the Private Key securely (needed to decrypt files)');
   console.log('5. DO NOT commit the private key to version control!');
   console.log('\n');
