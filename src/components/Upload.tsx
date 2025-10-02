@@ -479,7 +479,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                       <Label htmlFor="symmetric" className="cursor-pointer">
                         Symmetric (Passphrase-based)
                       </Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground text-left">
                         Uses AES-GCM encryption with a random passphrase. Both sender and receiver use the same passphrase.
                       </p>
                     </div>
@@ -490,7 +490,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                       <Label htmlFor="asymmetric" className="cursor-pointer">
                         Asymmetric (Public/Private Key)
                       </Label>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-sm text-muted-foreground text-left">
                         Uses RSA-OAEP encryption with hardcoded public key. Only the private key holder can decrypt.
                       </p>
                       {encryptionType === 'asymmetric' && (
@@ -710,7 +710,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                   <div className="font-medium flex items-center gap-2">
                     🔑 Asymmetric Encryption Used
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm text-muted-foreground text-left">
                     This file was encrypted with a public key. You'll need to provide the corresponding private key when scanning the QR code to decrypt it.
                   </p>
                 </AlertDescription>
