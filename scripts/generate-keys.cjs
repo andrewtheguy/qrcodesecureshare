@@ -2,7 +2,9 @@
 
 /**
  * Generate RSA Key Pair for Asymmetric Encryption
- * Run this script with: node generate-keys.js
+ * Usage:
+ *   npm run generate-keys
+ *   (or) node scripts/generate-keys.cjs
  */
 
 const crypto = require('crypto');

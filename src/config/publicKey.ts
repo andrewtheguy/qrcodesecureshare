@@ -8,10 +8,12 @@
  */
 
 export const PUBLIC_KEY_JWK = {
-  kty: "RSA",
-  n: "pvxGMe0XpWly-q89xkSu2ymOnN9pW1fODL-lS86XEsdtVao9oY5NOj18u7QIprtSZYLgX2ZGaVCdoCjIKc5TuKSYBgh0AY_dEkSpdChTsUOduNG5B64Phatr2vBcpAfGdr_Y1oYwqd2axwZTjApJcnoG2b2yM2oUrEKXu8sDXMBBnrgm9OaLAWy8nx_B84GuxnbzSQVNs82rs7ybLFbvx5O3rdzoq74dfPKVUt8J_XiS8qL1xiZ5x9K0xfIXVxbEvHjAY5Ww52P1n3tKEh9YEyCL_EC3G_u_10n4Y88W5lDme-RACJ-kaO7vHga8mktI0nz88WJSzcZB8m15Nq-JiQ",
-  e: "AQAB",
-  alg: "RSA-OAEP-256",
-  ext: true,
-  key_ops: ["encrypt"],
+  "kty": "RSA",
+  "n": "0GudZpAbMFCcmvgG99Sgw8l0O5SPcJVLqJLOUXrvP49YxdXQ5i9SSTC276WgEdHREdf20kSPil0VQDk0c-4swvVRTw-zNb5UEILblKcAAKazOCF6Hfirz5H-K7gB1-2VDeznIoA4xbVIm-mQ4eQyGHBm-_fHMR89VLlWnitFxAEstIKn3hS3vz1-n1oUm7b0QzMtURla7GKeS9ZHey_tYeJf2Fr7ns5hFG_kBjow-aHRoN4jN2frKHJZuWi9ihOeJACxrzECvUMuANXIMFIfejo0WCrKNKbaYouPPMADfLnIlvzVTEW7GHZMDRhjA75PBTdM9HgvNupxG6FF3yzgxw",
+  "e": "AQAB",
+  "alg": "RSA-OAEP-256",
+  "ext": true,
+  "key_ops": [
+    "encrypt"
+  ]
 } as JsonWebKey;

@@ -10,7 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { deriveKey } from '@/lib/utils'
+import { deriveKey, computePublicKeyFingerprint } from '@/lib/utils'
 
 interface UploadResult {
   status: string
@@ -231,19 +231,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
       encryptedFile = await encryptFileAsymmetric(file, publicKey)
 
-      // Compute a stable fingerprint for the hardcoded public key (first 8 bytes of SHA-256 over n+e)
-      let publicKeyFingerprint: string | undefined
-      try {
-        const jwkCore = (PUBLIC_KEY_JWK as any)
-        if (jwkCore?.n && jwkCore?.e) {
-          const concat = `${jwkCore.n}.${jwkCore.e}`
-          const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(concat))
-          const hashArr = Array.from(new Uint8Array(hashBuf))
-          publicKeyFingerprint = hashArr.slice(0, 8).map(b => b.toString(16).padStart(2, '0')).join('')
-        }
-      } catch (e) {
-        console.warn('Could not compute public key fingerprint', e)
-      }
+      // Compute a stable fingerprint for the hardcoded public key
+      const publicKeyFingerprint = await computePublicKeyFingerprint(PUBLIC_KEY_JWK as any)
 
       const formData = new FormData()
       formData.append('file', encryptedFile)

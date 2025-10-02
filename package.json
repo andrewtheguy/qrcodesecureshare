@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+  "preview": "vite preview",
+  "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
+  "generate-keys": "node scripts/generate-keys.cjs"
   },
   "dependencies": {
     "@radix-ui/react-label": "^2.1.7",
