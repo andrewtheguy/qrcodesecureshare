@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@/components/ui/input'
 import { deriveKey } from '@/lib/utils'
 
 interface EncryptedFileData {
@@ -500,12 +500,13 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                       </Button>
                     </div>
                     {showPrivateKeyInput && (
-                      <Textarea
+                      <Input
                         id="privateKeyDec"
+                        type="password"
                         value={privateKeyInput}
                         onChange={(e) => setPrivateKeyInput(e.target.value)}
-                        placeholder='{"kty":"RSA","d":"...","n":"...","e":"AQAB",...}'
-                        className="font-mono text-xs h-32"
+                        placeholder='Paste private key (JWK format)'
+                        className="font-mono text-xs"
                       />
                     )}
                     {privateKeyInput && (
