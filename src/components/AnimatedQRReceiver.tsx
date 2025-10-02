@@ -15,6 +15,7 @@ interface ChunkData {
   }
   index: number
   total: number
+  encoding?: 'base64' | 'binary' // support base64 (legacy) and binary formats
   data: string
 }
 
@@ -28,6 +29,8 @@ export function AnimatedQRReceiver() {
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
+  const [debugLog, setDebugLog] = useState<string[]>([])
+  const [showDebugLog, setShowDebugLog] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
@@ -65,6 +68,10 @@ export function AnimatedQRReceiver() {
     }
   }, [isScanning])
 
+  const addDebugLog = (message: string) => {
+    setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
+  }
+
   const handleScan = (data: string) => {
     try {
       // Debounce duplicate scans (within 500ms)
@@ -75,7 +82,80 @@ export function AnimatedQRReceiver() {
       lastScannedRef.current = data
       lastScanTimeRef.current = now
 
-      const chunk: ChunkData = JSON.parse(data)
+      addDebugLog(`Scanned data length: ${data.length} bytes`)
+
+      let chunk: ChunkData
+
+      // Check if data starts with '{' - if so, it's JSON
+      if (data.trim().startsWith('{')) {
+        addDebugLog('Detected JSON format')
+        // JSON format (legacy or compact)
+        const parsed = JSON.parse(data)
+
+        // Handle both compact format (m,i,t,d) and legacy format (meta,index,total,data)
+        const encoding = parsed.e || (parsed.encoding === 'binary' ? 'binary' : 'base64')
+
+        // Decode Latin1 if needed
+        let decodedData = parsed.d || parsed.data
+        if (parsed.e === 'l1') {
+          // Latin1: convert string back to bytes then to base64
+          const bytes = new Uint8Array(decodedData.length)
+          for (let i = 0; i < decodedData.length; i++) {
+            bytes[i] = decodedData.charCodeAt(i) & 0xFF
+          }
+          decodedData = btoa(String.fromCharCode(...bytes))
+        }
+
+        chunk = {
+          meta: parsed.m || parsed.meta,
+          index: parsed.i !== undefined ? parsed.i : parsed.index,
+          total: parsed.t || parsed.total,
+          encoding: encoding,
+          data: decodedData
+        }
+        addDebugLog(`JSON chunk ${chunk.index + 1}/${chunk.total} - ${chunk.meta.name} (${encoding})`)
+      } else {
+        addDebugLog('Detected binary format')
+        // Binary format - convert string to bytes
+        const bytes = new Uint8Array(data.length)
+        for (let i = 0; i < data.length; i++) {
+          bytes[i] = data.charCodeAt(i) & 0xFF // Ensure byte values 0-255
+        }
+
+        let offset = 0
+        // Read index (2 bytes)
+        const index = (bytes[offset++] << 8) | bytes[offset++]
+        // Read total (2 bytes)
+        const total = (bytes[offset++] << 8) | bytes[offset++]
+        // Read name
+        const nameLen = bytes[offset++]
+        if (nameLen > 255 || offset + nameLen > bytes.length) {
+          throw new Error('Invalid binary format: nameLen out of bounds')
+        }
+        const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
+        offset += nameLen
+        // Read type
+        const typeLen = bytes[offset++]
+        if (typeLen > 255 || offset + typeLen > bytes.length) {
+          throw new Error('Invalid binary format: typeLen out of bounds')
+        }
+        const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
+        offset += typeLen
+        // Read size (4 bytes)
+        const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
+        // Extract chunk data
+        const chunkData = bytes.slice(offset)
+
+        addDebugLog(`Binary chunk ${index + 1}/${total} - ${name} (${chunkData.length} bytes)`)
+
+        chunk = {
+          meta: { name, type, size, timestamp: Date.now() },
+          index,
+          total,
+          encoding: 'binary',
+          data: btoa(String.fromCharCode(...chunkData)) // store as base64
+        }
+      }
 
       // Validate chunk structure
       if (!chunk.meta || chunk.index === undefined || !chunk.total || !chunk.data) {
@@ -93,12 +173,17 @@ export function AnimatedQRReceiver() {
         const updated = new Map(prev)
         if (!updated.has(chunk.index)) {
           updated.set(chunk.index, chunk)
+          addDebugLog(`✓ Received chunk ${chunk.index + 1}/${chunk.total}`)
+        } else {
+          addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${chunk.total}`)
         }
         return updated
       })
 
       setError('')
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
       // Don't show error for every failed scan, as non-chunk QR codes may be scanned
     }
@@ -119,11 +204,11 @@ export function AnimatedQRReceiver() {
         throw new Error('Missing metadata')
       }
 
-      // Sort chunks by index and concatenate data
+      // Sort chunks by index
       const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
-      const base64Data = sortedChunks.map(chunk => chunk.data).join('')
 
-      // Convert base64 to binary
+      // Base64 or binary decoding (both use base64 storage internally)
+      const base64Data = sortedChunks.map(chunk => chunk.data).join('')
       const binaryString = atob(base64Data)
       const bytes = new Uint8Array(binaryString.length)
       for (let i = 0; i < binaryString.length; i++) {
@@ -378,6 +463,31 @@ export function AnimatedQRReceiver() {
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Debug Log */}
+        <div className="border-t pt-3">
+          <Button
+            onClick={() => setShowDebugLog(!showDebugLog)}
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs"
+          >
+            {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
+          </Button>
+          {showDebugLog && (
+            <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
+              {debugLog.length === 0 ? (
+                <p className="text-muted-foreground">No logs yet...</p>
+              ) : (
+                debugLog.map((log, i) => (
+                  <div key={i} className="py-0.5">
+                    {log}
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Control Buttons */}
         <div className="flex gap-2">

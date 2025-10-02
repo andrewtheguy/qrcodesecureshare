@@ -34,7 +34,7 @@ export default function OfflineTransferDemo() {
       <header className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Offline QR File Transfer</h1>
         <p className="text-muted-foreground">
-          Transfer files up to 20KB using animated QR codes - no internet required!
+          Transfer files up to ${MAX_FILE_SIZE / 1024}KB using animated QR codes - no internet required!
         </p>
       </header>
 
@@ -48,7 +48,7 @@ export default function OfflineTransferDemo() {
             <CardContent>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  Select a file (max 20KB) to convert into animated QR codes
+                  Select a file (max ${MAX_FILE_SIZE / 1024}KB) to convert into animated QR codes
                 </p>
                 <input
                   type="file"
@@ -139,7 +139,7 @@ export default function OfflineTransferDemo() {
             <div className="space-y-2">
               <h3 className="font-semibold">✨ Features:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Transfer files up to 20KB completely offline</li>
+                <li>Transfer files up to {MAX_FILE_SIZE / 1024}KB completely offline</li>
                 <li>No internet connection required</li>
                 <li>Works between any two devices with cameras</li>
                 <li>Automatic chunking and reconstruction</li>

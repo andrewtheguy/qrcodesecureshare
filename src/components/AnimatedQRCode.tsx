@@ -11,8 +11,11 @@ interface AnimatedQRCodeProps {
   onReset?: () => void
 }
 
-// Maximum bytes per QR code chunk (conservative estimate for high error correction)
-const CHUNK_SIZE = 1200 // bytes per QR code
+// Maximum bytes per QR code chunk
+// Using base64 encoding (33% overhead but universally compatible)
+// QR max ~2953 bytes (text mode, error correction M)
+// JSON overhead ~150 bytes, base64 adds 33%: (2953-150)/1.33 ≈ 2100
+const CHUNK_SIZE = 1200 // bytes of raw data before base64 encoding
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
@@ -51,9 +54,6 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         const arrayBuffer = e.target?.result as ArrayBuffer
         const bytes = new Uint8Array(arrayBuffer)
 
-        // Convert to base64
-        const base64Data = btoa(String.fromCharCode(...bytes))
-
         // Create metadata
         const metadata = {
           name: file.name,
@@ -63,21 +63,24 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         }
 
         // Calculate number of chunks needed
-        const totalChunks = Math.ceil(base64Data.length / CHUNK_SIZE)
+        const totalChunks = Math.ceil(bytes.length / CHUNK_SIZE)
         const newChunks: string[] = []
 
-        // Split data into chunks
+        // Split binary data into chunks with base64 encoding
         for (let i = 0; i < totalChunks; i++) {
           const start = i * CHUNK_SIZE
-          const end = Math.min(start + CHUNK_SIZE, base64Data.length)
-          const chunkData = base64Data.slice(start, end)
+          const end = Math.min(start + CHUNK_SIZE, bytes.length)
+          const chunkBytes = bytes.slice(start, end)
 
-          // Create chunk with metadata
+          // Convert to base64 (universally compatible)
+          const base64Data = btoa(String.fromCharCode(...chunkBytes))
+
+          // Create compact JSON with shorter keys to save space
           const chunk = {
-            meta: metadata,
-            index: i,
-            total: totalChunks,
-            data: chunkData
+            m: metadata,      // meta
+            i: i,             // index
+            t: totalChunks,   // total
+            d: base64Data     // data
           }
 
           newChunks.push(JSON.stringify(chunk))
