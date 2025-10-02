@@ -11,15 +11,15 @@ interface AnimatedQRCodeProps {
   onReset?: () => void
 }
 
-// Maximum bytes per QR code chunk
-// Using base64 encoding (33% overhead but universally compatible)
-// QR max ~2953 bytes (text mode, error correction M)
-// JSON overhead ~150 bytes, base64 adds 33%: (2953-150)/1.33 ≈ 2100
-const CHUNK_SIZE = 1200 // bytes of raw data before base64 encoding
+// Maximum bytes per QR code chunk - using binary mode instead of base64
+// QR max ~2953 bytes (byte mode, error correction M)
+// Binary mode is more efficient (no base64 overhead)
+const CHUNK_SIZE = 1200 // bytes of raw binary data
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
-  const [chunks, setChunks] = useState<string[]>([])
+  const [metadataChunk, setMetadataChunk] = useState<string>('') // Separate metadata chunk
+  const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -30,6 +30,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [scanningFeedback, setScanningFeedback] = useState(false)
   const [missingChunksQueue, setMissingChunksQueue] = useState<number[]>([])
   const [playingMissingOnly, setPlayingMissingOnly] = useState(false)
+  const [showMetadata, setShowMetadata] = useState(true) // Show metadata QR initially
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
@@ -37,14 +38,16 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   // Process file into chunks
   useEffect(() => {
     if (!file) {
-      setChunks([])
+      setMetadataChunk('')
+      setDataChunks([])
       setError('')
       return
     }
 
     if (file.size > MAX_FILE_SIZE) {
       setError(`File size (${(file.size / 1024).toFixed(2)}KB) exceeds maximum of ${(MAX_FILE_SIZE / 1024).toFixed(2)}KB`)
-      setChunks([])
+      setMetadataChunk('')
+      setDataChunks([])
       return
     }
 
@@ -54,40 +57,64 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         const arrayBuffer = e.target?.result as ArrayBuffer
         const bytes = new Uint8Array(arrayBuffer)
 
-        // Create metadata
-        const metadata = {
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          timestamp: Date.now()
-        }
+        // Calculate number of data chunks needed
+        const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
+        const totalChunks = totalDataChunks + 1 // +1 for metadata chunk
 
-        // Calculate number of chunks needed
-        const totalChunks = Math.ceil(bytes.length / CHUNK_SIZE)
-        const newChunks: string[] = []
+        // Encode text fields using TextEncoder
+        const nameBytes = new TextEncoder().encode(file.name)
+        const typeBytes = new TextEncoder().encode(file.type || 'application/octet-stream')
 
-        // Split binary data into chunks with base64 encoding
-        for (let i = 0; i < totalChunks; i++) {
+        // Create metadata chunk (binary format)
+        // Format: [total chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
+        const metadataSize = 2 + 1 + nameBytes.length + 1 + typeBytes.length + 4
+        const metadataBytes = new Uint8Array(metadataSize)
+        let offset = 0
+
+        // Total chunks (2 bytes, big-endian)
+        metadataBytes[offset++] = (totalChunks >> 8) & 0xFF
+        metadataBytes[offset++] = totalChunks & 0xFF
+
+        // Name
+        metadataBytes[offset++] = nameBytes.length
+        metadataBytes.set(nameBytes, offset)
+        offset += nameBytes.length
+
+        // Type
+        metadataBytes[offset++] = typeBytes.length
+        metadataBytes.set(typeBytes, offset)
+        offset += typeBytes.length
+
+        // File size (4 bytes, big-endian)
+        metadataBytes[offset++] = (bytes.length >> 24) & 0xFF
+        metadataBytes[offset++] = (bytes.length >> 16) & 0xFF
+        metadataBytes[offset++] = (bytes.length >> 8) & 0xFF
+        metadataBytes[offset++] = bytes.length & 0xFF
+
+        // Convert metadata to string for QR encoding (using Latin-1 encoding)
+        setMetadataChunk(String.fromCharCode(...metadataBytes))
+
+        // Create data chunks (0-based indexing)
+        // Format: [chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
+        const newDataChunks: string[] = []
+        for (let i = 0; i < totalDataChunks; i++) {
           const start = i * CHUNK_SIZE
           const end = Math.min(start + CHUNK_SIZE, bytes.length)
-          const chunkBytes = bytes.slice(start, end)
+          const dataBytes = bytes.slice(start, end)
 
-          // Convert to base64 (universally compatible)
-          const base64Data = btoa(String.fromCharCode(...chunkBytes))
+          // Create chunk with index header
+          const chunkWithHeader = new Uint8Array(2 + dataBytes.length)
+          chunkWithHeader[0] = (i >> 8) & 0xFF
+          chunkWithHeader[1] = i & 0xFF
+          chunkWithHeader.set(dataBytes, 2)
 
-          // Create compact JSON with shorter keys to save space
-          const chunk = {
-            m: metadata,      // meta
-            i: i,             // index
-            t: totalChunks,   // total
-            d: base64Data     // data
-          }
-
-          newChunks.push(JSON.stringify(chunk))
+          // Convert to string using Latin-1 encoding (preserves all byte values)
+          newDataChunks.push(String.fromCharCode(...chunkWithHeader))
         }
 
-        setChunks(newChunks)
+        setDataChunks(newDataChunks)
         setCurrentChunk(0)
+        setShowMetadata(true) // Reset to show metadata when new file is loaded
         setError('')
       } catch (err) {
         setError('Failed to process file')
@@ -104,14 +131,24 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
   // Generate QR code for current chunk
   useEffect(() => {
-    if (chunks.length === 0) {
+    if (!metadataChunk && dataChunks.length === 0) {
       setQrCodeUrl('')
       return
     }
 
     const generateQR = async () => {
       try {
-        const dataUrl = await QRCode.toDataURL(chunks[currentChunk], {
+        // Select the appropriate chunk (metadata or data)
+        const chunkString = showMetadata ? metadataChunk : dataChunks[currentChunk]
+        if (!chunkString) return
+
+        // Convert string back to byte array for binary QR generation
+        const bytes = new Uint8Array(chunkString.length)
+        for (let i = 0; i < chunkString.length; i++) {
+          bytes[i] = chunkString.charCodeAt(i) & 0xFF
+        }
+
+        const dataUrl = await QRCode.toDataURL([{ data: bytes, mode: 'byte' }], {
           width: 400,
           margin: 2,
           errorCorrectionLevel: 'M',
@@ -128,11 +165,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     }
 
     generateQR()
-  }, [chunks, currentChunk])
+  }, [metadataChunk, dataChunks, currentChunk, showMetadata])
 
   // Animation loop
   useEffect(() => {
-    if (!isPlaying || chunks.length === 0) return
+    if (!isPlaying || dataChunks.length === 0) return
 
     const interval = setInterval(() => {
       setCurrentChunk((prev) => {
@@ -148,29 +185,49 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           return missingChunksQueue[nextIndexInQueue]
         }
 
-        // Normal playback
+        // Normal playback - 0-based data chunks
         const next = prev + 1
-        if (next >= chunks.length) {
+        if (next >= dataChunks.length) {
           setLoopCount((count) => count + 1)
-          return repeatMode ? 0 : prev // Loop or stop at end
+          return repeatMode ? 0 : prev // Loop back to first data chunk (index 0)
         }
         return next
       })
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, chunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
+  }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
 
   const handlePlayPause = () => {
+    if (!isPlaying && showMetadata) {
+      // When starting play from metadata, move to first data chunk
+      setShowMetadata(false)
+      setCurrentChunk(0)
+    }
     setIsPlaying(!isPlaying)
   }
 
   const handleNext = () => {
-    setCurrentChunk((prev) => (prev + 1) % chunks.length)
+    if (showMetadata) {
+      setShowMetadata(false)
+      setCurrentChunk(0)
+    } else {
+      // Navigate through data chunks (0-based)
+      setCurrentChunk((prev) => {
+        const next = prev + 1
+        if (next >= dataChunks.length) return 0 // Loop to first data chunk
+        return next
+      })
+    }
   }
 
   const handlePrevious = () => {
-    setCurrentChunk((prev) => (prev - 1 + chunks.length) % chunks.length)
+    if (showMetadata) return // Can't go back from metadata
+    setCurrentChunk((prev) => {
+      const prevChunk = prev - 1
+      if (prevChunk < 0) return dataChunks.length - 1 // Loop to last data chunk
+      return prevChunk
+    })
   }
 
   const handleSpeedChange = (newFps: number) => {
@@ -213,9 +270,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
       const feedback = JSON.parse(data)
 
       if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
+        // Receiver already uses 0-based data chunk indices, so use them directly
         setMissingChunksQueue(feedback.missingChunks)
         setPlayingMissingOnly(true)
         setCurrentChunk(feedback.missingChunks[0] || 0)
+        setShowMetadata(false)
         setScanningFeedback(false)
         setIsPlaying(false)
         setLoopCount(0)
@@ -245,6 +304,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const handleResetToAllChunks = () => {
     setPlayingMissingOnly(false)
     setMissingChunksQueue([])
+    setShowMetadata(true)
     setCurrentChunk(0)
     setIsPlaying(false)
     setLoopCount(0)
@@ -283,7 +343,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         <CardTitle className="text-center">Animated QR Code Transfer</CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
-          <p>Size: {(file.size / 1024).toFixed(2)}KB | Chunks: {chunks.length}</p>
+          <p>Size: {(file.size / 1024).toFixed(2)}KB | Data Chunks: {dataChunks.length}</p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -338,7 +398,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             {qrCodeUrl ? (
               <img
                 src={qrCodeUrl}
-                alt={`QR Code chunk ${currentChunk + 1}/${chunks.length}`}
+                alt={showMetadata ? 'Metadata QR Code - Scan to Start' : `Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
                 className="max-w-full h-auto"
               />
             ) : (
@@ -349,19 +409,27 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           </div>
 
           {/* Chunk ID Overlay */}
-          <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-            <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-              QR {currentChunk + 1} / {chunks.length}
-            </div>
-            {isPlaying && (
-              <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                PLAYING
+          {showMetadata ? (
+            <div className="absolute top-2 left-2 right-2 flex justify-center items-start">
+              <div className="bg-blue-600/90 text-white px-4 py-2 rounded-lg font-bold text-base">
+                📋 Metadata QR - Scan First
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
+              <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
+                Data QR {currentChunk + 1} / {dataChunks.length}
+              </div>
+              {isPlaying && (
+                <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
+                  <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                  PLAYING
+                </div>
+              )}
+            </div>
+          )}
 
-          {loopCount > 0 && (
+          {loopCount > 0 && !showMetadata && (
             <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
               Loop #{loopCount + 1}
             </div>
@@ -369,13 +437,29 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         </div>
 
         {/* Chunk Progress */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Chunk {currentChunk + 1} of {chunks.length}</span>
-            <span>{Math.round(((currentChunk + 1) / chunks.length) * 100)}%</span>
+        {!showMetadata && dataChunks.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Data chunk {currentChunk + 1} of {dataChunks.length}</span>
+              <span>{Math.round(((currentChunk + 1) / dataChunks.length) * 100)}%</span>
+            </div>
+            <Progress value={((currentChunk + 1) / dataChunks.length) * 100} />
           </div>
-          <Progress value={((currentChunk + 1) / chunks.length) * 100} />
-        </div>
+        )}
+
+        {showMetadata && (
+          <Alert>
+            <AlertDescription>
+              <div className="text-center space-y-2">
+                <p className="font-medium">📋 Metadata QR Code Ready</p>
+                <p className="text-sm">
+                  Have the receiver scan this QR code first to get file information.
+                  Then click "Play" to start transmitting data chunks.
+                </p>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Controls */}
         <div className="space-y-3">
@@ -384,14 +468,14 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               variant="outline"
               size="sm"
               onClick={handlePrevious}
-              disabled={chunks.length === 0}
+              disabled={dataChunks.length === 0 || showMetadata}
             >
               ← Previous
             </Button>
             <Button
               size="sm"
               onClick={handlePlayPause}
-              disabled={chunks.length === 0}
+              disabled={dataChunks.length === 0}
             >
               {isPlaying ? '⏸ Pause' : '▶ Play'}
             </Button>
@@ -399,7 +483,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               variant="outline"
               size="sm"
               onClick={handleNext}
-              disabled={chunks.length === 0}
+              disabled={dataChunks.length === 0}
             >
               Next →
             </Button>
@@ -458,13 +542,13 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         {/* Instructions */}
         <Alert>
           <AlertDescription>
-            <p className="font-medium mb-2">📱 How to receive this file:</p>
+            <p className="font-medium mb-2">📱 How to transfer this file:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Each QR code shows its ID (e.g., "QR 1/100") at the top</li>
-              <li>Enable "Repeat ON" to loop through all QR codes automatically</li>
-              <li>Receiver will track which chunks are scanned (deduplication)</li>
+              <li>Receiver scans the metadata QR code first (shown now)</li>
+              <li>Click "Play" to cycle through data QR codes automatically</li>
+              <li>Enable "Repeat ON" to loop through all data chunks</li>
+              <li>Receiver tracks which chunks are scanned (deduplication)</li>
               <li>Keep playing until receiver shows 100% complete</li>
-              <li>Missing chunks will be filled on the next loop</li>
             </ol>
           </AlertDescription>
         </Alert>

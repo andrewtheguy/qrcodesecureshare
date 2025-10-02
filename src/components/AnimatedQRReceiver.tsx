@@ -15,8 +15,7 @@ interface ChunkData {
   }
   index: number
   total: number
-  encoding?: 'base64' | 'binary' // support base64 (legacy) and binary formats
-  data: string
+  data: Uint8Array // raw binary data
 }
 
 export function AnimatedQRReceiver() {
@@ -84,88 +83,77 @@ export function AnimatedQRReceiver() {
 
       addDebugLog(`Scanned data length: ${data.length} bytes`)
 
-      let chunk: ChunkData
-
-      // Check if data starts with '{' - if so, it's JSON
-      if (data.trim().startsWith('{')) {
-        addDebugLog('Detected JSON format')
-        // JSON format (legacy or compact)
-        const parsed = JSON.parse(data)
-
-        // Handle both compact format (m,i,t,d) and legacy format (meta,index,total,data)
-        const encoding = parsed.e || (parsed.encoding === 'binary' ? 'binary' : 'base64')
-
-        // Decode Latin1 if needed
-        let decodedData = parsed.d || parsed.data
-        if (parsed.e === 'l1') {
-          // Latin1: convert string back to bytes then to base64
-          const bytes = new Uint8Array(decodedData.length)
-          for (let i = 0; i < decodedData.length; i++) {
-            bytes[i] = decodedData.charCodeAt(i) & 0xFF
-          }
-          decodedData = btoa(String.fromCharCode(...bytes))
-        }
-
-        chunk = {
-          meta: parsed.m || parsed.meta,
-          index: parsed.i !== undefined ? parsed.i : parsed.index,
-          total: parsed.t || parsed.total,
-          encoding: encoding,
-          data: decodedData
-        }
-        addDebugLog(`JSON chunk ${chunk.index + 1}/${chunk.total} - ${chunk.meta.name} (${encoding})`)
-      } else {
-        addDebugLog('Detected binary format')
-        // Binary format - convert string to bytes
-        const bytes = new Uint8Array(data.length)
-        for (let i = 0; i < data.length; i++) {
-          bytes[i] = data.charCodeAt(i) & 0xFF // Ensure byte values 0-255
-        }
-
-        let offset = 0
-        // Read index (2 bytes)
-        const index = (bytes[offset++] << 8) | bytes[offset++]
-        // Read total (2 bytes)
-        const total = (bytes[offset++] << 8) | bytes[offset++]
-        // Read name
-        const nameLen = bytes[offset++]
-        if (nameLen > 255 || offset + nameLen > bytes.length) {
-          throw new Error('Invalid binary format: nameLen out of bounds')
-        }
-        const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-        offset += nameLen
-        // Read type
-        const typeLen = bytes[offset++]
-        if (typeLen > 255 || offset + typeLen > bytes.length) {
-          throw new Error('Invalid binary format: typeLen out of bounds')
-        }
-        const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-        offset += typeLen
-        // Read size (4 bytes)
-        const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-        // Extract chunk data
-        const chunkData = bytes.slice(offset)
-
-        addDebugLog(`Binary chunk ${index + 1}/${total} - ${name} (${chunkData.length} bytes)`)
-
-        chunk = {
-          meta: { name, type, size, timestamp: Date.now() },
-          index,
-          total,
-          encoding: 'binary',
-          data: btoa(String.fromCharCode(...chunkData)) // store as base64
-        }
+      // Convert string to bytes (QR scanner returns string from binary data)
+      const bytes = new Uint8Array(data.length)
+      for (let i = 0; i < data.length; i++) {
+        bytes[i] = data.charCodeAt(i) & 0xFF
       }
 
-      // Validate chunk structure
-      if (!chunk.meta || chunk.index === undefined || !chunk.total || !chunk.data) {
-        throw new Error('Invalid chunk format')
-      }
+      // Check if this is the metadata chunk (chunk 0)
+      // Metadata chunk starts with total chunks (2 bytes)
+      // If byte[0] and byte[1] form a number that equals 0, it's not metadata
+      // We need to determine if it's metadata or data chunk
 
-      // Set metadata from first chunk
+      // Try to parse as metadata first
       if (!metadata) {
-        setMetadata(chunk.meta)
-        setTotalChunks(chunk.total)
+        addDebugLog('Attempting to parse as metadata chunk')
+        try {
+          let offset = 0
+          // Total chunks (2 bytes, big-endian)
+          const totalChunks = (bytes[offset++] << 8) | bytes[offset++]
+
+          // Name
+          const nameLen = bytes[offset++]
+          if (nameLen > 255 || offset + nameLen > bytes.length) {
+            throw new Error('Invalid metadata format: nameLen out of bounds')
+          }
+          const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
+          offset += nameLen
+
+          // Type
+          const typeLen = bytes[offset++]
+          if (typeLen > 255 || offset + typeLen > bytes.length) {
+            throw new Error('Invalid metadata format: typeLen out of bounds')
+          }
+          const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
+          offset += typeLen
+
+          // File size (4 bytes, big-endian)
+          const fileSize = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
+
+          // Set metadata
+          const meta = { name, type, size: fileSize, timestamp: Date.now() }
+          setMetadata(meta)
+          setTotalChunks(totalChunks)
+          addDebugLog(`✓ Received metadata: ${name}, ${totalChunks} total chunks, ${fileSize} bytes`)
+          setError('')
+          return
+        } catch (metaErr) {
+          // If metadata parsing fails, try as data chunk
+          addDebugLog('Not metadata, trying as data chunk')
+        }
+      }
+
+      // Parse as data chunk
+      // Format: [chunk index (2 bytes)][data (variable length)]
+      addDebugLog('Parsing as data chunk')
+      let offset = 0
+      const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
+      const chunkData = bytes.slice(offset)
+
+      addDebugLog(`Binary data chunk ${chunkIndex + 1} (${chunkData.length} bytes)`)
+
+      if (!metadata || totalChunks === 0) {
+        addDebugLog('⚠ Data chunk received before metadata, storing for later')
+        // Store temporarily, we'll process after metadata arrives
+        return
+      }
+
+      const chunk: ChunkData = {
+        meta: metadata,
+        index: chunkIndex,
+        total: totalChunks,
+        data: chunkData
       }
 
       // Add chunk to received set
@@ -173,9 +161,9 @@ export function AnimatedQRReceiver() {
         const updated = new Map(prev)
         if (!updated.has(chunk.index)) {
           updated.set(chunk.index, chunk)
-          addDebugLog(`✓ Received chunk ${chunk.index + 1}/${chunk.total}`)
+          addDebugLog(`✓ Received data chunk ${chunk.index + 1}/${totalChunks}`)
         } else {
-          addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${chunk.total}`)
+          addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${totalChunks}`)
         }
         return updated
       })
@@ -193,7 +181,11 @@ export function AnimatedQRReceiver() {
   useEffect(() => {
     if (totalChunks === 0 || receivedChunks.size === 0) return
 
-    if (receivedChunks.size === totalChunks) {
+    // Note: totalChunks includes the metadata chunk
+    // receivedChunks only contains data chunks (index 0 to totalChunks-2)
+    // So we need totalChunks-1 data chunks
+    const expectedDataChunks = totalChunks - 1
+    if (receivedChunks.size === expectedDataChunks) {
       reconstructFile()
     }
   }, [receivedChunks, totalChunks])
@@ -207,16 +199,27 @@ export function AnimatedQRReceiver() {
       // Sort chunks by index
       const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
 
-      // Base64 or binary decoding (both use base64 storage internally)
-      const base64Data = sortedChunks.map(chunk => chunk.data).join('')
-      const binaryString = atob(base64Data)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
+      // Calculate total size and concatenate binary data
+      let totalSize = 0
+      for (const chunk of sortedChunks) {
+        totalSize += chunk.data.length
       }
 
+      // Allocate final buffer (use metadata.size for exact size to handle partial last chunk)
+      const finalBytes = new Uint8Array(metadata.size)
+      let offset = 0
+
+      // Copy each chunk's data
+      for (const chunk of sortedChunks) {
+        const bytesToCopy = Math.min(chunk.data.length, metadata.size - offset)
+        finalBytes.set(chunk.data.slice(0, bytesToCopy), offset)
+        offset += bytesToCopy
+      }
+
+      addDebugLog(`✓ Reconstructed file: ${offset} bytes`)
+
       // Create blob and download URL
-      const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
+      const blob = new Blob([finalBytes], { type: metadata.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -275,11 +278,11 @@ export function AnimatedQRReceiver() {
   }
 
   const generateFeedbackQr = async () => {
-    if (totalChunks === 0) return
+    if (expectedDataChunks === 0) return
 
-    // Get missing chunk indices
+    // Get missing data chunk indices
     const missingChunks: number[] = []
-    for (let i = 0; i < totalChunks; i++) {
+    for (let i = 0; i < expectedDataChunks; i++) {
       if (!receivedChunks.has(i)) {
         missingChunks.push(i)
       }
@@ -290,7 +293,7 @@ export function AnimatedQRReceiver() {
       type: 'MISSING_CHUNKS_FEEDBACK',
       timestamp: metadata?.timestamp || Date.now(),
       fileName: metadata?.name || 'unknown',
-      totalChunks,
+      totalChunks: expectedDataChunks,
       receivedCount: receivedChunks.size,
       missingChunks
     }
@@ -313,8 +316,9 @@ export function AnimatedQRReceiver() {
     }
   }
 
-  const progress = totalChunks > 0 ? (receivedChunks.size / totalChunks) * 100 : 0
-  const hasMissingChunks = totalChunks > 0 && receivedChunks.size < totalChunks && receivedChunks.size > 0
+  const expectedDataChunks = totalChunks > 0 ? totalChunks - 1 : 0
+  const progress = expectedDataChunks > 0 ? (receivedChunks.size / expectedDataChunks) * 100 : 0
+  const hasMissingChunks = expectedDataChunks > 0 && receivedChunks.size < expectedDataChunks && receivedChunks.size > 0
 
   return (
     <Card>
@@ -346,7 +350,7 @@ export function AnimatedQRReceiver() {
         {totalChunks > 0 && !success && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Received {receivedChunks.size} of {totalChunks} chunks</span>
+              <span>Received {receivedChunks.size} of {totalChunks - 1} data chunks</span>
               <span>{Math.round(progress)}%</span>
             </div>
             <Progress value={progress} />
@@ -354,9 +358,9 @@ export function AnimatedQRReceiver() {
         )}
 
         {/* Chunk Grid */}
-        {totalChunks > 0 && !success && (
+        {expectedDataChunks > 0 && !success && (
           <div className="grid grid-cols-10 gap-1">
-            {Array.from({ length: totalChunks }, (_, i) => (
+            {Array.from({ length: expectedDataChunks }, (_, i) => (
               <div
                 key={i}
                 className={`aspect-square rounded ${
@@ -364,7 +368,7 @@ export function AnimatedQRReceiver() {
                     ? 'bg-green-500'
                     : 'bg-gray-200 dark:bg-gray-700'
                 }`}
-                title={`Chunk ${i + 1}`}
+                title={`Data chunk ${i + 1}`}
               />
             ))}
           </div>
@@ -375,7 +379,7 @@ export function AnimatedQRReceiver() {
           <Alert>
             <AlertDescription>
               <div className="space-y-3">
-                <p className="font-medium">📊 Missing {totalChunks - receivedChunks.size} chunk(s)</p>
+                <p className="font-medium">📊 Missing {expectedDataChunks - receivedChunks.size} data chunk(s)</p>
                 <p className="text-sm">
                   Generate a feedback QR code to show the sender which chunks are missing,
                   so they can repeat only those specific ones.
@@ -401,10 +405,10 @@ export function AnimatedQRReceiver() {
                   <img src={feedbackQrUrl} alt="Feedback QR Code" className="max-w-[300px]" />
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  Missing chunks: {totalChunks - receivedChunks.size} of {totalChunks}
-                  {totalChunks - receivedChunks.size <= 10 && (
+                  Missing chunks: {expectedDataChunks - receivedChunks.size} of {expectedDataChunks}
+                  {expectedDataChunks - receivedChunks.size <= 10 && (
                     <span className="ml-2">
-                      (#{Array.from({ length: totalChunks }, (_, i) => i)
+                      (#{Array.from({ length: expectedDataChunks }, (_, i) => i)
                         .filter(i => !receivedChunks.has(i))
                         .map(i => i + 1)
                         .join(', ')})
