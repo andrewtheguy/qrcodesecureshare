@@ -1,15 +1,47 @@
 // Ephemeral in-tab private key vault.
-// Stores the RSA private key (JWK string) only in module scope memory.
-// Cleared on: manual clear, successful decryption, inactivity timeout (triggered externally), or tab unload.
-// This does NOT persist across page reloads or new tabs.
+// Now stores a non-extractable Web Crypto CryptoKey instead of raw JWK string.
+// Goal: minimize exposure time of plaintext key material.
+// Cleared on: manual clear, successful decryption (caller responsibility), inactivity timeout (caller), or tab unload.
+// NOT persisted across reloads/new tabs.
 
-let _privateKey: string | null = null
+let _privateKey: CryptoKey | null = null
 
-export function setPrivateKey(jwk: string) {
-  _privateKey = jwk
+/** Validate that the parsed JWK at least superficially looks like an RSA private key */
+function validateRsaPrivateJwk(jwk: any) {
+  if (!jwk || typeof jwk !== 'object') throw new Error('Invalid JWK: not an object')
+  if (jwk.kty !== 'RSA') throw new Error('Invalid JWK: kty must be RSA')
+  // Minimal required props for private RSA key used for RSA-OAEP decrypt
+  const required = ['n', 'e', 'd']
+  for (const field of required) {
+    if (typeof jwk[field] !== 'string') throw new Error(`Invalid JWK: missing field ${field}`)
+  }
 }
 
-export function getPrivateKey(): string | null {
+/**
+ * Import a JWK JSON string as a non-extractable CryptoKey and store it.
+ * The original JWK string should be cleared by the caller after this resolves.
+ */
+export async function importAndSetPrivateKey(jwkString: string): Promise<CryptoKey> {
+  let parsed: any
+  try {
+    parsed = JSON.parse(jwkString)
+  } catch {
+    throw new Error('Private key is not valid JSON')
+  }
+  validateRsaPrivateJwk(parsed)
+
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    parsed,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false, // extractable: false (cannot be re-exported)
+    ['decrypt']
+  )
+  _privateKey = key
+  return key
+}
+
+export function getPrivateKey(): CryptoKey | null {
   return _privateKey
 }
 
@@ -22,5 +54,4 @@ if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
     _privateKey = null
   })
-  // Also clear if page becomes hidden for a long period (handled externally if desired)
 }

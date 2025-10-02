@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { deriveKey } from '@/lib/utils'
-import { setPrivateKey as vaultSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
+import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
 
 interface EncryptedFileData {
   url: string
@@ -35,7 +35,12 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [decrypting, setDecrypting] = useState(false)
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
-  const [privateKeyInput, setPrivateKeyInput] = useState('')
+  const [privateKeyInput, setPrivateKeyInput] = useState('') // raw input field (cleared after load)
+  const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
+  const [privateKeyError, setPrivateKeyError] = useState<string | null>(null)
+  const privateKeyImportDebounceRef = useRef<number | null>(null)
+  const pageHiddenAtRef = useRef<number | null>(null)
+  const VISIBILITY_CLEAR_THRESHOLD_MS = 60_000 // Clear if tab hidden > 60s
   // Timer ref to auto-clear private key after inactivity
   const privateKeyClearTimeoutRef = useRef<number | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -110,7 +115,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     }
   }
 
-  const decryptFileAsymmetric = async (encryptedData: ArrayBuffer, privateKeyJwk: string): Promise<{ data: ArrayBuffer, filename: string }> => {
+  const decryptFileAsymmetric = async (encryptedData: ArrayBuffer): Promise<{ data: ArrayBuffer, filename: string }> => {
     try {
       const encryptedBytes = new Uint8Array(encryptedData)
 
@@ -123,18 +128,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       const iv = encryptedBytes.slice(4 + aesKeyLength, 4 + aesKeyLength + 12)
       const encrypted = encryptedBytes.slice(4 + aesKeyLength + 12)
 
-      // Import private key from JWK
-      const privateKeyData = JSON.parse(privateKeyJwk)
-      const privateKey = await crypto.subtle.importKey(
-        'jwk',
-        privateKeyData,
-        {
-          name: 'RSA-OAEP',
-          hash: 'SHA-256'
-        },
-        false,
-        ['decrypt']
-      )
+      // Retrieve already-imported private CryptoKey
+      const privateKey = vaultGetPrivateKey()
+      if (!privateKey) {
+        throw new Error('Private key not loaded')
+      }
 
       // Decrypt the AES key using RSA private key
       const decryptedAesKeyBytes = await crypto.subtle.decrypt(
@@ -173,12 +171,12 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     if (!scannedData) return
 
     // For asymmetric encryption, require private key input
-    if (scannedData.encryptionType === 'asymmetric') {
-      if (!privateKeyInput) {
-        alert('Please enter the private key to decrypt this file')
-        return
+      if (scannedData.encryptionType === 'asymmetric') {
+        if (!vaultGetPrivateKey()) {
+          alert('Please load/import the private key to decrypt this file')
+          return
+        }
       }
-    }
 
     try {
       setDecrypting(true)
@@ -197,7 +195,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       let result: { data: ArrayBuffer, filename: string }
 
       if (scannedData.encryptionType === 'asymmetric') {
-        result = await decryptFileAsymmetric(encryptedData, privateKeyInput)
+        result = await decryptFileAsymmetric(encryptedData)
       } else if (scannedData.passphrase) {
         result = await decryptFileSymmetric(encryptedData, scannedData.passphrase)
       } else {
@@ -221,6 +219,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       if (scannedData.encryptionType === 'asymmetric') {
         setPrivateKeyInput('')
         vaultClearPrivateKey()
+        setPrivateKeyStatus('empty')
         if (privateKeyClearTimeoutRef.current) {
           clearTimeout(privateKeyClearTimeoutRef.current)
           privateKeyClearTimeoutRef.current = null
@@ -354,32 +353,101 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     }
   }, [])
 
-  // Reset inactivity timer whenever private key changes; auto-clear after 5 minutes
+  // Reset inactivity timer whenever a private key is LOADED (CryptoKey present); auto-clear after 5 minutes
   useEffect(() => {
     if (privateKeyClearTimeoutRef.current) {
       clearTimeout(privateKeyClearTimeoutRef.current)
       privateKeyClearTimeoutRef.current = null
     }
-    if (privateKeyInput) {
-      // Sync to vault (in-memory) for single-source ephemeral storage
-      vaultSetPrivateKey(privateKeyInput)
+    if (privateKeyStatus === 'loaded') {
       privateKeyClearTimeoutRef.current = window.setTimeout(() => {
         setPrivateKeyInput('')
         vaultClearPrivateKey()
-      }, 5 * 60 * 1000) // 5 minutes
-    } else {
-      // If cleared via UI, also clear vault
-      vaultClearPrivateKey()
+        setPrivateKeyStatus('empty')
+      }, 5 * 60 * 1000)
     }
-  }, [privateKeyInput])
+  }, [privateKeyStatus])
 
-  // On mount, hydrate from vault (in case component remounts within tab lifetime)
+  // On mount, hydrate status from vault (component remount within tab lifetime)
   useEffect(() => {
     const existing = vaultGetPrivateKey()
     if (existing) {
-      setPrivateKeyInput(existing)
+      setPrivateKeyStatus('loaded')
     }
   }, [])
+
+  // Visibility change handling: clear key if tab hidden longer than threshold
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        pageHiddenAtRef.current = Date.now()
+      } else if (document.visibilityState === 'visible') {
+        if (pageHiddenAtRef.current) {
+          const hiddenFor = Date.now() - pageHiddenAtRef.current
+            if (hiddenFor > VISIBILITY_CLEAR_THRESHOLD_MS && vaultGetPrivateKey()) {
+              vaultClearPrivateKey()
+              setPrivateKeyStatus('empty')
+              setPrivateKeyInput('')
+              if (privateKeyClearTimeoutRef.current) {
+                clearTimeout(privateKeyClearTimeoutRef.current)
+                privateKeyClearTimeoutRef.current = null
+              }
+            }
+        }
+        pageHiddenAtRef.current = null
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => document.removeEventListener('visibilitychange', handleVisibility)
+  }, [])
+
+  const handleImportPrivateKey = async (raw?: string) => {
+    const candidate = (raw !== undefined ? raw : privateKeyInput).trim()
+    if (!candidate) return
+    setPrivateKeyStatus('importing')
+    setPrivateKeyError(null)
+    try {
+      await importAndSetPrivateKey(candidate)
+      // Clear raw input immediately after successful import
+      setPrivateKeyInput('')
+      setPrivateKeyStatus('loaded')
+    } catch (e: any) {
+      setPrivateKeyStatus('error')
+      setPrivateKeyError(e?.message || 'Failed to import private key')
+    }
+  }
+
+  // Attempt auto-import (debounced) when user types a likely complete JWK
+  useEffect(() => {
+    if (privateKeyStatus === 'loaded' || privateKeyStatus === 'importing') return
+    if (privateKeyImportDebounceRef.current) {
+      clearTimeout(privateKeyImportDebounceRef.current)
+      privateKeyImportDebounceRef.current = null
+    }
+    const candidate = privateKeyInput.trim()
+    if (!candidate) return
+    // Heuristic: must start with { and end with } and contain '"kty"' + '"d"'
+    if (candidate.startsWith('{') && candidate.endsWith('}') && /"kty"/.test(candidate) && /"d"/.test(candidate)) {
+      privateKeyImportDebounceRef.current = window.setTimeout(() => {
+        handleImportPrivateKey()
+      }, 500) // 500ms debounce
+    }
+  }, [privateKeyInput, privateKeyStatus])
+
+  // Paste-detect immediate import
+  const handlePrivateKeyPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const raw = e.clipboardData.getData('text')
+    const text = raw.trim()
+    setPrivateKeyInput(text)
+    if (text.startsWith('{') && text.endsWith('}') && /"kty"/.test(text)) {
+      if (privateKeyImportDebounceRef.current) {
+        clearTimeout(privateKeyImportDebounceRef.current)
+        privateKeyImportDebounceRef.current = null
+      }
+      // Direct import using raw text to avoid race with async state update
+      handleImportPrivateKey(text)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -546,37 +614,67 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                     )}
                     <div className="space-y-2 w-full justify-self-stretch">
                       <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
-                      <div className="w-full flex gap-2 items-start">
-                        <Input
-                          id="privateKeyDec"
-                          type="password"
-                          value={privateKeyInput}
-                          onChange={(e) => setPrivateKeyInput(e.target.value)}
-                          placeholder='Paste private key (JWK JSON format)'
-                          className="font-mono text-[11px] w-full block !w-full justify-self-stretch"
-                        />
-                        {privateKeyInput && (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="shrink-0 h-8 text-xs"
-                            onClick={() => {
-                              setPrivateKeyInput('')
-                              vaultClearPrivateKey()
-                              if (privateKeyClearTimeoutRef.current) {
-                                clearTimeout(privateKeyClearTimeoutRef.current)
-                                privateKeyClearTimeoutRef.current = null
-                              }
+                      <div className="w-full flex flex-col gap-2">
+                        <div className="flex gap-2 items-start">
+                          <Input
+                            id="privateKeyDec"
+                            type="password"
+                            value={privateKeyInput}
+                            onChange={(e) => setPrivateKeyInput(e.target.value)}
+                            onPaste={handlePrivateKeyPaste}
+                            onFocus={(e) => {
+                              // Select all existing text to make replacement/paste easier
+                              // Wrap in setTimeout to ensure mobile browsers sometimes honor it after focus
+                              setTimeout(() => {
+                                try { e.target.select() } catch {}
+                              }, 0)
                             }}
-                          >
-                            Clear
-                          </Button>
+                            placeholder={privateKeyStatus === 'loaded' ? 'Private key loaded' : 'Paste private key (JWK JSON format)'}
+                            disabled={privateKeyStatus === 'importing'}
+                            className="font-mono text-[11px] w-full block !w-full justify-self-stretch"
+                          />
+                          {privateKeyStatus !== 'loaded' && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={!privateKeyInput.trim() || privateKeyStatus === 'importing'}
+                              className="shrink-0 h-8 text-xs"
+                              onClick={() => handleImportPrivateKey()}
+                            >
+                              {privateKeyStatus === 'importing' ? 'Loading...' : 'Load'}
+                            </Button>
+                          )}
+                          {privateKeyStatus === 'loaded' && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="shrink-0 h-8 text-xs"
+                              onClick={() => {
+                                setPrivateKeyInput('')
+                                vaultClearPrivateKey()
+                                setPrivateKeyStatus('empty')
+                                if (privateKeyClearTimeoutRef.current) {
+                                  clearTimeout(privateKeyClearTimeoutRef.current)
+                                  privateKeyClearTimeoutRef.current = null
+                                }
+                              }}
+                            >
+                              Clear
+                            </Button>
+                          )}
+                        </div>
+                        {privateKeyStatus === 'loaded' && (
+                          <p className="text-xs text-green-600">✓ Private key imported & stored ephemerally (auto-clears after 5 min inactivity or after download)</p>
+                        )}
+                        {privateKeyStatus === 'error' && (
+                          <p className="text-xs text-red-600">{privateKeyError}</p>
+                        )}
+                        {privateKeyStatus === 'importing' && (
+                          <p className="text-xs text-muted-foreground">Importing private key…</p>
                         )}
                       </div>
-                      {privateKeyInput && (
-                        <p className="text-xs text-green-600">✓ Private key stored ephemerally (clears after 5 min inactivity, manual Clear, or after download)</p>
-                      )}
                     </div>
                     <p className="text-sm text-muted-foreground">
                       Provide the matching private key to decrypt the embedded AES key and recover the original file.
@@ -639,7 +737,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
             <div className="flex gap-3 justify-center flex-wrap">
               <Button
                 onClick={downloadDecryptedFile}
-                disabled={decrypting || (scannedData.encryptionType === 'asymmetric' && !privateKeyInput)}
+                disabled={decrypting || (scannedData.encryptionType === 'asymmetric' && privateKeyStatus !== 'loaded')}
                 className="flex items-center gap-2"
               >
                 {decrypting ? (
