@@ -5,15 +5,35 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 
-export function FountainQRReceiver() {
+interface FountainQRReceiverProps {
+  initialMetadata: {
+    name: string
+    size: number
+    type: string
+    totalSourceBlocks: number
+    blockSize?: number
+  }
+}
+
+export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps) {
+  // Initialize metadata and decoder immediately (always provided by parent)
+  const initialMeta: FountainMetadata = {
+    name: initialMetadata.name,
+    size: initialMetadata.size,
+    type: initialMetadata.type,
+    timestamp: Date.now(),
+    totalSourceBlocks: initialMetadata.totalSourceBlocks,
+    blockSize: initialMetadata.blockSize || 600
+  }
+
   const [isScanning, setIsScanning] = useState(false)
-  const [fountainMetadata, setFountainMetadata] = useState<FountainMetadata | null>(null)
+  const [fountainMetadata] = useState<FountainMetadata>(initialMeta)
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [debugLog, setDebugLog] = useState<string[]>([])
+  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -21,7 +41,7 @@ export function FountainQRReceiver() {
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
-  const fountainDecoderRef = useRef<FountainDecoder | null>(null)
+  const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
 
   // Initialize scanner
   useEffect(() => {
@@ -68,7 +88,7 @@ export function FountainQRReceiver() {
       lastScannedRef.current = data
       lastScanTimeRef.current = now
 
-      addDebugLog(`Scanned data length: ${data.length} bytes`)
+      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
       // Convert string to bytes
       const bytes = new Uint8Array(data.length)
@@ -76,73 +96,19 @@ export function FountainQRReceiver() {
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
 
-      // Check for fountain code magic bytes
-      if (bytes.length >= 2 && bytes[0] === 0xFF) {
-        if (bytes[1] === 0xFE) {
-          // Fountain metadata
-          addDebugLog('📦 Detected fountain metadata (binary)')
-          handleBinaryMetadata(bytes)
-          return
-        } else if (bytes[1] === 0xFD) {
-          // Fountain chunk
-          addDebugLog('🔁 Detected fountain chunk (binary)')
-          handleBinaryFountainChunk(bytes)
-          return
-        }
+      // Only expect fountain data chunks (0xFF 0xFD)
+      // Metadata (0xFF 0xFE) is handled by parent component
+      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
+        addDebugLog('🔁 Processing fountain chunk')
+        handleBinaryFountainChunk(bytes)
+        return
       }
 
-      addDebugLog('⚠ Unknown QR format')
-      setError('')
+      addDebugLog('⚠ Ignoring non-data QR code (metadata already received)')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
-    }
-  }
-
-  const handleBinaryMetadata = (bytes: Uint8Array) => {
-    // Binary format: [0xFF][0xFE][nameLen][name...][typeLen][type...][size(4)][timestamp(4)][blocks(2)][blockSize(2)]
-    let offset = 2 // Skip magic bytes
-
-    // Read name
-    const nameLen = bytes[offset++]
-    const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-    offset += nameLen
-
-    // Read type
-    const typeLen = bytes[offset++]
-    const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-    offset += typeLen
-
-    // Read size (4 bytes)
-    const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-
-    // Read timestamp (4 bytes, seconds)
-    const timestampSec = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-    const timestamp = timestampSec * 1000 // Convert to milliseconds
-
-    // Read blocks (2 bytes)
-    const totalSourceBlocks = (bytes[offset++] << 8) | bytes[offset++]
-
-    // Read blockSize (2 bytes)
-    const blockSize = (bytes[offset++] << 8) | bytes[offset++]
-
-    // Initialize decoder with metadata
-    if (!fountainDecoderRef.current) {
-      const meta: FountainMetadata = {
-        name,
-        size,
-        type,
-        timestamp,
-        totalSourceBlocks,
-        blockSize
-      }
-      const decoder = new FountainDecoder(meta)
-      fountainDecoderRef.current = decoder
-      setFountainMetadata(meta)
-      addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
-    } else {
-      addDebugLog(`⊗ Metadata already received, ignoring duplicate`)
     }
   }
 
@@ -176,25 +142,18 @@ export function FountainQRReceiver() {
     // Read chunk data (rest of bytes)
     const data = bytes.slice(offset)
 
-    if (!fountainDecoderRef.current || !fountainMetadata) {
-      addDebugLog('⚠ Fountain chunk received before metadata, ignoring')
-      return
-    }
-
-    const decoder = fountainDecoderRef.current
-    const meta = fountainMetadata
-
+    // Metadata is always available (provided by parent)
     const chunk = { seed, degree, indices, data }
 
-    const decoded = decoder.addChunk(chunk)
+    const decoded = fountainDecoderRef.current.addChunk(chunk)
     setReceivedFountainChunks(prev => prev + 1)
-    setDecodedBlocks(decoder.getDecodedBlockCount())
+    setDecodedBlocks(fountainDecoderRef.current.getDecodedBlockCount())
 
-    addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${decoder.getDecodedBlockCount()}/${meta.totalSourceBlocks} blocks`)
+    addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
     if (decoded) {
       addDebugLog(`🎉 Decoding complete!`)
-      reconstructFountainFile(decoder)
+      reconstructFountainFile(fountainDecoderRef.current)
     }
   }
 
@@ -232,10 +191,8 @@ export function FountainQRReceiver() {
 
   const handleStartScan = () => {
     setIsScanning(true)
-    setFountainMetadata(null)
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)
-    fountainDecoderRef.current = null
     receivedChunkSeedsRef.current = new Set()
     setError('')
     setSuccess(false)
@@ -253,10 +210,8 @@ export function FountainQRReceiver() {
     if (downloadUrl) {
       URL.revokeObjectURL(downloadUrl)
     }
-    setFountainMetadata(null)
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)
-    fountainDecoderRef.current = null
     receivedChunkSeedsRef.current.clear()
     setError('')
     setSuccess(false)
@@ -326,28 +281,6 @@ export function FountainQRReceiver() {
         </Alert>
       )}
 
-      {/* Block Grid Visualization */}
-      {fountainMetadata && !success && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">Decoded Blocks:</p>
-          <div className="grid grid-cols-20 gap-0.5">
-            {Array.from({ length: fountainMetadata.totalSourceBlocks }, (_, i) => {
-              const isDecoded = fountainDecoderRef.current?.isBlockDecoded(i) || false
-              return (
-                <div
-                  key={i}
-                  className={`aspect-square rounded-sm ${
-                    isDecoded
-                      ? 'bg-green-500'
-                      : 'bg-gray-200 dark:bg-gray-700'
-                  }`}
-                  title={`Block ${i + 1}`}
-                />
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Error Alert */}
       {error && (

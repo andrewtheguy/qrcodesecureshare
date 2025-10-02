@@ -17,25 +17,42 @@ interface ChunkData {
   data: string // base64 encoded
 }
 
-export function SequentialQRReceiver() {
+interface SequentialQRReceiverProps {
+  initialMetadata: {
+    name: string
+    size: number
+    type: string
+    totalChunks: number
+  }
+}
+
+export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverProps) {
+  // Initialize metadata immediately (always provided by parent)
+  const initialMeta: ChunkData['meta'] = {
+    name: initialMetadata.name,
+    size: initialMetadata.size,
+    type: initialMetadata.type,
+    timestamp: Date.now()
+  }
+
   const [isScanning, setIsScanning] = useState(false)
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ChunkData>>(new Map())
-  const [metadata, setMetadata] = useState<ChunkData['meta'] | null>(null)
-  const [totalChunks, setTotalChunks] = useState(0)
+  const [metadata] = useState<ChunkData['meta']>(initialMeta)
+  const [totalChunks] = useState(initialMetadata.totalChunks)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
-  const [debugLog, setDebugLog] = useState<string[]>([])
+  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
-  const metadataRef = useRef<ChunkData['meta'] | null>(null)
-  const totalChunksRef = useRef<number>(0)
+  const metadataRef = useRef<ChunkData['meta']>(initialMeta)
+  const totalChunksRef = useRef<number>(initialMetadata.totalChunks)
 
   // Initialize scanner
   useEffect(() => {
@@ -82,7 +99,7 @@ export function SequentialQRReceiver() {
       lastScannedRef.current = data
       lastScanTimeRef.current = now
 
-      addDebugLog(`Scanned data length: ${data.length} bytes`)
+      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
       // Convert string to bytes (QR scanner returns string from binary data)
       const bytes = new Uint8Array(data.length)
@@ -90,59 +107,10 @@ export function SequentialQRReceiver() {
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
 
-      // Check minimum length
-      if (bytes.length < 1) {
-        throw new Error('Invalid chunk: too short')
-      }
-
-      // Read chunk type header (1 byte)
-      const chunkType = bytes[0]
-
-      if (chunkType === 0) {
-        // Metadata chunk
-        // Format: [type=0 (1 byte)][total data chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
-        addDebugLog('Detected metadata chunk (type=0)')
-        try {
-          let offset = 1 // Skip type byte
-
-          // Total data chunks (2 bytes, big-endian)
-          const totalDataChunks = (bytes[offset++] << 8) | bytes[offset++]
-
-          // Name
-          const nameLen = bytes[offset++]
-          if (nameLen > 255 || offset + nameLen > bytes.length) {
-            throw new Error('Invalid metadata format: nameLen out of bounds')
-          }
-          const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-          offset += nameLen
-
-          // Type
-          const typeLen = bytes[offset++]
-          if (typeLen > 255 || offset + typeLen > bytes.length) {
-            throw new Error('Invalid metadata format: typeLen out of bounds')
-          }
-          const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-          offset += typeLen
-
-          // File size (4 bytes, big-endian)
-          const fileSize = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-
-          // Set metadata
-          const meta = { name, type, size: fileSize, timestamp: Date.now() }
-          metadataRef.current = meta
-          totalChunksRef.current = totalDataChunks
-          setMetadata(meta)
-          setTotalChunks(totalDataChunks)
-          addDebugLog(`✓ Received metadata: ${name}, ${totalDataChunks} data chunks, ${fileSize} bytes`)
-          setError('')
-          return
-        } catch (metaErr) {
-          throw new Error(`Failed to parse metadata: ${metaErr instanceof Error ? metaErr.message : 'unknown error'}`)
-        }
-      } else if (chunkType === 1) {
-        // Data chunk
-        // Format: [type=1 (1 byte)][chunk index (2 bytes)][data (variable length)]
-        addDebugLog('Detected data chunk (type=1)')
+      // Only expect sequential data chunks (type=1)
+      // Metadata (type=0) is handled by parent component
+      if (bytes.length >= 1 && bytes[0] === 1) {
+        addDebugLog('📋 Processing data chunk')
 
         if (bytes.length < 4) {
           throw new Error('Invalid data chunk: too short')
@@ -152,12 +120,7 @@ export function SequentialQRReceiver() {
         const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
         const chunkData = bytes.slice(offset)
 
-        addDebugLog(`Data chunk ${chunkIndex + 1} (${chunkData.length} bytes)`)
-
-        if (!metadataRef.current || totalChunksRef.current === 0) {
-          addDebugLog('⚠ Data chunk received before metadata, ignoring')
-          return
-        }
+        addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunksRef.current} (${chunkData.length} bytes)`)
 
         // Convert chunk data to base64 for storage
         const base64Data = btoa(String.fromCharCode(...chunkData))
@@ -181,7 +144,7 @@ export function SequentialQRReceiver() {
           return updated
         })
       } else {
-        throw new Error(`Unknown chunk type: ${chunkType}`)
+        addDebugLog('⚠ Ignoring non-data QR code (metadata already received)')
       }
 
       setError('')
@@ -204,10 +167,6 @@ export function SequentialQRReceiver() {
 
   const reconstructFile = () => {
     try {
-      if (!metadata) {
-        throw new Error('Missing metadata')
-      }
-
       // Sort chunks by index
       const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
 
@@ -242,10 +201,6 @@ export function SequentialQRReceiver() {
   const handleStartScan = () => {
     setIsScanning(true)
     setReceivedChunks(new Map())
-    setMetadata(null)
-    setTotalChunks(0)
-    metadataRef.current = null
-    totalChunksRef.current = 0
     setError('')
     setSuccess(false)
     setDownloadUrl('')
@@ -263,10 +218,6 @@ export function SequentialQRReceiver() {
       URL.revokeObjectURL(downloadUrl)
     }
     setReceivedChunks(new Map())
-    setMetadata(null)
-    setTotalChunks(0)
-    metadataRef.current = null
-    totalChunksRef.current = 0
     setError('')
     setSuccess(false)
     setDownloadUrl('')
