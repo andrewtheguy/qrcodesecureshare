@@ -1,50 +1,59 @@
 import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
-import QrScanner from 'qr-scanner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 
 interface AnimatedQRCodeProps {
   file: File | null
   onReset?: () => void
 }
 
-// Maximum bytes per QR code chunk
-// Using base64 encoding (33% overhead but universally compatible)
-// QR max ~2953 bytes (text mode, error correction M)
-// JSON overhead ~150 bytes, base64 adds 33%: (2953-150)/1.33 ≈ 2100
-const CHUNK_SIZE = 1200 // bytes of raw data before base64 encoding
+// Maximum bytes per QR code chunk (raw data before encoding)
+const CHUNK_SIZE = 600
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
+interface QRChunkData {
+  f: 1 // fountain code marker
+  s: number // seed
+  d: number // degree
+  i: number[] // indices
+  data: string // base64 encoded chunk data
+  m: { // metadata
+    name: string
+    size: number
+    type: string
+    timestamp: number
+    blocks: number // totalSourceBlocks
+    bs: number // blockSize
+  }
+}
+
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
-  const [chunks, setChunks] = useState<string[]>([])
-  const [currentChunk, setCurrentChunk] = useState(0)
+  const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(2) // frames per second
+  const [fps, setFps] = useState(2)
   const [error, setError] = useState<string>('')
-  const [repeatMode, setRepeatMode] = useState(true) // Auto-repeat animation
-  const [loopCount, setLoopCount] = useState(0)
-  const [scanningFeedback, setScanningFeedback] = useState(false)
-  const [missingChunksQueue, setMissingChunksQueue] = useState<number[]>([])
-  const [playingMissingOnly, setPlayingMissingOnly] = useState(false)
+  const [chunkCount, setChunkCount] = useState(0)
+  const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const feedbackVideoRef = useRef<HTMLVideoElement>(null)
-  const feedbackScannerRef = useRef<QrScanner | null>(null)
+  const currentChunkRef = useRef<FountainChunk | null>(null)
 
-  // Process file into chunks
+  // Initialize fountain encoder when file is loaded
   useEffect(() => {
     if (!file) {
-      setChunks([])
+      setEncoder(null)
       setError('')
+      setChunkCount(0)
       return
     }
 
     if (file.size > MAX_FILE_SIZE) {
       setError(`File size (${(file.size / 1024).toFixed(2)}KB) exceeds maximum of ${(MAX_FILE_SIZE / 1024).toFixed(2)}KB`)
-      setChunks([])
+      setEncoder(null)
       return
     }
 
@@ -54,7 +63,6 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         const arrayBuffer = e.target?.result as ArrayBuffer
         const bytes = new Uint8Array(arrayBuffer)
 
-        // Create metadata
         const metadata = {
           name: file.name,
           size: file.size,
@@ -62,33 +70,14 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           timestamp: Date.now()
         }
 
-        // Calculate number of chunks needed
-        const totalChunks = Math.ceil(bytes.length / CHUNK_SIZE)
-        const newChunks: string[] = []
-
-        // Split binary data into chunks with base64 encoding
-        for (let i = 0; i < totalChunks; i++) {
-          const start = i * CHUNK_SIZE
-          const end = Math.min(start + CHUNK_SIZE, bytes.length)
-          const chunkBytes = bytes.slice(start, end)
-
-          // Convert to base64 (universally compatible)
-          const base64Data = btoa(String.fromCharCode(...chunkBytes))
-
-          // Create compact JSON with shorter keys to save space
-          const chunk = {
-            m: metadata,      // meta
-            i: i,             // index
-            t: totalChunks,   // total
-            d: base64Data     // data
-          }
-
-          newChunks.push(JSON.stringify(chunk))
-        }
-
-        setChunks(newChunks)
-        setCurrentChunk(0)
+        const fountainEncoder = new FountainEncoder(bytes, CHUNK_SIZE, metadata)
+        setEncoder(fountainEncoder)
         setError('')
+        setChunkCount(0)
+
+        // Estimate chunks needed: typically 105-110% of source blocks
+        const meta = fountainEncoder.getMetadata()
+        setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
       } catch (err) {
         setError('Failed to process file')
         console.error(err)
@@ -102,152 +91,73 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  // Generate QR code for current chunk
-  useEffect(() => {
-    if (chunks.length === 0) {
-      setQrCodeUrl('')
-      return
-    }
+  // Generate and display QR code
+  const generateAndShowNextChunk = async () => {
+    if (!encoder) return
 
-    const generateQR = async () => {
-      try {
-        const dataUrl = await QRCode.toDataURL(chunks[currentChunk], {
-          width: 400,
-          margin: 2,
-          errorCorrectionLevel: 'M',
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
-        })
-        setQrCodeUrl(dataUrl)
-      } catch (err) {
-        console.error('QR generation error:', err)
-        setError('Failed to generate QR code')
+    try {
+      // Generate next fountain-coded chunk
+      const chunk = encoder.generateChunk()
+      currentChunkRef.current = chunk
+      setChunkCount(prev => prev + 1)
+
+      // Package chunk for QR code
+      const metadata = encoder.getMetadata()
+      const qrData: QRChunkData = {
+        f: 1,
+        s: chunk.seed,
+        d: chunk.degree,
+        i: chunk.indices,
+        data: btoa(String.fromCharCode(...chunk.data)),
+        m: {
+          name: metadata.name,
+          size: metadata.size,
+          type: metadata.type,
+          timestamp: metadata.timestamp,
+          blocks: metadata.totalSourceBlocks,
+          bs: metadata.blockSize
+        }
       }
-    }
 
-    generateQR()
-  }, [chunks, currentChunk])
+      const dataUrl = await QRCode.toDataURL(JSON.stringify(qrData), {
+        width: 400,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+      setQrCodeUrl(dataUrl)
+    } catch (err) {
+      console.error('QR generation error:', err)
+      setError('Failed to generate QR code')
+    }
+  }
 
   // Animation loop
   useEffect(() => {
-    if (!isPlaying || chunks.length === 0) return
+    if (!isPlaying || !encoder) return
+
+    // Generate first chunk immediately
+    generateAndShowNextChunk()
 
     const interval = setInterval(() => {
-      setCurrentChunk((prev) => {
-        // If playing only missing chunks, use the queue
-        if (playingMissingOnly && missingChunksQueue.length > 0) {
-          const currentIndexInQueue = missingChunksQueue.indexOf(prev)
-          const nextIndexInQueue = currentIndexInQueue + 1
-
-          if (nextIndexInQueue >= missingChunksQueue.length) {
-            setLoopCount((count) => count + 1)
-            return repeatMode ? missingChunksQueue[0] : prev
-          }
-          return missingChunksQueue[nextIndexInQueue]
-        }
-
-        // Normal playback
-        const next = prev + 1
-        if (next >= chunks.length) {
-          setLoopCount((count) => count + 1)
-          return repeatMode ? 0 : prev // Loop or stop at end
-        }
-        return next
-      })
+      generateAndShowNextChunk()
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, chunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
+  }, [isPlaying, encoder, fps])
 
   const handlePlayPause = () => {
+    if (!isPlaying && encoder) {
+      setChunkCount(0) // Reset counter when starting
+    }
     setIsPlaying(!isPlaying)
-  }
-
-  const handleNext = () => {
-    setCurrentChunk((prev) => (prev + 1) % chunks.length)
-  }
-
-  const handlePrevious = () => {
-    setCurrentChunk((prev) => (prev - 1 + chunks.length) % chunks.length)
   }
 
   const handleSpeedChange = (newFps: number) => {
     setFps(newFps)
-  }
-
-  // Feedback scanner initialization
-  useEffect(() => {
-    if (!scanningFeedback || !feedbackVideoRef.current) {
-      return
-    }
-
-    const scanner = new QrScanner(
-      feedbackVideoRef.current,
-      (result) => {
-        handleFeedbackScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      }
-    )
-
-    feedbackScannerRef.current = scanner
-    scanner.start().catch((err) => {
-      console.error('Feedback scanner start error:', err)
-      setError('Failed to start camera for feedback scanning')
-      setScanningFeedback(false)
-    })
-
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [scanningFeedback])
-
-  const handleFeedbackScan = (data: string) => {
-    try {
-      const feedback = JSON.parse(data)
-
-      if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
-        setMissingChunksQueue(feedback.missingChunks)
-        setPlayingMissingOnly(true)
-        setCurrentChunk(feedback.missingChunks[0] || 0)
-        setScanningFeedback(false)
-        setIsPlaying(false)
-        setLoopCount(0)
-
-        // Stop the scanner
-        if (feedbackScannerRef.current) {
-          feedbackScannerRef.current.stop()
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse feedback QR:', err)
-    }
-  }
-
-  const handleStartFeedbackScan = () => {
-    setScanningFeedback(true)
-    setError('')
-  }
-
-  const handleStopFeedbackScan = () => {
-    setScanningFeedback(false)
-    if (feedbackScannerRef.current) {
-      feedbackScannerRef.current.stop()
-    }
-  }
-
-  const handleResetToAllChunks = () => {
-    setPlayingMissingOnly(false)
-    setMissingChunksQueue([])
-    setCurrentChunk(0)
-    setIsPlaying(false)
-    setLoopCount(0)
   }
 
   if (!file) {
@@ -277,60 +187,20 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     )
   }
 
+  const progress = estimatedChunksNeeded > 0 ? Math.min((chunkCount / estimatedChunksNeeded) * 100, 100) : 0
+  const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-center">Animated QR Code Transfer</CardTitle>
+        <CardTitle className="text-center">🔁 Fountain Code Transfer</CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
-          <p>Size: {(file.size / 1024).toFixed(2)}KB | Chunks: {chunks.length}</p>
+          <p>Size: {(file.size / 1024).toFixed(2)}KB | Source Blocks: {sourceBlocks}</p>
+          <p className="text-xs">✨ No need to scan all chunks - fountain coding allows recovery from ~110% of source blocks</p>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* Feedback Scanner Mode */}
-        {scanningFeedback && (
-          <Alert>
-            <AlertDescription>
-              <div className="space-y-3">
-                <p className="font-medium">📷 Scanning for Feedback QR</p>
-                <div className="relative bg-black rounded-lg overflow-hidden">
-                  <video
-                    ref={feedbackVideoRef}
-                    className="w-full h-auto"
-                    style={{ maxHeight: '300px' }}
-                  />
-                  <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-                    ● SCANNING
-                  </div>
-                </div>
-                <p className="text-sm">
-                  Point camera at the receiver's feedback QR code to see which chunks are missing.
-                </p>
-                <Button onClick={handleStopFeedbackScan} variant="outline" className="w-full">
-                  Cancel Scan
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Missing Chunks Mode Alert */}
-        {playingMissingOnly && missingChunksQueue.length > 0 && (
-          <Alert>
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium">🎯 Playing Missing Chunks Only</p>
-                <p className="text-sm">
-                  Showing only {missingChunksQueue.length} missing chunk(s) out of {chunks.length} total.
-                </p>
-                <Button onClick={handleResetToAllChunks} variant="outline" size="sm" className="w-full">
-                  ← Back to All Chunks
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* QR Code Display */}
         <div className="relative">
           <div className="flex justify-center bg-white p-4 rounded-lg">
@@ -338,70 +208,64 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             {qrCodeUrl ? (
               <img
                 src={qrCodeUrl}
-                alt={`QR Code chunk ${currentChunk + 1}/${chunks.length}`}
+                alt={`Fountain coded chunk`}
                 className="max-w-full h-auto"
               />
             ) : (
               <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-                <p className="text-muted-foreground">Generating QR code...</p>
+                <p className="text-muted-foreground">
+                  {encoder ? 'Click Play to start' : 'Processing file...'}
+                </p>
               </div>
             )}
           </div>
 
-          {/* Chunk ID Overlay */}
+          {/* Chunk Counter Overlay */}
           <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
             <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-              QR {currentChunk + 1} / {chunks.length}
+              Chunk #{chunkCount}
             </div>
             {isPlaying && (
               <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
                 <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                PLAYING
+                LIVE
               </div>
             )}
           </div>
 
-          {loopCount > 0 && (
-            <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-              Loop #{loopCount + 1}
+          {/* Chunk details */}
+          {currentChunkRef.current && (
+            <div className="absolute bottom-2 left-2 bg-blue-500/90 text-white px-2 py-1 rounded text-xs font-medium">
+              Degree: {currentChunkRef.current.degree} | Blocks: {currentChunkRef.current.indices.join(',')}
             </div>
           )}
         </div>
 
-        {/* Chunk Progress */}
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Chunk {currentChunk + 1} of {chunks.length}</span>
-            <span>{Math.round(((currentChunk + 1) / chunks.length) * 100)}%</span>
+        {/* Progress */}
+        {chunkCount > 0 && (
+          <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+              <span>Sent {chunkCount} chunks (est. {estimatedChunksNeeded} needed)</span>
+              <span>{Math.round(progress)}%</span>
+            </div>
+            <Progress value={progress} />
+            <p className="text-xs text-muted-foreground text-center">
+              {chunkCount >= estimatedChunksNeeded
+                ? '✅ Receiver should have enough chunks to decode'
+                : `${estimatedChunksNeeded - chunkCount} more chunks recommended`}
+            </p>
           </div>
-          <Progress value={((currentChunk + 1) / chunks.length) * 100} />
-        </div>
+        )}
 
         {/* Controls */}
         <div className="space-y-3">
           <div className="flex gap-2 justify-center">
             <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePrevious}
-              disabled={chunks.length === 0}
-            >
-              ← Previous
-            </Button>
-            <Button
               size="sm"
               onClick={handlePlayPause}
-              disabled={chunks.length === 0}
+              disabled={!encoder}
             >
               {isPlaying ? '⏸ Pause' : '▶ Play'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleNext}
-              disabled={chunks.length === 0}
-            >
-              Next →
             </Button>
           </div>
 
@@ -420,51 +284,18 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               </Button>
             ))}
           </div>
-
-          {/* Repeat Mode Toggle */}
-          <div className="flex items-center justify-center gap-2">
-            <Button
-              variant={repeatMode ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setRepeatMode(!repeatMode)}
-              className="flex items-center gap-2"
-            >
-              {repeatMode ? '🔁 Repeat ON' : '🔁 Repeat OFF'}
-            </Button>
-            {loopCount > 0 && (
-              <span className="text-sm text-muted-foreground">
-                Completed {loopCount} loop{loopCount > 1 ? 's' : ''}
-              </span>
-            )}
-          </div>
-
-          {/* Feedback QR Scanner Button */}
-          <div className="pt-2 border-t">
-            <Button
-              onClick={handleStartFeedbackScan}
-              variant="secondary"
-              size="sm"
-              className="w-full"
-              disabled={scanningFeedback}
-            >
-              📷 Scan Receiver's Feedback QR
-            </Button>
-            <p className="text-xs text-muted-foreground text-center mt-1">
-              Get missing chunks from receiver
-            </p>
-          </div>
         </div>
 
         {/* Instructions */}
         <Alert>
           <AlertDescription>
-            <p className="font-medium mb-2">📱 How to receive this file:</p>
+            <p className="font-medium mb-2">📱 How Fountain Codes Work:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Each QR code shows its ID (e.g., "QR 1/100") at the top</li>
-              <li>Enable "Repeat ON" to loop through all QR codes automatically</li>
-              <li>Receiver will track which chunks are scanned (deduplication)</li>
-              <li>Keep playing until receiver shows 100% complete</li>
-              <li>Missing chunks will be filled on the next loop</li>
+              <li>Each chunk combines multiple source blocks via XOR</li>
+              <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
+              <li>Can skip/miss chunks and still decode successfully</li>
+              <li>Keep playing until receiver shows 100% decoded</li>
+              <li>More robust than sequential chunk transfer</li>
             </ol>
           </AlertDescription>
         </Alert>

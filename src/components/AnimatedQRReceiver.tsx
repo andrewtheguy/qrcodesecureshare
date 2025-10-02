@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import QrScanner from 'qr-scanner'
-import QRCode from 'qrcode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { FountainDecoder, type FountainChunk, type FountainMetadata } from '@/utils/fountainCode'
 
 interface ChunkData {
   meta: {
@@ -19,16 +19,40 @@ interface ChunkData {
   data: string
 }
 
+interface QRChunkData {
+  f?: 1 // fountain code marker
+  s?: number // seed
+  d?: number // degree
+  i?: number[] // indices
+  data?: string // base64 encoded chunk data
+  m?: { // metadata
+    name: string
+    size: number
+    type: string
+    timestamp: number
+    blocks: number // totalSourceBlocks
+    bs: number // blockSize
+  }
+}
+
 export function AnimatedQRReceiver() {
   const [isScanning, setIsScanning] = useState(false)
+
+  // Legacy mode state
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ChunkData>>(new Map())
   const [metadata, setMetadata] = useState<ChunkData['meta'] | null>(null)
   const [totalChunks, setTotalChunks] = useState(0)
+
+  // Fountain code mode state
+  const [fountainDecoder, setFountainDecoder] = useState<FountainDecoder | null>(null)
+  const [fountainMetadata, setFountainMetadata] = useState<FountainMetadata | null>(null)
+  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
+  const [decodedBlocks, setDecodedBlocks] = useState(0)
+  const [isFountainMode, setIsFountainMode] = useState(false)
+
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
-  const [showFeedbackQr, setShowFeedbackQr] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
@@ -36,6 +60,7 @@ export function AnimatedQRReceiver() {
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
+  const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
 
   // Initialize scanner
   useEffect(() => {
@@ -84,101 +109,24 @@ export function AnimatedQRReceiver() {
 
       addDebugLog(`Scanned data length: ${data.length} bytes`)
 
-      let chunk: ChunkData
-
       // Check if data starts with '{' - if so, it's JSON
       if (data.trim().startsWith('{')) {
-        addDebugLog('Detected JSON format')
-        // JSON format (legacy or compact)
-        const parsed = JSON.parse(data)
+        const parsed: QRChunkData = JSON.parse(data)
 
-        // Handle both compact format (m,i,t,d) and legacy format (meta,index,total,data)
-        const encoding = parsed.e || (parsed.encoding === 'binary' ? 'binary' : 'base64')
-
-        // Decode Latin1 if needed
-        let decodedData = parsed.d || parsed.data
-        if (parsed.e === 'l1') {
-          // Latin1: convert string back to bytes then to base64
-          const bytes = new Uint8Array(decodedData.length)
-          for (let i = 0; i < decodedData.length; i++) {
-            bytes[i] = decodedData.charCodeAt(i) & 0xFF
-          }
-          decodedData = btoa(String.fromCharCode(...bytes))
+        // Check if this is a fountain code chunk
+        if (parsed.f === 1 && parsed.s !== undefined && parsed.d !== undefined && parsed.i && parsed.data && parsed.m) {
+          addDebugLog('🔁 Detected fountain code chunk')
+          handleFountainChunk(parsed)
+          return
         }
 
-        chunk = {
-          meta: parsed.m || parsed.meta,
-          index: parsed.i !== undefined ? parsed.i : parsed.index,
-          total: parsed.t || parsed.total,
-          encoding: encoding,
-          data: decodedData
-        }
-        addDebugLog(`JSON chunk ${chunk.index + 1}/${chunk.total} - ${chunk.meta.name} (${encoding})`)
+        // Legacy chunk handling
+        addDebugLog('Detected legacy JSON format')
+        handleLegacyChunk(data)
       } else {
         addDebugLog('Detected binary format')
-        // Binary format - convert string to bytes
-        const bytes = new Uint8Array(data.length)
-        for (let i = 0; i < data.length; i++) {
-          bytes[i] = data.charCodeAt(i) & 0xFF // Ensure byte values 0-255
-        }
-
-        let offset = 0
-        // Read index (2 bytes)
-        const index = (bytes[offset++] << 8) | bytes[offset++]
-        // Read total (2 bytes)
-        const total = (bytes[offset++] << 8) | bytes[offset++]
-        // Read name
-        const nameLen = bytes[offset++]
-        if (nameLen > 255 || offset + nameLen > bytes.length) {
-          throw new Error('Invalid binary format: nameLen out of bounds')
-        }
-        const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-        offset += nameLen
-        // Read type
-        const typeLen = bytes[offset++]
-        if (typeLen > 255 || offset + typeLen > bytes.length) {
-          throw new Error('Invalid binary format: typeLen out of bounds')
-        }
-        const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-        offset += typeLen
-        // Read size (4 bytes)
-        const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-        // Extract chunk data
-        const chunkData = bytes.slice(offset)
-
-        addDebugLog(`Binary chunk ${index + 1}/${total} - ${name} (${chunkData.length} bytes)`)
-
-        chunk = {
-          meta: { name, type, size, timestamp: Date.now() },
-          index,
-          total,
-          encoding: 'binary',
-          data: btoa(String.fromCharCode(...chunkData)) // store as base64
-        }
+        handleLegacyChunk(data)
       }
-
-      // Validate chunk structure
-      if (!chunk.meta || chunk.index === undefined || !chunk.total || !chunk.data) {
-        throw new Error('Invalid chunk format')
-      }
-
-      // Set metadata from first chunk
-      if (!metadata) {
-        setMetadata(chunk.meta)
-        setTotalChunks(chunk.total)
-      }
-
-      // Add chunk to received set
-      setReceivedChunks((prev) => {
-        const updated = new Map(prev)
-        if (!updated.has(chunk.index)) {
-          updated.set(chunk.index, chunk)
-          addDebugLog(`✓ Received chunk ${chunk.index + 1}/${chunk.total}`)
-        } else {
-          addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${chunk.total}`)
-        }
-        return updated
-      })
 
       setError('')
     } catch (err) {
@@ -186,6 +134,182 @@ export function AnimatedQRReceiver() {
       addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
       // Don't show error for every failed scan, as non-chunk QR codes may be scanned
+    }
+  }
+
+  const handleFountainChunk = (parsed: QRChunkData) => {
+    if (!parsed.m || !parsed.data || parsed.s === undefined || parsed.d === undefined || !parsed.i) {
+      throw new Error('Invalid fountain chunk data')
+    }
+
+    // Check for duplicate chunk (same seed)
+    if (receivedChunkSeedsRef.current.has(parsed.s)) {
+      addDebugLog(`⊗ Duplicate fountain chunk seed ${parsed.s}`)
+      return
+    }
+    receivedChunkSeedsRef.current.add(parsed.s)
+
+    // Initialize decoder if this is the first chunk
+    if (!fountainDecoder) {
+      const meta: FountainMetadata = {
+        name: parsed.m.name,
+        size: parsed.m.size,
+        type: parsed.m.type,
+        timestamp: parsed.m.timestamp,
+        totalSourceBlocks: parsed.m.blocks,
+        blockSize: parsed.m.bs
+      }
+      const decoder = new FountainDecoder(meta)
+      setFountainDecoder(decoder)
+      setFountainMetadata(meta)
+      setIsFountainMode(true)
+      addDebugLog(`📦 Initialized fountain decoder: ${meta.name} (${meta.totalSourceBlocks} blocks)`)
+    }
+
+    // Decode base64 chunk data
+    const binaryString = atob(parsed.data)
+    const chunkData = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      chunkData[i] = binaryString.charCodeAt(i)
+    }
+
+    const fountainChunk: FountainChunk = {
+      seed: parsed.s,
+      degree: parsed.d,
+      indices: parsed.i,
+      data: chunkData
+    }
+
+    const decoder = fountainDecoder!
+    const decoded = decoder.addChunk(fountainChunk)
+
+    setReceivedFountainChunks(decoder.getReceivedChunkCount())
+    setDecodedBlocks(decoder.getDecodedBlockCount())
+
+    addDebugLog(`✓ Fountain chunk #${parsed.s} (degree: ${parsed.d}) - decoded ${decoder.getDecodedBlockCount()}/${fountainMetadata!.totalSourceBlocks} blocks`)
+
+    if (decoded) {
+      addDebugLog(`🎉 Decoding complete!`)
+      reconstructFountainFile(decoder)
+    }
+  }
+
+  const handleLegacyChunk = (data: string) => {
+    let chunk: ChunkData
+
+    if (data.trim().startsWith('{')) {
+      // JSON format (legacy or compact)
+      const parsed = JSON.parse(data)
+
+      // Handle both compact format (m,i,t,d) and legacy format (meta,index,total,data)
+      const encoding = parsed.e || (parsed.encoding === 'binary' ? 'binary' : 'base64')
+
+      // Decode Latin1 if needed
+      let decodedData = parsed.d || parsed.data
+      if (parsed.e === 'l1') {
+        // Latin1: convert string back to bytes then to base64
+        const bytes = new Uint8Array(decodedData.length)
+        for (let i = 0; i < decodedData.length; i++) {
+          bytes[i] = decodedData.charCodeAt(i) & 0xFF
+        }
+        decodedData = btoa(String.fromCharCode(...bytes))
+      }
+
+      chunk = {
+        meta: parsed.m || parsed.meta,
+        index: parsed.i !== undefined ? parsed.i : parsed.index,
+        total: parsed.t || parsed.total,
+        encoding: encoding,
+        data: decodedData
+      }
+      addDebugLog(`JSON chunk ${chunk.index + 1}/${chunk.total} - ${chunk.meta.name} (${encoding})`)
+    } else {
+      // Binary format - convert string to bytes
+      const bytes = new Uint8Array(data.length)
+      for (let i = 0; i < data.length; i++) {
+        bytes[i] = data.charCodeAt(i) & 0xFF
+      }
+
+      let offset = 0
+      const index = (bytes[offset++] << 8) | bytes[offset++]
+      const total = (bytes[offset++] << 8) | bytes[offset++]
+      const nameLen = bytes[offset++]
+      if (nameLen > 255 || offset + nameLen > bytes.length) {
+        throw new Error('Invalid binary format: nameLen out of bounds')
+      }
+      const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
+      offset += nameLen
+      const typeLen = bytes[offset++]
+      if (typeLen > 255 || offset + typeLen > bytes.length) {
+        throw new Error('Invalid binary format: typeLen out of bounds')
+      }
+      const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
+      offset += typeLen
+      const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
+      const chunkData = bytes.slice(offset)
+
+      addDebugLog(`Binary chunk ${index + 1}/${total} - ${name} (${chunkData.length} bytes)`)
+
+      chunk = {
+        meta: { name, type, size, timestamp: Date.now() },
+        index,
+        total,
+        encoding: 'binary',
+        data: btoa(String.fromCharCode(...chunkData))
+      }
+    }
+
+    // Validate chunk structure
+    if (!chunk.meta || chunk.index === undefined || !chunk.total || !chunk.data) {
+      throw new Error('Invalid chunk format')
+    }
+
+    // Set metadata from first chunk
+    if (!metadata) {
+      setMetadata(chunk.meta)
+      setTotalChunks(chunk.total)
+    }
+
+    // Add chunk to received set
+    setReceivedChunks((prev) => {
+      const updated = new Map(prev)
+      if (!updated.has(chunk.index)) {
+        updated.set(chunk.index, chunk)
+        addDebugLog(`✓ Received chunk ${chunk.index + 1}/${chunk.total}`)
+      } else {
+        addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${chunk.total}`)
+      }
+      return updated
+    })
+  }
+
+  const reconstructFountainFile = (decoder: FountainDecoder) => {
+    try {
+      const decodedData = decoder.getDecodedData()
+      if (!decodedData || !fountainMetadata) {
+        throw new Error('Failed to decode data')
+      }
+
+      // Create a proper ArrayBuffer from the decoded data
+      const bytes = new Uint8Array(decodedData)
+
+      // Create blob and download URL
+      const blob = new Blob([bytes], { type: fountainMetadata.type || 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+
+      setDownloadUrl(url)
+      setSuccess(true)
+      setIsScanning(false)
+
+      // Stop scanner
+      if (scannerRef.current) {
+        scannerRef.current.stop()
+      }
+
+      addDebugLog(`✅ File reconstructed: ${fountainMetadata.name}`)
+    } catch (err) {
+      console.error('Fountain reconstruction error:', err)
+      setError('Failed to reconstruct file from fountain chunks')
     }
   }
 
@@ -257,6 +381,12 @@ export function AnimatedQRReceiver() {
     setReceivedChunks(new Map())
     setMetadata(null)
     setTotalChunks(0)
+    setFountainDecoder(null)
+    setFountainMetadata(null)
+    setReceivedFountainChunks(0)
+    setDecodedBlocks(0)
+    setIsFountainMode(false)
+    receivedChunkSeedsRef.current.clear()
     setError('')
     setSuccess(false)
     setDownloadUrl('')
@@ -264,66 +394,41 @@ export function AnimatedQRReceiver() {
   }
 
   const handleDownload = () => {
-    if (!downloadUrl || !metadata) return
+    const fileName = isFountainMode ? fountainMetadata?.name : metadata?.name
+    if (!downloadUrl || !fileName) return
 
     const link = document.createElement('a')
     link.href = downloadUrl
-    link.download = metadata.name
+    link.download = fileName
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
   }
 
-  const generateFeedbackQr = async () => {
-    if (totalChunks === 0) return
+  // Calculate progress based on mode
+  const progress = isFountainMode
+    ? fountainMetadata
+      ? (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
+      : 0
+    : totalChunks > 0
+      ? (receivedChunks.size / totalChunks) * 100
+      : 0
 
-    // Get missing chunk indices
-    const missingChunks: number[] = []
-    for (let i = 0; i < totalChunks; i++) {
-      if (!receivedChunks.has(i)) {
-        missingChunks.push(i)
-      }
-    }
-
-    // Create feedback payload
-    const feedback = {
-      type: 'MISSING_CHUNKS_FEEDBACK',
-      timestamp: metadata?.timestamp || Date.now(),
-      fileName: metadata?.name || 'unknown',
-      totalChunks,
-      receivedCount: receivedChunks.size,
-      missingChunks
-    }
-
-    try {
-      const qrUrl = await QRCode.toDataURL(JSON.stringify(feedback), {
-        width: 300,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-      setFeedbackQrUrl(qrUrl)
-      setShowFeedbackQr(true)
-    } catch (err) {
-      console.error('Failed to generate feedback QR:', err)
-      setError('Failed to generate feedback QR code')
-    }
-  }
-
-  const progress = totalChunks > 0 ? (receivedChunks.size / totalChunks) * 100 : 0
-  const hasMissingChunks = totalChunks > 0 && receivedChunks.size < totalChunks && receivedChunks.size > 0
+  const hasMissingChunks = !isFountainMode && totalChunks > 0 && receivedChunks.size < totalChunks && receivedChunks.size > 0
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-center">QR Code Receiver</CardTitle>
-        {metadata && (
+        <CardTitle className="text-center">
+          {isFountainMode ? '🔁 Fountain Code Receiver' : 'QR Code Receiver'}
+        </CardTitle>
+        {(metadata || fountainMetadata) && (
           <div className="text-sm text-muted-foreground text-center space-y-1">
-            <p className="font-medium">{metadata.name}</p>
-            <p>Expected size: {(metadata.size / 1024).toFixed(2)}KB</p>
+            <p className="font-medium">{isFountainMode ? fountainMetadata?.name : metadata?.name}</p>
+            <p>Expected size: {(((isFountainMode ? fountainMetadata?.size : metadata?.size) || 0) / 1024).toFixed(2)}KB</p>
+            {isFountainMode && fountainMetadata && (
+              <p className="text-xs">Mode: Fountain Coding (no need to scan all chunks)</p>
+            )}
           </div>
         )}
       </CardHeader>
@@ -343,18 +448,22 @@ export function AnimatedQRReceiver() {
         )}
 
         {/* Progress */}
-        {totalChunks > 0 && !success && (
+        {(totalChunks > 0 || isFountainMode) && !success && (
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span>Received {receivedChunks.size} of {totalChunks} chunks</span>
+              {isFountainMode ? (
+                <span>Decoded {decodedBlocks} of {fountainMetadata?.totalSourceBlocks || 0} blocks</span>
+              ) : (
+                <span>Received {receivedChunks.size} of {totalChunks} chunks</span>
+              )}
               <span>{Math.round(progress)}%</span>
             </div>
             <Progress value={progress} />
           </div>
         )}
 
-        {/* Chunk Grid */}
-        {totalChunks > 0 && !success && (
+        {/* Chunk Grid - Legacy mode only */}
+        {!isFountainMode && totalChunks > 0 && !success && (
           <div className="grid grid-cols-10 gap-1">
             {Array.from({ length: totalChunks }, (_, i) => (
               <div
@@ -370,54 +479,33 @@ export function AnimatedQRReceiver() {
           </div>
         )}
 
-        {/* Feedback QR Code Button */}
-        {hasMissingChunks && !showFeedbackQr && (
+        {/* Fountain Code Progress Display */}
+        {isFountainMode && fountainMetadata && !success && (
           <Alert>
             <AlertDescription>
-              <div className="space-y-3">
-                <p className="font-medium">📊 Missing {totalChunks - receivedChunks.size} chunk(s)</p>
-                <p className="text-sm">
-                  Generate a feedback QR code to show the sender which chunks are missing,
-                  so they can repeat only those specific ones.
-                </p>
-                <Button onClick={generateFeedbackQr} className="w-full">
-                  📋 Generate Feedback QR Code
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {/* Feedback QR Code Display */}
-        {showFeedbackQr && feedbackQrUrl && (
-          <Alert>
-            <AlertDescription>
-              <div className="space-y-3">
-                <p className="font-medium">📋 Feedback QR Code</p>
-                <p className="text-sm">
-                  Show this to the sender. They can scan it to repeat only the missing chunks.
-                </p>
-                <div className="flex justify-center bg-white p-4 rounded-lg">
-                  <img src={feedbackQrUrl} alt="Feedback QR Code" className="max-w-[300px]" />
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Missing chunks: {totalChunks - receivedChunks.size} of {totalChunks}
-                  {totalChunks - receivedChunks.size <= 10 && (
-                    <span className="ml-2">
-                      (#{Array.from({ length: totalChunks }, (_, i) => i)
-                        .filter(i => !receivedChunks.has(i))
-                        .map(i => i + 1)
-                        .join(', ')})
+              <div className="space-y-2">
+                <p className="font-medium">🔁 Fountain Code Decoding</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Received chunks:</span>
+                    <span className="ml-2 font-medium">{receivedFountainChunks}</span>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Decoded blocks:</span>
+                    <span className="ml-2 font-medium">{decodedBlocks}/{fountainMetadata.totalSourceBlocks}</span>
+                  </div>
+                  <div className="col-span-2">
+                    <span className="text-muted-foreground">Efficiency:</span>
+                    <span className="ml-2 font-medium">
+                      {decodedBlocks > 0 ? ((receivedFountainChunks / decodedBlocks) * 100).toFixed(0) : 0}%
                     </span>
-                  )}
+                  </div>
                 </div>
-                <Button
-                  onClick={() => setShowFeedbackQr(false)}
-                  variant="outline"
-                  className="w-full"
-                >
-                  Hide Feedback QR
-                </Button>
+                {decodedBlocks < fountainMetadata.totalSourceBlocks && (
+                  <p className="text-xs text-muted-foreground">
+                    Need ~{Math.ceil(fountainMetadata.totalSourceBlocks * 1.1) - receivedFountainChunks} more chunks to decode
+                  </p>
+                )}
               </div>
             </AlertDescription>
           </Alert>
@@ -435,10 +523,17 @@ export function AnimatedQRReceiver() {
           <Alert>
             <AlertDescription>
               <div className="space-y-3">
-                <p className="font-medium text-green-600">✅ File received successfully!</p>
+                <p className="font-medium text-green-600">
+                  ✅ File received successfully!
+                  {isFountainMode && (
+                    <span className="block text-sm font-normal text-muted-foreground mt-1">
+                      Decoded using fountain codes ({receivedFountainChunks} chunks received)
+                    </span>
+                  )}
+                </p>
                 <div className="flex gap-2">
                   <Button onClick={handleDownload} className="flex-1">
-                    📥 Download {metadata?.name}
+                    📥 Download {isFountainMode ? fountainMetadata?.name : metadata?.name}
                   </Button>
                   <Button onClick={handleReset} variant="outline">
                     Reset
