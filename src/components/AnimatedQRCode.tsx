@@ -13,7 +13,7 @@ interface AnimatedQRCodeProps {
 
 // Maximum bytes per QR code chunk (conservative estimate for high error correction)
 const CHUNK_SIZE = 1200 // bytes per QR code
-const MAX_FILE_SIZE = 20 * 1024 // 20KB
+export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [chunks, setChunks] = useState<string[]>([])
@@ -40,7 +40,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setError(`File size (${(file.size / 1024).toFixed(2)}KB) exceeds maximum of 20KB`)
+      setError(`File size (${(file.size / 1024).toFixed(2)}KB) exceeds maximum of ${(MAX_FILE_SIZE / 1024).toFixed(2)}KB`)
       setChunks([])
       return
     }

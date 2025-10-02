@@ -5,6 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
+import { MAX_FILE_SIZE } from './AnimatedQRCode'
+
 export default function OfflineTransferDemo() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>('select')
@@ -12,9 +14,9 @@ export default function OfflineTransferDemo() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const MAX_SIZE = 20 * 1024 // 20KB
-      if (file.size > MAX_SIZE) {
-        alert(`File size must be under 20KB. Selected file is ${(file.size / 1024).toFixed(2)}KB`)
+
+      if (file.size > MAX_FILE_SIZE) {
+        alert(`File size must be under ${MAX_FILE_SIZE / 1024}KB. Selected file is ${(file.size / 1024).toFixed(2)}KB`)
         return
       }
       setSelectedFile(file)
