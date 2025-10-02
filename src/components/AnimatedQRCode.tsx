@@ -59,21 +59,23 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
         // Calculate number of data chunks needed
         const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
-        const totalChunks = totalDataChunks + 1 // +1 for metadata chunk
 
         // Encode text fields using TextEncoder
         const nameBytes = new TextEncoder().encode(file.name)
         const typeBytes = new TextEncoder().encode(file.type || 'application/octet-stream')
 
         // Create metadata chunk (binary format)
-        // Format: [total chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
-        const metadataSize = 2 + 1 + nameBytes.length + 1 + typeBytes.length + 4
+        // Format: [type=0 (1 byte)][total data chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
+        const metadataSize = 1 + 2 + 1 + nameBytes.length + 1 + typeBytes.length + 4
         const metadataBytes = new Uint8Array(metadataSize)
         let offset = 0
 
-        // Total chunks (2 bytes, big-endian)
-        metadataBytes[offset++] = (totalChunks >> 8) & 0xFF
-        metadataBytes[offset++] = totalChunks & 0xFF
+        // Chunk type: 0 = metadata
+        metadataBytes[offset++] = 0
+
+        // Total data chunks (2 bytes, big-endian)
+        metadataBytes[offset++] = (totalDataChunks >> 8) & 0xFF
+        metadataBytes[offset++] = totalDataChunks & 0xFF
 
         // Name
         metadataBytes[offset++] = nameBytes.length
@@ -95,18 +97,26 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         setMetadataChunk(String.fromCharCode(...metadataBytes))
 
         // Create data chunks (0-based indexing)
-        // Format: [chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
+        // Format: [type=1 (1 byte)][chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
         const newDataChunks: string[] = []
         for (let i = 0; i < totalDataChunks; i++) {
           const start = i * CHUNK_SIZE
           const end = Math.min(start + CHUNK_SIZE, bytes.length)
           const dataBytes = bytes.slice(start, end)
 
-          // Create chunk with index header
-          const chunkWithHeader = new Uint8Array(2 + dataBytes.length)
-          chunkWithHeader[0] = (i >> 8) & 0xFF
-          chunkWithHeader[1] = i & 0xFF
-          chunkWithHeader.set(dataBytes, 2)
+          // Create chunk with type and index header
+          const chunkWithHeader = new Uint8Array(1 + 2 + dataBytes.length)
+          let chunkOffset = 0
+
+          // Chunk type: 1 = data
+          chunkWithHeader[chunkOffset++] = 1
+
+          // Chunk index (2 bytes, big-endian)
+          chunkWithHeader[chunkOffset++] = (i >> 8) & 0xFF
+          chunkWithHeader[chunkOffset++] = i & 0xFF
+
+          // Data payload
+          chunkWithHeader.set(dataBytes, chunkOffset)
 
           // Convert to string using Latin-1 encoding (preserves all byte values)
           newDataChunks.push(String.fromCharCode(...chunkWithHeader))
