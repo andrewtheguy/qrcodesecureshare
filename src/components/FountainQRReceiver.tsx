@@ -159,13 +159,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const reconstructFountainFile = (decoder: FountainDecoder) => {
     try {
-      const reconstructedData = decoder.getReconstructedData()
+      const reconstructedData = decoder.getDecodedData()
       if (!reconstructedData) {
-        throw new Error('Failed to get reconstructed data')
-      }
-
-      if (!fountainMetadata) {
-        throw new Error('Missing metadata')
+        throw new Error('Failed to get decoded data')
       }
 
       const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
