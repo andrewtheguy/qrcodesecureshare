@@ -40,6 +40,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
   const [privateKeyFingerprint, setPrivateKeyFingerprint] = useState<string | null>(null)
   const [privateKeyError, setPrivateKeyError] = useState<string | null>(null)
+  // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
+  const [deviceIds, setDeviceIds] = useState<{ environment?: string; user?: string }>({})
+  const [loadingCameras, setLoadingCameras] = useState(false)
+  const [cameraError, setCameraError] = useState<string | null>(null)
   const privateKeyImportDebounceRef = useRef<number | null>(null)
   const pageHiddenAtRef = useRef<number | null>(null)
   const VISIBILITY_CLEAR_THRESHOLD_MS = 60_000 // Clear if tab hidden > 60s
@@ -288,6 +293,35 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       scannerRef.current = scanner
       await scanner.start()
       console.log('QR scanner started successfully')
+
+      // Load available cameras and classify into environment/user categories
+      setLoadingCameras(true)
+      setCameraError(null)
+      try {
+        const list = await QrScanner.listCameras(true) as { id: string, label: string }[]
+        if (list && list.length) {
+          // Heuristics for label classification
+          const env = list.find(c => /back|rear|environment/i.test(c.label))
+          const user = list.find(c => /front|user|face/i.test(c.label))
+          const ids: { environment?: string; user?: string } = {}
+          if (env) ids.environment = env.id
+          if (user) ids.user = user.id
+          // Fallbacks if classification failed
+          if (!ids.environment) ids.environment = list[0].id
+          if (!ids.user) ids.user = list[list.length - 1].id
+          setDeviceIds(ids)
+          // Choose starting facing mode device
+          const desiredId = (facingMode === 'environment' ? ids.environment : ids.user) || ids.environment || ids.user
+          if (desiredId) {
+            try { await scanner.setCamera(desiredId) } catch (e) { console.warn('Could not set initial facingMode camera', e) }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to classify cameras', err)
+        setCameraError('Camera access issue')
+      } finally {
+        setLoadingCameras(false)
+      }
     } catch (error) {
       console.error('Failed to start QR scanner:', error)
       alert(`Failed to access camera: ${(error as Error).message}. Please ensure camera permissions are granted.`)
@@ -302,6 +336,20 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       scannerRef.current = null
     }
     setScanning(false)
+  }
+
+  const toggleFacingMode = async () => {
+    if (!scannerRef.current) return
+    const nextMode: 'environment' | 'user' = facingMode === 'environment' ? 'user' : 'environment'
+    const targetId = (nextMode === 'environment' ? deviceIds.environment : deviceIds.user) || (nextMode === 'environment' ? deviceIds.user : deviceIds.environment)
+    if (!targetId) return
+    try {
+      await scannerRef.current.setCamera(targetId)
+      setFacingMode(nextMode)
+    } catch (err) {
+      console.error('Failed to switch facing mode', err)
+      setCameraError('Failed to switch camera')
+    }
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -552,6 +600,27 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                 playsInline
                 muted
               />
+              <div className="flex flex-col gap-2 items-center">
+                {loadingCameras && <p className="text-xs text-muted-foreground">Detecting cameras…</p>}
+                {!loadingCameras && (
+                  <div className="flex items-center gap-3 flex-wrap justify-center">
+                    <span className="text-xs font-medium text-muted-foreground">Mode:</span>
+                    <code className="text-xs bg-muted px-2 py-1 rounded">{facingMode}</code>
+                    {(deviceIds.environment && deviceIds.user) && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={toggleFacingMode}
+                      >
+                        🔄 Flip
+                      </Button>
+                    )}
+                  </div>
+                )}
+                {cameraError && <p className="text-xs text-red-600">{cameraError}</p>}
+              </div>
               <Button variant="outline" onClick={stopScanning}>
                 Stop Scanning
               </Button>
