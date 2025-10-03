@@ -75,6 +75,18 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
+  // Auto-start playback once encoder is ready (no need to wait for receiver now)
+  useEffect(() => {
+    if (encoder && !isPlaying) {
+      // Reset counters for fresh session
+      setChunkCount(0)
+      setSkippedChunks(0)
+      setIsPlaying(true)
+    }
+    // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encoder])
+
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
     if (!encoder) return
@@ -235,7 +247,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           ) : (
             <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
               <p className="text-muted-foreground">
-                {encoder ? 'Click "Start Receiving Data" First on Receiver first, then click Play here to start' : 'Processing file...'}
+                {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
               </p>
             </div>
           )}
