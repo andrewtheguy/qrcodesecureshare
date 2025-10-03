@@ -184,7 +184,25 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Sequential Mode */}
+          {/* Fountain Mode - RECOMMENDED (shown first)
+              Fountain coding is preferred for files large enough to need chunking.
+              Sequential mode may be deprecated or code-frozen in the future as a backup option only. */}
+          <Button
+            onClick={() => handleSelectMode('fountain')}
+            variant="outline"
+            className="w-full h-auto py-6 flex flex-col items-start gap-2 border-2 border-primary"
+          >
+            <div className="font-bold text-lg">🔁 Fountain Code Transfer (Recommended)</div>
+            <div className="text-sm text-left text-muted-foreground">
+              • Generates random coded chunks<br/>
+              • Receiver needs ~105-115% of source blocks (varies by file size)<br/>
+              • Can skip/miss chunks and still decode<br/>
+              • Preferred for large files
+            </div>
+          </Button>
+
+          {/* Sequential Mode - Legacy/Backup
+              Not recommended for large files. May become backup-only or code-frozen. */}
           <Button
             onClick={() => handleSelectMode('sequential')}
             variant="outline"
@@ -193,24 +211,9 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             <div className="font-bold text-lg">📋 Sequential Transfer</div>
             <div className="text-sm text-left text-muted-foreground">
               • Sends chunks in order (1, 2, 3...)<br/>
-              • Receiver needs ALL chunks<br/>
-              • Can skip missed chunks with feedback QR<br/>
-              • Best for reliable connections
-            </div>
-          </Button>
-
-          {/* Fountain Mode */}
-          <Button
-            onClick={() => handleSelectMode('fountain')}
-            variant="outline"
-            className="w-full h-auto py-6 flex flex-col items-start gap-2"
-          >
-            <div className="font-bold text-lg">🔁 Fountain Code Transfer</div>
-            <div className="text-sm text-left text-muted-foreground">
-              • Generates random coded chunks<br/>
-              • Receiver needs only ~110% of chunks<br/>
-              • Can skip/miss chunks and still decode<br/>
-              • Best for unreliable connections
+              • Receiver needs ALL chunks, which might need to be repeated<br/>
+              • Can speed up by skipping received chunks with feedback QR<br/>
+              • Not ideal for large files
             </div>
           </Button>
 

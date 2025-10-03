@@ -208,7 +208,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-  const estimatedChunksNeeded = Math.ceil(fountainMetadata.totalSourceBlocks * 1.1)
+  // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
+  // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
+  const k = fountainMetadata.totalSourceBlocks
+  const c = 0.2
+  const delta = 0.01
+  const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
+  const dopingOverhead = 1.05 // Account for forced low-degree chunks
+  const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
   return (
     <div className="space-y-4">
