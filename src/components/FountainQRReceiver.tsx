@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import QRCode from 'qrcode'
 import { computeChecksum } from '@/utils/checksum'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -40,6 +41,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [decodeTime, setDecodeTime] = useState<number | null>(null)
+  const [showFeedbackQR, setShowFeedbackQR] = useState(false)
+  const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
@@ -211,6 +214,41 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     document.body.removeChild(link)
   }
 
+  const handleGenerateFeedbackQR = async () => {
+    try {
+      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+      const feedback = {
+        type: 'FOUNTAIN_FEEDBACK',
+        receivedBlocks: decodedBlockIndices,
+        totalBlocks: fountainMetadata.totalSourceBlocks,
+        progress: (decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100
+      }
+
+      const feedbackJson = JSON.stringify(feedback)
+      const dataUrl = await QRCode.toDataURL(feedbackJson, {
+        width: 400,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: {
+          dark: '#000000',
+          light: '#FFFFFF'
+        }
+      })
+
+      setFeedbackQRUrl(dataUrl)
+      setShowFeedbackQR(true)
+      addDebugLog(`📤 Generated feedback QR: ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks`)
+    } catch (err) {
+      console.error('Failed to generate feedback QR:', err)
+      setError('Failed to generate feedback QR code')
+    }
+  }
+
+  const handleCloseFeedbackQR = () => {
+    setShowFeedbackQR(false)
+    setFeedbackQRUrl('')
+  }
+
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
   // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
@@ -223,8 +261,35 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   return (
     <div className="space-y-4">
+      {/* Feedback QR Display */}
+      {showFeedbackQR && feedbackQRUrl && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">📊 Feedback QR Code</p>
+              <div className="flex justify-center bg-white p-4 rounded-lg">
+                <img
+                  src={feedbackQRUrl}
+                  alt="Feedback QR Code"
+                  className="max-w-full h-auto"
+                />
+              </div>
+              <p className="text-sm text-center">
+                Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round(progress)}%)
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                Show this QR code to the sender to share your progress
+              </p>
+              <Button onClick={handleCloseFeedbackQR} variant="outline" className="w-full">
+                Close
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Video Preview */}
-      {isScanning && (
+      {isScanning && !showFeedbackQR && (
         <div className="relative bg-black rounded-lg overflow-hidden">
           <video
             ref={videoRef}
@@ -366,6 +431,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           </>
         )}
       </div>
+
+      {/* Feedback QR Button */}
+      {!success && decodedBlocks > 0 && !showFeedbackQR && (
+        <div className="pt-2 border-t">
+          <Button
+            onClick={handleGenerateFeedbackQR}
+            variant="secondary"
+            size="sm"
+            className="w-full"
+          >
+            📊 Generate Feedback QR
+          </Button>
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Share your progress with the sender
+          </p>
+        </div>
+      )}
     </div>
   )
 }

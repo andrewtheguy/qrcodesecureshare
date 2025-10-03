@@ -138,6 +138,8 @@ export class FountainEncoder {
   private sumDegrees = 0
   private seenBlocks: Set<number> = new Set()
   private samplerOpts: DegreeSamplerOptions
+  private receivedBlocks: Set<number> = new Set()
+  private targetedMode: boolean = false
 
   constructor(
     data: Uint8Array,
@@ -177,15 +179,57 @@ export class FountainEncoder {
     }
   }
 
+  /**
+   * Set which blocks the receiver has already decoded
+   * This enables targeted encoding that focuses on missing blocks
+   */
+  setReceivedBlocks(blockIndices: number[]): void {
+    this.receivedBlocks = new Set(blockIndices)
+    this.targetedMode = this.receivedBlocks.size > 0
+  }
+
+  /**
+   * Get missing blocks that receiver still needs
+   */
+  private getMissingBlocks(): number[] {
+    if (!this.targetedMode) {
+      return Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
+    }
+    const missing: number[] = []
+    for (let i = 0; i < this.sourceBlocks.length; i++) {
+      if (!this.receivedBlocks.has(i)) {
+        missing.push(i)
+      }
+    }
+    return missing
+  }
+
   generateChunk(): FountainChunk {
     const seed = this.chunkCounter++
     const rng = new SeededRandom(seed)
-    const degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
+
+    // In targeted mode, prefer missing blocks
+    const missingBlocks = this.getMissingBlocks()
+    const availableBlocks = missingBlocks.length > 0 ? missingBlocks :
+      Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
+
+    // Adjust degree based on how many blocks are left
+    let degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
+
+    // In targeted mode with few missing blocks, use lower degrees for efficiency
+    if (this.targetedMode && missingBlocks.length > 0 && missingBlocks.length < 10) {
+      degree = Math.min(degree, Math.max(1, Math.ceil(missingBlocks.length / 2)))
+    }
+
+    // Cap degree at available blocks
+    degree = Math.min(degree, availableBlocks.length)
 
     const indices: number[] = []
     const selected = new Set<number>()
+
+    // Sample from available (missing) blocks
     while (selected.size < degree) {
-      const idx = Math.floor(rng.next() * this.sourceBlocks.length)
+      const idx = availableBlocks[Math.floor(rng.next() * availableBlocks.length)]
       if (!selected.has(idx)) {
         selected.add(idx)
         indices.push(idx)
@@ -328,5 +372,9 @@ export class FountainDecoder {
 
   getDecodedBlockCount(): number {
     return this.decodedBlocks.size
+  }
+
+  getDecodedBlockIndices(): number[] {
+    return Array.from(this.decodedBlocks.keys()).sort((a, b) => a - b)
   }
 }

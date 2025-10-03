@@ -273,14 +273,21 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         // Update the set of blocks the receiver has successfully decoded
         setReceivedBlocks(new Set(feedback.receivedBlocks))
 
+        // Enable targeted encoding - encoder will now focus on missing blocks
+        if (encoder) {
+          encoder.setReceivedBlocks(feedback.receivedBlocks)
+        }
+
         // Update estimated chunks needed based on feedback
         const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
         const blocksReceived = feedback.receivedBlocks.length
+        const missingBlocks = totalBlocks - blocksReceived
         const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
 
-        // If close to completion, reduce estimate
-        if (progress > 0.9) {
-          setEstimatedChunksNeeded(chunkCount + Math.ceil((totalBlocks - blocksReceived) * 1.2))
+        // Adjust estimate based on how many blocks are missing
+        if (missingBlocks > 0) {
+          // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
+          setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
         }
 
         setScanningFeedback(false)
@@ -296,6 +303,10 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   }
 
   const handleStartFeedbackScan = () => {
+    // Pause QR generation while scanning feedback
+    if (isPlaying) {
+      setIsPlaying(false)
+    }
     setScanningFeedback(true)
     setError('')
   }
@@ -353,7 +364,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress</p>
+              <p className="font-medium">📊 Receiver Progress (Targeted Mode Active)</p>
               <div className="text-sm">
                 <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
                 {decodingProgress >= 100 ? (
@@ -361,8 +372,8 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
                     ✅ Transfer complete! You can stop sending.
                   </p>
                 ) : (
-                  <p className="text-muted-foreground mt-1">
-                    Keep sending chunks until 100% decoded
+                  <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
+                    🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
                   </p>
                 )}
               </div>
