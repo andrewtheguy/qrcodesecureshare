@@ -234,37 +234,38 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
 
   return (
     <div className="space-y-4">
-      {/* QR Code Display */}
-      <div className="relative">
-        <div className="flex justify-center bg-white p-4 rounded-lg">
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-          {qrCodeUrl ? (
-            <img
-              src={qrCodeUrl}
-              alt={`Fountain coded chunk`}
-              className="max-w-full h-auto"
-            />
-          ) : (
-            <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-              <p className="text-muted-foreground">
-                {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Chunk Counter Overlay */}
-        <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-          <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-            {chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}
+      {/* QR Code Display (clean container without overlays) */}
+      <div className="flex justify-center bg-white p-4 rounded-lg">
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        {qrCodeUrl ? (
+          <img
+            src={qrCodeUrl}
+            alt={`Fountain coded chunk`}
+            className="max-w-full h-auto"
+          />
+        ) : (
+          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
+            <p className="text-muted-foreground">
+              {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
+            </p>
           </div>
-          {isPlaying && (
-            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              LIVE
-            </div>
-          )}
-        </div>
+        )}
+      </div>
+
+      {/* Caption / Status outside the QR container */}
+      <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
+        <span className="font-medium">{chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}</span>
+        {isPlaying && (
+          <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
+            <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
+          </span>
+        )}
+        {skippedChunks > 0 && (
+          <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
+        )}
+        {chunkCount >= estimatedChunksNeeded && chunkCount > 0 && (
+          <span className="px-2 py-0.5 rounded bg-green-600 text-white font-semibold">Enough Collected</span>
+        )}
       </div>
 
       {/* Chunk details */}

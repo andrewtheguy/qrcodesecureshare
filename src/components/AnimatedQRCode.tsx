@@ -246,24 +246,30 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
           {!metadataError && (
             <div className="flex flex-col items-center gap-4">
-              <div className="flex justify-center bg-white p-4 rounded-lg min-h-[420px] w-full">
-                {metadataLoading ? (
-                  <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100 rounded">
-                    <p className="text-muted-foreground">Preparing metadata QR...</p>
-                  </div>
-                ) : metadataQR ? (
-                  <img src={metadataQR} alt="Metadata QR" className="max-w-full h-auto" />
-                ) : (
-                  <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100 rounded">
-                    <p className="text-muted-foreground">Awaiting metadata...</p>
-                  </div>
-                )}
+              {/* QR Code Container (no captions inside to avoid overlap) */}
+              <div className="flex justify-center bg-white p-4 rounded-lg w-full">
+                <div className="relative">
+                  {metadataQR ? (
+                    <img
+                      src={metadataQR}
+                      alt="Metadata QR"
+                      className="max-w-full h-auto block"
+                    />
+                  ) : (
+                    <div className="w-[400px] h-[400px] bg-gray-100 rounded" />
+                  )}
+                </div>
               </div>
+
+              {/* Caption / Status moved OUTSIDE the QR area */}
+              <div className="w-full text-center text-xs text-muted-foreground min-h-[1.25rem] flex items-center justify-center">
+                {metadataLoading && 'Preparing metadata QR...'}
+                {!metadataLoading && !metadataQR && 'Awaiting metadata...'}
+                {!metadataLoading && metadataQR && '📦 Scan this metadata QR code first on the receiver'}
+              </div>
+
               {metadataJson && (
                 <div className="w-full space-y-2 text-xs text-muted-foreground">
-                  <div className="font-medium text-center text-sm">
-                    📦 Scan this metadata QR code first on the receiver
-                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div><span className="font-semibold">Name:</span> {metadataJson.fileName}</div>
                     <div><span className="font-semibold">Size:</span> {(metadataJson.fileSize / 1024).toFixed(2)}KB</div>

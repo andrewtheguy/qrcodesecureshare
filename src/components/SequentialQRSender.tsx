@@ -308,51 +308,49 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         </Alert>
       )}
 
-      {/* QR Code Display */}
-      <div className="relative">
-        <div className="flex justify-center bg-white p-4 rounded-lg">
-          <canvas ref={canvasRef} style={{ display: 'none' }} />
-          {!hasStarted ? (
-            <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100 text-center p-6 rounded-lg">
-              <p className="text-sm text-muted-foreground font-medium leading-relaxed">
-                📥 Before starting playback, click "Start Receiving Data" on receiver's end.<br/><br/>
-                After that, press <span className="font-semibold">Play</span> to begin sending data chunks.
-              </p>
-            </div>
-          ) : qrCodeUrl ? (
-            <img
-              src={qrCodeUrl}
-              alt={`Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
-              className="max-w-full h-auto"
-            />
-          ) : (
-            <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-              <p className="text-muted-foreground">Generating QR code...</p>
-            </div>
-          )}
-        </div>
-
-        {/* Chunk ID Overlay */}
-        <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-          {hasStarted && (
-            <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-              {`Chunk ${currentChunk + 1} / ${dataChunks.length}`}
-            </div>
-          )}
-          {hasStarted && isPlaying && (
-            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-              PLAYING
-            </div>
-          )}
-        </div>
-
-        {hasStarted && loopCount > 0 && (
-          <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-            Loop #{loopCount + 1}
+      {/* QR Code Display (clean container with no overlays) */}
+      <div className="flex justify-center bg-white p-4 rounded-lg">
+        <canvas ref={canvasRef} style={{ display: 'none' }} />
+        {!hasStarted ? (
+          <div className="w-[400px] h-[400px] bg-gray-100 rounded" />
+        ) : qrCodeUrl ? (
+          <img
+            src={qrCodeUrl}
+            alt={`Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
+            className="max-w-full h-auto"
+          />
+        ) : (
+          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
+            <p className="text-muted-foreground">Generating QR code...</p>
           </div>
         )}
       </div>
+
+      {/* Caption / Status (moved outside to avoid overlap) */}
+      {!hasStarted ? (
+        <div className="text-center text-xs text-muted-foreground leading-relaxed">
+          <p className="font-medium mb-1">📥 Ready to Begin</p>
+          <p>
+            On the receiver, click <span className="font-semibold">Start Receiving Data</span> first.<br/>
+            Then press <span className="font-semibold">Play</span> here to start sending chunks.
+          </p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
+          <span className="font-medium">Chunk {currentChunk + 1} / {dataChunks.length}</span>
+          {isPlaying && (
+            <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
+              <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> PLAYING
+            </span>
+          )}
+          {loopCount > 0 && (
+            <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Loop #{loopCount + 1}</span>
+          )}
+          {playingMissingOnly && missingChunksQueue.length > 0 && (
+            <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Missing Mode</span>
+          )}
+        </div>
+      )}
 
       {/* Chunk Progress */}
       {hasStarted && dataChunks.length > 0 && (
