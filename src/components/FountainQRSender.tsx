@@ -68,47 +68,6 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  // Generate metadata-only QR code (Chunk #0) now in JSON format (previously binary)
-  const generateMetadataQR = async () => {
-    if (!encoder) return
-
-    try {
-      const metadata = encoder.getMetadata()
-      // JSON metadata format for easier debugging & interoperability
-      // Includes a type discriminator and fountain-specific fields
-      const jsonMetadata = {
-        type: 'METADATA',
-        mode: 'fountain',
-        version: 1,
-        fileName: metadata.name,
-        fileType: metadata.type,
-        fileSize: metadata.size,
-        timestamp: metadata.timestamp,
-        totalSourceBlocks: metadata.totalSourceBlocks,
-        blockSize: metadata.blockSize,
-        chunkSize: CHUNK_SIZE
-      }
-
-      const jsonString = JSON.stringify(jsonMetadata)
-      const utf8Bytes = new TextEncoder().encode(jsonString)
-
-      const dataUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
-        width: 400,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-      setQrCodeUrl(dataUrl)
-      currentChunkRef.current = null // No chunk data for metadata-only
-    } catch (err) {
-      console.error('QR generation error:', err)
-      setError('Failed to generate QR code')
-    }
-  }
-
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
     if (!encoder) return
@@ -216,12 +175,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     setError(`Warning: Some chunks are too large for QR codes (${skippedChunks} skipped)`)
   }
 
-  // Show metadata QR when encoder is ready but not playing
-  useEffect(() => {
-    if (encoder && !isPlaying && chunkCount === 0) {
-      generateMetadataQR()
-    }
-  }, [encoder, isPlaying, chunkCount])
+  // Metadata generation removed – handled by parent component
 
   // Animation loop
   useEffect(() => {
@@ -239,8 +193,8 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
-      setChunkCount(0) // Reset counter when starting
-      setSkippedChunks(0) // Reset skipped counter
+      setChunkCount(0)
+      setSkippedChunks(0)
     }
     setIsPlaying(!isPlaying)
   }
@@ -284,7 +238,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         {/* Chunk Counter Overlay */}
         <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
           <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-            {chunkCount === 0 ? 'Metadata Only' : `Chunk #${chunkCount}`}
+            {chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}
           </div>
           {isPlaying && (
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
@@ -296,11 +250,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
       </div>
 
       {/* Chunk details */}
-      {chunkCount === 0 && qrCodeUrl ? (
-        <div className="text-xs text-center text-blue-600 dark:text-blue-400 font-medium">
-          📦 Scan this first to receive file information
-        </div>
-      ) : currentChunkRef.current && (
+      {currentChunkRef.current && (
         <div className="text-xs text-center text-muted-foreground">
           <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
           <span className="mx-2">|</span>

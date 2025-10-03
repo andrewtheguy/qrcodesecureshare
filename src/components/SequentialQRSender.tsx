@@ -16,7 +16,7 @@ interface SequentialQRSenderProps {
 const CHUNK_SIZE = 1200 // bytes of raw binary data
 
 export function SequentialQRSender({ file }: SequentialQRSenderProps) {
-  const [metadataChunk, setMetadataChunk] = useState<string>('') // Metadata JSON string (now JSON instead of binary)
+  // Metadata removed: parent component is responsible for metadata QR
   const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
@@ -28,7 +28,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   const [scanningFeedback, setScanningFeedback] = useState(false)
   const [missingChunksQueue, setMissingChunksQueue] = useState<number[]>([])
   const [playingMissingOnly, setPlayingMissingOnly] = useState(false)
-  const [showMetadata, setShowMetadata] = useState(true) // Show metadata QR initially
+  // Removed showMetadata state – always showing data chunks
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
@@ -41,25 +41,8 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         const arrayBuffer = e.target?.result as ArrayBuffer
         const bytes = new Uint8Array(arrayBuffer)
 
-        // Calculate number of data chunks needed
+        // Calculate number of data chunks needed & create data chunks (0-based indexing)
         const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
-
-        // Create metadata chunk in JSON format (replacing previous custom binary format)
-        // This improves readability and easier decoding on receiver side.
-        const metadataJson = {
-          type: 'METADATA',
-            mode: 'sequential',
-            version: 1,
-            fileName: file.name,
-            fileType: file.type || 'application/octet-stream',
-            fileSize: bytes.length,
-            totalChunks: totalDataChunks,
-            chunkSize: CHUNK_SIZE,
-            timestamp: Date.now()
-        }
-        setMetadataChunk(JSON.stringify(metadataJson))
-
-        // Create data chunks (0-based indexing)
         // Format: [type=1 (1 byte)][chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
         const newDataChunks: string[] = []
         for (let i = 0; i < totalDataChunks; i++) {
@@ -87,7 +70,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
         setDataChunks(newDataChunks)
         setCurrentChunk(0)
-        setShowMetadata(true) // Reset to show metadata when new file is loaded
+        // Metadata handled externally – start directly at first data chunk
         setError('')
       } catch (err) {
         setError('Failed to process file')
@@ -104,26 +87,19 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
   // Generate QR code for current chunk
   useEffect(() => {
-    if (!metadataChunk && dataChunks.length === 0) {
+    if (dataChunks.length === 0) {
       setQrCodeUrl('')
       return
     }
 
     const generateQR = async () => {
       try {
-        // Select the appropriate chunk (metadata JSON or binary data chunk)
-        const chunkString = showMetadata ? metadataChunk : dataChunks[currentChunk]
+        const chunkString = dataChunks[currentChunk]
         if (!chunkString) return
-
-        // For metadata (JSON text) use UTF-8 bytes; for data chunks keep original binary mapping
-        let bytes: Uint8Array
-        if (showMetadata) {
-          bytes = new TextEncoder().encode(chunkString)
-        } else {
-          bytes = new Uint8Array(chunkString.length)
-          for (let i = 0; i < chunkString.length; i++) {
-            bytes[i] = chunkString.charCodeAt(i) & 0xFF
-          }
+        // Data chunks: reconstruct bytes from stored Latin-1 string
+        const bytes = new Uint8Array(chunkString.length)
+        for (let i = 0; i < chunkString.length; i++) {
+          bytes[i] = chunkString.charCodeAt(i) & 0xFF
         }
 
         const dataUrl = await QRCode.toDataURL([{ data: bytes, mode: 'byte' }], {
@@ -143,7 +119,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
     }
 
     generateQR()
-  }, [metadataChunk, dataChunks, currentChunk, showMetadata])
+  }, [dataChunks, currentChunk])
 
   // Animation loop
   useEffect(() => {
@@ -177,30 +153,18 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
 
   const handlePlayPause = () => {
-    if (!isPlaying && showMetadata) {
-      // When starting play from metadata, move to first data chunk
-      setShowMetadata(false)
-      setCurrentChunk(0)
-    }
     setIsPlaying(!isPlaying)
   }
 
   const handleNext = () => {
-    if (showMetadata) {
-      setShowMetadata(false)
-      setCurrentChunk(0)
-    } else {
-      // Navigate through data chunks (0-based)
-      setCurrentChunk((prev) => {
-        const next = prev + 1
-        if (next >= dataChunks.length) return 0 // Loop to first data chunk
-        return next
-      })
-    }
+    setCurrentChunk((prev) => {
+      const next = prev + 1
+      if (next >= dataChunks.length) return 0 // Loop
+      return next
+    })
   }
 
   const handlePrevious = () => {
-    if (showMetadata) return // Can't go back from metadata
     setCurrentChunk((prev) => {
       const prevChunk = prev - 1
       if (prevChunk < 0) return dataChunks.length - 1 // Loop to last data chunk
@@ -252,7 +216,6 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         setMissingChunksQueue(feedback.missingChunks)
         setPlayingMissingOnly(true)
         setCurrentChunk(feedback.missingChunks[0] || 0)
-        setShowMetadata(false)
         setScanningFeedback(false)
         setIsPlaying(false)
         setLoopCount(0)
@@ -282,7 +245,6 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   const handleResetToAllChunks = () => {
     setPlayingMissingOnly(false)
     setMissingChunksQueue([])
-    setShowMetadata(true)
     setCurrentChunk(0)
     setIsPlaying(false)
     setLoopCount(0)
@@ -349,7 +311,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           {qrCodeUrl ? (
             <img
               src={qrCodeUrl}
-              alt={showMetadata ? 'Metadata QR Code - Scan to Start' : `Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
+              alt={`Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
               className="max-w-full h-auto"
             />
           ) : (
@@ -359,12 +321,12 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           )}
         </div>
 
-        {/* Chunk ID / Metadata Overlay - styled similar to FountainQRSender */}
+        {/* Chunk ID Overlay */}
         <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
           <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-            {showMetadata ? 'Metadata Only' : `Chunk ${currentChunk + 1} / ${dataChunks.length}`}
+            {`Chunk ${currentChunk + 1} / ${dataChunks.length}`}
           </div>
-          {isPlaying && !showMetadata && (
+          {isPlaying && (
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
               PLAYING
@@ -372,7 +334,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           )}
         </div>
 
-        {loopCount > 0 && !showMetadata && (
+        {loopCount > 0 && (
           <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
             Loop #{loopCount + 1}
           </div>
@@ -380,20 +342,13 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
       </div>
 
       {/* Chunk Progress */}
-      {!showMetadata && dataChunks.length > 0 && (
+      {dataChunks.length > 0 && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Data chunk {currentChunk + 1} of {dataChunks.length}</span>
             <span>{Math.round(((currentChunk + 1) / dataChunks.length) * 100)}%</span>
           </div>
           <Progress value={((currentChunk + 1) / dataChunks.length) * 100} />
-        </div>
-      )}
-
-      {/* Metadata helper message below QR - matches style of FountainQRSender */}
-      {showMetadata && qrCodeUrl && (
-        <div className="text-xs text-center text-blue-600 dark:text-blue-400 font-medium">
-          📦 Scan this first to receive file information
         </div>
       )}
 
@@ -404,7 +359,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
             variant="outline"
             size="sm"
             onClick={handlePrevious}
-            disabled={dataChunks.length === 0 || showMetadata}
+            disabled={dataChunks.length === 0}
           >
             ← Previous
           </Button>
@@ -480,7 +435,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         <AlertDescription>
           <p className="font-medium mb-2">📱 Sequential Transfer Mode:</p>
           <ol className="list-decimal list-inside space-y-1 text-sm">
-            <li>Receiver scans the metadata QR code first (shown now)</li>
+            <li>Receiver should have already scanned the metadata QR</li>
             <li>Click "Play" to cycle through data QR codes automatically</li>
             <li>Enable "Repeat ON" to loop through all data chunks</li>
             <li>Receiver tracks which chunks are scanned (deduplication)</li>
