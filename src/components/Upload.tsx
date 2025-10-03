@@ -610,7 +610,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                       className="h-6 px-2 text-xs"
                       variant="outline"
                     >
-                      Get QR for Current Site
+                      QR for This Site
                     </Button>
                   </div>
                   <span className={textInput.length > 700 ? "text-orange-600 font-medium" : ""}>
