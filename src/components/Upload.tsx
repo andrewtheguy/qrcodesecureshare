@@ -600,6 +600,18 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                     >
                       Clear
                     </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const currentUrl = window.location.href
+                        setTextInput(currentUrl)
+                        generateTextQR(currentUrl)
+                      }}
+                      className="h-6 px-2 text-xs"
+                      variant="outline"
+                    >
+                      Get QR for Current Site
+                    </Button>
                   </div>
                   <span className={textInput.length > 700 ? "text-orange-600 font-medium" : ""}>
                     {textInput.length} characters
