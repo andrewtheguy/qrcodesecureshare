@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 
@@ -229,7 +228,6 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     )
   }
 
-  const progress = estimatedChunksNeeded > 0 ? Math.min((chunkCount / estimatedChunksNeeded) * 100, 100) : 0
   const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
 
   return (
@@ -287,21 +285,20 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
 
       {/* Progress */}
       {chunkCount > 0 && (
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Sent {chunkCount} chunks (est. {estimatedChunksNeeded} needed)</span>
-            <span>{Math.round(progress)}%</span>
+        <div className="space-y-1 text-sm">
+          <div className="flex flex-wrap justify-center gap-2 text-center">
+            <span className="font-medium">Sent {chunkCount} chunk{chunkCount === 1 ? '' : 's'}</span>
+            <span className="opacity-70">(~{estimatedChunksNeeded} typically needed)</span>
           </div>
-          <Progress value={progress} />
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-center gap-3 text-xs flex-wrap">
             <p className="text-muted-foreground">
               {chunkCount >= estimatedChunksNeeded
-                ? '✅ Receiver should have enough chunks to decode'
-                : `${estimatedChunksNeeded - chunkCount} more chunks recommended`}
+                ? '✅ Receiver should now be able to decode'
+                : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
             </p>
             {skippedChunks > 0 && (
               <p className="text-amber-600 dark:text-amber-400 font-medium">
-                ⚠️ Skipped: {skippedChunks}
+                ⚠️ Skipped {skippedChunks}
               </p>
             )}
           </div>
