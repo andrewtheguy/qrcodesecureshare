@@ -16,7 +16,7 @@ interface SequentialQRSenderProps {
 const CHUNK_SIZE = 1200 // bytes of raw binary data
 
 export function SequentialQRSender({ file }: SequentialQRSenderProps) {
-  const [metadataChunk, setMetadataChunk] = useState<string>('') // Separate metadata chunk
+  const [metadataChunk, setMetadataChunk] = useState<string>('') // Metadata JSON string (now JSON instead of binary)
   const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
@@ -44,41 +44,20 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         // Calculate number of data chunks needed
         const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
 
-        // Encode text fields using TextEncoder
-        const nameBytes = new TextEncoder().encode(file.name)
-        const typeBytes = new TextEncoder().encode(file.type || 'application/octet-stream')
-
-        // Create metadata chunk (binary format)
-        // Format: [type=0 (1 byte)][total data chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
-        const metadataSize = 1 + 2 + 1 + nameBytes.length + 1 + typeBytes.length + 4
-        const metadataBytes = new Uint8Array(metadataSize)
-        let offset = 0
-
-        // Chunk type: 0 = metadata
-        metadataBytes[offset++] = 0
-
-        // Total data chunks (2 bytes, big-endian)
-        metadataBytes[offset++] = (totalDataChunks >> 8) & 0xFF
-        metadataBytes[offset++] = totalDataChunks & 0xFF
-
-        // Name
-        metadataBytes[offset++] = nameBytes.length
-        metadataBytes.set(nameBytes, offset)
-        offset += nameBytes.length
-
-        // Type
-        metadataBytes[offset++] = typeBytes.length
-        metadataBytes.set(typeBytes, offset)
-        offset += typeBytes.length
-
-        // File size (4 bytes, big-endian)
-        metadataBytes[offset++] = (bytes.length >> 24) & 0xFF
-        metadataBytes[offset++] = (bytes.length >> 16) & 0xFF
-        metadataBytes[offset++] = (bytes.length >> 8) & 0xFF
-        metadataBytes[offset++] = bytes.length & 0xFF
-
-        // Convert metadata to string for QR encoding (using Latin-1 encoding)
-        setMetadataChunk(String.fromCharCode(...metadataBytes))
+        // Create metadata chunk in JSON format (replacing previous custom binary format)
+        // This improves readability and easier decoding on receiver side.
+        const metadataJson = {
+          type: 'METADATA',
+            mode: 'sequential',
+            version: 1,
+            fileName: file.name,
+            fileType: file.type || 'application/octet-stream',
+            fileSize: bytes.length,
+            totalChunks: totalDataChunks,
+            chunkSize: CHUNK_SIZE,
+            timestamp: Date.now()
+        }
+        setMetadataChunk(JSON.stringify(metadataJson))
 
         // Create data chunks (0-based indexing)
         // Format: [type=1 (1 byte)][chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
@@ -132,14 +111,19 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
     const generateQR = async () => {
       try {
-        // Select the appropriate chunk (metadata or data)
+        // Select the appropriate chunk (metadata JSON or binary data chunk)
         const chunkString = showMetadata ? metadataChunk : dataChunks[currentChunk]
         if (!chunkString) return
 
-        // Convert string back to byte array for binary QR generation
-        const bytes = new Uint8Array(chunkString.length)
-        for (let i = 0; i < chunkString.length; i++) {
-          bytes[i] = chunkString.charCodeAt(i) & 0xFF
+        // For metadata (JSON text) use UTF-8 bytes; for data chunks keep original binary mapping
+        let bytes: Uint8Array
+        if (showMetadata) {
+          bytes = new TextEncoder().encode(chunkString)
+        } else {
+          bytes = new Uint8Array(chunkString.length)
+          for (let i = 0; i < chunkString.length; i++) {
+            bytes[i] = chunkString.charCodeAt(i) & 0xFF
+          }
         }
 
         const dataUrl = await QRCode.toDataURL([{ data: bytes, mode: 'byte' }], {

@@ -100,16 +100,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       for (let i = 0; i < data.length; i++) {
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
-
-      // Only expect fountain data chunks (0xFF 0xFD)
-      // Metadata (0xFF 0xFE) is handled by parent component
+      // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
       if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
         addDebugLog('🔁 Processing fountain chunk')
         handleBinaryFountainChunk(bytes)
-        return
+      } else {
+        addDebugLog('⚠ Ignoring non-fountain-chunk QR content')
       }
-
-      addDebugLog('⚠ Ignoring non-data QR code (metadata already received)')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Error: ${errorMsg}`)
@@ -169,7 +166,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         throw new Error('Failed to get decoded data')
       }
 
-      const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
+      // Ensure we pass an ArrayBuffer or valid BlobPart; slice to detach if needed
+      const uint8Copy = new Uint8Array(reconstructedData) // Ensures standard Uint8Array
+      const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)

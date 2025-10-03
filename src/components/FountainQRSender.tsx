@@ -68,74 +68,31 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     reader.readAsArrayBuffer(file)
   }, [file])
 
-  // Generate metadata-only QR code (Chunk #0) in binary format
+  // Generate metadata-only QR code (Chunk #0) now in JSON format (previously binary)
   const generateMetadataQR = async () => {
     if (!encoder) return
 
     try {
       const metadata = encoder.getMetadata()
+      // JSON metadata format for easier debugging & interoperability
+      // Includes a type discriminator and fountain-specific fields
+      const jsonMetadata = {
+        type: 'METADATA',
+        mode: 'fountain',
+        version: 1,
+        fileName: metadata.name,
+        fileType: metadata.type,
+        fileSize: metadata.size,
+        timestamp: metadata.timestamp,
+        totalSourceBlocks: metadata.totalSourceBlocks,
+        blockSize: metadata.blockSize,
+        chunkSize: CHUNK_SIZE
+      }
 
-      // Binary format for metadata:
-      // [0xFF][0xFE] - magic bytes for fountain metadata
-      // [nameLen(1)][name bytes...]
-      // [typeLen(1)][type bytes...]
-      // [size(4 bytes)]
-      // [timestamp(4 bytes, seconds)]
-      // [blocks(2 bytes)]
-      // [blockSize(2 bytes)]
+      const jsonString = JSON.stringify(jsonMetadata)
+      const utf8Bytes = new TextEncoder().encode(jsonString)
 
-      const nameBytes = new TextEncoder().encode(metadata.name)
-      const typeBytes = new TextEncoder().encode(metadata.type)
-
-      const binaryData = new Uint8Array(
-        2 + // magic bytes
-        1 + nameBytes.length +
-        1 + typeBytes.length +
-        4 + // size
-        4 + // timestamp (seconds)
-        2 + // blocks
-        2   // blockSize
-      )
-
-      let offset = 0
-      binaryData[offset++] = 0xFF // Magic byte 1
-      binaryData[offset++] = 0xFE // Magic byte 2
-
-      // Name
-      binaryData[offset++] = nameBytes.length
-      binaryData.set(nameBytes, offset)
-      offset += nameBytes.length
-
-      // Type
-      binaryData[offset++] = typeBytes.length
-      binaryData.set(typeBytes, offset)
-      offset += typeBytes.length
-
-      // Size (4 bytes)
-      binaryData[offset++] = (metadata.size >> 24) & 0xFF
-      binaryData[offset++] = (metadata.size >> 16) & 0xFF
-      binaryData[offset++] = (metadata.size >> 8) & 0xFF
-      binaryData[offset++] = metadata.size & 0xFF
-
-      // Timestamp (4 bytes, as seconds)
-      const timestampSec = Math.floor(metadata.timestamp / 1000)
-      binaryData[offset++] = (timestampSec >> 24) & 0xFF
-      binaryData[offset++] = (timestampSec >> 16) & 0xFF
-      binaryData[offset++] = (timestampSec >> 8) & 0xFF
-      binaryData[offset++] = timestampSec & 0xFF
-
-      // Blocks (2 bytes)
-      binaryData[offset++] = (metadata.totalSourceBlocks >> 8) & 0xFF
-      binaryData[offset++] = metadata.totalSourceBlocks & 0xFF
-
-      // Block size (2 bytes)
-      binaryData[offset++] = (metadata.blockSize >> 8) & 0xFF
-      binaryData[offset++] = metadata.blockSize & 0xFF
-
-      // Convert to string for QR encoding (ISO-8859-1/Latin1)
-      const binaryString = String.fromCharCode(...binaryData)
-
-      const dataUrl = await QRCode.toDataURL(binaryString, {
+      const dataUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
         width: 400,
         margin: 2,
         errorCorrectionLevel: 'M',

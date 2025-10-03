@@ -18,7 +18,8 @@ interface ChunkData {
 }
 
 interface SequentialQRReceiverProps {
-  initialMetadata: {
+  // initialMetadata is now optional; if absent we'll wait for a JSON metadata QR
+  initialMetadata?: {
     name: string
     size: number
     type: string
@@ -27,32 +28,36 @@ interface SequentialQRReceiverProps {
 }
 
 export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverProps) {
-  // Initialize metadata immediately (always provided by parent)
-  const initialMeta: ChunkData['meta'] = {
+  // Initialize metadata if provided, else placeholder until metadata QR scanned
+  const initialMeta: ChunkData['meta'] | null = initialMetadata ? {
     name: initialMetadata.name,
     size: initialMetadata.size,
     type: initialMetadata.type,
     timestamp: Date.now()
-  }
+  } : null
 
   const [isScanning, setIsScanning] = useState(false)
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ChunkData>>(new Map())
-  const [metadata] = useState<ChunkData['meta']>(initialMeta)
-  const [totalChunks] = useState(initialMetadata.totalChunks)
+  const [metadata, setMetadata] = useState<ChunkData['meta'] | null>(initialMeta)
+  const [totalChunks, setTotalChunks] = useState(initialMetadata?.totalChunks || 0)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
-  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`])
+  const [debugLog, setDebugLog] = useState<string[]>([
+    initialMeta
+      ? `[${new Date().toLocaleTimeString()}] 📦 Initialized with provided metadata: ${initialMeta.name} (${initialMetadata?.totalChunks} chunks)`
+      : `[${new Date().toLocaleTimeString()}] ⏳ Waiting for metadata QR (JSON)`
+  ])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
-  const metadataRef = useRef<ChunkData['meta']>(initialMeta)
-  const totalChunksRef = useRef<number>(initialMetadata.totalChunks)
+  const metadataRef = useRef<ChunkData['meta'] | null>(initialMeta)
+  const totalChunksRef = useRef<number>(initialMetadata?.totalChunks || 0)
 
   // Auto-start scanning on mount
   useEffect(() => {
@@ -106,15 +111,41 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
-      // Convert string to bytes (QR scanner returns string from binary data)
+      // Attempt to parse JSON metadata if we don't have metadata yet
+      if (!metadataRef.current) {
+        try {
+          const parsed = JSON.parse(data)
+          if (parsed && parsed.type === 'METADATA' && parsed.mode === 'sequential') {
+            // Validate required fields
+            if (typeof parsed.fileName === 'string' && typeof parsed.fileSize === 'number' && typeof parsed.totalChunks === 'number') {
+              const metaObj: ChunkData['meta'] = {
+                name: parsed.fileName,
+                size: parsed.fileSize,
+                type: parsed.fileType || 'application/octet-stream',
+                timestamp: parsed.timestamp || Date.now()
+              }
+              metadataRef.current = metaObj
+              setMetadata(metaObj)
+              totalChunksRef.current = parsed.totalChunks
+              setTotalChunks(parsed.totalChunks)
+              addDebugLog(`✓ Metadata received via JSON: ${metaObj.name} (${parsed.totalChunks} chunks)`)          
+              setError('')
+              return // Metadata QR handled; wait for next scans for data chunks
+            }
+          }
+        } catch (_) {
+          // Not JSON metadata; fall through to treat as binary chunk attempt
+        }
+      }
+
+      // Convert string to bytes (QR scanner returns string from binary data or JSON)
       const bytes = new Uint8Array(data.length)
       for (let i = 0; i < data.length; i++) {
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
 
-      // Only expect sequential data chunks (type=1)
-      // Metadata (type=0) is handled by parent component
-      if (bytes.length >= 1 && bytes[0] === 1) {
+      // Only expect sequential data chunks (type=1) once metadata known
+      if (metadataRef.current && bytes.length >= 1 && bytes[0] === 1) {
         addDebugLog('📋 Processing data chunk')
 
         if (bytes.length < 4) {
@@ -125,13 +156,13 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
         const chunkData = bytes.slice(offset)
 
-        addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunksRef.current} (${chunkData.length} bytes)`)
+  addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunksRef.current} (${chunkData.length} bytes)`)
 
         // Convert chunk data to base64 for storage
         const base64Data = btoa(String.fromCharCode(...chunkData))
 
         const chunk: ChunkData = {
-          meta: metadataRef.current,
+          meta: metadataRef.current!,
           index: chunkIndex,
           total: totalChunksRef.current,
           data: base64Data
@@ -148,8 +179,10 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           }
           return updated
         })
+      } else if (!metadataRef.current) {
+        addDebugLog('⚠ Ignored QR (no metadata yet & not valid metadata JSON)')
       } else {
-        addDebugLog('⚠ Ignoring non-data QR code (metadata already received)')
+        addDebugLog('⚠ Ignoring non-data QR code (already have metadata)')
       }
 
       setError('')
@@ -162,7 +195,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
   // Check if all chunks received and reconstruct file
   useEffect(() => {
-    if (totalChunks === 0 || receivedChunks.size === 0) return
+  if (totalChunks === 0 || receivedChunks.size === 0) return
 
     // totalChunks is the number of data chunks (metadata chunk is separate)
     if (receivedChunks.size === totalChunks) {
@@ -186,7 +219,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
 
       // Create blob and download URL
-      const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
+  const blob = new Blob([bytes], { type: metadata?.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -236,7 +269,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
     const link = document.createElement('a')
     link.href = downloadUrl
-    link.download = metadata.name
+  link.download = metadata.name
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -256,8 +289,8 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     // Create feedback payload
     const feedback = {
       type: 'MISSING_CHUNKS_FEEDBACK',
-      timestamp: metadata?.timestamp || Date.now(),
-      fileName: metadata?.name || 'unknown',
+  timestamp: metadata?.timestamp || Date.now(),
+  fileName: metadata?.name || 'unknown',
       totalChunks: totalChunks,
       receivedCount: receivedChunks.size,
       missingChunks
@@ -312,7 +345,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       )}
 
       {/* Metadata Info */}
-      {metadata && !success && (
+  {metadata && !success && (
         <Alert>
           <AlertDescription>
             <p className="font-medium">{metadata.name}</p>
@@ -324,7 +357,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       )}
 
       {/* Chunk Grid */}
-      {totalChunks > 0 && !success && (
+  {totalChunks > 0 && !success && (
         <div className="grid grid-cols-10 gap-1">
           {Array.from({ length: totalChunks }, (_, i) => (
             <div

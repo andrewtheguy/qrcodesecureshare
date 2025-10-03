@@ -76,125 +76,50 @@ export function AnimatedQRReceiver() {
       lastScannedRef.current = data
       lastScanTimeRef.current = now
 
-      addDebugLog(`Scanned metadata, length: ${data.length} bytes`)
+      addDebugLog(`Scanned metadata text, length: ${data.length} chars`)
 
-      // Convert string to bytes
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
+      // Try to parse JSON (new format)
+      const parsed = JSON.parse(data)
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Not a JSON object')
+      }
+      if (parsed.type !== 'METADATA') {
+        throw new Error('Missing METADATA type field')
+      }
+      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain') {
+        throw new Error('Unknown transfer mode')
       }
 
-      // Check for fountain code magic bytes (0xFF 0xFE)
-      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFE) {
-        addDebugLog('📦 Detected fountain metadata')
-        handleFountainMetadata(bytes)
-        return
+      if (parsed.mode === 'sequential') {
+        setDetectedMetadata({
+          mode: 'sequential',
+          name: parsed.fileName,
+          size: parsed.fileSize,
+          type: parsed.fileType,
+          totalChunks: parsed.totalChunks
+        })
+        addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
+      } else {
+        setDetectedMetadata({
+          mode: 'fountain',
+          name: parsed.fileName,
+          size: parsed.fileSize,
+          type: parsed.fileType,
+          totalSourceBlocks: parsed.totalSourceBlocks,
+          blockSize: parsed.blockSize
+        })
+        addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
 
-      // Check for sequential binary format (type=0)
-      if (bytes.length >= 1 && bytes[0] === 0) {
-        addDebugLog('📋 Detected sequential metadata')
-        handleSequentialMetadata(bytes)
-        return
+      setIsScanning(false)
+      if (scannerRef.current) {
+        scannerRef.current.stop()
       }
-
-      addDebugLog('⚠ Unknown metadata format')
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      addDebugLog(`✗ Error: ${errorMsg}`)
+      addDebugLog(`✗ Metadata parse error: ${errorMsg}`)
       console.error('Metadata scan error:', err)
-      setError('Failed to parse metadata QR code. Please try again.')
-    }
-  }
-
-  const handleFountainMetadata = (bytes: Uint8Array) => {
-    try {
-      // Binary format: [0xFF][0xFE][nameLen][name...][typeLen][type...][size(4)][timestamp(4)][blocks(2)][blockSize(2)]
-      let offset = 2 // Skip magic bytes
-
-      // Read name
-      const nameLen = bytes[offset++]
-      const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-      offset += nameLen
-
-      // Read type
-      const typeLen = bytes[offset++]
-      const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-      offset += typeLen
-
-      // Read size (4 bytes)
-      const size = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-
-      // Read timestamp (4 bytes, seconds) - skip
-      offset += 4
-
-      // Read blocks (2 bytes)
-      const totalSourceBlocks = (bytes[offset++] << 8) | bytes[offset++]
-
-      // Read blockSize (2 bytes)
-      const blockSize = (bytes[offset++] << 8) | bytes[offset++]
-
-      setDetectedMetadata({
-        mode: 'fountain',
-        name,
-        size,
-        type,
-        totalSourceBlocks,
-        blockSize
-      })
-
-      addDebugLog(`✓ Fountain metadata: ${name} (${totalSourceBlocks} blocks)`)
-      setIsScanning(false)
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-      }
-    } catch (err) {
-      throw new Error(`Failed to parse fountain metadata: ${err instanceof Error ? err.message : 'unknown'}`)
-    }
-  }
-
-  const handleSequentialMetadata = (bytes: Uint8Array) => {
-    try {
-      // Format: [type=0 (1 byte)][total data chunks (2 bytes)][name length (1 byte)][name][type length (1 byte)][type][file size (4 bytes)]
-      let offset = 1 // Skip type byte
-
-      // Total data chunks (2 bytes, big-endian)
-      const totalDataChunks = (bytes[offset++] << 8) | bytes[offset++]
-
-      // Name
-      const nameLen = bytes[offset++]
-      if (nameLen > 255 || offset + nameLen > bytes.length) {
-        throw new Error('Invalid metadata format: nameLen out of bounds')
-      }
-      const name = new TextDecoder().decode(bytes.slice(offset, offset + nameLen))
-      offset += nameLen
-
-      // Type
-      const typeLen = bytes[offset++]
-      if (typeLen > 255 || offset + typeLen > bytes.length) {
-        throw new Error('Invalid metadata format: typeLen out of bounds')
-      }
-      const type = new TextDecoder().decode(bytes.slice(offset, offset + typeLen))
-      offset += typeLen
-
-      // File size (4 bytes, big-endian)
-      const fileSize = (bytes[offset++] << 24) | (bytes[offset++] << 16) | (bytes[offset++] << 8) | bytes[offset++]
-
-      setDetectedMetadata({
-        mode: 'sequential',
-        name,
-        size: fileSize,
-        type,
-        totalChunks: totalDataChunks
-      })
-
-      addDebugLog(`✓ Sequential metadata: ${name} (${totalDataChunks} chunks)`)
-      setIsScanning(false)
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-      }
-    } catch (err) {
-      throw new Error(`Failed to parse sequential metadata: ${err instanceof Error ? err.message : 'unknown'}`)
+      setError('Failed to parse metadata QR code (expecting JSON).')
     }
   }
 
