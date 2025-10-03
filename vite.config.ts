@@ -39,11 +39,8 @@ export default defineConfig({
       'Expires': '0',
       'Surrogate-Control': 'no-store'
     },
-    // Disable live reload and HMR
+    // Disable HMR
     hmr: false,
-    watch: {
-      ignored: ['**/*']
-    }
   },
   resolve: {
     alias: {
