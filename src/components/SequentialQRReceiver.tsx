@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { computeChecksum } from '@/utils/checksum'
-import QrScanner from 'qr-scanner'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { useQRScanner } from '@/hooks/useQRScanner'
 
 interface ChunkData {
   meta: {
@@ -44,7 +44,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   // Metadata + totalChunks are immutable for lifecycle of this mounted receiver (parent remounts on file change)
   const metadata = initialMeta
   const totalChunks = initialMetadata.totalChunks
-  const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
@@ -55,62 +54,12 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const scannerRef = useRef<QrScanner | null>(null)
-  const lastScannedRef = useRef<string>('')
-  const lastScanTimeRef = useRef<number>(0)
-  // Removed metadataRef/totalChunksRef (stable per mount)
-
-  // Auto-start scanning on mount
-  useEffect(() => {
-    setIsScanning(true)
-  }, [])
-
-  // Initialize scanner
-  useEffect(() => {
-    if (!isScanning || !videoRef.current) {
-      return
-    }
-
-    const scanner = new QrScanner(
-      videoRef.current,
-      (result) => {
-        handleScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      }
-    )
-
-    scannerRef.current = scanner
-    scanner.start().catch((err) => {
-      console.error('Scanner start error:', err)
-      setError('Failed to start camera. Please ensure camera permissions are granted.')
-      setIsScanning(false)
-    })
-
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [isScanning])
-
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
-  const handleScan = (data: string) => {
+  const handleScan = useCallback((data: string) => {
     try {
-      // Debounce duplicate scans (within 500ms)
-      const now = Date.now()
-      if (data === lastScannedRef.current && now - lastScanTimeRef.current < 500) {
-        return
-      }
-      lastScannedRef.current = data
-      lastScanTimeRef.current = now
-
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
       // No metadata parsing here; parent guarantees metadata already acquired
@@ -166,7 +115,17 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
     }
-  }
+  }, [addDebugLog, metadata, totalChunks])
+
+  const { videoRef, error, setError, stopScanner } = useQRScanner({
+    onScan: handleScan,
+    isScanning
+  })
+
+  // Auto-start scanning on mount
+  useEffect(() => {
+    setIsScanning(true)
+  }, [])
 
   // Check if all chunks received and reconstruct file
   useEffect(() => {
@@ -213,11 +172,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       setDownloadUrl(url)
       setSuccess(true)
       setIsScanning(false)
-
-      // Stop scanner
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-      }
+      stopScanner()
     } catch (err) {
       console.error('Reconstruction error:', err)
       setError('Failed to reconstruct file from chunks')
@@ -234,9 +189,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
   const handleStopScan = () => {
     setIsScanning(false)
-    if (scannerRef.current) {
-      scannerRef.current.stop()
-    }
+    stopScanner()
   }
 
   const handleReset = () => {
