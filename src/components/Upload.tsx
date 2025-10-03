@@ -625,7 +625,7 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                       📏 Text is too long for QR code ({textInput.length} characters)
                     </div>
                     <p className="text-sm">
-                      QR codes work best with shorter text (under 700 characters). 
+                      QR codes work best with shorter text (under 700 characters).
                       Would you like to upload this text as an encrypted file instead?
                     </p>
                     <div className="flex gap-3 justify-center flex-wrap pt-2">
@@ -636,7 +636,18 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
                       >
                         📁 Upload as Encrypted File
                       </Button>
-                      <Button 
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          generateQRCode(textInput.trim())
+                          setTextQrGenerated(true)
+                          setShowTextUploadOption(false)
+                        }}
+                        disabled={uploading}
+                      >
+                        Generate QR Anyway
+                      </Button>
+                      <Button
                         variant="outline"
                         onClick={() => {
                           setTextInput('')
