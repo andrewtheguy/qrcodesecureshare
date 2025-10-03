@@ -97,6 +97,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
     receivedChunkSeedsRef.current.add(seed)
 
+    // Start timer on first chunk received
+    if (!scanStartTimeRef.current) {
+      scanStartTimeRef.current = Date.now()
+    }
+
     // Read degree (1 byte)
     const degree = bytes[offset++]
 
@@ -161,7 +166,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Auto-start scanning on mount
   useEffect(() => {
     setIsScanning(true)
-    scanStartTimeRef.current = Date.now()
   }, [])
 
   const handleStartScan = () => {
@@ -173,7 +177,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setSuccess(false)
     setDownloadUrl('')
     setDecodeTime(null)
-    scanStartTimeRef.current = Date.now()
+    scanStartTimeRef.current = null
   }
 
   const handleStopScan = () => {
