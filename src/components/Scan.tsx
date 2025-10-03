@@ -40,6 +40,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
   const [privateKeyFingerprint, setPrivateKeyFingerprint] = useState<string | null>(null)
   const [privateKeyError, setPrivateKeyError] = useState<string | null>(null)
+  const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
   // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
   const [deviceIds, setDeviceIds] = useState<{ environment?: string; user?: string }>({})
@@ -54,9 +55,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const scannerRef = useRef<QrScanner | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const copyToClipboard = async (text: string) => {
+  const copyToClipboard = async (text: string, label?: string) => {
     try {
       await navigator.clipboard.writeText(text)
+      setCopiedFeedback(label || 'Copied!')
+      setTimeout(() => setCopiedFeedback(null), 2000)
     } catch (err) {
       const textArea = document.createElement('textarea')
       textArea.value = text
@@ -64,6 +67,8 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       textArea.select()
       document.execCommand('copy')
       document.body.removeChild(textArea)
+      setCopiedFeedback(label || 'Copied!')
+      setTimeout(() => setCopiedFeedback(null), 2000)
     }
   }
 
@@ -533,6 +538,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
 
   return (
     <div className="space-y-6">
+      {copiedFeedback && (
+        <div className="fixed top-4 right-4 bg-green-600 text-white px-4 py-2 rounded-md shadow-lg z-50 animate-in fade-in slide-in-from-top-2">
+          ✓ {copiedFeedback}
+        </div>
+      )}
       {!scanning && !scannedData && !scannedText && (
         <Card>
           <CardContent className="p-8 text-center">
@@ -903,32 +913,32 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                 {renderTextWithLinks(scannedText)}
               </div>
               <div className="flex justify-center gap-3">
-                <Button 
+                <Button
                   variant="outline"
                   onClick={() => copyToClipboard(scannedText)}
                 >
                   📋 Copy Text
                 </Button>
-                {onGenerateQR && (
-                  <Button 
-                    onClick={() => onGenerateQR(scannedText)}
-                  >
-                    🔄 Generate QR Code
-                  </Button>
-                )}
+                <Button
+                  onClick={() => {
+                    setScannedData(null)
+                    setScannedText(null)
+                    setUploadMode('camera')
+                  }}
+                >
+                  📷 Scan Another QR
+                </Button>
               </div>
-            </div>
-            
-            <div className="text-center">
-              <Button 
-                onClick={() => {
-                  setScannedData(null)
-                  setScannedText(null)
-                  setUploadMode('camera')
-                }}
-              >
-                Scan Another QR
-              </Button>
+              {onGenerateQR && (
+                <div className="text-center">
+                  <Button
+                    onClick={() => onGenerateQR(scannedText)}
+                    className="w-full"
+                  >
+                    🔄 Generate QR Code from Result
+                  </Button>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
