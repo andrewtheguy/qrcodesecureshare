@@ -3,7 +3,7 @@ import { computeChecksum } from '@/utils/checksum'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { SequentialQRSender } from './SequentialQRSender'
+import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
@@ -42,11 +42,10 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
         if (transferMode === 'sequential') {
           // Sequential metadata requires file length + chunk calculation
-          const CHUNK_SIZE = 1200
           const arrayBuffer = await file.arrayBuffer()
             // arrayBuffer length is available but we need byte length specifically
           const bytes = new Uint8Array(arrayBuffer)
-          const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
+          const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
           const checksum = await computeChecksum(bytes, 'crc32')
           const meta = {
             type: 'METADATA',
@@ -56,7 +55,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             fileType: file.type || 'application/octet-stream',
             fileSize: bytes.length,
             totalChunks: totalDataChunks,
-            chunkSize: CHUNK_SIZE,
+            chunkSize: SEQUENTIAL_CHUNK_SIZE,
             timestamp: Date.now(),
             checksumAlg: 'crc32',
             checksum
