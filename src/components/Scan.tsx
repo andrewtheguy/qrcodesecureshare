@@ -300,20 +300,40 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       try {
         const list = await QrScanner.listCameras(true) as { id: string, label: string }[]
         if (list && list.length) {
-          // Heuristics for label classification
-          const env = list.find(c => /back|rear|environment/i.test(c.label))
-          const user = list.find(c => /front|user|face/i.test(c.label))
           const ids: { environment?: string; user?: string } = {}
-          if (env) ids.environment = env.id
-          if (user) ids.user = user.id
-          // Fallbacks if classification failed
-          if (!ids.environment) ids.environment = list[0].id
-          if (!ids.user) ids.user = list[list.length - 1].id
+          if (list.length === 1) {
+            const only = list[0]
+            if (/front|user|face/i.test(only.label)) ids.user = only.id
+            else ids.environment = only.id
+          } else {
+            // Multiple cameras: classify and only assign if distinct matches
+            const env = list.find(c => /back|rear|environment/i.test(c.label))
+            const user = list.find(c => /front|user|face/i.test(c.label))
+            if (env) ids.environment = env.id
+            if (user) ids.user = user.id
+            // If still missing one category attempt to fill with a different id than the other
+            if (!ids.environment) {
+              const alt = list.find(c => c.id !== ids.user)
+              if (alt) ids.environment = alt.id
+            }
+            if (!ids.user) {
+              const alt = list.find(c => c.id !== ids.environment)
+              if (alt) ids.user = alt.id
+              else delete ids.user // ensure not both if truly single classification
+            }
+            // If both ended up same id (edge case), drop one based on facingMode preference
+            if (ids.environment && ids.user && ids.environment === ids.user) {
+              if (facingMode === 'environment') delete ids.user
+              else delete ids.environment
+            }
+          }
           setDeviceIds(ids)
-          // Choose starting facing mode device
-          const desiredId = (facingMode === 'environment' ? ids.environment : ids.user) || ids.environment || ids.user
-          if (desiredId) {
-            try { await scanner.setCamera(desiredId) } catch (e) { console.warn('Could not set initial facingMode camera', e) }
+          // Choose starting id (prefer environment on mobile when both exist)
+          const preferred = (facingMode === 'environment' && ids.environment) ? ids.environment
+            : (facingMode === 'user' && ids.user) ? ids.user
+            : ids.environment || ids.user
+          if (preferred) {
+            try { await scanner.setCamera(preferred) } catch (e) { console.warn('Could not set initial facingMode camera', e) }
           }
         }
       } catch (err) {
@@ -602,21 +622,19 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
               />
               <div className="flex flex-col gap-2 items-center">
                 {loadingCameras && <p className="text-xs text-muted-foreground">Detecting cameras…</p>}
-                {!loadingCameras && (
+                {!loadingCameras && (deviceIds.environment && deviceIds.user) && (
                   <div className="flex items-center gap-3 flex-wrap justify-center">
                     <span className="text-xs font-medium text-muted-foreground">Mode:</span>
                     <code className="text-xs bg-muted px-2 py-1 rounded">{facingMode}</code>
-                    {(deviceIds.environment && deviceIds.user) && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs"
-                        onClick={toggleFacingMode}
-                      >
-                        🔄 Flip
-                      </Button>
-                    )}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-xs"
+                      onClick={toggleFacingMode}
+                    >
+                      🔄 Flip
+                    </Button>
                   </div>
                 )}
                 {cameraError && <p className="text-xs text-red-600">{cameraError}</p>}
