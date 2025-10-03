@@ -19,8 +19,8 @@ interface ChunkData {
 }
 
 interface SequentialQRReceiverProps {
-  // initialMetadata is now optional; if absent we'll wait for a JSON metadata QR
-  initialMetadata?: {
+  // initialMetadata is required; metadata QR should be handled by parent
+  initialMetadata: {
     name: string
     size: number
     type: string
@@ -31,18 +31,19 @@ interface SequentialQRReceiverProps {
 }
 
 export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverProps) {
-  // Initialize metadata if provided, else placeholder until metadata QR scanned
-  const initialMeta: ChunkData['meta'] | null = initialMetadata ? {
+  // Metadata always provided by parent
+  const initialMeta: ChunkData['meta'] = {
     name: initialMetadata.name,
     size: initialMetadata.size,
     type: initialMetadata.type,
     timestamp: Date.now()
-  } : null
+  }
 
   const [isScanning, setIsScanning] = useState(false)
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ChunkData>>(new Map())
-  const [metadata, setMetadata] = useState<ChunkData['meta'] | null>(initialMeta)
-  const [totalChunks, setTotalChunks] = useState(initialMetadata?.totalChunks || 0)
+  // Metadata + totalChunks are immutable for lifecycle of this mounted receiver (parent remounts on file change)
+  const metadata = initialMeta
+  const totalChunks = initialMetadata.totalChunks
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
@@ -50,9 +51,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([
-    initialMeta
-      ? `[${new Date().toLocaleTimeString()}] 📦 Initialized with provided metadata: ${initialMeta.name} (${initialMetadata?.totalChunks} chunks)`
-      : `[${new Date().toLocaleTimeString()}] ⏳ Waiting for metadata QR (JSON)`
+    `[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
@@ -60,8 +59,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
-  const metadataRef = useRef<ChunkData['meta'] | null>(initialMeta)
-  const totalChunksRef = useRef<number>(initialMetadata?.totalChunks || 0)
+  // Removed metadataRef/totalChunksRef (stable per mount)
 
   // Auto-start scanning on mount
   useEffect(() => {
@@ -115,32 +113,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
-      // Attempt to parse JSON metadata if we don't have metadata yet
-      if (!metadataRef.current) {
-        try {
-          const parsed = JSON.parse(data)
-          if (parsed && parsed.type === 'METADATA' && parsed.mode === 'sequential') {
-            // Validate required fields
-            if (typeof parsed.fileName === 'string' && typeof parsed.fileSize === 'number' && typeof parsed.totalChunks === 'number') {
-              const metaObj: ChunkData['meta'] = {
-                name: parsed.fileName,
-                size: parsed.fileSize,
-                type: parsed.fileType || 'application/octet-stream',
-                timestamp: parsed.timestamp || Date.now()
-              }
-              metadataRef.current = metaObj
-              setMetadata(metaObj)
-              totalChunksRef.current = parsed.totalChunks
-              setTotalChunks(parsed.totalChunks)
-              addDebugLog(`✓ Metadata received via JSON: ${metaObj.name} (${parsed.totalChunks} chunks)`)          
-              setError('')
-              return // Metadata QR handled; wait for next scans for data chunks
-            }
-          }
-        } catch (_) {
-          // Not JSON metadata; fall through to treat as binary chunk attempt
-        }
-      }
+      // No metadata parsing here; parent guarantees metadata already acquired
 
       // Convert string to bytes (QR scanner returns string from binary data or JSON)
       const bytes = new Uint8Array(data.length)
@@ -148,8 +121,8 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
 
-      // Only expect sequential data chunks (type=1) once metadata known
-      if (metadataRef.current && bytes.length >= 1 && bytes[0] === 1) {
+      // Expect sequential data chunks (type=1)
+      if (bytes.length >= 1 && bytes[0] === 1) {
         addDebugLog('📋 Processing data chunk')
 
         if (bytes.length < 4) {
@@ -160,15 +133,15 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
         const chunkData = bytes.slice(offset)
 
-  addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunksRef.current} (${chunkData.length} bytes)`)
+  addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
 
         // Convert chunk data to base64 for storage
         const base64Data = btoa(String.fromCharCode(...chunkData))
 
         const chunk: ChunkData = {
-          meta: metadataRef.current!,
+          meta: metadata,
           index: chunkIndex,
-          total: totalChunksRef.current,
+          total: totalChunks,
           data: base64Data
         }
 
@@ -177,16 +150,14 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           const updated = new Map(prev)
           if (!updated.has(chunk.index)) {
             updated.set(chunk.index, chunk)
-            addDebugLog(`✓ Received data chunk ${chunk.index + 1}/${totalChunksRef.current}`)
+            addDebugLog(`✓ Received data chunk ${chunk.index + 1}/${totalChunks}`)
           } else {
-            addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${totalChunksRef.current}`)
+            addDebugLog(`⊗ Duplicate chunk ${chunk.index + 1}/${totalChunks}`)
           }
           return updated
         })
-      } else if (!metadataRef.current) {
-        addDebugLog('⚠ Ignored QR (no metadata yet & not valid metadata JSON)')
       } else {
-        addDebugLog('⚠ Ignoring non-data QR code (already have metadata)')
+        addDebugLog('⚠ Ignoring non-data QR code')
       }
 
       setError('')
@@ -222,22 +193,21 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
       addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
 
-      // Integrity verification if checksum present in metadataRef
+      // Integrity verification using initialMetadata checksum (if present)
       let checksumMatch: boolean | null = null
-      const md: any = metadataRef.current as any
-      if (md && md.checksum && md.checksumAlg === 'crc32') {
+      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
         const calc = await computeChecksum(bytes, 'crc32')
-        checksumMatch = calc === md.checksum
+        checksumMatch = calc === initialMetadata.checksum
         addDebugLog(checksumMatch
           ? `🔐 Integrity OK (crc32 ${calc})`
-          : `❌ Integrity FAILED (expected ${md.checksum}, got ${calc})`)
+          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
         setIntegrityOk(checksumMatch)
       } else {
         setIntegrityOk(null)
       }
 
       // Create blob and download URL
-  const blob = new Blob([bytes], { type: metadata?.type || 'application/octet-stream' })
+  const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -283,7 +253,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   }
 
   const handleDownload = () => {
-    if (!downloadUrl || !metadata) return
+  if (!downloadUrl) return
 
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -307,8 +277,8 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     // Create feedback payload
     const feedback = {
       type: 'MISSING_CHUNKS_FEEDBACK',
-  timestamp: metadata?.timestamp || Date.now(),
-  fileName: metadata?.name || 'unknown',
+  timestamp: metadata.timestamp || Date.now(),
+  fileName: metadata.name || 'unknown',
       totalChunks: totalChunks,
       receivedCount: receivedChunks.size,
       missingChunks

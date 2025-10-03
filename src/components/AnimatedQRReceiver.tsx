@@ -27,6 +27,8 @@ export function AnimatedQRReceiver() {
   const [error, setError] = useState<string>('')
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
+  // Used to force remount receiver component when a new file is chosen/confirmed
+  const [receiverKey, setReceiverKey] = useState(0)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
@@ -150,6 +152,8 @@ export function AnimatedQRReceiver() {
   const handleConfirmMode = () => {
     if (detectedMetadata) {
       setTransferMode(detectedMetadata.mode)
+      // Increment key so receiver remounts fresh for each new file confirmation
+      setReceiverKey(k => k + 1)
     }
   }
 
@@ -343,6 +347,7 @@ export function AnimatedQRReceiver() {
         {/* Render appropriate receiver component */}
         {transferMode === 'sequential' && detectedMetadata ? (
           <SequentialQRReceiver
+            key={receiverKey}
             initialMetadata={{
               name: detectedMetadata.name,
               size: detectedMetadata.size,
@@ -354,6 +359,7 @@ export function AnimatedQRReceiver() {
           />
         ) : transferMode === 'fountain' && detectedMetadata ? (
           <FountainQRReceiver
+            key={receiverKey}
             initialMetadata={{
               name: detectedMetadata.name,
               size: detectedMetadata.size,

@@ -30,7 +30,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }
 
   const [isScanning, setIsScanning] = useState(false)
-  const [fountainMetadata] = useState<FountainMetadata>(initialMeta)
+  // Metadata is immutable for this mount (component remounted per file)
+  const fountainMetadata: FountainMetadata = initialMeta
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [error, setError] = useState<string>('')
@@ -233,7 +234,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }
 
   const handleDownload = () => {
-    if (!downloadUrl || !fountainMetadata) return
+    if (!downloadUrl) return
 
     const link = document.createElement('a')
     link.href = downloadUrl
@@ -243,13 +244,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     document.body.removeChild(link)
   }
 
-  const progress = fountainMetadata
-    ? (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-    : 0
-
-  const estimatedChunksNeeded = fountainMetadata
-    ? Math.ceil(fountainMetadata.totalSourceBlocks * 1.1)
-    : 0
+  const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
+  const estimatedChunksNeeded = Math.ceil(fountainMetadata.totalSourceBlocks * 1.1)
 
   return (
     <div className="space-y-4">
@@ -268,7 +264,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Progress */}
-      {fountainMetadata && !success && (
+      {!success && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Decoded {decodedBlocks} of {fountainMetadata.totalSourceBlocks} blocks</span>
@@ -282,7 +278,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Metadata Info */}
-      {fountainMetadata && !success && (
+      {!success && (
         <Alert>
           <AlertDescription>
             <p className="font-medium">{fountainMetadata.name}</p>
@@ -320,7 +316,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               )}
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
-                  📥 Download {fountainMetadata?.name}
+                  📥 Download {fountainMetadata.name}
                 </Button>
                 <Button onClick={handleReset} variant="outline">
                   Reset
