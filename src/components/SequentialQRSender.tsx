@@ -13,7 +13,7 @@ interface SequentialQRSenderProps {
 // Maximum bytes per QR code chunk - using binary mode instead of base64
 // QR max ~2953 bytes (byte mode, error correction M)
 // Binary mode is more efficient (no base64 overhead)
-const CHUNK_SIZE = 1200 // bytes of raw binary data
+export const CHUNK_SIZE = 600 // bytes of raw binary data
 
 export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   // Metadata removed: parent component is responsible for metadata QR
@@ -97,13 +97,9 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
       try {
         const chunkString = dataChunks[currentChunk]
         if (!chunkString) return
-        // Data chunks: reconstruct bytes from stored Latin-1 string
-        const bytes = new Uint8Array(chunkString.length)
-        for (let i = 0; i < chunkString.length; i++) {
-          bytes[i] = chunkString.charCodeAt(i) & 0xFF
-        }
 
-        const dataUrl = await QRCode.toDataURL([{ data: bytes, mode: 'byte' }], {
+        // chunkString is already in Latin-1 encoding, pass directly to QRCode
+        const dataUrl = await QRCode.toDataURL(chunkString, {
           width: 400,
           margin: 2,
           errorCorrectionLevel: 'M',

@@ -60,15 +60,17 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
   const handleScan = useCallback((data: string) => {
     try {
-      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
+      addDebugLog(`Scanned chunk, length: ${data.length} chars, first char code: ${data.length > 0 ? data.charCodeAt(0) : 'N/A'}`)
 
-      // No metadata parsing here; parent guarantees metadata already acquired
+      //  No metadata parsing here; parent guarantees metadata already acquired
 
       // Convert string to bytes (QR scanner returns string from binary data or JSON)
       const bytes = new Uint8Array(data.length)
       for (let i = 0; i < data.length; i++) {
         bytes[i] = data.charCodeAt(i) & 0xFF
       }
+
+      addDebugLog(`Bytes length: ${bytes.length}, first byte: ${bytes[0]}, bytes[0]===1: ${bytes[0] === 1}`)
 
       // Expect sequential data chunks (type=1)
       if (bytes.length >= 1 && bytes[0] === 1) {
