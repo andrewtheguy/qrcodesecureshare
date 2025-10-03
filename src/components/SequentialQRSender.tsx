@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Slider } from '@/components/ui/slider'
 
 interface SequentialQRSenderProps {
   file: File
@@ -173,7 +174,21 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   }
 
   const handleSpeedChange = (newFps: number) => {
-    setFps(newFps)
+    // Snap to common frame rates
+    const snapPoints = [1, 2, 5, 10, 15, 20, 24, 25, 30, 45, 60]
+    const threshold = 2 // pixels of "stickiness"
+
+    // Find nearest snap point
+    const nearest = snapPoints.reduce((prev, curr) =>
+      Math.abs(curr - newFps) < Math.abs(prev - newFps) ? curr : prev
+    )
+
+    // Apply snap if close enough
+    if (Math.abs(nearest - newFps) <= threshold) {
+      setFps(nearest)
+    } else {
+      setFps(newFps)
+    }
   }
 
   // Feedback scanner initialization
@@ -388,19 +403,23 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         </div>
 
         {/* Speed Control */}
-        <div className="flex items-center gap-2 justify-center flex-wrap">
-          <span className="text-sm text-muted-foreground">Speed:</span>
-          {[1, 2, 3, 4, 5].map((speed) => (
-            <Button
-              key={speed}
-              variant={fps === speed ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => handleSpeedChange(speed)}
-              className="w-12"
-            >
-              {speed}fps
-            </Button>
-          ))}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between px-2">
+            <span className="text-sm text-muted-foreground">Speed:</span>
+            <span className="text-sm font-medium">{fps} fps</span>
+          </div>
+          <Slider
+            value={[fps]}
+            onValueChange={(value) => handleSpeedChange(value[0])}
+            min={1}
+            max={60}
+            step={1}
+            className="w-full"
+          />
+          <div className="flex justify-between text-xs text-muted-foreground px-2">
+            <span>1 fps</span>
+            <span>60 fps</span>
+          </div>
         </div>
 
         {/* Repeat Mode Toggle */}
