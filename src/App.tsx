@@ -29,7 +29,7 @@ function App() {
   return (
     <div className="max-w-4xl mx-auto min-h-screen px-2 sm:px-4">
       <header className="text-center mb-3 sm:mb-4 pt-1 sm:pt-2">
-        <h1 className="text-base text-3xl font-bold mb-1 sm:mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
+        <h1 className="text-base sm:text-3xl md:text-4xl font-bold mb-1 sm:mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text">
           <span>QR Secure Share</span>
         </h1>
       </header>
