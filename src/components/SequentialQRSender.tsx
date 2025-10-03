@@ -375,26 +375,18 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           )}
         </div>
 
-        {/* Chunk ID Overlay */}
-        {showMetadata ? (
-          <div className="absolute top-2 left-2 right-2 flex justify-center items-start">
-            <div className="bg-blue-600/90 text-white px-4 py-2 rounded-lg font-bold text-base">
-              📋 Metadata QR - Scan First
-            </div>
+        {/* Chunk ID / Metadata Overlay - styled similar to FountainQRSender */}
+        <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
+          <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
+            {showMetadata ? 'Metadata Only' : `Chunk ${currentChunk + 1} / ${dataChunks.length}`}
           </div>
-        ) : (
-          <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-            <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-              Data QR {currentChunk + 1} / {dataChunks.length}
+          {isPlaying && !showMetadata && (
+            <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
+              <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
+              PLAYING
             </div>
-            {isPlaying && (
-              <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
-                <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
-                PLAYING
-              </div>
-            )}
-          </div>
-        )}
+          )}
+        </div>
 
         {loopCount > 0 && !showMetadata && (
           <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
@@ -414,18 +406,11 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         </div>
       )}
 
-      {showMetadata && (
-        <Alert>
-          <AlertDescription>
-            <div className="text-center space-y-2">
-              <p className="font-medium">📋 Metadata QR Code Ready</p>
-              <p className="text-sm">
-                Have the receiver scan this QR code first to get file information.
-                Then click "Play" to start transmitting data chunks.
-              </p>
-            </div>
-          </AlertDescription>
-        </Alert>
+      {/* Metadata helper message below QR - matches style of FountainQRSender */}
+      {showMetadata && qrCodeUrl && (
+        <div className="text-xs text-center text-blue-600 dark:text-blue-400 font-medium">
+          📦 Scan this first to receive file information
+        </div>
       )}
 
       {/* Controls */}
