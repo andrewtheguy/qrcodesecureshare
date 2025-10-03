@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
+import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
@@ -24,9 +25,13 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
+  const [scanningFeedback, setScanningFeedback] = useState(false)
+  const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
+  const feedbackVideoRef = useRef<HTMLVideoElement>(null)
+  const feedbackScannerRef = useRef<QrScanner | null>(null)
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -229,6 +234,79 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     }
   }
 
+  // Feedback scanner initialization
+  useEffect(() => {
+    if (!scanningFeedback || !feedbackVideoRef.current) {
+      return
+    }
+
+    const scanner = new QrScanner(
+      feedbackVideoRef.current,
+      (result) => {
+        handleFeedbackScan(result.data)
+      },
+      {
+        returnDetailedScanResult: true,
+        highlightScanRegion: true,
+        highlightCodeOutline: true,
+      }
+    )
+
+    feedbackScannerRef.current = scanner
+    scanner.start().catch((err) => {
+      console.error('Feedback scanner start error:', err)
+      setError('Failed to start camera for feedback scanning')
+      setScanningFeedback(false)
+    })
+
+    return () => {
+      scanner.stop()
+      scanner.destroy()
+    }
+  }, [scanningFeedback])
+
+  const handleFeedbackScan = (data: string) => {
+    try {
+      const feedback = JSON.parse(data)
+
+      if (feedback.type === 'FOUNTAIN_FEEDBACK' && Array.isArray(feedback.receivedBlocks)) {
+        // Update the set of blocks the receiver has successfully decoded
+        setReceivedBlocks(new Set(feedback.receivedBlocks))
+
+        // Update estimated chunks needed based on feedback
+        const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+        const blocksReceived = feedback.receivedBlocks.length
+        const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
+
+        // If close to completion, reduce estimate
+        if (progress > 0.9) {
+          setEstimatedChunksNeeded(chunkCount + Math.ceil((totalBlocks - blocksReceived) * 1.2))
+        }
+
+        setScanningFeedback(false)
+
+        // Stop the scanner
+        if (feedbackScannerRef.current) {
+          feedbackScannerRef.current.stop()
+        }
+      }
+    } catch (err) {
+      console.error('Failed to parse feedback QR:', err)
+    }
+  }
+
+  const handleStartFeedbackScan = () => {
+    setScanningFeedback(true)
+    setError('')
+  }
+
+  const handleStopFeedbackScan = () => {
+    setScanningFeedback(false)
+    if (feedbackScannerRef.current) {
+      feedbackScannerRef.current.stop()
+    }
+  }
+
   if (error) {
     return (
       <Alert variant="destructive">
@@ -238,9 +316,61 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   }
 
   const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+  const receivedBlocksCount = receivedBlocks.size
+  const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
 
   return (
     <div className="space-y-4">
+      {/* Feedback Scanner Mode */}
+      {scanningFeedback && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">📷 Scanning for Feedback QR</p>
+              <div className="relative bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={feedbackVideoRef}
+                  className="w-full h-auto"
+                  style={{ maxHeight: '300px' }}
+                />
+                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
+                  ● SCANNING
+                </div>
+              </div>
+              <p className="text-sm">
+                Point camera at the receiver's feedback QR code to see decoding progress.
+              </p>
+              <Button onClick={handleStopFeedbackScan} variant="outline" className="w-full">
+                Cancel Scan
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Receiver Progress Alert */}
+      {receivedBlocksCount > 0 && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p className="font-medium">📊 Receiver Progress</p>
+              <div className="text-sm">
+                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                {decodingProgress >= 100 ? (
+                  <p className="text-green-600 dark:text-green-400 font-medium mt-1">
+                    ✅ Transfer complete! You can stop sending.
+                  </p>
+                ) : (
+                  <p className="text-muted-foreground mt-1">
+                    Keep sending chunks until 100% decoded
+                  </p>
+                )}
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* QR Code Display (clean container without overlays) */}
       <div className="flex justify-center bg-white p-4 rounded-lg">
         <canvas ref={canvasRef} style={{ display: 'none' }} />
@@ -297,11 +427,17 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             <span className="opacity-70">(~{estimatedChunksNeeded} typically needed)</span>
           </div>
           <div className="flex items-center justify-center gap-3 text-xs flex-wrap">
-            <p className="text-muted-foreground">
-              {chunkCount >= estimatedChunksNeeded
-                ? '✅ Receiver should now be able to decode'
-                : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
-            </p>
+            {receivedBlocksCount > 0 ? (
+              <p className="text-muted-foreground">
+                Receiver has decoded {receivedBlocksCount}/{sourceBlocks} blocks ({decodingProgress.toFixed(0)}%)
+              </p>
+            ) : (
+              <p className="text-muted-foreground">
+                {chunkCount >= estimatedChunksNeeded
+                  ? '✅ Receiver should now be able to decode'
+                  : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
+              </p>
+            )}
             {skippedChunks > 0 && (
               <p className="text-amber-600 dark:text-amber-400 font-medium">
                 ⚠️ Skipped {skippedChunks}
@@ -341,6 +477,22 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             <span>1 fps</span>
             <span>60 fps</span>
           </div>
+        </div>
+
+        {/* Feedback QR Scanner Button */}
+        <div className="pt-2 border-t">
+          <Button
+            onClick={handleStartFeedbackScan}
+            variant="secondary"
+            size="sm"
+            className="w-full"
+            disabled={scanningFeedback || !encoder}
+          >
+            📷 Scan Receiver's Feedback QR
+          </Button>
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Check receiver's decoding progress
+          </p>
         </div>
       </div>
 
