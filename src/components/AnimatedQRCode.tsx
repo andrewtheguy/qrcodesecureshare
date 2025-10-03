@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { computeChecksum } from '@/utils/checksum'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -46,6 +47,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             // arrayBuffer length is available but we need byte length specifically
           const bytes = new Uint8Array(arrayBuffer)
           const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
+          const checksum = await computeChecksum(bytes, 'crc32')
           const meta = {
             type: 'METADATA',
             mode: 'sequential',
@@ -55,7 +57,9 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             fileSize: bytes.length,
             totalChunks: totalDataChunks,
             chunkSize: CHUNK_SIZE,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            checksumAlg: 'crc32',
+            checksum
           }
           if (cancelled) return
           const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
@@ -74,6 +78,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           const arrayBuffer = await file.arrayBuffer()
           const size = arrayBuffer.byteLength
           const totalSourceBlocks = Math.ceil(size / BLOCK_SIZE)
+          const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
           const meta = {
             type: 'METADATA',
             mode: 'fountain',
@@ -84,7 +89,9 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             timestamp: Date.now(),
             totalSourceBlocks,
             blockSize: BLOCK_SIZE,
-            chunkSize: BLOCK_SIZE // include for parity
+            chunkSize: BLOCK_SIZE, // include for parity
+            checksumAlg: 'crc32',
+            checksum
           }
           if (cancelled) return
             const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
@@ -273,6 +280,9 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
                       </>
                     )}
                     <div className="col-span-2"><span className="font-semibold">Type:</span> {metadataJson.fileType}</div>
+                    {metadataJson.checksum && (
+                      <div className="col-span-2 break-all"><span className="font-semibold">Checksum ({metadataJson.checksumAlg}):</span> {metadataJson.checksum}</div>
+                    )}
                   </div>
                 </div>
               )}

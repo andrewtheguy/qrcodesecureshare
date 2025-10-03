@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { computeChecksum } from '@/utils/checksum'
 import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
@@ -12,6 +13,8 @@ interface FountainQRReceiverProps {
     type: string
     totalSourceBlocks: number
     blockSize?: number
+    checksum?: string
+    checksumAlg?: string
   }
 }
 
@@ -32,6 +35,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
+  const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
@@ -159,7 +163,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }
 
-  const reconstructFountainFile = (decoder: FountainDecoder) => {
+  const reconstructFountainFile = async (decoder: FountainDecoder) => {
     try {
       const reconstructedData = decoder.getDecodedData()
       if (!reconstructedData) {
@@ -179,6 +183,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       if (scannerRef.current) {
         scannerRef.current.stop()
       }
+
+      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
+        const calc = await computeChecksum(uint8Copy, 'crc32')
+        const match = calc === initialMetadata.checksum
+        setIntegrityOk(match)
+        addDebugLog(match
+          ? `🔐 Integrity OK (crc32 ${calc})`
+          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
+      } else setIntegrityOk(null)
 
       addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
     } catch (err) {
@@ -300,6 +313,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes ({receivedFountainChunks} chunks received)
                 </span>
               </p>
+              {integrityOk !== null && (
+                <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+                  {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {fountainMetadata?.name}

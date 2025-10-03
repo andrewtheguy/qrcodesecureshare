@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { computeChecksum } from '@/utils/checksum'
 import QrScanner from 'qr-scanner'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,8 @@ interface SequentialQRReceiverProps {
     size: number
     type: string
     totalChunks: number
+    checksum?: string
+    checksumAlg?: string
   }
 }
 
@@ -42,6 +45,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [totalChunks, setTotalChunks] = useState(initialMetadata?.totalChunks || 0)
   const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
+  const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
@@ -203,7 +207,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     }
   }, [receivedChunks, totalChunks])
 
-  const reconstructFile = () => {
+  const reconstructFile = async () => {
     try {
       // Sort chunks by index
       const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
@@ -217,6 +221,20 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       }
 
       addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
+
+      // Integrity verification if checksum present in metadataRef
+      let checksumMatch: boolean | null = null
+      const md: any = metadataRef.current as any
+      if (md && md.checksum && md.checksumAlg === 'crc32') {
+        const calc = await computeChecksum(bytes, 'crc32')
+        checksumMatch = calc === md.checksum
+        addDebugLog(checksumMatch
+          ? `🔐 Integrity OK (crc32 ${calc})`
+          : `❌ Integrity FAILED (expected ${md.checksum}, got ${calc})`)
+        setIntegrityOk(checksumMatch)
+      } else {
+        setIntegrityOk(null)
+      }
 
       // Create blob and download URL
   const blob = new Blob([bytes], { type: metadata?.type || 'application/octet-stream' })
@@ -439,6 +457,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           <AlertDescription>
             <div className="space-y-3">
               <p className="font-medium text-green-600">✅ File received successfully!</p>
+              {integrityOk !== null && (
+                <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+                  {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
+                </p>
+              )}
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {metadata?.name}

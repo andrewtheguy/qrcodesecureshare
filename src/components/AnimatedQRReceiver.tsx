@@ -16,6 +16,8 @@ interface DetectedMetadata {
   totalChunks?: number // for sequential
   totalSourceBlocks?: number // for fountain
   blockSize?: number // for fountain
+  checksum?: string
+  checksumAlg?: string
 }
 
 export function AnimatedQRReceiver() {
@@ -96,7 +98,9 @@ export function AnimatedQRReceiver() {
           name: parsed.fileName,
           size: parsed.fileSize,
           type: parsed.fileType,
-          totalChunks: parsed.totalChunks
+          totalChunks: parsed.totalChunks,
+          checksum: parsed.checksum,
+          checksumAlg: parsed.checksumAlg
         })
         addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
       } else {
@@ -106,7 +110,9 @@ export function AnimatedQRReceiver() {
           size: parsed.fileSize,
           type: parsed.fileType,
           totalSourceBlocks: parsed.totalSourceBlocks,
-          blockSize: parsed.blockSize
+          blockSize: parsed.blockSize,
+          checksum: parsed.checksum,
+          checksumAlg: parsed.checksumAlg
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
@@ -341,7 +347,9 @@ export function AnimatedQRReceiver() {
               name: detectedMetadata.name,
               size: detectedMetadata.size,
               type: detectedMetadata.type,
-              totalChunks: detectedMetadata.totalChunks || 0
+              totalChunks: detectedMetadata.totalChunks || 0,
+              checksum: detectedMetadata.checksum,
+              checksumAlg: detectedMetadata.checksumAlg
             }}
           />
         ) : transferMode === 'fountain' && detectedMetadata ? (
@@ -351,7 +359,9 @@ export function AnimatedQRReceiver() {
               size: detectedMetadata.size,
               type: detectedMetadata.type,
               totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
-              blockSize: detectedMetadata.blockSize
+              blockSize: detectedMetadata.blockSize,
+              checksum: detectedMetadata.checksum,
+              checksumAlg: detectedMetadata.checksumAlg
             }}
           />
         ) : null}
