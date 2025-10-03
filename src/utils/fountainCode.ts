@@ -1,9 +1,19 @@
 /**
- * Fountain Code Implementation (LT Codes - Luby Transform)
+ * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
  *
- * This implementation allows receivers to reconstruct the original data
- * without needing to receive all chunks. Typically requires ~105-110% of
- * original chunks due to redundancy.
+ * Key changes vs previous version:
+ *  - Uses configurable robust soliton with tighter failure probability (delta=0.01)
+ *  - Adds degree "doping" (forced low-degree symbols) to maintain healthy ripple
+ *  - Adaptive max degree: min(50, max(8, round(3 * sqrt(k))))
+ *  - Renormalizes distribution when truncated by max degree
+ *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
+ *  - Simplified generateChunk(): no parameter – encoder owns all tuning
+ *
+ * Recommended single-session max file size with default blockSize=600 bytes:
+ *   Green zone: ≤ ~200 KB (k ≲ 334)
+ *   Yellow zone: 200–250 KB (k 334–417) – still fine
+ *   Red (split recommended): > 250 KB
+ * Time estimate (default fps=2, overhead≈1.08): T ≈ 0.0009 * fileBytes seconds
  */
 
 // Pseudo-random number generator with seed (for reproducibility)
@@ -20,46 +30,60 @@ class SeededRandom {
   }
 }
 
-// Robust Soliton distribution for degree selection
-function robustSolitonDistribution(k: number, c: number = 0.1, delta: number = 0.5): number[] {
+// Core Robust Soliton distribution (before truncation or doping)
+function robustSolitonDistribution(k: number, c: number, delta: number): number[] {
   const R = c * Math.log(k / delta) * Math.sqrt(k)
-  const probabilities: number[] = new Array(k).fill(0)
+  const probs: number[] = new Array(k).fill(0)
 
-  // Ideal Soliton distribution
-  probabilities[0] = 1 / k
-  for (let i = 2; i <= k; i++) {
-    probabilities[i - 1] = 1 / (i * (i - 1))
-  }
+  // Ideal Soliton
+  probs[0] = 1 / k
+  for (let i = 2; i <= k; i++) probs[i - 1] = 1 / (i * (i - 1))
 
-  // Add robust component
+  // Tau (robust component)
   const tau: number[] = new Array(k).fill(0)
-  for (let i = 1; i <= k / R - 1; i++) {
-    tau[i - 1] = R / (i * k)
-  }
-  tau[Math.floor(k / R) - 1] = R * Math.log(R / delta) / k
-
-  // Normalize
-  const beta = tau.reduce((sum, val) => sum + val, 0) + probabilities.reduce((sum, val) => sum + val, 0)
-  for (let i = 0; i < k; i++) {
-    probabilities[i] = (probabilities[i] + tau[i]) / beta
+  const threshold = Math.floor(k / R)
+  for (let i = 1; i < threshold; i++) tau[i - 1] = R / (i * k)
+  if (threshold - 1 >= 0 && threshold - 1 < k) {
+    tau[threshold - 1] = R * Math.log(R / delta) / k
   }
 
-  return probabilities
+  const sumBase = probs.reduce((s, v) => s + v, 0)
+  const sumTau = tau.reduce((s, v) => s + v, 0)
+  const beta = sumBase + sumTau
+  for (let i = 0; i < k; i++) probs[i] = (probs[i] + tau[i]) / beta
+  return probs
 }
 
-// Select degree based on distribution with optional max cap
-function selectDegree(probabilities: number[], rng: SeededRandom, maxDegree?: number): number {
-  const r = rng.next()
-  let cumulative = 0
-  const limit = maxDegree ? Math.min(maxDegree, probabilities.length) : probabilities.length
+// Build truncated + renormalized distribution subject to maxDegree
+function buildDegreeDistribution(k: number, c: number, delta: number, maxDegree: number): number[] {
+  const base = robustSolitonDistribution(k, c, delta)
+  const limit = Math.min(maxDegree, k)
+  const truncated = base.slice(0, limit)
+  const sum = truncated.reduce((s, v) => s + v, 0)
+  for (let i = 0; i < truncated.length; i++) truncated[i] /= sum
+  return truncated
+}
 
-  for (let i = 0; i < limit; i++) {
-    cumulative += probabilities[i]
-    if (r <= cumulative) {
-      return i + 1
-    }
+interface DegreeSamplerOptions {
+  degree1Rate: number      // forced degree=1 probability
+  lowDegreeRate: number    // additional probability region for degree 2-3
+}
+
+function sampleDegree(rng: SeededRandom, dist: number[], opts: DegreeSamplerOptions): number {
+  const r = rng.next()
+  if (r < opts.degree1Rate) return 1
+  if (r < opts.degree1Rate + opts.lowDegreeRate) {
+    // degree 2 or 3 (favor 2 slightly)
+    return rng.next() < 0.6 ? 2 : 3
   }
-  return limit
+  // sample from truncated robust soliton distribution
+  const r2 = rng.next()
+  let cumulative = 0
+  for (let i = 0; i < dist.length; i++) {
+    cumulative += dist[i]
+    if (r2 <= cumulative) return i + 1
+  }
+  return dist.length
 }
 
 // XOR two Uint8Arrays
@@ -90,82 +114,107 @@ export interface FountainMetadata {
   blockSize: number
 }
 
+export interface FountainEncoderOptions {
+  blockSize?: number
+  c?: number          // robust soliton parameter
+  delta?: number      // failure probability target
+  maxDegree?: number  // hard ceiling (auto chosen if omitted)
+  degree1Rate?: number
+  lowDegreeRate?: number
+}
+
+export interface FountainEncoderStats {
+  producedChunks: number
+  avgDegree: number
+  uniqueBlockCoverage: number  // fraction of source blocks appearing in at least one emitted chunk
+}
+
 export class FountainEncoder {
-  private sourceBlocks: Uint8Array[]
+  private sourceBlocks: Uint8Array[] = []
   private blockSize: number
-  private degreeDistribution: number[]
+  private degreeDist: number[]
   private metadata: FountainMetadata
-  private chunkCounter: number = 0
+  private chunkCounter = 0
+  private sumDegrees = 0
+  private seenBlocks: Set<number> = new Set()
+  private samplerOpts: DegreeSamplerOptions
 
-  constructor(data: Uint8Array, blockSize: number = 1200, metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>) {
-    this.blockSize = blockSize
-    const numBlocks = Math.ceil(data.length / blockSize)
+  constructor(
+    data: Uint8Array,
+    metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
+    opts: FountainEncoderOptions = {}
+  ) {
+    this.blockSize = opts.blockSize ?? 600
+    const numBlocks = Math.ceil(data.length / this.blockSize)
 
-    // Split data into source blocks
-    this.sourceBlocks = []
     for (let i = 0; i < numBlocks; i++) {
-      const start = i * blockSize
-      const end = Math.min(start + blockSize, data.length)
-      const block = new Uint8Array(blockSize)
+      const start = i * this.blockSize
+      const end = Math.min(start + this.blockSize, data.length)
+      const block = new Uint8Array(this.blockSize)
       block.set(data.slice(start, end))
       this.sourceBlocks.push(block)
     }
 
-    this.degreeDistribution = robustSolitonDistribution(numBlocks)
-    this.metadata = {
-      ...metadata,
-      totalSourceBlocks: numBlocks,
-      blockSize
+    const adaptiveMaxDegree = opts.maxDegree ?? Math.min(50, Math.max(8, Math.round(3 * Math.sqrt(numBlocks))))
+    const c = opts.c ?? 0.2
+    const delta = opts.delta ?? 0.01
+    this.degreeDist = buildDegreeDistribution(numBlocks, c, delta, adaptiveMaxDegree)
+    this.samplerOpts = {
+      degree1Rate: opts.degree1Rate ?? 0.08,
+      lowDegreeRate: opts.lowDegreeRate ?? 0.15
+    }
+
+    this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }
+  }
+
+  getMetadata(): FountainMetadata { return this.metadata }
+
+  getStats(): FountainEncoderStats {
+    return {
+      producedChunks: this.chunkCounter,
+      avgDegree: this.chunkCounter > 0 ? this.sumDegrees / this.chunkCounter : 0,
+      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0
     }
   }
 
-  getMetadata(): FountainMetadata {
-    return this.metadata
-  }
-
-  // Generate next fountain-coded chunk
-  // maxDegree parameter limits the maximum degree to control chunk size
-  generateChunk(maxDegree?: number): FountainChunk {
+  generateChunk(): FountainChunk {
     const seed = this.chunkCounter++
     const rng = new SeededRandom(seed)
+    const degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
 
-    // Select degree (how many blocks to combine)
-    // Limit to maxDegree if specified to keep QR codes smaller
-    const degree = selectDegree(this.degreeDistribution, rng, maxDegree)
-
-    // Select which blocks to combine
     const indices: number[] = []
-    const selectedBlocks: Set<number> = new Set()
-
-    while (selectedBlocks.size < degree) {
+    const selected = new Set<number>()
+    while (selected.size < degree) {
       const idx = Math.floor(rng.next() * this.sourceBlocks.length)
-      if (!selectedBlocks.has(idx)) {
-        selectedBlocks.add(idx)
+      if (!selected.has(idx)) {
+        selected.add(idx)
         indices.push(idx)
       }
     }
 
-    // XOR selected blocks together
-    let encodedData = new Uint8Array(this.blockSize)
+    // In-place XOR accumulation to avoid TypedArray generic variance issues
+    const encoded = new Uint8Array(this.blockSize)
     for (const idx of indices) {
-      encodedData = xorArrays(encodedData, this.sourceBlocks[idx])
+      const block = this.sourceBlocks[idx]
+      for (let i = 0; i < this.blockSize; i++) {
+        encoded[i] ^= block[i]
+      }
+      this.seenBlocks.add(idx)
     }
 
+    this.sumDegrees += degree
     return {
       seed,
       degree,
       indices: indices.sort((a, b) => a - b),
-      data: encodedData
+      data: encoded
     }
   }
 
-  // Generate multiple chunks at once
   generateChunks(count: number): FountainChunk[] {
-    const chunks: FountainChunk[] = []
-    for (let i = 0; i < count; i++) {
-      chunks.push(this.generateChunk())
-    }
-    return chunks
+    const out: FountainChunk[] = []
+    for (let i = 0; i < count; i++) out.push(this.generateChunk())
+    return out
   }
 }
 

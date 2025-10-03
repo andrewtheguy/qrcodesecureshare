@@ -23,7 +23,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(2)
+  const [fps, setFps] = useState(4)
   const [error, setError] = useState<string>('')
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)
@@ -47,7 +47,14 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           timestamp: Date.now()
         }
 
-        const fountainEncoder = new FountainEncoder(bytes, CHUNK_SIZE, metadata)
+        const fountainEncoder = new FountainEncoder(bytes, metadata, {
+          blockSize: CHUNK_SIZE,
+          c: 0.2,
+            delta: 0.01,
+          // Optional: override doping rates here if experimenting
+          degree1Rate: 0.08,
+          lowDegreeRate: 0.15
+        })
         setEncoder(fountainEncoder)
         setError('')
         setChunkCount(0)
@@ -77,9 +84,8 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
 
     while (attempt < maxRetries) {
       try {
-        // Generate next fountain-coded chunk
-        // Limit degree to 50 to keep overhead small (50 indices * 2 bytes = 100 bytes overhead max)
-        const chunk = encoder.generateChunk(50)
+  // Generate next fountain-coded chunk (internally tuned distribution + doping)
+  const chunk = encoder.generateChunk()
 
         // Binary format for fountain chunk:
         // [0xFF][0xFD] - magic bytes for fountain chunk
@@ -250,13 +256,21 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
       </div>
 
       {/* Chunk details */}
-      {currentChunkRef.current && (
-        <div className="text-xs text-center text-muted-foreground">
-          <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
-          <span className="mx-2">|</span>
-          <span>Blocks: {currentChunkRef.current.indices.slice(0, 10).join(', ')}{currentChunkRef.current.indices.length > 10 ? '...' : ''}</span>
-        </div>
-      )}
+      {(currentChunkRef.current && encoder) && (() => {
+        const stats = encoder.getStats()
+        return (
+          <div className="text-xs text-center text-muted-foreground space-y-1">
+            <div>
+              <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
+              <span className="mx-2">|</span>
+              <span>Blocks: {currentChunkRef.current.indices.slice(0, 10).join(', ')}{currentChunkRef.current.indices.length > 10 ? '...' : ''}</span>
+            </div>
+            <div className="opacity-80">
+              avg degree {stats.avgDegree.toFixed(2)} • coverage {(stats.uniqueBlockCoverage * 100).toFixed(1)}%
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Progress */}
       {chunkCount > 0 && (
