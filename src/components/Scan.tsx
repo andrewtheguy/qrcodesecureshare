@@ -930,10 +930,9 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                 </Button>
               </div>
               {onGenerateQR && (
-                <div className="text-center">
+                <div className="flex justify-center">
                   <Button
                     onClick={() => onGenerateQR(scannedText)}
-                    className="w-full"
                   >
                     🔄 Generate QR Code from Result
                   </Button>
