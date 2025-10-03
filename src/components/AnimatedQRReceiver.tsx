@@ -299,7 +299,7 @@ export function AnimatedQRReceiver() {
           {/* Action Buttons */}
           <div className="flex gap-2">
             <Button onClick={handleConfirmMode} className="flex-1">
-              ✓ Continue Receiving
+              ✓ Start Receiving Data
             </Button>
             <Button onClick={handleReset} variant="outline">
               ↺ Reset

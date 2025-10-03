@@ -28,6 +28,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   const [scanningFeedback, setScanningFeedback] = useState(false)
   const [missingChunksQueue, setMissingChunksQueue] = useState<number[]>([])
   const [playingMissingOnly, setPlayingMissingOnly] = useState(false)
+  const [hasStarted, setHasStarted] = useState(false) // User has pressed play at least once
   // Removed showMetadata state – always showing data chunks
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
@@ -87,7 +88,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
   // Generate QR code for current chunk
   useEffect(() => {
-    if (dataChunks.length === 0) {
+    if (dataChunks.length === 0 || !hasStarted) {
       setQrCodeUrl('')
       return
     }
@@ -119,7 +120,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
     }
 
     generateQR()
-  }, [dataChunks, currentChunk])
+  }, [dataChunks, currentChunk, hasStarted])
 
   // Animation loop
   useEffect(() => {
@@ -153,6 +154,9 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
 
   const handlePlayPause = () => {
+    if (!hasStarted) {
+      setHasStarted(true)
+    }
     setIsPlaying(!isPlaying)
   }
 
@@ -308,7 +312,14 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
       <div className="relative">
         <div className="flex justify-center bg-white p-4 rounded-lg">
           <canvas ref={canvasRef} style={{ display: 'none' }} />
-          {qrCodeUrl ? (
+          {!hasStarted ? (
+            <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100 text-center p-6 rounded-lg">
+              <p className="text-sm text-muted-foreground font-medium leading-relaxed">
+                📥 Before starting playback, click "Start Receiving Data" on receiver's end.<br/><br/>
+                After that, press <span className="font-semibold">Play</span> to begin sending data chunks.
+              </p>
+            </div>
+          ) : qrCodeUrl ? (
             <img
               src={qrCodeUrl}
               alt={`Data QR Code chunk ${currentChunk + 1}/${dataChunks.length}`}
@@ -323,10 +334,12 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
         {/* Chunk ID Overlay */}
         <div className="absolute top-2 left-2 right-2 flex justify-between items-start">
-          <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
-            {`Chunk ${currentChunk + 1} / ${dataChunks.length}`}
-          </div>
-          {isPlaying && (
+          {hasStarted && (
+            <div className="bg-black/80 text-white px-3 py-2 rounded-lg font-bold text-lg">
+              {`Chunk ${currentChunk + 1} / ${dataChunks.length}`}
+            </div>
+          )}
+          {hasStarted && isPlaying && (
             <div className="bg-red-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
               <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
               PLAYING
@@ -334,7 +347,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           )}
         </div>
 
-        {loopCount > 0 && (
+        {hasStarted && loopCount > 0 && (
           <div className="absolute bottom-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
             Loop #{loopCount + 1}
           </div>
@@ -342,7 +355,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
       </div>
 
       {/* Chunk Progress */}
-      {dataChunks.length > 0 && (
+      {hasStarted && dataChunks.length > 0 && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Data chunk {currentChunk + 1} of {dataChunks.length}</span>
@@ -374,7 +387,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
             variant="outline"
             size="sm"
             onClick={handleNext}
-            disabled={dataChunks.length === 0}
+            disabled={dataChunks.length === 0 || !hasStarted}
           >
             Next →
           </Button>

@@ -229,7 +229,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           ) : (
             <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
               <p className="text-muted-foreground">
-                {encoder ? 'Click Play to start' : 'Processing file...'}
+                {encoder ? 'Click "Start Receiving Data" First on Receiver first, then click Play here to start' : 'Processing file...'}
               </p>
             </div>
           )}
