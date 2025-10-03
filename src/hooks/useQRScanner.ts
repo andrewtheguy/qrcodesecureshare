@@ -77,11 +77,23 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500 }: UseQRScan
     }
   }
 
+  const restartScanner = async () => {
+    if (scannerRef.current && videoRef.current) {
+      try {
+        await scannerRef.current.start()
+      } catch (err) {
+        console.error('Scanner restart error:', err)
+        setError('Failed to restart camera')
+      }
+    }
+  }
+
   return {
     videoRef,
     scannerRef,
     error,
     setError,
-    stopScanner
+    stopScanner,
+    restartScanner
   }
 }

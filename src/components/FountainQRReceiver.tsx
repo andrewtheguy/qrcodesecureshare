@@ -161,7 +161,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [addDebugLog, handleBinaryFountainChunk])
 
-  const { videoRef, error, setError, stopScanner } = useQRScanner({
+  const { videoRef, error, setError, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
     isScanning
   })
@@ -216,6 +216,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleGenerateFeedbackQR = async () => {
     try {
+      // Pause scanning while showing feedback QR
+      stopScanner()
+
       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
       const feedback = {
         type: 'FOUNTAIN_FEEDBACK',
@@ -244,9 +247,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }
 
-  const handleCloseFeedbackQR = () => {
+  const handleCloseFeedbackQR = async () => {
     setShowFeedbackQR(false)
     setFeedbackQRUrl('')
+    // Resume scanning if it was active before
+    if (isScanning) {
+      await restartScanner()
+    }
   }
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
@@ -289,8 +296,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Video Preview */}
-      {isScanning && !showFeedbackQR && (
-        <div className="relative bg-black rounded-lg overflow-hidden">
+      {isScanning && (
+        <div className="relative bg-black rounded-lg overflow-hidden" style={{ display: showFeedbackQR ? 'none' : 'block' }}>
           <video
             ref={videoRef}
             className="w-full h-auto"
