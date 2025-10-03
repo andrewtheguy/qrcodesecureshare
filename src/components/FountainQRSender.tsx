@@ -270,9 +270,6 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         {skippedChunks > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
         )}
-        {chunkCount >= estimatedChunksNeeded && chunkCount > 0 && (
-          <span className="px-2 py-0.5 rounded bg-green-600 text-white font-semibold">Enough Collected</span>
-        )}
       </div>
 
       {/* Chunk details */}

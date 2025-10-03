@@ -48,7 +48,7 @@ export default function OfflineTransferDemo() {
             <CardContent>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  Select a file (max ${MAX_FILE_SIZE / 1024}KB) to convert into animated QR codes
+                  Select a file (max {MAX_FILE_SIZE / 1024}KB) to convert into animated QR codes
                 </p>
                 <input
                   type="file"
