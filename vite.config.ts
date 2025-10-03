@@ -31,7 +31,16 @@ export default defineConfig({
     allowedHosts: [
       'localhost',
       '.trycloudflare.com'
-    ]
+    ],
+    // Disable all caching in development
+    headers: {
+      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'Surrogate-Control': 'no-store'
+    },
+    // Disable HMR
+    hmr: false,
   },
   resolve: {
     alias: {
