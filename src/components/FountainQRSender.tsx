@@ -10,10 +10,6 @@ interface FountainQRSenderProps {
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
-// Reduced to 600 bytes to ensure QR codes fit within size limits
-// QR Code capacity at error level M: ~2953 bytes
-// Binary overhead: ~6 bytes fixed + (2 * degree) for indices
-// Target: keep total under 2000 bytes for safety
 const CHUNK_SIZE = 600
 
 // Maximum QR code size in bytes (with some safety margin)
