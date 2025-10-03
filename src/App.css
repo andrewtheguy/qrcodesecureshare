@@ -2,7 +2,8 @@
   max-width: 1280px;
   margin: 0 auto;
   padding: 1rem;
-  text-align: center;
+  /* Removed global text-align:center to allow lists and body text to default to left alignment.
+     Use utility classes (e.g., text-center) on specific elements (like headers) when centering is desired. */
 }
 
 .logo {
