@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { computeChecksum } from '@/utils/checksum'
-import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
+import { useQRScanner } from '@/hooks/useQRScanner'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -34,92 +34,54 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const fountainMetadata: FountainMetadata = initialMeta
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
-  const [error, setError] = useState<string>('')
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const scannerRef = useRef<QrScanner | null>(null)
-  const lastScannedRef = useRef<string>('')
-  const lastScanTimeRef = useRef<number>(0)
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
-
-  // Auto-start scanning on mount
-  useEffect(() => {
-    setIsScanning(true)
-  }, [])
-
-  // Initialize scanner
-  useEffect(() => {
-    if (!isScanning || !videoRef.current) {
-      return
-    }
-
-    const scanner = new QrScanner(
-      videoRef.current,
-      (result) => {
-        handleScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      }
-    )
-
-    scannerRef.current = scanner
-    scanner.start().catch((err) => {
-      console.error('Scanner start error:', err)
-      setError('Failed to start camera. Please ensure camera permissions are granted.')
-      setIsScanning(false)
-    })
-
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [isScanning])
 
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
-  const handleScan = (data: string) => {
+  const reconstructFountainFile = useCallback(async (decoder: FountainDecoder) => {
     try {
-      // Debounce duplicate scans (within 500ms)
-      const now = Date.now()
-      if (data === lastScannedRef.current && now - lastScanTimeRef.current < 500) {
-        return
+      const reconstructedData = decoder.getDecodedData()
+      if (!reconstructedData) {
+        throw new Error('Failed to get decoded data')
       }
-      lastScannedRef.current = data
-      lastScanTimeRef.current = now
 
-      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
+      // Ensure we pass an ArrayBuffer or valid BlobPart; slice to detach if needed
+      const uint8Copy = new Uint8Array(reconstructedData) // Ensures standard Uint8Array
+      const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
 
-      // Convert string to bytes
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
-      }
-      // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
-      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
-        addDebugLog('🔁 Processing fountain chunk')
-        handleBinaryFountainChunk(bytes)
-      } else {
-        addDebugLog('⚠ Ignoring non-fountain-chunk QR content')
-      }
+      setDownloadUrl(url)
+      setSuccess(true)
+      setIsScanning(false)
+
+      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
+        const calc = await computeChecksum(uint8Copy, 'crc32')
+        const match = calc === initialMetadata.checksum
+        setIntegrityOk(match)
+        addDebugLog(match
+          ? `🔐 Integrity OK (crc32 ${calc})`
+          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
+      } else setIntegrityOk(null)
+
+      addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      addDebugLog(`✗ Error: ${errorMsg}`)
-      console.error('Scan error:', err)
+      const errMsg = err instanceof Error ? err.message : 'Unknown error'
+      console.error('Reconstruction error:', err)
+      addDebugLog(`✗ Reconstruction error: ${errMsg}`)
+      setError('Failed to reconstruct file from fountain chunks')
     }
-  }
+  }, [fountainMetadata.type, initialMetadata.checksum, initialMetadata.checksumAlg, addDebugLog, setIsScanning])
 
-  const handleBinaryFountainChunk = (bytes: Uint8Array) => {
+  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
     let offset = 2 // Skip magic bytes
 
@@ -162,46 +124,40 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       addDebugLog(`🎉 Decoding complete!`)
       reconstructFountainFile(fountainDecoderRef.current)
     }
-  }
+  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile])
 
-  const reconstructFountainFile = async (decoder: FountainDecoder) => {
+  const handleScan = useCallback((data: string) => {
     try {
-      const reconstructedData = decoder.getDecodedData()
-      if (!reconstructedData) {
-        throw new Error('Failed to get decoded data')
+      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
+
+      // Convert string to bytes
+      const bytes = new Uint8Array(data.length)
+      for (let i = 0; i < data.length; i++) {
+        bytes[i] = data.charCodeAt(i) & 0xFF
       }
-
-      // Ensure we pass an ArrayBuffer or valid BlobPart; slice to detach if needed
-      const uint8Copy = new Uint8Array(reconstructedData) // Ensures standard Uint8Array
-      const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-
-      setDownloadUrl(url)
-      setSuccess(true)
-      setIsScanning(false)
-
-      // Stop scanner
-      if (scannerRef.current) {
-        scannerRef.current.stop()
+      // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
+      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
+        addDebugLog('🔁 Processing fountain chunk')
+        handleBinaryFountainChunk(bytes)
+      } else {
+        addDebugLog('⚠ Ignoring non-fountain-chunk QR content')
       }
-
-      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
-        const calc = await computeChecksum(uint8Copy, 'crc32')
-        const match = calc === initialMetadata.checksum
-        setIntegrityOk(match)
-        addDebugLog(match
-          ? `🔐 Integrity OK (crc32 ${calc})`
-          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
-      } else setIntegrityOk(null)
-
-      addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Unknown error'
-      console.error('Reconstruction error:', err)
-      addDebugLog(`✗ Reconstruction error: ${errMsg}`)
-      setError('Failed to reconstruct file from fountain chunks')
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
+      addDebugLog(`✗ Error: ${errorMsg}`)
+      console.error('Scan error:', err)
     }
-  }
+  }, [addDebugLog, handleBinaryFountainChunk])
+
+  const { videoRef, error, setError, stopScanner } = useQRScanner({
+    onScan: handleScan,
+    isScanning
+  })
+
+  // Auto-start scanning on mount
+  useEffect(() => {
+    setIsScanning(true)
+  }, [])
 
   const handleStartScan = () => {
     setIsScanning(true)
@@ -215,9 +171,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleStopScan = () => {
     setIsScanning(false)
-    if (scannerRef.current) {
-      scannerRef.current.stop()
-    }
+    stopScanner()
   }
 
   const handleReset = () => {

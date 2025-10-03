@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import QrScanner from 'qr-scanner'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './FountainQRReceiver'
+import { useQRScanner } from '@/hooks/useQRScanner'
 
 type TransferMode = 'sequential' | 'fountain' | null
 
@@ -24,62 +24,17 @@ export function AnimatedQRReceiver() {
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)
-  const [error, setError] = useState<string>('')
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
   const [receiverKey, setReceiverKey] = useState(0)
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const scannerRef = useRef<QrScanner | null>(null)
-  const lastScannedRef = useRef<string>('')
-  const lastScanTimeRef = useRef<number>(0)
-
-  // Initialize scanner for metadata detection
-  useEffect(() => {
-    if (!isScanning || !videoRef.current) {
-      return
-    }
-
-    const scanner = new QrScanner(
-      videoRef.current,
-      (result) => {
-        handleMetadataScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      }
-    )
-
-    scannerRef.current = scanner
-    scanner.start().catch((err) => {
-      console.error('Scanner start error:', err)
-      setError('Failed to start camera. Please ensure camera permissions are granted.')
-      setIsScanning(false)
-    })
-
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [isScanning])
-
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
-  const handleMetadataScan = (data: string) => {
+  const handleMetadataScan = useCallback((data: string) => {
     try {
-      // Debounce duplicate scans (within 500ms)
-      const now = Date.now()
-      if (data === lastScannedRef.current && now - lastScanTimeRef.current < 500) {
-        return
-      }
-      lastScannedRef.current = data
-      lastScanTimeRef.current = now
-
       addDebugLog(`Scanned metadata text, length: ${data.length} chars`)
 
       // Try to parse JSON (new format)
@@ -120,16 +75,19 @@ export function AnimatedQRReceiver() {
       }
 
       setIsScanning(false)
-      if (scannerRef.current) {
-        scannerRef.current.stop()
-      }
+      stopScanner()
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Metadata parse error: ${errorMsg}`)
       console.error('Metadata scan error:', err)
       setError('Failed to parse metadata QR code (expecting JSON).')
     }
-  }
+  }, [addDebugLog])
+
+  const { videoRef, error, setError, stopScanner } = useQRScanner({
+    onScan: handleMetadataScan,
+    isScanning
+  })
 
   const handleStartScan = () => {
     setIsScanning(true)
@@ -144,9 +102,7 @@ export function AnimatedQRReceiver() {
     setTransferMode(null)
     setError('')
     setDebugLog([])
-    if (scannerRef.current) {
-      scannerRef.current.stop()
-    }
+    stopScanner()
   }
 
   const handleConfirmMode = () => {
