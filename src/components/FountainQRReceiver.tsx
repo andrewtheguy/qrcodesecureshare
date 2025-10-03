@@ -39,9 +39,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
+  const [decodeTime, setDecodeTime] = useState<number | null>(null)
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
+  const scanStartTimeRef = useRef<number | null>(null)
 
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -121,7 +123,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
     if (decoded) {
-      addDebugLog(`🎉 Decoding complete!`)
+      const elapsedTime = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0
+      setDecodeTime(elapsedTime)
+      addDebugLog(`🎉 Decoding complete in ${(elapsedTime / 1000).toFixed(2)}s!`)
       reconstructFountainFile(fountainDecoderRef.current)
     }
   }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile])
@@ -157,6 +161,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Auto-start scanning on mount
   useEffect(() => {
     setIsScanning(true)
+    scanStartTimeRef.current = Date.now()
   }, [])
 
   const handleStartScan = () => {
@@ -167,6 +172,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setError('')
     setSuccess(false)
     setDownloadUrl('')
+    setDecodeTime(null)
+    scanStartTimeRef.current = Date.now()
   }
 
   const handleStopScan = () => {
@@ -185,6 +192,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setSuccess(false)
     setDownloadUrl('')
     setIsScanning(false)
+    setDecodeTime(null)
+    scanStartTimeRef.current = null
   }
 
   const handleDownload = () => {
@@ -263,6 +272,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes ({receivedFountainChunks} chunks received)
                 </span>
               </p>
+              {decodeTime !== null && (
+                <p className="text-sm font-medium text-blue-600">
+                  ⏱️ Decode time: {(decodeTime / 1000).toFixed(2)}s
+                </p>
+              )}
               {integrityOk !== null && (
                 <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
                   {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
