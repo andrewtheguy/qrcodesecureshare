@@ -587,8 +587,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
           <Card>
             <CardContent className="space-y-4 px-2">
               <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-sm text-muted-foreground">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span>Enter your text:</span>
                     <Button
                       size="sm"
