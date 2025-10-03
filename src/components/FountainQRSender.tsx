@@ -20,7 +20,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(10)
+  const [fps, setFps] = useState(20)
   const [error, setError] = useState<string>('')
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)

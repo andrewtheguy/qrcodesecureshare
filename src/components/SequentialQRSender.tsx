@@ -22,7 +22,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   const [currentChunk, setCurrentChunk] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(2) // frames per second
+  const [fps, setFps] = useState(20) // frames per second
   const [error, setError] = useState<string>('')
   const [repeatMode, setRepeatMode] = useState(true) // Auto-repeat animation
   const [loopCount, setLoopCount] = useState(0)
