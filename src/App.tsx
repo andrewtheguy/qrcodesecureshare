@@ -46,7 +46,6 @@ function App() {
 
             {/* Mobile: Current Selection */}
             <div className="flex items-center gap-2 md:hidden">
-              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Selected:</span>
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-primary-foreground">
                 <span className="text-lg">{activeTabInfo?.icon}</span>
                 <span className="text-sm font-semibold">{activeTabInfo?.label}</span>
