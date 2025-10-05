@@ -61,7 +61,7 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="max-w-4xl mx-auto px-2 py-4">
         {activeTab === "upload" && <Upload ref={uploadRef} />}
         {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
         {activeTab === "offline" && <OfflineTransferDemo />}
