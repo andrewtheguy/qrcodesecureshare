@@ -5,7 +5,6 @@ import { PUBLIC_KEY_JWK } from '../config/publicKey'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { Label } from '@/components/ui/label'
@@ -34,12 +33,16 @@ export interface UploadRef {
   setTextFromScan: (text: string) => void
 }
 
-const Upload = forwardRef<UploadRef>((props, ref) => {
+interface UploadProps {
+  mode?: 'file' | 'text'
+}
+
+const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' }, ref) => {
   const [isDragging, setIsDragging] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null)
   const [uploading, setUploading] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
-  const [mode, setMode] = useState<'file' | 'text'>('text')
+  const mode = initialMode
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
   const [showTextUploadOption, setShowTextUploadOption] = useState(false)
@@ -50,7 +53,6 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
-      setMode('text')
       setTextInput(text)
       // Generate QR code immediately if text is not too long
       if (text.trim().length <= 700) {
@@ -467,25 +469,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
 
   return (
     <div className="space-y-6">
-      <Tabs value={mode} onValueChange={(value) => {
-        if (value === 'file') {
-          setMode('file')
-          resetTextMode()
-        } else if (value === 'text') {
-          setMode('text')
-          resetFileMode()
-        }
-      }}>
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="text" className="flex items-center gap-2">
-            📝 Text QR Code
-          </TabsTrigger>
-          <TabsTrigger value="file" className="flex items-center gap-2">
-            📁 Upload File
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="file" className="mt-2">
+      {mode === 'file' && (
+        <>
           <Card className="mb-4">
             <CardContent className="pt-6">
               <div className="space-y-3">
@@ -581,9 +566,11 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
+        </>
+      )}
 
-        <TabsContent value="text" className="mt-2">
+      {mode === 'text' && (
+        <>
           <Card>
             <CardContent className="space-y-4 px-2">
               <div className="space-y-2">
@@ -726,8 +713,8 @@ const Upload = forwardRef<UploadRef>((props, ref) => {
               )}
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </>
+      )}
 
       {uploadedFile && (
         <Card>

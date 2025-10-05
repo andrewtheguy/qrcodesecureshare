@@ -6,12 +6,12 @@ import './App.css'
 import './utils/generateKeys' // Load key generation utility
 
 function App() {
-  const [activeTab, setActiveTab] = useState("upload")
+  const [activeTab, setActiveTab] = useState("generateqr")
   const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
 
   const handleGenerateQRFromScan = (text: string) => {
-    // Switch to upload tab and set the text
-    setActiveTab("upload")
+    // Switch to generate QR tab and set the text
+    setActiveTab("generateqr")
     // Use a small delay to ensure the tab switch completes
     setTimeout(() => {
       uploadRef.current?.setTextFromScan(text)
@@ -19,7 +19,8 @@ function App() {
   }
 
   const tabs = [
-    { value: "upload", label: "Generate QR", icon: "📤" },
+    { value: "generateqr", label: "Generate QR Code", icon: "📝" },
+    { value: "upload", label: "Upload File", icon: "📁" },
     { value: "scan", label: "Scan QR", icon: "📱" },
     { value: "offline", label: "Offline Transfer", icon: "🔄" },
   ]
@@ -62,7 +63,8 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
-        {activeTab === "upload" && <Upload ref={uploadRef} />}
+        {activeTab === "generateqr" && <Upload ref={uploadRef} mode="text" />}
+        {activeTab === "upload" && <Upload mode="file" />}
         {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
         {activeTab === "offline" && <OfflineTransferDemo />}
       </main>
