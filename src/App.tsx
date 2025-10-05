@@ -36,21 +36,20 @@ function App() {
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            {/* Logo/Brand - Hidden on mobile */}
-            <div className="items-center gap-3">
+            {/* Logo/Brand */}
+            <div className="flex items-center gap-3">
               <span className="text-2xl">🔐</span>
-              <h1 className="hidden md:flex text-lg sm:text-xl font-bold text-foreground">
+              <h1 className="hidden md:block text-lg sm:text-xl font-bold text-foreground">
                 QR Secure Share
               </h1>
             </div>
 
             {/* Mobile: Current Selection */}
             <div className="flex items-center gap-2 md:hidden">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-primary-foreground">
-                  <span className="text-lg">{activeTabInfo?.icon}</span>
-                  <span className="text-sm font-semibold">{activeTabInfo?.label}</span>
-                </div>
+              <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Selected:</span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-primary-foreground">
+                <span className="text-lg">{activeTabInfo?.icon}</span>
+                <span className="text-sm font-semibold">{activeTabInfo?.label}</span>
               </div>
             </div>
 
