@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
 import OfflineTransferDemo from './components/OfflineTransferDemo'
+import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
@@ -38,7 +39,7 @@ function App() {
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
             <div className="flex items-center gap-3">
-              <span className="text-2xl">🔐</span>
+              <Logo />
               <h1 className="hidden md:block text-lg sm:text-xl font-bold text-foreground">
                 QR Secure Share
               </h1>
