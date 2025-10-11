@@ -53,6 +53,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
   const [transferMethod, setTransferMethod] = useState<'server' | 'webrtc'>('server')
   const [webrtcFile, setWebrtcFile] = useState<File | null>(null)
   const [webrtcKey, setWebrtcKey] = useState<string>('')
+  const [webrtcOriginalFilename, setWebrtcOriginalFilename] = useState<string>('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
@@ -292,6 +293,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         const encryptedFile = await encryptFileSymmetric(file, passphrase)
         setWebrtcFile(encryptedFile)
         setWebrtcKey(passphrase)
+        setWebrtcOriginalFilename(file.name) // Store original filename
       } catch (error) {
         alert('File encryption failed. Please try again.')
       } finally {
@@ -779,9 +781,11 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         <WebRTCSender
           encryptedFile={webrtcFile}
           encryptionKey={webrtcKey}
+          originalFilename={webrtcOriginalFilename}
           onReset={() => {
             setWebrtcFile(null)
             setWebrtcKey('')
+            setWebrtcOriginalFilename('')
           }}
         />
       )}

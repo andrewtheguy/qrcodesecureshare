@@ -9,10 +9,11 @@ import { Progress } from '@/components/ui/progress'
 interface WebRTCSenderProps {
   encryptedFile: File
   encryptionKey: string
+  originalFilename: string
   onReset?: () => void
 }
 
-export function WebRTCSender({ encryptedFile, encryptionKey, onReset }: WebRTCSenderProps) {
+export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, onReset }: WebRTCSenderProps) {
   const [peerId, setPeerId] = useState<string>('')
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'waiting' | 'connected' | 'transferring' | 'completed' | 'error'>('connecting')
@@ -46,7 +47,7 @@ export function WebRTCSender({ encryptedFile, encryptionKey, onReset }: WebRTCSe
         type: 'webrtc-transfer',
         peerId: id,
         encryptionKey: encryptionKey,
-        filename: encryptedFile.name,
+        filename: originalFilename,
         fileSize: encryptedFile.size
       })
 

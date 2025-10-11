@@ -158,6 +158,7 @@ export default function WebRTCTransferDemo({ scannedData: propScannedData, onSca
           <WebRTCSender
             encryptedFile={selectedFile}
             encryptionKey={encryptionKey}
+            originalFilename={selectedFile.name}
             onReset={handleReset}
           />
         </div>
