@@ -173,7 +173,7 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
       <CardHeader>
         <CardTitle className="text-center">🌐 WebRTC File Transfer (Sender)</CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
-          <p className="font-medium">{encryptedFile.name}</p>
+          <p className="font-medium">{originalFilename}</p>
           <p>Size: {(encryptedFile.size / 1024).toFixed(2)}KB</p>
         </div>
       </CardHeader>
