@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { deriveKey } from '@/lib/utils'
 import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
 import { getJwkSshFingerprint } from '@/utils/fingerprint'
+import { WebRTCReceiver } from './WebRTCReceiver'
 
 interface EncryptedFileData {
   url: string
@@ -25,13 +26,27 @@ interface ScanState {
   confirmDownload: boolean
 }
 
+interface WebRTCScanData {
+  type: 'webrtc-transfer'
+  peerId: string
+  encryptionKey: string
+  filename: string
+  fileSize: number
+}
+
 interface ScanProps {
   onGenerateQR?: (text: string) => void
+}
+
+interface WebRTCReceiveState {
+  isReceiving: boolean
+  data: WebRTCScanData | null
 }
 
 const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
+  const [webrtcReceive, setWebrtcReceive] = useState<WebRTCReceiveState>({ isReceiving: false, data: null })
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
@@ -282,11 +297,31 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
               alert('QR code contains invalid encrypted file data')
             }
           } else {
-            // Regular text QR code
-            console.log('Regular text QR code:', result.data)
-            setScannedText(result.data)
-            setScannedData(null)
-            stopScanning()
+            // Check if it's a WebRTC transfer QR code
+            try {
+              const data = JSON.parse(result.data)
+              if (data.type === 'webrtc-transfer' && data.peerId && data.encryptionKey) {
+                console.log('Parsed WebRTC transfer data:', data)
+                // Show WebRTC receiver directly in this tab
+                setWebrtcReceive({ isReceiving: true, data: data as WebRTCScanData })
+                setScannedData(null)
+                setScannedText(null)
+                stopScanning()
+                return
+              } else {
+                // Regular text QR code
+                console.log('Regular text QR code:', result.data)
+                setScannedText(result.data)
+                setScannedData(null)
+                stopScanning()
+              }
+            } catch {
+              // Regular text QR code
+              console.log('Regular text QR code:', result.data)
+              setScannedText(result.data)
+              setScannedData(null)
+              stopScanning()
+            }
           }
         },
         {
@@ -543,7 +578,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
           ✓ {copiedFeedback}
         </div>
       )}
-      {!scanning && !scannedData && !scannedText && (
+      {!scanning && !scannedData && !scannedText && !webrtcReceive.isReceiving && (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-6">
@@ -879,11 +914,12 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                   '📥 Download Original File'
                 )}
               </Button>
-              <Button 
+              <Button
                 variant="outline"
                 onClick={() => {
                   setScannedData(null)
                   setScannedText(null)
+                  setWebrtcReceive({ isReceiving: false, data: null })
                   setScanState({ showingDetails: false, confirmDownload: false })
                   setUploadMode('camera')
                 }}
@@ -894,6 +930,37 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {webrtcReceive.isReceiving && webrtcReceive.data && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-2xl font-semibold">🌐 WebRTC File Transfer</h2>
+            <Button
+              onClick={() => {
+                setWebrtcReceive({ isReceiving: false, data: null })
+                setUploadMode('camera')
+              }}
+              variant="outline"
+            >
+              ← Back to Scan
+            </Button>
+          </div>
+          <WebRTCReceiver
+            peerId={webrtcReceive.data.peerId}
+            encryptionKey={webrtcReceive.data.encryptionKey}
+            filename={webrtcReceive.data.filename}
+            fileSize={webrtcReceive.data.fileSize}
+            onComplete={(file) => {
+              console.log('WebRTC file received:', file)
+              // Optionally show success message or auto-reset
+            }}
+            onReset={() => {
+              setWebrtcReceive({ isReceiving: false, data: null })
+              setUploadMode('camera')
+            }}
+          />
+        </div>
       )}
 
       {scannedText && (
@@ -923,6 +990,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                   onClick={() => {
                     setScannedData(null)
                     setScannedText(null)
+                    setWebrtcReceive({ isReceiving: false, data: null })
                     setUploadMode('camera')
                   }}
                 >
