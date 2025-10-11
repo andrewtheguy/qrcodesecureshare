@@ -4,7 +4,7 @@
 
 ## 🚀 Features
 
-### Text QR Generator
+### ✉️ Text QR Generator
 - Ability to function as a generic text QR code generator with no encryption for quick sharing of small text snippets or URLs.
 
 ### 🔐 **Multiple Encryption Modes for Online Methods**
