@@ -79,7 +79,7 @@ The app comes pre-configured with encryption keys, but you can generate your own
 
 3. **Update keys** (if generating new ones):
    - Public key: Update `src/config/publicKey.ts`
-   - Private key: Save to `PRIVATE_KEY.md` (gitignored)
+   - Private key: Save it to a secure location, you'll need it to decrypt files encrypted with the public key above. Never commit it to the repo.
 
 ## 📖 Usage
 
