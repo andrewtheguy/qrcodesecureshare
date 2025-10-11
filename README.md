@@ -4,12 +4,14 @@
 
 ## 🚀 Features
 
+### Text QR Generator
+- Ability to generate text QR codes with no encryption for quick sharing of small text snippets or URLs.
+
 ### 🔐 **Multiple Encryption Modes for Online Methods**
 - **Symmetric Encryption**: AES-GCM with passphrase embedded in QR code
 - **Asymmetric Encryption**: RSA-OAEP + AES-GCM hybrid encryption with hardcoded public key
-- **Text QR Generator**: Also functions as a basic text QR code generator
 
-### 📱 **Transfer Methods**
+### 📱 **File Transfer Methods**
 - **Server Upload** 🔒: Upload encrypted files to server and generate QR codes with download links
 - **WebRTC** 🔒: Direct peer-to-peer encrypted file transfer
 - **Offline Transfer** 📱: Transfer files using QR codes alone - no internet, servers, or third-party services required
