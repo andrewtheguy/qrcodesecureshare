@@ -500,6 +500,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
               <div className="space-y-6">
                 <div className="space-y-3">
                   <Label className="text-base font-semibold">Encryption Type</Label>
+                  <p className="text-sm text-muted-foreground">
+                    🔒 All data is zero-knowledge end-to-end encrypted. Passwords and private keys are never sent to the server.
+                  </p>
                   <RadioGroup
                     value={encryptionType}
                     onValueChange={(value: 'symmetric' | 'asymmetric') => setEncryptionType(value)}
@@ -553,6 +556,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                 {encryptionType === 'symmetric' && (
                   <div className="space-y-3">
                     <Label className="text-base font-semibold">Transfer Method</Label>
+                    <p className="text-sm text-muted-foreground">
+                      🔐 Passwords and private keys are never sent to the server - only encrypted data is uploaded.
+                    </p>
                     <RadioGroup
                       value={transferMethod}
                       onValueChange={(value: 'server' | 'webrtc') => {
@@ -628,6 +634,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                         ? 'Drag & drop a file here for WebRTC transfer or'
                         : 'Drag & drop a file here to upload to server or'
                       }
+                    </p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      🔒 Your data is end-to-end encrypted before upload. Only you control the decryption keys.
                     </p>
                     <input
                       type="file"
@@ -708,6 +717,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                       QR codes work best with shorter text (under 700 characters).
                       Would you like to upload this text as an encrypted file instead?
                     </p>
+                    <p className="text-sm text-muted-foreground">
+                      🔒 Text will be zero-knowledge end-to-end encrypted before upload.
+                    </p>
                     <div className="flex gap-3 justify-center flex-wrap pt-2">
                       <Button
                         onClick={uploadTextAsFile}
@@ -780,6 +792,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                     <p className="text-sm">
                       Your text has been uploaded as an encrypted file. The text above shows what was uploaded.
                     </p>
+                    <p className="text-sm text-green-600 font-medium">
+                      🔒 Zero-knowledge encryption: Your data remains private and secure.
+                    </p>
                     <div className="flex gap-3 justify-center flex-wrap pt-2">
                       <Button
                         onClick={editTextAgain}
@@ -820,6 +835,9 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
             <div className="space-y-1">
               <p className="font-semibold text-lg">{uploadedFile.name}</p>
               <p className="text-sm text-muted-foreground">{uploadedFile.uploadTime}</p>
+              <p className="text-sm text-green-600 font-medium">
+                🔒 Zero-knowledge encryption: Your data remains private and secure.
+              </p>
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -841,9 +859,6 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                       📋 Copy
                     </Button>
                   </div>
-                  <p className="text-sm text-destructive font-medium">
-                    Save this passphrase - you'll need it to decrypt the file!
-                  </p>
                 </AlertDescription>
               </Alert>
             ) : (
