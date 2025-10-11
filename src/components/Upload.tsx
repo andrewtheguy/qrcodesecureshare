@@ -615,12 +615,19 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
               {uploading ? (
                 <div className="flex flex-col items-center gap-4">
                   <Progress value={33} className="w-full max-w-xs" />
-                  <p className="text-muted-foreground">Encrypting and uploading file...</p>
+                  <p className="text-muted-foreground">
+                    {transferMethod === 'webrtc' ? 'Encrypting file for WebRTC transfer...' : 'Encrypting and uploading file...'}
+                  </p>
                 </div>
               ) : (
                 <>
                   <div className="text-6xl mb-6">📁</div>
-                  <p className="mb-6 text-lg text-muted-foreground">Drag & drop a file here or</p>
+                  <p className="mb-6 text-lg text-muted-foreground">
+                    {transferMethod === 'webrtc'
+                      ? 'Drag & drop a file here for WebRTC transfer or'
+                      : 'Drag & drop a file here to upload to server or'
+                    }
+                  </p>
                   <input
                     type="file"
                     onChange={handleFileSelect}

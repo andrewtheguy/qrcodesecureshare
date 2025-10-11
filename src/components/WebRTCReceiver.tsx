@@ -27,14 +27,7 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
 
   useEffect(() => {
     // Initialize Peer.js
-    const peer = new Peer({
-      config: {
-        iceServers: [
-          { urls: 'stun:stun.l.google.com:19302' },
-          { urls: 'stun:stun1.l.google.com:19302' }
-        ]
-      }
-    })
+    const peer = new Peer()
 
     peerRef.current = peer
 
