@@ -555,7 +555,19 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                     <Label className="text-base font-semibold">Transfer Method</Label>
                     <RadioGroup
                       value={transferMethod}
-                      onValueChange={(value: 'server' | 'webrtc') => setTransferMethod(value)}
+                      onValueChange={(value: 'server' | 'webrtc') => {
+                        setTransferMethod(value)
+                        if (value === 'webrtc') {
+                          // Clear server upload state when switching to WebRTC
+                          setUploadedFile(null)
+                          setQrCodeUrl('')
+                        } else {
+                          // Clear WebRTC state when switching to server
+                          setWebrtcFile(null)
+                          setWebrtcKey('')
+                          setWebrtcOriginalFilename('')
+                        }
+                      }}
                       disabled={uploading}
                     >
                       <div className="flex items-start space-x-3 space-y-0">
