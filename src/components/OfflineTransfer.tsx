@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 
 import { MAX_FILE_SIZE } from './AnimatedQRCode'
 
-export default function OfflineTransferDemo() {
+export default function OfflineTransfer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>('select')
 

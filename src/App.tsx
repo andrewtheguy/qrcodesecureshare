@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
-import OfflineTransferDemo from './components/OfflineTransferDemo'
+import OfflineTransfer from './components/OfflineTransfer'
 import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -117,7 +117,7 @@ function App() {
         {activeTab === "generateqr" && <Upload ref={uploadRef} mode="text" />}
         {activeTab === "upload" && <Upload mode="file" />}
         {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
-        {activeTab === "offline" && <OfflineTransferDemo />}
+        {activeTab === "offline" && <OfflineTransfer />}
       </main>
     </div>
   )
