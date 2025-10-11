@@ -599,52 +599,54 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
             </CardContent>
           </Card>
 
-          <Card
-            className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
-              isDragging
-                ? 'border-primary bg-primary/10 scale-105'
-                : uploading
-                  ? 'border-muted cursor-not-allowed'
-                  : 'border-border hover:border-muted-foreground'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <CardContent className="p-12 text-center">
-              {uploading ? (
-                <div className="flex flex-col items-center gap-4">
-                  <Progress value={33} className="w-full max-w-xs" />
-                  <p className="text-muted-foreground">
-                    {transferMethod === 'webrtc' ? 'Encrypting file for WebRTC transfer...' : 'Encrypting and uploading file...'}
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <div className="text-6xl mb-6">📁</div>
-                  <p className="mb-6 text-lg text-muted-foreground">
-                    {transferMethod === 'webrtc'
-                      ? 'Drag & drop a file here for WebRTC transfer or'
-                      : 'Drag & drop a file here to upload to server or'
-                    }
-                  </p>
-                  <input
-                    type="file"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="file-input"
-                  />
-                  <Button
-                    size="lg"
-                    onClick={() => document.getElementById('file-input')?.click()}
-                    type="button"
-                  >
-                    Choose File
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {!uploadedFile && !webrtcFile && (
+            <Card
+              className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
+                isDragging
+                  ? 'border-primary bg-primary/10 scale-105'
+                  : uploading
+                    ? 'border-muted cursor-not-allowed'
+                    : 'border-border hover:border-muted-foreground'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <CardContent className="p-12 text-center">
+                {uploading ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <Progress value={33} className="w-full max-w-xs" />
+                    <p className="text-muted-foreground">
+                      {transferMethod === 'webrtc' ? 'Encrypting file for WebRTC transfer...' : 'Encrypting and uploading file...'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-6xl mb-6">📁</div>
+                    <p className="mb-6 text-lg text-muted-foreground">
+                      {transferMethod === 'webrtc'
+                        ? 'Drag & drop a file here for WebRTC transfer or'
+                        : 'Drag & drop a file here to upload to server or'
+                      }
+                    </p>
+                    <input
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="file-input"
+                    />
+                    <Button
+                      size="lg"
+                      onClick={() => document.getElementById('file-input')?.click()}
+                      type="button"
+                    >
+                      Choose File
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
