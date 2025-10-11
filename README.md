@@ -127,10 +127,6 @@ The app comes pre-configured with encryption keys, but you can generate your own
 - Private key is required for decryption
 - Ideal for controlled distribution where you hold the private key
 
-For detailed encryption documentation, see:
-- [Asymmetric Encryption Guide](./ASYMMETRIC_ENCRYPTION.md)
-- [Quick Start: Asymmetric Encryption](./README_ASYMMETRIC.md)
-
 ## 🏗️ Architecture
 
 ### Tech Stack
