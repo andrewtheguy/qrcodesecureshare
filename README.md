@@ -176,12 +176,6 @@ The app includes PWA configuration and can be installed on mobile devices for of
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-## 🙏 Acknowledgments
-
-- Built with modern web technologies
-- Uses battle-tested encryption algorithms
-- Inspired by the need for secure, offline file sharing
-
 ---
 
 **Secure your file sharing with QR Secure Share!** 🔐📱
