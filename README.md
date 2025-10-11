@@ -142,7 +142,7 @@ The app comes pre-configured with encryption keys, but you can generate your own
 - `Upload.tsx`: File upload and QR generation
 - `Scan.tsx`: QR code scanning
 - `OfflineTransfer.tsx`: P2P file transfer
-- `AnimatedQRCode.tsx`: QR display with animations
+- `AnimatedQRCode.tsx`: Display animated QR codes related the chunks of the file to be transferred for the offline method
 - Various sender/receiver components for different transfer methods
 
 ## 🔒 Security Considerations
