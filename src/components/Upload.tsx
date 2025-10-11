@@ -556,9 +556,6 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
                 {encryptionType === 'symmetric' && (
                   <div className="space-y-3">
                     <Label className="text-base font-semibold">Transfer Method</Label>
-                    <p className="text-sm text-muted-foreground">
-                      🔐 Passwords and private keys are never sent to the server - only encrypted data is uploaded.
-                    </p>
                     <RadioGroup
                       value={transferMethod}
                       onValueChange={(value: 'server' | 'webrtc') => {
