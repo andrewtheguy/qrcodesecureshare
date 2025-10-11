@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { deriveKey } from '@/lib/utils'
 import { getJwkSshFingerprint } from '@/utils/fingerprint'
+import { WebRTCSender } from './WebRTCSender'
 
 interface UploadResult {
   status: string
@@ -49,6 +50,10 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
   const [uploadingText, setUploadingText] = useState(false)
   const [textUploadCompleted, setTextUploadCompleted] = useState(false)
   const [encryptionType, setEncryptionType] = useState<'symmetric' | 'asymmetric'>('symmetric')
+  const [transferMethod, setTransferMethod] = useState<'server' | 'webrtc'>('server')
+  const [webrtcFile, setWebrtcFile] = useState<File | null>(null)
+  const [webrtcKey, setWebrtcKey] = useState<string>('')
+  const [webrtcOriginalFilename, setWebrtcOriginalFilename] = useState<string>('')
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
@@ -277,16 +282,33 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return
-    
+
     const file = files[0]
-    setUploading(true)
-    
-    try {
-      await uploadFile(file)
-    } catch (error) {
-      alert('File failed to upload. Please try again.')
-    } finally {
-      setUploading(false)
+
+    if (transferMethod === 'webrtc') {
+      // For WebRTC, just encrypt the file and prepare for transfer
+      try {
+        setUploading(true)
+        const passphrase = generatePassphrase()
+        const encryptedFile = await encryptFileSymmetric(file, passphrase)
+        setWebrtcFile(encryptedFile)
+        setWebrtcKey(passphrase)
+        setWebrtcOriginalFilename(file.name) // Store original filename
+      } catch (error) {
+        alert('File encryption failed. Please try again.')
+      } finally {
+        setUploading(false)
+      }
+    } else {
+      // Server upload
+      setUploading(true)
+      try {
+        await uploadFile(file)
+      } catch (error) {
+        alert('File failed to upload. Please try again.')
+      } finally {
+        setUploading(false)
+      }
     }
   }
 
@@ -384,6 +406,8 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
   const resetFileMode = () => {
     setUploadedFile(null)
     setQrCodeUrl('')
+    setWebrtcFile(null)
+    setWebrtcKey('')
   }
 
   const uploadTextAsFile = async () => {
@@ -473,99 +497,156 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         <>
           <Card className="mb-4">
             <CardContent className="pt-6">
-              <div className="space-y-3">
-                <Label className="text-base font-semibold">Encryption Type</Label>
-                <RadioGroup
-                  value={encryptionType}
-                  onValueChange={(value: 'symmetric' | 'asymmetric') => setEncryptionType(value)}
-                  disabled={uploading}
-                >
-                  <div className="flex items-start space-x-3 space-y-0">
-                    <RadioGroupItem value="symmetric" id="symmetric" />
-                    <div className="space-y-1 leading-none">
-                      <Label htmlFor="symmetric" className="cursor-pointer">
-                        Symmetric (Passphrase-based)
-                      </Label>
-                      <p className="text-sm text-muted-foreground text-left">
-                        Uses AES-GCM encryption with a random passphrase. Both sender and receiver use the same passphrase.
-                      </p>
+              <div className="space-y-6">
+                <div className="space-y-3">
+                  <Label className="text-base font-semibold">Encryption Type</Label>
+                  <RadioGroup
+                    value={encryptionType}
+                    onValueChange={(value: 'symmetric' | 'asymmetric') => setEncryptionType(value)}
+                    disabled={uploading}
+                  >
+                    <div className="flex items-start space-x-3 space-y-0">
+                      <RadioGroupItem value="symmetric" id="symmetric" />
+                      <div className="space-y-1 leading-none">
+                        <Label htmlFor="symmetric" className="cursor-pointer">
+                          Symmetric (Passphrase-based)
+                        </Label>
+                        <p className="text-sm text-muted-foreground text-left">
+                          Uses AES-GCM encryption with a random passphrase. Both sender and receiver use the same passphrase.
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-start space-x-3 space-y-0">
-                    <RadioGroupItem value="asymmetric" id="asymmetric" />
-                    <div className="space-y-1 leading-none flex-1">
-                      <Label htmlFor="asymmetric" className="cursor-pointer">
-                        Asymmetric (Public/Private Key)
-                      </Label>
-                      <p className="text-sm text-muted-foreground text-left">
-                        Uses RSA-OAEP encryption with hardcoded public key. Only the private key holder can decrypt.
-                      </p>
-                      {encryptionType === 'asymmetric' && (
-                        <div className="mt-2 space-y-1">
-                          <p className="text-sm text-green-600 text-left">✓ Public key configured (hardcoded in app)</p>
-                          {publicKeyFpError && (
-                            <p className="text-[10px] text-red-500">Fingerprint error: {publicKeyFpError}</p>
-                          )}
-                          {!publicKeyFpError && (
-                            <>
-                              {publicKeySshFp && (
-                                <div className="flex items-center gap-1 flex-wrap text-sm">
-                                  <span className="text-muted-foreground">Fingerprint:</span>
-                                  <code className="font-mono px-2 py-1 rounded bg-muted/70 dark:bg-zinc-800 text-muted-foreground break-all">
-                                    {publicKeySshFp}
-                                  </code>
-                                </div>
-                              )}
-                            </>
-                          )}
+                    <div className="flex items-start space-x-3 space-y-0">
+                      <RadioGroupItem value="asymmetric" id="asymmetric" />
+                      <div className="space-y-1 leading-none flex-1">
+                        <Label htmlFor="asymmetric" className="cursor-pointer">
+                          Asymmetric (Public/Private Key)
+                        </Label>
+                        <p className="text-sm text-muted-foreground text-left">
+                          Uses RSA-OAEP encryption with hardcoded public key. Only the private key holder can decrypt.
+                        </p>
+                        {encryptionType === 'asymmetric' && (
+                          <div className="mt-2 space-y-1">
+                            <p className="text-sm text-green-600 text-left">✓ Public key configured (hardcoded in app)</p>
+                            {publicKeyFpError && (
+                              <p className="text-[10px] text-red-500">Fingerprint error: {publicKeyFpError}</p>
+                            )}
+                            {!publicKeyFpError && (
+                              <>
+                                {publicKeySshFp && (
+                                  <div className="flex items-center gap-1 flex-wrap text-sm">
+                                    <span className="text-muted-foreground">Fingerprint:</span>
+                                    <code className="font-mono px-2 py-1 rounded bg-muted/70 dark:bg-zinc-800 text-muted-foreground break-all">
+                                      {publicKeySshFp}
+                                    </code>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </RadioGroup>
+                </div>
+
+                {encryptionType === 'symmetric' && (
+                  <div className="space-y-3">
+                    <Label className="text-base font-semibold">Transfer Method</Label>
+                    <RadioGroup
+                      value={transferMethod}
+                      onValueChange={(value: 'server' | 'webrtc') => {
+                        setTransferMethod(value)
+                        if (value === 'webrtc') {
+                          // Clear server upload state when switching to WebRTC
+                          setUploadedFile(null)
+                          setQrCodeUrl('')
+                        } else {
+                          // Clear WebRTC state when switching to server
+                          setWebrtcFile(null)
+                          setWebrtcKey('')
+                          setWebrtcOriginalFilename('')
+                        }
+                      }}
+                      disabled={uploading}
+                    >
+                      <div className="flex items-start space-x-3 space-y-0">
+                        <RadioGroupItem value="server" id="server" />
+                        <div className="space-y-1 leading-none">
+                          <Label htmlFor="server" className="cursor-pointer">
+                            Server Upload + QR Code
+                          </Label>
+                          <p className="text-sm text-muted-foreground text-left">
+                            Upload encrypted file to server and generate QR code with download link and passphrase.
+                          </p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                      <div className="flex items-start space-x-3 space-y-0">
+                        <RadioGroupItem value="webrtc" id="webrtc" />
+                        <div className="space-y-1 leading-none flex-1">
+                          <Label htmlFor="webrtc" className="cursor-pointer">
+                            WebRTC Peer-to-Peer Transfer
+                          </Label>
+                          <p className="text-sm text-muted-foreground text-left">
+                            Direct peer-to-peer transfer using WebRTC. Generate QR code with connection info and encryption key.
+                          </p>
+                        </div>
+                      </div>
+                    </RadioGroup>
                   </div>
-                </RadioGroup>
+                )}
               </div>
             </CardContent>
           </Card>
 
-          <Card
-            className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
-              isDragging
-                ? 'border-primary bg-primary/10 scale-105'
-                : uploading
-                  ? 'border-muted cursor-not-allowed'
-                  : 'border-border hover:border-muted-foreground'
-            }`}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-          >
-            <CardContent className="p-12 text-center">
-              {uploading ? (
-                <div className="flex flex-col items-center gap-4">
-                  <Progress value={33} className="w-full max-w-xs" />
-                  <p className="text-muted-foreground">Encrypting and uploading file...</p>
-                </div>
-              ) : (
-                <>
-                  <div className="text-6xl mb-6">📁</div>
-                  <p className="mb-6 text-lg text-muted-foreground">Drag & drop a file here or</p>
-                  <input
-                    type="file"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="file-input"
-                  />
-                  <Button
-                    size="lg"
-                    onClick={() => document.getElementById('file-input')?.click()}
-                    type="button"
-                  >
-                    Choose File
-                  </Button>
-                </>
-              )}
-            </CardContent>
-          </Card>
+          {!uploadedFile && !webrtcFile && (
+            <Card
+              className={`border-2 border-dashed transition-all duration-300 cursor-pointer ${
+                isDragging
+                  ? 'border-primary bg-primary/10 scale-105'
+                  : uploading
+                    ? 'border-muted cursor-not-allowed'
+                    : 'border-border hover:border-muted-foreground'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <CardContent className="p-12 text-center">
+                {uploading ? (
+                  <div className="flex flex-col items-center gap-4">
+                    <Progress value={33} className="w-full max-w-xs" />
+                    <p className="text-muted-foreground">
+                      {transferMethod === 'webrtc' ? 'Encrypting file for WebRTC transfer...' : 'Encrypting and uploading file...'}
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-6xl mb-6">📁</div>
+                    <p className="mb-6 text-lg text-muted-foreground">
+                      {transferMethod === 'webrtc'
+                        ? 'Drag & drop a file here for WebRTC transfer or'
+                        : 'Drag & drop a file here to upload to server or'
+                      }
+                    </p>
+                    <input
+                      type="file"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      id="file-input"
+                    />
+                    <Button
+                      size="lg"
+                      onClick={() => document.getElementById('file-input')?.click()}
+                      type="button"
+                    >
+                      Choose File
+                    </Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
 
@@ -714,6 +795,20 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
             </CardContent>
           </Card>
         </>
+      )}
+
+      {/* WebRTC Transfer */}
+      {webrtcFile && webrtcKey && transferMethod === 'webrtc' && (
+        <WebRTCSender
+          encryptedFile={webrtcFile}
+          encryptionKey={webrtcKey}
+          originalFilename={webrtcOriginalFilename}
+          onReset={() => {
+            setWebrtcFile(null)
+            setWebrtcKey('')
+            setWebrtcOriginalFilename('')
+          }}
+        />
       )}
 
       {uploadedFile && (
