@@ -65,7 +65,7 @@
 
 ### For Asymmetric Encryption
 
-The app comes pre-configured with encryption keys, but you can generate your own:
+The app comes pre-configured with my own encryption key pairs for my website, you should replace it with your own by generating a new pair:
 
 1. **Generate new key pair**
    ```bash
