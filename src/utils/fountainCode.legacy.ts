@@ -1,4 +1,24 @@
 /**
+ * ========================================================================
+ * LEGACY BACKUP - ORIGINAL FOUNTAIN CODE IMPLEMENTATION
+ * ========================================================================
+ *
+ * This file is a backup of the original fountain code implementation
+ * created on 2025-10-12 before implementing windowed fountain code
+ * with sliding window optimization.
+ *
+ * PURPOSE:
+ * - Serves as a reference implementation for the original LT code approach
+ * - Allows reverting to the original implementation if needed
+ * - Preserves the working baseline before major architectural changes
+ *
+ * DO NOT MODIFY THIS FILE - It is maintained as a historical reference
+ *
+ * For the current active implementation, see: src/utils/fountainCode.ts
+ * ========================================================================
+ */
+
+/**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
  *
  * Key changes vs previous version:
@@ -127,7 +147,6 @@ export interface FountainEncoderStats {
   producedChunks: number
   avgDegree: number
   uniqueBlockCoverage: number  // fraction of source blocks appearing in at least one emitted chunk
-  windowCoverage: number
 }
 
 export class FountainEncoder {
@@ -141,9 +160,6 @@ export class FountainEncoder {
   private samplerOpts: DegreeSamplerOptions
   private receivedBlocks: Set<number> = new Set()
   private targetedMode: boolean = false
-  private windowStart: number
-  private windowEnd: number
-  private windowEnabled: boolean
 
   constructor(
     data: Uint8Array,
@@ -171,19 +187,6 @@ export class FountainEncoder {
     }
 
     this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }
-
-    // Initialize window state
-    this.windowStart = 0
-    if (data.length < 200 * 1024) {
-      this.windowEnabled = false
-      this.windowEnd = numBlocks
-    } else if (data.length >= 200 * 1024 && data.length <= 256 * 1024) {
-      this.windowEnabled = true
-      this.windowEnd = Math.ceil(numBlocks * 0.5)
-    } else {
-      this.windowEnabled = true
-      this.windowEnd = Math.min(Math.ceil(128 * 1024 / this.blockSize), numBlocks)
-    }
   }
 
   getMetadata(): FountainMetadata { return this.metadata }
@@ -192,8 +195,7 @@ export class FountainEncoder {
     return {
       producedChunks: this.chunkCounter,
       avgDegree: this.chunkCounter > 0 ? this.sumDegrees / this.chunkCounter : 0,
-      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0,
-      windowCoverage: this.windowEnabled ? (this.windowEnd - this.windowStart) / this.sourceBlocks.length : 1.0
+      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0
     }
   }
 
@@ -207,65 +209,16 @@ export class FountainEncoder {
   }
 
   /**
-   * Expand the window by 50% of current window size
-   * Returns true if expansion occurred, false if already at end
-   */
-  expandWindow(): boolean {
-    if (this.windowEnd >= this.sourceBlocks.length) {
-      return false // Already at the end
-    }
-
-    const currentSize = this.windowEnd - this.windowStart
-    const expansion = Math.ceil(currentSize * 0.5)
-    this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)
-    return true
-  }
-
-  /**
-   * Get current window information
-   */
-  getWindowInfo(): {
-    windowEnabled: boolean
-    windowStart: number
-    windowEnd: number
-    windowSize: number
-    totalBlocks: number
-    isWindowComplete: boolean
-  } {
-    return {
-      windowEnabled: this.windowEnabled,
-      windowStart: this.windowStart,
-      windowEnd: this.windowEnd,
-      windowSize: this.windowEnd - this.windowStart,
-      totalBlocks: this.sourceBlocks.length,
-      isWindowComplete: this.windowEnd >= this.sourceBlocks.length
-    }
-  }
-
-  /**
-   * Get blocks in the current window
-   */
-  private getWindowBlocks(): number[] {
-    return this.windowEnabled
-      ? Array.from({ length: this.windowEnd - this.windowStart }, (_, i) => i + this.windowStart)
-      : Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
-  }
-
-  /**
    * Get missing blocks that receiver still needs
    */
   private getMissingBlocks(): number[] {
-    const windowBlocks = this.getWindowBlocks()
-
-    // Then apply targeted mode filtering
     if (!this.targetedMode) {
-      return windowBlocks
+      return Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
     }
-
     const missing: number[] = []
-    for (const blockIdx of windowBlocks) {
-      if (!this.receivedBlocks.has(blockIdx)) {
-        missing.push(blockIdx)
+    for (let i = 0; i < this.sourceBlocks.length; i++) {
+      if (!this.receivedBlocks.has(i)) {
+        missing.push(i)
       }
     }
     return missing
@@ -277,7 +230,8 @@ export class FountainEncoder {
 
     // In targeted mode, prefer missing blocks
     const missingBlocks = this.getMissingBlocks()
-    const availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getWindowBlocks()
+    const availableBlocks = missingBlocks.length > 0 ? missingBlocks :
+      Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
 
     // Adjust degree based on how many blocks are left
     let degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)

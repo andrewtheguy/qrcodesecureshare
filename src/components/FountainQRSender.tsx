@@ -27,6 +27,16 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const [scanningFeedback, setScanningFeedback] = useState(false)
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
+  const [windowInfo, setWindowInfo] = useState<{
+    windowEnabled: boolean
+    windowStart: number
+    windowEnd: number
+    windowSize: number
+    totalBlocks: number
+    isWindowComplete: boolean
+  } | null>(null)
+  const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
+  const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
@@ -51,12 +61,13 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
           blockSize: CHUNK_SIZE,
           c: 0.2,
-            delta: 0.01,
+             delta: 0.01,
           // Optional: override doping rates here if experimenting
           degree1Rate: 0.08,
           lowDegreeRate: 0.15
         })
         setEncoder(fountainEncoder)
+        setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
         setChunkCount(0)
 
@@ -276,6 +287,39 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         // Enable targeted encoding - encoder will now focus on missing blocks
         if (encoder) {
           encoder.setReceivedBlocks(feedback.receivedBlocks)
+
+          // Check for window expansion
+          const currentWindow = encoder.getWindowInfo()
+          if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
+            // Skip expansion logic if windowing not enabled or already complete
+          } else {
+            // Calculate decoded blocks in current window
+            const decodedInWindow = feedback.receivedBlocks.filter((blockIdx: number) =>
+              blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
+            ).length
+
+            if (decodedInWindow > lastDecodedInWindow) {
+              // Update last decoded count
+              setLastDecodedInWindow(decodedInWindow)
+
+              // Calculate window decode percentage
+              const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+
+              // Check expansion trigger (50% threshold)
+              if (windowDecodePercent >= 0.5) {
+                // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
+                const now = Date.now()
+                if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                  const expanded = encoder.expandWindow()
+                  if (expanded) {
+                    setWindowInfo(encoder.getWindowInfo())
+                    setLastWindowExpansion(now)
+                    console.log('Window expanded:', encoder.getWindowInfo())
+                  }
+                }
+              }
+            }
+          }
         }
 
         // Update estimated chunks needed based on feedback
@@ -359,6 +403,29 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         </Alert>
       )}
 
+      {/* Window Progress Alert */}
+      {windowInfo && windowInfo.windowEnabled && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p className="font-medium">🪟 Window Progress</p>
+              <div className="text-sm">
+                <p>Window: blocks {windowInfo.windowStart}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({((windowInfo.windowSize / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                {windowInfo.isWindowComplete ? (
+                  <p className="text-green-600 dark:text-green-400 font-medium mt-1">
+                    ✅ Full file now in transfer window
+                  </p>
+                ) : (
+                  <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
+                    📈 Window will expand automatically as blocks are decoded
+                  </p>
+                )}
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Receiver Progress Alert */}
       {receivedBlocksCount > 0 && (
         <Alert>
@@ -366,7 +433,16 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             <div className="space-y-2">
               <p className="font-medium">📊 Receiver Progress (Targeted Mode Active)</p>
               <div className="text-sm">
-                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                {windowInfo && windowInfo.windowEnabled ? (
+                  <>
+                    <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                    <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
+                      blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
+                    ).length} / {windowInfo.windowSize} blocks</p>
+                  </>
+                ) : (
+                  <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                )}
                 {decodingProgress >= 100 ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
                     ✅ Transfer complete! You can stop sending.
@@ -517,11 +593,19 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             <li>Can skip/miss chunks and still decode successfully</li>
             <li>Keep playing until receiver shows 100% decoded</li>
             <li>More robust than sequential chunk transfer</li>
+            {windowInfo && windowInfo.windowEnabled && (
+              <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
+            )}
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
               <span className="font-medium">⚠️ Note:</span> {skippedChunks} chunk{skippedChunks > 1 ? 's were' : ' was'} too large for QR encoding and {skippedChunks > 1 ? 'were' : 'was'} automatically skipped.
               This is normal - fountain coding generates new chunks on the fly.
+            </p>
+          )}
+          {windowInfo && windowInfo.windowEnabled && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 pt-3 border-t">
+              <span className="font-medium">🪟 Tip:</span> Scan feedback QR periodically to enable automatic window expansion for large files.
             </p>
           )}
         </AlertDescription>
