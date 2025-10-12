@@ -61,9 +61,7 @@
    npm run preview
    ```
 
-## 🔑 Key Management
-
-### For Asymmetric Encryption
+## 🔑 Key Management For Asymmetric Encryption
 
 The app comes pre-configured with my own encryption key pairs for my website, you should replace it with your own by generating a new pair:
 
