@@ -51,6 +51,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [decodeTime, setDecodeTime] = useState<number | null>(null)
   const [showFeedbackQR, setShowFeedbackQR] = useState(false)
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
+  const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -171,10 +172,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
  const handleGenerateFeedbackQR = useCallback(async () => {
    if (generatingRef.current) return; generatingRef.current = true
    try {
-     if (showFeedbackQR || isAwaitingFeedback) {
-       addDebugLog('⚠ Skipping duplicate feedback QR generation')
-       return
-     }
      stopScannerRef.current?.()
      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
      const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
@@ -228,12 +225,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        }
      } else {
        // Targeted feedback with block indices - for final stage
-       feedback = {
-         type: 'FOUNTAIN_FEEDBACK',
-         mode: 'targeted',
+       // Try compact representation first
+       const feedbackBase = {
+         type: 'FOUNTAIN_FEEDBACK' as const,
+         mode: 'targeted' as const,
          sessionId: sessionId,
          sequence: seq,
-         receivedBlocks: decodedBlockIndices,
          totalBlocks: fountainMetadata.totalSourceBlocks,
          windowStart: currentWindowStart,
          windowEnd: currentWindowEnd,
@@ -244,6 +241,50 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          contiguousChecksum: contiguousChecksum,
          contiguousChecksumRange: contiguousChecksumRange,
          defragComplete: defragComplete
+       }
+
+       // Attempt compact ranges representation
+       const ranges: [number, number][] = []
+       let start = decodedBlockIndices[0]
+       let prev = start
+       for (let i = 1; i < decodedBlockIndices.length; i++) {
+         if (decodedBlockIndices[i] !== prev + 1) {
+           ranges.push([start, prev])
+           start = decodedBlockIndices[i]
+         }
+         prev = decodedBlockIndices[i]
+       }
+       if (decodedBlockIndices.length > 0) {
+         ranges.push([start, prev])
+       }
+       const compactFeedback = { ...feedbackBase, receivedBlocks: { ranges } }
+       const compactJson = JSON.stringify(compactFeedback)
+
+       // Check if compact version fits (rough estimate: QR capacity ~3KB for version 40)
+       if (compactJson.length <= 2500) {
+         feedback = compactFeedback
+       } else {
+         // Fallback to statistics mode with expansion request
+         addDebugLog(`📊 Payload too large (${compactJson.length} bytes), falling back to statistics mode with window expansion request`)
+         feedback = {
+           type: 'FOUNTAIN_FEEDBACK' as const,
+           mode: 'statistics' as const,
+           sessionId: sessionId,
+           sequence: seq,
+           decodedInWindow: decodedInWindow,
+           totalDecoded: decodedBlockIndices.length,
+           totalBlocks: fountainMetadata.totalSourceBlocks,
+           windowStart: currentWindowStart,
+           windowEnd: currentWindowEnd,
+           progress: overallProgress * 100,
+           requestWindowExpansion: true, // Force expansion
+           firstMissingBlock: firstMissingBlock,
+           defragTargets: fragmentation.defragTargets,
+           fragmentationScore: fragmentation.fragmentationScore,
+           contiguousChecksum: contiguousChecksum,
+           contiguousChecksumRange: contiguousChecksumRange,
+           defragComplete: defragComplete
+         }
        }
      }
 
@@ -261,8 +302,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      }
 
      const feedbackJson = JSON.stringify(feedback)
-     const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+     let dataUrl: string
+     try {
+       dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+     } catch (qrError) {
+       addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)
+       // Fallback: set error state and return without generating QR
+       setError('Failed to generate feedback QR code - payload too large. Try again later or use statistics mode.')
+       return
+     }
      setFeedbackQRUrl(dataUrl)
+     setFeedbackMode(feedback.mode)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
      setFeedbackSequence(prev => prev + 1)
@@ -278,7 +328,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
      }
    } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, showFeedbackQR, isAwaitingFeedback, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog])
+ }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -331,11 +381,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
 
        if (windowDecodePercentage >= windowTriggerThreshold) {
-         setIsAwaitingFeedback(true)
-         setIsScanning(false)
          addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
          // Auto-open feedback QR to streamline user flow
          handleGenerateFeedbackQR()
+         setIsAwaitingFeedback(true)
+         setIsScanning(false)
        }
      }
 
@@ -577,7 +627,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round(progress)}%)
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                {decodedBlocks / fountainMetadata.totalSourceBlocks < 0.9 ? 'Sharing window progress (compact format)' : 'Sharing decoded blocks for targeted transfer'}
+                {decodedBlocks / fountainMetadata.totalSourceBlocks < 0.9 ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR code to the sender to share your progress
@@ -842,7 +892,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       </div>
 
       {/* Feedback QR Button */}
-      {!success && decodedBlocks > 0 && !showFeedbackQR && !isAwaitingFeedback && (
+      {!success && decodedBlocks > 0 && !showFeedbackQR && (
         <div className="pt-2 border-t">
           <Button
             onClick={handleGenerateFeedbackQR}

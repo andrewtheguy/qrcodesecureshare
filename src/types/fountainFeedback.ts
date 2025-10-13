@@ -55,8 +55,8 @@ export interface FountainFeedbackStatistics extends FountainFeedbackBase {
  */
 export interface FountainFeedbackTargeted extends FountainFeedbackBase {
   mode: 'targeted';
-  /** Array of decoded block indices */
-  receivedBlocks: number[];
+  /** Array of decoded block indices or compact ranges representation */
+  receivedBlocks: number[] | { ranges: [number, number][] };
 }
 
 /**

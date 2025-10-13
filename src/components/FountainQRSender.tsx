@@ -107,16 +107,16 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   }, [file])
 
   // Auto-start playback once encoder is ready (no need to wait for receiver now)
-  // useEffect(() => {
-  //   if (encoder && !isPlaying) {
-  //     // Reset counters for fresh session
-  //     setChunkCount(0)
-  //     setSkippedChunks(0)
-  //     setIsPlaying(true)
-  //   }
-  //   // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  // }, [encoder])
+  useEffect(() => {
+    if (encoder && !isPlaying) {
+      // Reset counters for fresh session
+      setChunkCount(0)
+      setSkippedChunks(0)
+      setIsPlaying(true)
+    }
+    // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encoder])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
