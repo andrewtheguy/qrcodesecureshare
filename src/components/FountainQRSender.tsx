@@ -417,29 +417,6 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             }
           }
 
-          if (defragMode) {
-            if (defragTargets.length > 0 && firstMissingBlock > Math.max(...defragTargets)) {
-              if (encoder) {
-                const completed = encoder.exitDefragMode()
-                const completionFeedback: SenderFeedback = {
-                  type: 'SENDER_FEEDBACK',
-                  sessionId: sessionId,
-                  sequence: senderFeedbackSequence,
-                  command: 'defrag_complete',
-                  completedTargets: completed,
-                  message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
-                }
-                generateSenderFeedbackQR(completionFeedback)
-              }
-              setDefragMode(false)
-              setDefragTargets([])
-            } else if (!feedback.defragTargets || feedback.defragTargets.length === 0) {
-              if (encoder) encoder.exitDefragMode()
-              setDefragMode(false)
-              setDefragTargets([])
-            }
-          }
-
           // Validate checksum
           if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
             const [start, end] = feedback.contiguousChecksumRange

@@ -33,6 +33,8 @@ interface FountainFeedbackBase {
   contiguousChecksum: string;
   /** Range covered by checksum */
   contiguousChecksumRange: [number, number];
+  /** Indicates receiver has decoded all defrag targets */
+  defragComplete?: boolean;
 }
 
 /**

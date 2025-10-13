@@ -74,6 +74,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
   const generatingRef = useRef(false)
   const scanStartTimeRef = useRef<number | null>(null)
+  const lastDefragTargetsRef = useRef<number[]>([])
 
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -117,6 +118,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       fragmentationScore,
       defragTargets: isFragmented ? missingBlocks : []
     }
+  }
+
+  const checkDefragComplete = (decodedBlockIndices: number[], defragTargets: number[]): boolean => {
+    if (defragTargets.length === 0) return false
+    const decodedSet = new Set(decodedBlockIndices)
+    return defragTargets.every(target => decodedSet.has(target))
   }
 
   const computeContiguousChecksum = async (decoder: FountainDecoder, startIdx: number, endIdx: number): Promise<string> => {
@@ -181,6 +188,21 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      const contiguousChecksum = firstMissingBlock > 0 ? await computeContiguousChecksum(fountainDecoderRef.current, 0, firstMissingBlock) : ''
      const contiguousChecksumRange: [number, number] = [0, firstMissingBlock]
 
+     // Defensive fallback: clear expectingSenderFeedback if no fragmentation
+     if (!fragmentation.isFragmented) {
+       setExpectingSenderFeedback(false)
+     }
+
+     // Update last defrag targets if fragmentation detected
+     if (fragmentation.isFragmented) {
+       lastDefragTargetsRef.current = fragmentation.defragTargets
+     }
+
+     // Check if defrag is complete using persisted targets
+     const decodedSet = new Set(decodedBlockIndices)
+     const defragComplete = lastDefragTargetsRef.current.length > 0 &&
+       lastDefragTargetsRef.current.every(t => decodedSet.has(t))
+
      const seq = feedbackSequence; // or compute next via ref
      let feedback: FountainFeedback
      if (overallProgress < 0.9) {
@@ -201,7 +223,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragTargets: fragmentation.defragTargets,
          fragmentationScore: fragmentation.fragmentationScore,
          contiguousChecksum: contiguousChecksum,
-         contiguousChecksumRange: contiguousChecksumRange
+         contiguousChecksumRange: contiguousChecksumRange,
+         defragComplete: defragComplete
        }
      } else {
        // Targeted feedback with block indices - for final stage
@@ -219,7 +242,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragTargets: fragmentation.defragTargets,
          fragmentationScore: fragmentation.fragmentationScore,
          contiguousChecksum: contiguousChecksum,
-         contiguousChecksumRange: contiguousChecksumRange
+         contiguousChecksumRange: contiguousChecksumRange,
+         defragComplete: defragComplete
        }
      }
 
@@ -227,6 +251,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      if (fragmentation.isFragmented) {
        setExpectingSenderFeedback(true)
        addDebugLog(`🔧 Fragmentation detected: ${fragmentation.defragTargets.length} targets, requesting defrag mode`)
+     }
+
+     // Clear expecting sender feedback if defrag is complete
+     if (defragComplete) {
+       setExpectingSenderFeedback(false)
+       lastDefragTargetsRef.current = []
+       addDebugLog(`✅ Defrag complete: all ${lastDefragTargetsRef.current.length} targets decoded`)
      }
 
      const feedbackJson = JSON.stringify(feedback)
@@ -239,6 +270,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks), checksum: ${contiguousChecksum}`)
      if (fragmentation.isFragmented) {
        addDebugLog(`🔧 Defrag targets: ${fragmentation.defragTargets.join(', ')}`)
+     }
+     if (defragComplete) {
+       addDebugLog(`✅ Defrag complete: signaling sender to exit defrag mode`)
      }
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
@@ -334,11 +368,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setLastSenderFeedbackSequence(parsed.sequence)
 
       switch (parsed.command) {
-        case 'defrag_complete':
-          addDebugLog(`✅ Defrag complete: ${parsed.completedTargets.join(', ')}`)
-          setExpectingSenderFeedback(false)
-          setSenderFeedbackMessage(parsed.message)
-          break
+        // case 'defrag_complete': // Removed - receiver now handles completion internally
 
         case 'rollback':
            addDebugLog(`⚠️ Rolling back to block ${parsed.rollbackToBlock}: ${parsed.reason}`)
