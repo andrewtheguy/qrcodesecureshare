@@ -5,7 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
-import type { FountainFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
+import { computeChecksum } from '@/utils/checksum'
+import { SENDER_FEEDBACK_DISPLAY_DURATION, SENDER_FEEDBACK_AUTO_RESUME_DELAY } from '@/utils/fountainConfig'
 
 interface FountainQRSenderProps {
   file: File
@@ -47,6 +49,12 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     windowEnd?: number
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
+  const [defragMode, setDefragMode] = useState(false)
+  const [defragTargets, setDefragTargets] = useState<number[]>([])
+  const [showSenderFeedbackQR, setShowSenderFeedbackQR] = useState(false)
+  const [senderFeedbackQRUrl, setSenderFeedbackQRUrl] = useState<string>('')
+  const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
+  const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
@@ -223,6 +231,25 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
   // Metadata generation removed – handled by parent component
 
+  // Defrag completion detection
+  useEffect(() => {
+    if (defragMode && encoder && encoder.isDefragComplete()) {
+      // Generate defrag completion sender feedback
+      const completed = encoder.exitDefragMode()
+      const completionFeedback: SenderFeedback = {
+        type: 'SENDER_FEEDBACK',
+        sessionId: sessionId,
+        sequence: senderFeedbackSequence,
+        command: 'defrag_complete',
+        completedTargets: completed,
+        message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
+      }
+      generateSenderFeedbackQR(completionFeedback)
+      setDefragMode(false)
+      setDefragTargets([])
+    }
+  }, [defragMode, encoder, receivedBlocks, sessionId, senderFeedbackSequence])
+
   // Animation loop
   useEffect(() => {
     if (!isPlaying || !encoder) return
@@ -292,6 +319,36 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     }
   }, [scanningFeedback])
 
+  const validateContiguousChecksum = async (encoder: FountainEncoder, startIdx: number, endIdx: number, expectedChecksum: string): Promise<{ valid: boolean, message: string, range: string, computedChecksum: string }> => {
+    const data = encoder.getContiguousBlocksData(startIdx, endIdx)
+    if (!data) {
+      return { valid: false, message: 'Could not get contiguous blocks data', range: `${startIdx}-${endIdx}`, computedChecksum: '' }
+    }
+
+    const computedChecksum = await computeChecksum(data, 'crc32')
+    const valid = computedChecksum === expectedChecksum
+    const message = valid
+      ? `Checksum valid: ${computedChecksum}`
+      : `Checksum mismatch: expected ${expectedChecksum}, got ${computedChecksum}`
+
+    return { valid, message, range: `${startIdx}-${endIdx}`, computedChecksum }
+  }
+
+  const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
+    setIsPlaying(false)
+    const feedbackJson = JSON.stringify(feedback)
+    const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M' })
+    setSenderFeedbackQRUrl(dataUrl)
+    setShowSenderFeedbackQR(true)
+    setSenderFeedbackSequence(prev => prev + 1)
+
+    setTimeout(() => {
+      setShowSenderFeedbackQR(false)
+      setSenderFeedbackQRUrl('')
+      setTimeout(() => setIsPlaying(true), SENDER_FEEDBACK_AUTO_RESUME_DELAY)
+    }, SENDER_FEEDBACK_DISPLAY_DURATION)
+  }
+
   const handleFeedbackScan = (data: string) => {
     // Guard against multiple rapid callbacks
     if (processingRef.current) {
@@ -342,6 +399,72 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         if (feedback.mode === 'statistics') {
           // Statistics-only feedback - no targeted encoding
           console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
+
+          // Handle defrag targets
+          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
+            if (encoder) {
+              encoder.setDefragTargets(feedback.defragTargets)
+              setDefragMode(true)
+              setDefragTargets(feedback.defragTargets)
+              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
+            }
+          } else if (defragMode) {
+            // Defrag was active but no longer requested - exit
+            if (encoder) {
+              const completed = encoder.exitDefragMode()
+              setDefragMode(false)
+              setDefragTargets([])
+            }
+          }
+
+          if (defragMode) {
+            if (defragTargets.length > 0 && firstMissingBlock > Math.max(...defragTargets)) {
+              if (encoder) {
+                const completed = encoder.exitDefragMode()
+                const completionFeedback: SenderFeedback = {
+                  type: 'SENDER_FEEDBACK',
+                  sessionId: sessionId,
+                  sequence: senderFeedbackSequence,
+                  command: 'defrag_complete',
+                  completedTargets: completed,
+                  message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
+                }
+                generateSenderFeedbackQR(completionFeedback)
+              }
+              setDefragMode(false)
+              setDefragTargets([])
+            } else if (!feedback.defragTargets || feedback.defragTargets.length === 0) {
+              if (encoder) encoder.exitDefragMode()
+              setDefragMode(false)
+              setDefragTargets([])
+            }
+          }
+
+          // Validate checksum
+          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
+            const [start, end] = feedback.contiguousChecksumRange
+            if (end > start && encoder) {
+              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
+                setChecksumValidation(validation)
+                console.log('🔐', validation.message)
+
+                // If checksum mismatch, generate rollback sender feedback
+                if (!validation.valid) {
+                  const rollbackFeedback: SenderFeedback = {
+                    type: 'SENDER_FEEDBACK',
+                    sessionId: sessionId,
+                    sequence: senderFeedbackSequence,
+                    command: 'rollback',
+                    rollbackToBlock: start,
+                    reason: `Checksum mismatch detected: ${validation.message}`,
+                    lastValidChecksum: validation.computedChecksum,
+                    lastValidChecksumRange: [start, end]
+                  }
+                  generateSenderFeedbackQR(rollbackFeedback)
+                }
+              })
+            }
+          }
 
           // Clear targeted mode so encoder doesn't use stale missing-blocks information
           if (encoder) {
@@ -394,6 +517,69 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         } else if (feedback.mode === 'targeted' && Array.isArray(feedback.receivedBlocks)) {
           // Targeted feedback with full block list
           console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
+
+          // Handle defrag targets
+          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
+            if (encoder) {
+              encoder.setDefragTargets(feedback.defragTargets)
+              setDefragMode(true)
+              setDefragTargets(feedback.defragTargets)
+              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
+            }
+          } else if (defragMode) {
+            // Check if defrag completion can be detected
+            if (defragTargets.length > 0 && firstMissingBlock > Math.max(...defragTargets)) {
+              // Defrag complete - emit sender feedback
+              if (encoder) {
+                const completed = encoder.exitDefragMode()
+                const completionFeedback: SenderFeedback = {
+                  type: 'SENDER_FEEDBACK',
+                  sessionId: sessionId,
+                  sequence: senderFeedbackSequence,
+                  command: 'defrag_complete',
+                  completedTargets: completed,
+                  message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
+                }
+                generateSenderFeedbackQR(completionFeedback)
+                setDefragMode(false)
+                setDefragTargets([])
+                console.log('✅ Defrag completion detected in statistics mode')
+              }
+            } else {
+              // Defrag was active but no longer requested - exit
+              if (encoder) {
+                const completed = encoder.exitDefragMode()
+                setDefragMode(false)
+                setDefragTargets([])
+              }
+            }
+          }
+
+          // Validate checksum
+          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
+            const [start, end] = feedback.contiguousChecksumRange
+            if (end > start && encoder) {
+              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
+                setChecksumValidation(validation)
+                console.log('🔐', validation.message)
+
+                // If checksum mismatch, generate rollback sender feedback
+                if (!validation.valid) {
+                  const rollbackFeedback: SenderFeedback = {
+                    type: 'SENDER_FEEDBACK',
+                    sessionId: sessionId,
+                    sequence: senderFeedbackSequence,
+                    command: 'rollback',
+                    rollbackToBlock: start,
+                    reason: `Checksum mismatch detected: ${validation.message}`,
+                    lastValidChecksum: validation.computedChecksum,
+                    lastValidChecksumRange: [start, end]
+                  }
+                  generateSenderFeedbackQR(rollbackFeedback)
+                }
+              })
+            }
+          }
 
           // Enable targeted encoding and apply skip threshold
           setReceivedBlocks(new Set(feedback.receivedBlocks))
@@ -555,6 +741,24 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         </Alert>
       )}
 
+      {/* Checksum Validation Alert */}
+      {checksumValidation && (
+        <Alert variant={checksumValidation.valid ? "default" : "destructive"}>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p className="font-medium">🔐 Checksum Validation</p>
+              <p className="text-sm">{checksumValidation.message}</p>
+              <p className="text-xs text-muted-foreground">Range: {checksumValidation.range}</p>
+              {!checksumValidation.valid && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  ⚠️ Rollback request sent to receiver
+                </p>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Receiver Progress Alert */}
       {(lastStats || receivedBlocksCount > 0) && (
         <Alert>
@@ -575,6 +779,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
                             <p>Last feedback: sequence {lastProcessedSequence}</p>
                           )}
                           <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
+                          {defragMode && (
+                            <p className="text-orange-600 dark:text-orange-400 font-medium mt-1">
+                              🔧 Defrag mode active: targeting {defragTargets.length} blocks
+                            </p>
+                          )}
                   </>
                 ) : (
                   <>
@@ -598,11 +807,32 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
                     ) : (
                       <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
                         🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
+                        {defragMode && (
+                          <span className="block text-orange-600 dark:text-orange-400">
+                            🔧 Defrag mode active: prioritizing {defragTargets.length} blocks
+                          </span>
+                        )}
                       </p>
                     )}
                   </>
                 )}
               </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Sender Feedback QR Display */}
+      {showSenderFeedbackQR && senderFeedbackQRUrl && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">📤 Sender Feedback QR Code</p>
+              <div className="flex justify-center bg-white p-4 rounded-lg">
+                <img src={senderFeedbackQRUrl} alt="Sender Feedback QR" className="max-w-full h-auto" />
+              </div>
+              <p className="text-sm text-center">Show this QR code to the receiver to signal state change</p>
+              <p className="text-xs text-muted-foreground text-center">Auto-resuming in {SENDER_FEEDBACK_DISPLAY_DURATION/1000}s...</p>
             </div>
           </AlertDescription>
         </Alert>
@@ -745,10 +975,12 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             <li>More robust than sequential chunk transfer</li>
             {windowInfo && windowInfo.windowEnabled && (
               <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
-            )}
-            <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
-            <li className="text-blue-600 dark:text-blue-400">When {'>'}90% decoded, feedback includes block details for targeted encoding</li>
-            <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
+              )}
+              <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+              <li className="text-blue-600 dark:text-blue-400">When {'>'}90% decoded, feedback includes block details for targeted encoding</li>
+              <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
+              <li className="text-blue-600 dark:text-blue-400">Sender will display feedback QR codes to signal defrag completion or request rollback</li>
+              <li className="text-blue-600 dark:text-blue-400">If checksum mismatch is detected, sender will request rollback to last valid block</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">

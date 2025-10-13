@@ -147,6 +147,9 @@ export class FountainEncoder {
   private windowEnd: number
   private windowEnabled: boolean
   private skipBlocksBelow: number = 0
+  private defragTargets: Set<number> = new Set()
+  private defragMode: boolean = false
+  private defragCompletedTargets: number[] = []
 
   constructor(
     data: Uint8Array,
@@ -218,6 +221,15 @@ export class FountainEncoder {
   }
 
   /**
+   * Set defragmentation targets - specific blocks to prioritize
+   */
+  setDefragTargets(blockIndices: number[]): void {
+    this.defragTargets = new Set(blockIndices.filter(idx => idx >= 0 && idx < this.sourceBlocks.length))
+    this.defragMode = this.defragTargets.size > 0
+    this.defragCompletedTargets = []
+  }
+
+  /**
    * Expand the window by 50% of current window size
    * Returns true if expansion occurred, false if already at end
    */
@@ -256,6 +268,18 @@ export class FountainEncoder {
   }
 
   /**
+   * Get defragmentation state information
+   */
+  getDefragInfo(): { defragMode: boolean, defragTargets: number[], targetCount: number, completedTargets: number[] } {
+    return {
+      defragMode: this.defragMode,
+      defragTargets: Array.from(this.defragTargets),
+      targetCount: this.defragTargets.size,
+      completedTargets: [...this.defragCompletedTargets]
+    }
+  }
+
+  /**
    * Get blocks in the current window
    */
   private getWindowBlocks(): number[] {
@@ -271,6 +295,17 @@ export class FountainEncoder {
    * Get missing blocks that receiver still needs
    */
   private getMissingBlocks(): number[] {
+    // Defrag mode takes highest priority
+    if (this.defragMode && this.defragTargets.size > 0) {
+      const defragMissing = Array.from(this.defragTargets).filter(idx => !this.receivedBlocks.has(idx))
+      if (defragMissing.length > 0) {
+        return defragMissing
+      }
+      // All defrag targets decoded - track completed targets but don't auto-exit
+      // Sender will explicitly signal completion via sender feedback QR
+      this.defragCompletedTargets = Array.from(this.defragTargets)
+    }
+
     const windowBlocks = this.getWindowBlocks()
 
     // Then apply targeted mode filtering
@@ -326,6 +361,11 @@ export class FountainEncoder {
       degree = Math.min(degree, Math.max(1, Math.ceil(missingBlocks.length / 2)))
     }
 
+    // In defrag mode with few targets, use even lower degrees
+    if (this.defragMode && this.defragTargets.size > 0 && this.defragTargets.size <= 5) {
+      degree = Math.min(degree, 2)
+    }
+
     // Cap degree at available blocks
     degree = Math.min(degree, finalAvailableBlocks.length)
 
@@ -364,6 +404,44 @@ export class FountainEncoder {
     const out: FountainChunk[] = []
     for (let i = 0; i < count; i++) out.push(this.generateChunk())
     return out
+  }
+
+  /**
+   * Check if defragmentation is complete
+   */
+  isDefragComplete(): boolean {
+    return this.defragMode && this.defragTargets.size > 0 && this.defragCompletedTargets.length === this.defragTargets.size
+  }
+
+  /**
+   * Exit defragmentation mode and return completed targets
+   */
+  exitDefragMode(): number[] {
+    const completed = [...this.defragCompletedTargets]
+    this.defragMode = false
+    this.defragTargets.clear()
+    this.defragCompletedTargets = []
+    return completed
+  }
+
+  /**
+   * Get contiguous blocks data for checksum validation
+   */
+  getContiguousBlocksData(startIdx: number, endIdx: number): Uint8Array | null {
+    if (startIdx < 0 || endIdx > this.sourceBlocks.length || startIdx >= endIdx) {
+      return null
+    }
+
+    const totalSize = (endIdx - startIdx) * this.blockSize
+    const result = new Uint8Array(totalSize)
+    let offset = 0
+
+    for (let i = startIdx; i < endIdx; i++) {
+      result.set(this.sourceBlocks[i], offset)
+      offset += this.blockSize
+    }
+
+    return result
   }
 }
 
@@ -481,5 +559,70 @@ export class FountainDecoder {
 
   getDecodedBlockIndices(): number[] {
     return Array.from(this.decodedBlocks.keys()).sort((a, b) => a - b)
+  }
+
+  /**
+   * Get contiguous blocks data for checksum computation
+   */
+  getContiguousBlocksData(startIdx: number, endIdx: number): Uint8Array | null {
+    if (startIdx < 0 || endIdx > this.metadata.totalSourceBlocks || startIdx >= endIdx) {
+      return null
+    }
+
+    // Check that all blocks in range are decoded
+    for (let i = startIdx; i < endIdx; i++) {
+      if (!this.decodedBlocks.has(i)) {
+        return null
+      }
+    }
+
+    const totalSize = (endIdx - startIdx) * this.metadata.blockSize
+    const result = new Uint8Array(totalSize)
+    let offset = 0
+
+    for (let i = startIdx; i < endIdx; i++) {
+      const block = this.decodedBlocks.get(i)!
+      result.set(block, offset)
+      offset += this.metadata.blockSize
+    }
+
+    return result
+  }
+
+  /**
+   * Rollback to a specific block index (discard blocks >= blockIdx)
+   */
+  rollbackToBlock(blockIdx: number): void {
+    // Purge receivedChunks that reference indices >= the rollback index
+    this.receivedChunks = this.receivedChunks.filter(chunk =>
+      !chunk.indices.some(idx => idx >= blockIdx)
+    )
+
+    const blocksToRemove: number[] = []
+    for (const [idx] of this.decodedBlocks) {
+      if (idx >= blockIdx) {
+        blocksToRemove.push(idx)
+      }
+    }
+
+    for (const idx of blocksToRemove) {
+      this.decodedBlocks.delete(idx)
+    }
+
+    this.isDecoded = false
+  }
+
+  /**
+   * Get rollback information for UI display
+   */
+  getRollbackInfo(): { canRollback: boolean, currentFirstMissing: number, decodedCount: number } {
+    const decodedIndices = this.getDecodedBlockIndices()
+    const firstMissing = decodedIndices.length > 0 ? decodedIndices[decodedIndices.length - 1] + 1 : 0
+
+    return {
+      canRollback: decodedIndices.length > 0,
+      currentFirstMissing: firstMissing,
+      decodedCount: decodedIndices.length
+    }
   }
 }
