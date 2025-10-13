@@ -34,6 +34,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     windowSize: number
     totalBlocks: number
     isWindowComplete: boolean
+    skipBlocksBelow: number
   } | null>(null)
   const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
   const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
@@ -287,10 +288,25 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
       const feedback = JSON.parse(data)
 
       if (feedback.type === 'FOUNTAIN_FEEDBACK') {
+        // Extract firstMissingBlock from feedback (default to 0 if not present)
+        const firstMissingBlock = feedback.firstMissingBlock ?? 0
+
         // Handle both statistics and targeted feedback modes
         if (feedback.mode === 'statistics') {
           // Statistics-only feedback - no targeted encoding
           console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
+
+          // Clear targeted mode so encoder doesn't use stale missing-blocks information
+          if (encoder) {
+            encoder.setReceivedBlocks([])
+          }
+
+          // Apply skip threshold
+          if (encoder) {
+            encoder.setSkipBlocksBelow(firstMissingBlock)
+            setWindowInfo(encoder.getWindowInfo())
+            console.log('Skip blocks below:', firstMissingBlock, '(contiguous prefix)')
+          }
 
           // Update UI state for progress display
           setReceivedBlocks(new Set()) // Clear targeted mode
@@ -327,11 +343,14 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           // Targeted feedback with full block list
           console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
 
-          // Enable targeted encoding
+          // Enable targeted encoding and apply skip threshold
           setReceivedBlocks(new Set(feedback.receivedBlocks))
           setLastStats(null) // Clear statistics mode
           if (encoder) {
             encoder.setReceivedBlocks(feedback.receivedBlocks)
+            encoder.setSkipBlocksBelow(firstMissingBlock)
+            setWindowInfo(encoder.getWindowInfo())
+            console.log('Skip blocks below:', firstMissingBlock, '/', feedback.receivedBlocks.length, 'received')
 
             // Check for window expansion
             const currentWindow = encoder.getWindowInfo()
@@ -382,11 +401,13 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           // Legacy format without mode field - treat as targeted
           console.log('Received legacy targeted feedback:', feedback.receivedBlocks.length, 'blocks')
 
-          // Enable targeted encoding
+          // Enable targeted encoding and apply skip threshold
           setReceivedBlocks(new Set(feedback.receivedBlocks))
           setLastStats(null) // Clear statistics mode
           if (encoder) {
             encoder.setReceivedBlocks(feedback.receivedBlocks)
+            encoder.setSkipBlocksBelow(firstMissingBlock)
+            setWindowInfo(encoder.getWindowInfo())
           }
 
           // Update estimated chunks needed based on feedback
@@ -503,6 +524,9 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
                     {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
                       <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
                     )}
+                    {windowInfo && windowInfo.skipBlocksBelow > 0 && (
+                      <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                    )}
                     <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
                   </>
                 ) : (
@@ -513,6 +537,9 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
                         <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
                           blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
                         ).length} / {windowInfo.windowSize} blocks</p>
+                        {windowInfo && windowInfo.skipBlocksBelow > 0 && (
+                          <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                        )}
                       </>
                     ) : (
                       <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
@@ -674,6 +701,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             )}
             <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
             <li className="text-blue-600 dark:text-blue-400">When {'>'}90% decoded, feedback includes block details for targeted encoding</li>
+            <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">

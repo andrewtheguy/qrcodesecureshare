@@ -146,6 +146,7 @@ export class FountainEncoder {
   private windowStart: number
   private windowEnd: number
   private windowEnabled: boolean
+  private skipBlocksBelow: number = 0
 
   constructor(
     data: Uint8Array,
@@ -209,6 +210,14 @@ export class FountainEncoder {
   }
 
   /**
+   * Set the threshold below which blocks should be skipped
+   * This represents the first block index that should be considered for chunk generation
+   */
+  setSkipBlocksBelow(threshold: number): void {
+    this.skipBlocksBelow = Math.max(0, Math.min(threshold, this.sourceBlocks.length))
+  }
+
+  /**
    * Expand the window by 50% of current window size
    * Returns true if expansion occurred, false if already at end
    */
@@ -233,6 +242,7 @@ export class FountainEncoder {
     windowSize: number
     totalBlocks: number
     isWindowComplete: boolean
+    skipBlocksBelow: number
   } {
     return {
       windowEnabled: this.windowEnabled,
@@ -240,7 +250,8 @@ export class FountainEncoder {
       windowEnd: this.windowEnd,
       windowSize: this.windowEnd - this.windowStart,
       totalBlocks: this.sourceBlocks.length,
-      isWindowComplete: this.windowEnd >= this.sourceBlocks.length
+      isWindowComplete: this.windowEnd >= this.sourceBlocks.length,
+      skipBlocksBelow: this.skipBlocksBelow
     }
   }
 
@@ -248,9 +259,12 @@ export class FountainEncoder {
    * Get blocks in the current window
    */
   private getWindowBlocks(): number[] {
-    return this.windowEnabled
+    const windowBlocks = this.windowEnabled
       ? Array.from({ length: this.windowEnd - this.windowStart }, (_, i) => i + this.windowStart)
       : Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
+
+    // Apply skip threshold: filter out blocks below the contiguous prefix
+    return windowBlocks.filter(blockIdx => blockIdx >= this.skipBlocksBelow)
   }
 
   /**
@@ -278,8 +292,31 @@ export class FountainEncoder {
     const rng = new SeededRandom(seed)
 
     // In targeted mode, prefer missing blocks
-    const missingBlocks = this.getMissingBlocks()
-    const availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getWindowBlocks()
+    let missingBlocks = this.getMissingBlocks()
+    let availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getWindowBlocks()
+
+    // If no available blocks after applying skip threshold, expand window or ignore skip
+    if (availableBlocks.length === 0) {
+      // Automatically expand the window until it covers skipBlocksBelow
+      while (this.windowEnd < this.skipBlocksBelow && this.expandWindow()) {
+        // Expansion happens in the condition
+      }
+
+      // Recalculate after expansion
+      const windowBlocks = this.getWindowBlocks()
+      missingBlocks = this.targetedMode ? windowBlocks.filter(idx => !this.receivedBlocks.has(idx)) : windowBlocks
+      availableBlocks = missingBlocks.length > 0 ? missingBlocks : windowBlocks
+
+      // If still empty, temporarily ignore the skip filter
+      if (availableBlocks.length === 0) {
+        const fullWindowBlocks = this.windowEnabled
+          ? Array.from({ length: this.windowEnd - this.windowStart }, (_, i) => i + this.windowStart)
+          : Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
+        availableBlocks = this.targetedMode ? fullWindowBlocks.filter(idx => !this.receivedBlocks.has(idx)) : fullWindowBlocks
+      }
+    }
+
+    const finalAvailableBlocks = availableBlocks
 
     // Adjust degree based on how many blocks are left
     let degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
@@ -290,14 +327,14 @@ export class FountainEncoder {
     }
 
     // Cap degree at available blocks
-    degree = Math.min(degree, availableBlocks.length)
+    degree = Math.min(degree, finalAvailableBlocks.length)
 
     const indices: number[] = []
     const selected = new Set<number>()
 
     // Sample from available (missing) blocks
     while (selected.size < degree) {
-      const idx = availableBlocks[Math.floor(rng.next() * availableBlocks.length)]
+      const idx = finalAvailableBlocks[Math.floor(rng.next() * finalAvailableBlocks.length)]
       if (!selected.has(idx)) {
         selected.add(idx)
         indices.push(idx)

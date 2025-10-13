@@ -67,6 +67,21 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
+  const calculateFirstMissingBlock = (decodedBlockIndices: number[]): number => {
+    // Rely on the sorted order of getDecodedBlockIndices() - no re-sorting needed
+    // Assumption: decodedBlockIndices is already sorted in ascending order
+
+    // Find the first index where the sequence breaks
+    for (let i = 0; i < decodedBlockIndices.length; i++) {
+      if (decodedBlockIndices[i] !== i) {
+        return i
+      }
+    }
+
+    // If all blocks from 0 to length-1 are contiguous, return the length
+    return decodedBlockIndices.length
+  }
+
   const reconstructFountainFile = useCallback(async (decoder: FountainDecoder) => {
     try {
       const reconstructedData = decoder.getDecodedData()
@@ -112,6 +127,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      }
      stopScannerRef.current?.()
      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
      const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
      const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
      const windowDecodePercent = decodedInWindow / windowSize
@@ -129,7 +145,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          windowStart: currentWindowStart,
          windowEnd: currentWindowEnd,
          progress: overallProgress * 100,
-         requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold
+         requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
+         firstMissingBlock: firstMissingBlock
        }
      } else {
        // Targeted feedback with block indices - for final stage
@@ -140,7 +157,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          totalBlocks: fountainMetadata.totalSourceBlocks,
          windowStart: currentWindowStart,
          windowEnd: currentWindowEnd,
-         progress: overallProgress * 100
+         progress: overallProgress * 100,
+         firstMissingBlock: firstMissingBlock
        }
      }
 
@@ -150,6 +168,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
      addDebugLog(`📤 Generated feedback QR (${feedback.mode}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+     addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks)`)
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
      }
