@@ -37,6 +37,12 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   } | null>(null)
   const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
   const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
+  const [lastStats, setLastStats] = useState<{
+    totalDecoded: number
+    totalBlocks: number
+    windowStart?: number
+    windowEnd?: number
+  } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
@@ -280,58 +286,116 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     try {
       const feedback = JSON.parse(data)
 
-      if (feedback.type === 'FOUNTAIN_FEEDBACK' && Array.isArray(feedback.receivedBlocks)) {
-        // Update the set of blocks the receiver has successfully decoded
-        setReceivedBlocks(new Set(feedback.receivedBlocks))
+      if (feedback.type === 'FOUNTAIN_FEEDBACK') {
+        // Handle both statistics and targeted feedback modes
+        if (feedback.mode === 'statistics') {
+          // Statistics-only feedback - no targeted encoding
+          console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
 
-        // Enable targeted encoding - encoder will now focus on missing blocks
-        if (encoder) {
-          encoder.setReceivedBlocks(feedback.receivedBlocks)
+          // Update UI state for progress display
+          setReceivedBlocks(new Set()) // Clear targeted mode
+          setLastStats({
+            totalDecoded: feedback.totalDecoded,
+            totalBlocks: feedback.totalBlocks,
+            windowStart: feedback.windowStart,
+            windowEnd: feedback.windowEnd,
+          })
 
-          // Check for window expansion
-          const currentWindow = encoder.getWindowInfo()
-          if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
-            // Skip expansion logic if windowing not enabled or already complete
-          } else {
-            // Calculate decoded blocks in current window
-            const decodedInWindow = feedback.receivedBlocks.filter((blockIdx: number) =>
-              blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
-            ).length
+          // Check if window expansion is requested
+          if (encoder && feedback.requestWindowExpansion) {
+            const currentWindow = encoder.getWindowInfo()
+            if (!currentWindow.isWindowComplete) {
+              const now = Date.now()
+              if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                const expanded = encoder.expandWindow()
+                if (expanded) {
+                  setWindowInfo(encoder.getWindowInfo())
+                  setLastWindowExpansion(now)
+                  console.log('Window expanded based on statistics feedback:', encoder.getWindowInfo())
+                }
+              }
+            }
+          }
 
-            if (decodedInWindow > lastDecodedInWindow) {
-              // Update last decoded count
-              setLastDecodedInWindow(decodedInWindow)
+          // Update estimated chunks based on statistics
+          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+          const missingBlocks = totalBlocks - feedback.totalDecoded
+          if (missingBlocks > 0) {
+            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
+          }
+        } else if (feedback.mode === 'targeted' && Array.isArray(feedback.receivedBlocks)) {
+          // Targeted feedback with full block list
+          console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
 
-              // Calculate window decode percentage
-              const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+          // Enable targeted encoding
+          setReceivedBlocks(new Set(feedback.receivedBlocks))
+          setLastStats(null) // Clear statistics mode
+          if (encoder) {
+            encoder.setReceivedBlocks(feedback.receivedBlocks)
 
-              // Check expansion trigger (50% threshold)
-              if (windowDecodePercent >= 0.5) {
-                // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
-                const now = Date.now()
-                if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                  const expanded = encoder.expandWindow()
-                  if (expanded) {
-                    setWindowInfo(encoder.getWindowInfo())
-                    setLastWindowExpansion(now)
-                    console.log('Window expanded:', encoder.getWindowInfo())
+            // Check for window expansion
+            const currentWindow = encoder.getWindowInfo()
+            if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
+              // Skip expansion logic if windowing not enabled or already complete
+            } else {
+              // Calculate decoded blocks in current window
+              const decodedInWindow = feedback.receivedBlocks.filter((blockIdx: number) =>
+                blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
+              ).length
+
+              if (decodedInWindow > lastDecodedInWindow) {
+                // Update last decoded count
+                setLastDecodedInWindow(decodedInWindow)
+
+                // Calculate window decode percentage
+                const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+
+                // Check expansion trigger (50% threshold)
+                if (windowDecodePercent >= 0.5) {
+                  // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
+                  const now = Date.now()
+                  if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                    const expanded = encoder.expandWindow()
+                    if (expanded) {
+                      setWindowInfo(encoder.getWindowInfo())
+                      setLastWindowExpansion(now)
+                      console.log('Window expanded:', encoder.getWindowInfo())
+                    }
                   }
                 }
               }
             }
           }
-        }
 
-        // Update estimated chunks needed based on feedback
-        const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-        const blocksReceived = feedback.receivedBlocks.length
-        const missingBlocks = totalBlocks - blocksReceived
-        const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
+          // Update estimated chunks needed based on feedback
+          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+          const blocksReceived = feedback.receivedBlocks.length
+          const missingBlocks = totalBlocks - blocksReceived
+          const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
 
-        // Adjust estimate based on how many blocks are missing
-        if (missingBlocks > 0) {
-          // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
-          setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
+          // Adjust estimate based on how many blocks are missing
+          if (missingBlocks > 0) {
+            // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
+            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
+          }
+        } else if (Array.isArray(feedback.receivedBlocks)) {
+          // Legacy format without mode field - treat as targeted
+          console.log('Received legacy targeted feedback:', feedback.receivedBlocks.length, 'blocks')
+
+          // Enable targeted encoding
+          setReceivedBlocks(new Set(feedback.receivedBlocks))
+          setLastStats(null) // Clear statistics mode
+          if (encoder) {
+            encoder.setReceivedBlocks(feedback.receivedBlocks)
+          }
+
+          // Update estimated chunks needed based on feedback
+          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+          const blocksReceived = feedback.receivedBlocks.length
+          const missingBlocks = totalBlocks - blocksReceived
+          if (missingBlocks > 0) {
+            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
+          }
         }
 
         setScanningFeedback(false)
@@ -427,30 +491,42 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
       )}
 
       {/* Receiver Progress Alert */}
-      {receivedBlocksCount > 0 && (
+      {(lastStats || receivedBlocksCount > 0) && (
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress (Targeted Mode Active)</p>
+              <p className="font-medium">📊 Receiver Progress {receivedBlocksCount === 0 ? '(Statistics Mode)' : '(Targeted Mode Active)'}</p>
               <div className="text-sm">
-                {windowInfo && windowInfo.windowEnabled ? (
+                {receivedBlocksCount === 0 && lastStats ? (
                   <>
-                    <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                    <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
-                      blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
-                    ).length} / {windowInfo.windowSize} blocks</p>
+                    <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
+                    {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
+                      <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
+                    )}
+                    <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
                   </>
                 ) : (
-                  <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                )}
-                {decodingProgress >= 100 ? (
-                  <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                    ✅ Transfer complete! You can stop sending.
-                  </p>
-                ) : (
-                  <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                    🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
-                  </p>
+                  <>
+                    {windowInfo && windowInfo.windowEnabled ? (
+                      <>
+                        <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                        <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
+                          blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
+                        ).length} / {windowInfo.windowSize} blocks</p>
+                      </>
+                    ) : (
+                      <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                    )}
+                    {decodingProgress >= 100 ? (
+                      <p className="text-green-600 dark:text-green-400 font-medium mt-1">
+                        ✅ Transfer complete! You can stop sending.
+                      </p>
+                    ) : (
+                      <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
+                        🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -596,6 +672,8 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             {windowInfo && windowInfo.windowEnabled && (
               <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
             )}
+            <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+            <li className="text-blue-600 dark:text-blue-400">When {'>'}90% decoded, feedback includes block details for targeted encoding</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">

@@ -112,15 +112,49 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      }
      stopScannerRef.current?.()
      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-     const feedback = { type: 'FOUNTAIN_FEEDBACK', receivedBlocks: decodedBlockIndices, totalBlocks: fountainMetadata.totalSourceBlocks, progress: (decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100 }
+     const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+     const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
+     const windowDecodePercent = decodedInWindow / windowSize
+     const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
+
+     let feedback
+     if (overallProgress < 0.9) {
+       // Statistics-only feedback - compact format
+       feedback = {
+         type: 'FOUNTAIN_FEEDBACK',
+         mode: 'statistics',
+         decodedInWindow: decodedInWindow,
+         totalDecoded: decodedBlockIndices.length,
+         totalBlocks: fountainMetadata.totalSourceBlocks,
+         windowStart: currentWindowStart,
+         windowEnd: currentWindowEnd,
+         progress: overallProgress * 100,
+         requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold
+       }
+     } else {
+       // Targeted feedback with block indices - for final stage
+       feedback = {
+         type: 'FOUNTAIN_FEEDBACK',
+         mode: 'targeted',
+         receivedBlocks: decodedBlockIndices,
+         totalBlocks: fountainMetadata.totalSourceBlocks,
+         windowStart: currentWindowStart,
+         windowEnd: currentWindowEnd,
+         progress: overallProgress * 100
+       }
+     }
+
      const feedbackJson = JSON.stringify(feedback)
      const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
      setFeedbackQRUrl(dataUrl)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
-     addDebugLog(`📤 Generated feedback QR: ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks`)
+     addDebugLog(`📤 Generated feedback QR (${feedback.mode}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+     if (feedback.mode === 'statistics') {
+       addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
+     }
    } finally { generatingRef.current = false }
- }, [showFeedbackQR, isAwaitingFeedback, fountainMetadata.totalSourceBlocks, addDebugLog])
+ }, [showFeedbackQR, isAwaitingFeedback, fountainMetadata.totalSourceBlocks, addDebugLog, currentWindowStart, currentWindowEnd, windowTriggerThreshold])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -336,6 +370,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               </div>
               <p className="text-sm text-center">
                 Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round(progress)}%)
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                {decodedBlocks / fountainMetadata.totalSourceBlocks < 0.9 ? 'Sharing window progress (compact format)' : 'Sharing decoded blocks for targeted transfer'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR code to the sender to share your progress
