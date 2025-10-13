@@ -52,6 +52,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [showFeedbackQR, setShowFeedbackQR] = useState(false)
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
+  const [hasFeedbackBeenGenerated, setHasFeedbackBeenGenerated] = useState(false)
+  const [feedbackGenerationType, setFeedbackGenerationType] = useState<'voluntary' | 'mandatory' | null>(null)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -169,8 +171,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
 
- const handleGenerateFeedbackQR = useCallback(async () => {
+ const handleGenerateFeedbackQR = useCallback(async (generationType: 'voluntary' | 'mandatory' = 'voluntary') => {
    if (generatingRef.current) return; generatingRef.current = true
+   // Early guard: prevent regeneration while allowing redisplay for mandatory flows
+   if (hasFeedbackBeenGenerated) {
+     if (generationType === 'mandatory' && feedbackQRUrl) {
+       setShowFeedbackQR(true)
+     }
+     return
+   }
    try {
      stopScannerRef.current?.()
      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
@@ -315,6 +324,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setFeedbackQRUrl(dataUrl)
      setFeedbackMode(feedback.mode)
      setShowFeedbackQR(true)
+     setHasFeedbackBeenGenerated(true)
+     setFeedbackGenerationType(generationType)
      setLastFeedbackTime(Date.now())
      setFeedbackSequence(prev => prev + 1)
      addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
@@ -386,7 +397,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        if (windowDecodePercentage >= windowTriggerThreshold) {
          addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
          // Auto-open feedback QR to streamline user flow
-         handleGenerateFeedbackQR()
+         if (hasFeedbackBeenGenerated && feedbackGenerationType === 'mandatory') {
+           setShowFeedbackQR(true)
+         } else {
+           handleGenerateFeedbackQR('mandatory')
+         }
          setIsAwaitingFeedback(true)
          setIsScanning(false)
        }
@@ -561,6 +576,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setExpectingSenderFeedback(false)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
+    setHasFeedbackBeenGenerated(false)
+    setFeedbackGenerationType(null)
   }
 
   const handleDownload = () => {
@@ -577,7 +594,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleCloseFeedbackQR = async () => {
     setShowFeedbackQR(false)
-    setFeedbackQRUrl('')
 
     // If we were awaiting feedback, expand the window and resume scanning
     if (isAwaitingFeedback) {
@@ -634,6 +650,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 {currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
+                {feedbackGenerationType === 'mandatory' ? '(Can be redisplayed if closed)' : '(One-time display)'}
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
                 Show this QR code to the sender to share your progress
               </p>
               <Button onClick={handleCloseFeedbackQR} variant="outline" className="w-full">
@@ -645,8 +664,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Targeted Mode Prompt or Defrag Prompt */}
-      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && showActionPrompt === 'targeted') ||
-        (showActionPrompt !== 'none' && !showFeedbackQR)) && (
+      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && showActionPrompt === 'targeted' && !hasFeedbackBeenGenerated) ||
+        (showActionPrompt !== 'none' && !showFeedbackQR && !hasFeedbackBeenGenerated)) && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
@@ -660,7 +679,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 }
               </p>
               <Button
-                onClick={handleGenerateFeedbackQR}
+                onClick={() => handleGenerateFeedbackQR('mandatory')}
                 variant="default"
                 className="w-full"
               >
@@ -688,11 +707,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 You've decoded {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks in the current window ({((decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100).toFixed(1)}%). The sender needs to expand the transfer window. Please generate and scan the feedback QR code to continue.
               </p>
               <Button
-                onClick={handleGenerateFeedbackQR}
+                onClick={() => {
+                  if (hasFeedbackBeenGenerated && feedbackGenerationType === 'mandatory' && feedbackQRUrl) {
+                    setShowFeedbackQR(true)
+                  } else {
+                    handleGenerateFeedbackQR('mandatory')
+                  }
+                }}
                 variant="default"
                 className="w-full"
               >
-                📊 Generate Feedback QR (Required to Continue)
+                📊 {hasFeedbackBeenGenerated && feedbackGenerationType === 'mandatory' && feedbackQRUrl ? 'Show Feedback QR Again' : 'Generate Feedback QR'} (Required to Continue)
               </Button>
             </div>
           </AlertDescription>
@@ -896,10 +921,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       </div>
 
       {/* Feedback QR Button */}
-      {!success && decodedBlocks > 0 && !showFeedbackQR && (
+      {!success && decodedBlocks > 0 && !showFeedbackQR && !hasFeedbackBeenGenerated && (
         <div className="pt-2 border-t">
           <Button
-            onClick={handleGenerateFeedbackQR}
+            onClick={() => handleGenerateFeedbackQR('voluntary')}
             variant={isAwaitingFeedback ? "default" : "secondary"}
             size="sm"
             className="w-full"
@@ -908,6 +933,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-1">
             {currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 ? "Enables targeted mode for faster completion" : isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
+          </p>
+        </div>
+      )}
+
+      {/* Show Feedback QR Again Button */}
+      {!success && !showFeedbackQR && hasFeedbackBeenGenerated && feedbackGenerationType === 'mandatory' && feedbackQRUrl && (
+        <div className="pt-2 border-t">
+          <Button
+            onClick={() => setShowFeedbackQR(true)}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            📊 Show Feedback QR Again
+          </Button>
+          <p className="text-xs text-muted-foreground text-center mt-1">
+            Redisplay the same feedback QR (no regeneration)
           </p>
         </div>
       )}
