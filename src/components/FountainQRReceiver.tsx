@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
+import type { FountainFeedback } from '@/types/fountainFeedback'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -58,6 +59,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
+  const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const sessionId = initialMetadata.sessionId
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
@@ -135,13 +137,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      const windowDecodePercent = decodedInWindow / windowSize
      const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
-     let feedback
+     let feedback: FountainFeedback
      if (overallProgress < 0.9) {
        // Statistics-only feedback - compact format
        feedback = {
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'statistics',
          sessionId: sessionId,
+         sequence: feedbackSequence,
          decodedInWindow: decodedInWindow,
          totalDecoded: decodedBlockIndices.length,
          totalBlocks: fountainMetadata.totalSourceBlocks,
@@ -157,6 +160,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'targeted',
          sessionId: sessionId,
+         sequence: feedbackSequence,
          receivedBlocks: decodedBlockIndices,
          totalBlocks: fountainMetadata.totalSourceBlocks,
          windowStart: currentWindowStart,
@@ -171,7 +175,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setFeedbackQRUrl(dataUrl)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
-     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+     setFeedbackSequence(prev => prev + 1)
+     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${feedbackSequence}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
      addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks)`)
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
@@ -326,6 +331,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastFeedbackTime(null)
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+    setFeedbackSequence(0)
   }
 
   const handleDownload = () => {

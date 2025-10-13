@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
+import type { FountainFeedback } from '@/types/fountainFeedback'
 
 interface FountainQRSenderProps {
   file: File
@@ -45,11 +46,13 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     windowStart?: number
     windowEnd?: number
   } | null>(null)
+  const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
+  const processingRef = useRef(false)
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -106,6 +109,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encoder])
+
+  // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
+  useEffect(() => {
+    setLastProcessedSequence(-1)
+  }, [sessionId, file])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -285,18 +293,41 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   }, [scanningFeedback])
 
   const handleFeedbackScan = (data: string) => {
-     try {
-       const feedback = JSON.parse(data)
+    // Guard against multiple rapid callbacks
+    if (processingRef.current) {
+      console.warn('Already processing feedback, ignoring duplicate callback')
+      return
+    }
+    processingRef.current = true
 
-       // Early validation guard
-       if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
-         console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
-         return
-       }
+    try {
+      const feedback: FountainFeedback = JSON.parse(data)
+
+      // Early validation guard
+      if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
+        console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
+        return
+      }
+
+      const feedbackSequence = feedback.sequence
+
+      // Validate sequence is a number
+      if (typeof feedbackSequence !== 'number') {
+        console.warn('Invalid feedback: missing or invalid sequence number')
+        return
+      }
+
+      // Reject duplicate or out-of-order feedback
+      if (feedbackSequence <= lastProcessedSequence) {
+        console.warn(`Ignoring duplicate/stale feedback: sequence ${feedbackSequence} (last processed: ${lastProcessedSequence})`)
+        return
+      }
 
        if (feedback.type === 'FOUNTAIN_FEEDBACK') {
         // Extract firstMissingBlock from feedback (default to 0 if not present)
         const firstMissingBlock = feedback.firstMissingBlock ?? 0
+
+        console.log('Processing feedback sequence:', feedbackSequence, '(last:', lastProcessedSequence, ')')
 
         // Handle both statistics and targeted feedback modes
         if (feedback.mode === 'statistics') {
@@ -346,6 +377,9 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           if (missingBlocks > 0) {
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
           }
+
+          // Update last processed sequence after successful processing
+          setLastProcessedSequence(feedbackSequence)
         } else if (feedback.mode === 'targeted' && Array.isArray(feedback.receivedBlocks)) {
           // Targeted feedback with full block list
           console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
@@ -404,17 +438,22 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
           }
+
+          // Update last processed sequence after successful processing
+          setLastProcessedSequence(feedbackSequence)
         }
 
         setScanningFeedback(false)
 
-        // Stop the scanner
+        // Stop the scanner immediately after validation to avoid multiple rapid callbacks
         if (feedbackScannerRef.current) {
           feedbackScannerRef.current.stop()
         }
       }
     } catch (err) {
       console.error('Failed to parse feedback QR:', err)
+    } finally {
+      processingRef.current = false
     }
   }
 
@@ -509,13 +548,16 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
                 {receivedBlocksCount === 0 && lastStats ? (
                   <>
                     <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
-                    {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
-                      <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
-                    )}
-                    {windowInfo && windowInfo.skipBlocksBelow > 0 && (
-                      <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
-                    )}
-                    <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
+                          {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
+                            <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
+                          )}
+                          {windowInfo && windowInfo.skipBlocksBelow > 0 && (
+                            <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                          )}
+                          {lastProcessedSequence >= 0 && (
+                            <p>Last feedback: sequence {lastProcessedSequence}</p>
+                          )}
+                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
                   </>
                 ) : (
                   <>
