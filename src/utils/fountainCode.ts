@@ -1,3 +1,5 @@
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from './fountainConfig'
+
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
  *
@@ -174,15 +176,15 @@ export class FountainEncoder {
 
     // Initialize window state
     this.windowStart = 0
-    if (data.length < 200 * 1024) {
+    if (data.length < WINDOW_ENABLE_THRESHOLD) {
       this.windowEnabled = false
       this.windowEnd = numBlocks
-    } else if (data.length >= 200 * 1024 && data.length <= 256 * 1024) {
+    } else if (data.length >= WINDOW_ENABLE_THRESHOLD && data.length <= WINDOW_HALF_THRESHOLD) {
       this.windowEnabled = true
       this.windowEnd = Math.ceil(numBlocks * 0.5)
     } else {
       this.windowEnabled = true
-      this.windowEnd = Math.min(Math.ceil(128 * 1024 / this.blockSize), numBlocks)
+      this.windowEnd = Math.min(Math.ceil(WINDOW_MAX_BYTES / this.blockSize), numBlocks)
     }
   }
 

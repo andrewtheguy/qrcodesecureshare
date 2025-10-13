@@ -18,6 +18,11 @@ interface DetectedMetadata {
   blockSize?: number // for fountain
   checksum?: string
   checksumAlg?: string
+  windowEnabled?: boolean
+  initialWindowBlocks?: number
+  windowExpansionFactor?: number
+  windowTriggerThreshold?: number
+  windowStart?: number
 }
 
 export function AnimatedQRReceiver() {
@@ -69,7 +74,12 @@ export function AnimatedQRReceiver() {
           totalSourceBlocks: parsed.totalSourceBlocks,
           blockSize: parsed.blockSize,
           checksum: parsed.checksum,
-          checksumAlg: parsed.checksumAlg
+          checksumAlg: parsed.checksumAlg,
+          windowEnabled: parsed.windowEnabled,
+          initialWindowBlocks: parsed.initialWindowBlocks,
+          windowExpansionFactor: parsed.windowExpansionFactor,
+          windowTriggerThreshold: parsed.windowTriggerThreshold,
+          windowStart: parsed.windowStart
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
@@ -323,7 +333,12 @@ export function AnimatedQRReceiver() {
               totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
               blockSize: detectedMetadata.blockSize,
               checksum: detectedMetadata.checksum,
-              checksumAlg: detectedMetadata.checksumAlg
+              checksumAlg: detectedMetadata.checksumAlg,
+              windowEnabled: detectedMetadata.windowEnabled,
+              initialWindowBlocks: detectedMetadata.initialWindowBlocks,
+              windowExpansionFactor: detectedMetadata.windowExpansionFactor,
+              windowTriggerThreshold: detectedMetadata.windowTriggerThreshold,
+              windowStart: detectedMetadata.windowStart
             }}
           />
         ) : null}

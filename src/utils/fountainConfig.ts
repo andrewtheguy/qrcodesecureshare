@@ -1,0 +1,4 @@
+export const DEFAULT_BLOCK_SIZE = 600
+export const WINDOW_ENABLE_THRESHOLD = 200 * 1024
+export const WINDOW_HALF_THRESHOLD = 256 * 1024
+export const WINDOW_MAX_BYTES = 128 * 1024

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import QRCode from 'qrcode'
 import { computeChecksum } from '@/utils/checksum'
 import { Button } from '@/components/ui/button'
@@ -16,6 +16,11 @@ interface FountainQRReceiverProps {
     blockSize?: number
     checksum?: string
     checksumAlg?: string
+    windowEnabled?: boolean
+    initialWindowBlocks?: number
+    windowExpansionFactor?: number
+    windowTriggerThreshold?: number
+    windowStart?: number
   }
 }
 
@@ -44,8 +49,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [showFeedbackQR, setShowFeedbackQR] = useState(false)
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
 
+  // Window state tracking
+  const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
+  const [currentWindowEnd, setCurrentWindowEnd] = useState<number>(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+  const [windowExpansionFactor] = useState<number>(initialMetadata.windowExpansionFactor ?? 0.5)
+  const [windowTriggerThreshold] = useState<number>(initialMetadata.windowTriggerThreshold ?? 0.5)
+  const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
+  const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
+  const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
+
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
+  const generatingRef = useRef(false)
   const scanStartTimeRef = useRef<number | null>(null)
 
   const addDebugLog = (message: string) => {
@@ -86,7 +101,28 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [fountainMetadata.type, initialMetadata.checksum, initialMetadata.checksumAlg, addDebugLog, setIsScanning])
 
-  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
+
+
+ const handleGenerateFeedbackQR = useCallback(async () => {
+   if (generatingRef.current) return; generatingRef.current = true
+   try {
+     if (showFeedbackQR || isAwaitingFeedback) {
+       addDebugLog('⚠ Skipping duplicate feedback QR generation')
+       return
+     }
+     stopScannerRef.current?.()
+     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+     const feedback = { type: 'FOUNTAIN_FEEDBACK', receivedBlocks: decodedBlockIndices, totalBlocks: fountainMetadata.totalSourceBlocks, progress: (decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100 }
+     const feedbackJson = JSON.stringify(feedback)
+     const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+     setFeedbackQRUrl(dataUrl)
+     setShowFeedbackQR(true)
+     setLastFeedbackTime(Date.now())
+     addDebugLog(`📤 Generated feedback QR: ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks`)
+   } finally { generatingRef.current = false }
+ }, [showFeedbackQR, isAwaitingFeedback, fountainMetadata.totalSourceBlocks, addDebugLog])
+
+ const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
     let offset = 2 // Skip magic bytes
 
@@ -130,13 +166,28 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
+    // Check for window saturation if windowing is enabled
+    if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
+      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+      const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+      const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
+
+      if (windowDecodePercentage >= windowTriggerThreshold) {
+        setIsAwaitingFeedback(true)
+        setIsScanning(false)
+        addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
+        // Auto-open feedback QR to streamline user flow
+        handleGenerateFeedbackQR()
+      }
+    }
+
     if (decoded) {
       const elapsedTime = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0
       setDecodeTime(elapsedTime)
       addDebugLog(`🎉 Decoding complete in ${(elapsedTime / 1000).toFixed(2)}s!`)
       reconstructFountainFile(fountainDecoderRef.current)
     }
-  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile])
+  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, setIsScanning, handleGenerateFeedbackQR])
 
   const handleScan = useCallback((data: string) => {
     try {
@@ -166,6 +217,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     isScanning
   })
 
+  const stopScannerRef = useRef(stopScanner)
+  const restartScannerRef = useRef(restartScanner)
+
+  // Update refs when functions change
+  useEffect(() => {
+    stopScannerRef.current = stopScanner
+  }, [stopScanner])
+
+  useEffect(() => {
+    restartScannerRef.current = restartScanner
+  }, [restartScanner])
   // Auto-start scanning on mount
   useEffect(() => {
     setIsScanning(true)
@@ -185,7 +247,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleStopScan = () => {
     setIsScanning(false)
-    stopScanner()
+    stopScannerRef.current?.()
   }
 
   const handleReset = () => {
@@ -201,6 +263,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(false)
     setDecodeTime(null)
     scanStartTimeRef.current = null
+    setIsAwaitingFeedback(false)
+    setShowFeedbackQR(false)
+    setFeedbackQRUrl('')
+    setLastFeedbackTime(null)
+    setCurrentWindowStart(initialMetadata.windowStart ?? 0)
+    setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
   }
 
   const handleDownload = () => {
@@ -214,45 +282,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     document.body.removeChild(link)
   }
 
-  const handleGenerateFeedbackQR = async () => {
-    try {
-      // Pause scanning while showing feedback QR
-      stopScanner()
-
-      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-      const feedback = {
-        type: 'FOUNTAIN_FEEDBACK',
-        receivedBlocks: decodedBlockIndices,
-        totalBlocks: fountainMetadata.totalSourceBlocks,
-        progress: (decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100
-      }
-
-      const feedbackJson = JSON.stringify(feedback)
-      const dataUrl = await QRCode.toDataURL(feedbackJson, {
-        width: 400,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-
-      setFeedbackQRUrl(dataUrl)
-      setShowFeedbackQR(true)
-      addDebugLog(`📤 Generated feedback QR: ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks`)
-    } catch (err) {
-      console.error('Failed to generate feedback QR:', err)
-      setError('Failed to generate feedback QR code')
-    }
-  }
 
   const handleCloseFeedbackQR = async () => {
     setShowFeedbackQR(false)
     setFeedbackQRUrl('')
-    // Resume scanning if it was active before
-    if (isScanning) {
-      await restartScanner()
+
+    // If we were awaiting feedback, expand the window and resume scanning
+    if (isAwaitingFeedback) {
+      const expansion = Math.ceil((currentWindowEnd - currentWindowStart) * windowExpansionFactor)
+      const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
+      setCurrentWindowEnd(newWindowEnd)
+      setIsAwaitingFeedback(false)
+      setIsScanning(true)
+      addDebugLog(`🪟 Window expanded to ${currentWindowStart}-${newWindowEnd} blocks`)
+      await restartScannerRef.current?.()
+    } else if (isScanning) {
+      // Resume scanning if it was active before
+      await restartScannerRef.current?.()
     }
   }
 
@@ -265,6 +311,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
   const dopingOverhead = 1.05 // Account for forced low-degree chunks
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
+
+  // Memoize decodedInWindow to avoid repeated filter calls
+  const decodedInWindow = useMemo(() => {
+    if (!isWindowEnabled) return 0
+    const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+    return decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+  }, [isWindowEnabled, currentWindowStart, currentWindowEnd, decodedBlocks])
 
   return (
     <div className="space-y-4">
@@ -289,6 +342,27 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               </p>
               <Button onClick={handleCloseFeedbackQR} variant="outline" className="w-full">
                 Close
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Window Saturation Alert */}
+      {isAwaitingFeedback && (
+        <Alert variant="destructive">
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">⏸️ Transfer Paused - Feedback Required</p>
+              <p className="text-sm">
+                You've decoded {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks in the current window ({((decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100).toFixed(1)}%). The sender needs to expand the transfer window. Please generate and scan the feedback QR code to continue.
+              </p>
+              <Button
+                onClick={handleGenerateFeedbackQR}
+                variant="default"
+                className="w-full"
+              >
+                📊 Generate Feedback QR (Required to Continue)
               </Button>
             </div>
           </AlertDescription>
@@ -320,6 +394,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           <div className="text-xs text-muted-foreground">
             Received {receivedFountainChunks} chunks (est. {estimatedChunksNeeded} needed)
           </div>
+          {isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && (
+            <div className="text-xs text-muted-foreground">
+              Current window: {currentWindowStart}-{currentWindowEnd} blocks ({(((currentWindowEnd - currentWindowStart) / fountainMetadata.totalSourceBlocks) * 100).toFixed(1)}% of file) |
+              Decoded in window: {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks
+            </div>
+          )}
         </div>
       )}
 
@@ -422,9 +502,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
       {/* Control Buttons */}
       <div className="flex gap-2">
-        {!isScanning && !success && (
+        {!isScanning && !success && !isAwaitingFeedback && (
           <Button onClick={handleStartScan} className="flex-1">
             📷 Start Scanning
+          </Button>
+        )}
+        {!isScanning && !success && isAwaitingFeedback && (
+          <Button disabled className="flex-1" variant="secondary">
+            ⏸️ Provide Feedback to Resume
           </Button>
         )}
         {isScanning && !success && (
@@ -444,14 +529,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         <div className="pt-2 border-t">
           <Button
             onClick={handleGenerateFeedbackQR}
-            variant="secondary"
+            variant={isAwaitingFeedback ? "default" : "secondary"}
             size="sm"
             className="w-full"
           >
-            📊 Generate Feedback QR
+            {isAwaitingFeedback ? "📊 Generate Feedback QR (Required to Continue)" : "📊 Generate Feedback QR"}
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-1">
-            Share your progress with the sender
+            {isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
           </p>
         </div>
       )}

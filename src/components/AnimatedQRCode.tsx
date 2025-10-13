@@ -7,6 +7,7 @@ import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './Seque
 import { FountainQRSender } from './FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from '@/utils/fountainConfig'
 
 interface AnimatedQRCodeProps {
   file: File | null
@@ -72,12 +73,24 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           setMetadataJson(meta)
           setMetadataQR(qrUrl)
         } else if (transferMode === 'fountain') {
-          // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
-          const BLOCK_SIZE = 600
-          const arrayBuffer = await file.arrayBuffer()
-          const size = arrayBuffer.byteLength
-          const totalSourceBlocks = Math.ceil(size / BLOCK_SIZE)
-          const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
+           const arrayBuffer = await file.arrayBuffer()
+           const size = arrayBuffer.byteLength
+           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
+           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+
+           // Calculate window configuration
+           let windowEnabled = false
+           let initialWindowBlocks = totalSourceBlocks
+           if (size >= WINDOW_ENABLE_THRESHOLD) {
+             windowEnabled = true
+             if (size <= WINDOW_HALF_THRESHOLD) {
+               initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
+             } else {
+               initialWindowBlocks = Math.min(Math.ceil(WINDOW_MAX_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
+             }
+           }
+
           const meta = {
             type: 'METADATA',
             mode: 'fountain',
@@ -87,10 +100,15 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             fileSize: size,
             timestamp: Date.now(),
             totalSourceBlocks,
-            blockSize: BLOCK_SIZE,
-            chunkSize: BLOCK_SIZE, // include for parity
+            blockSize: DEFAULT_BLOCK_SIZE,
+            chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
             checksumAlg: 'crc32',
-            checksum
+            checksum,
+            windowEnabled,
+            initialWindowBlocks,
+            windowExpansionFactor: 0.5,
+            windowTriggerThreshold: 0.5,
+            windowStart: 0
           }
           if (cancelled) return
             const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
