@@ -99,16 +99,16 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   }, [file])
 
   // Auto-start playback once encoder is ready (no need to wait for receiver now)
-  useEffect(() => {
-    if (encoder && !isPlaying) {
-      // Reset counters for fresh session
-      setChunkCount(0)
-      setSkippedChunks(0)
-      setIsPlaying(true)
-    }
-    // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encoder])
+  // useEffect(() => {
+  //   if (encoder && !isPlaying) {
+  //     // Reset counters for fresh session
+  //     setChunkCount(0)
+  //     setSkippedChunks(0)
+  //     setIsPlaying(true)
+  //   }
+  //   // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
+  //   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // }, [encoder])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
@@ -300,13 +300,14 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     }
     processingRef.current = true
 
+    let valid = true
     try {
       const feedback: FountainFeedback = JSON.parse(data)
 
       // Early validation guard
       if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
         console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
-        return
+        valid = false
       }
 
       const feedbackSequence = feedback.sequence
@@ -314,12 +315,20 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
       // Validate sequence is a number
       if (typeof feedbackSequence !== 'number') {
         console.warn('Invalid feedback: missing or invalid sequence number')
-        return
+        valid = false
       }
 
       // Reject duplicate or out-of-order feedback
       if (feedbackSequence <= lastProcessedSequence) {
         console.warn(`Ignoring duplicate/stale feedback: sequence ${feedbackSequence} (last processed: ${lastProcessedSequence})`)
+        valid = false
+      }
+
+      if (!valid) {
+        // cleanup
+        feedbackScannerRef.current?.stop()
+        setScanningFeedback(false)
+        processingRef.current = false
         return
       }
 
@@ -380,6 +389,8 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
           // Update last processed sequence after successful processing
           setLastProcessedSequence(feedbackSequence)
+          setIsPlaying(true)
+          console.log('Feedback processed - auto-resuming playback')
         } else if (feedback.mode === 'targeted' && Array.isArray(feedback.receivedBlocks)) {
           // Targeted feedback with full block list
           console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
@@ -441,6 +452,8 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
           // Update last processed sequence after successful processing
           setLastProcessedSequence(feedbackSequence)
+          setIsPlaying(true)
+          console.log('Feedback processed - auto-resuming playback')
         }
 
         setScanningFeedback(false)
@@ -452,25 +465,29 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
       }
     } catch (err) {
       console.error('Failed to parse feedback QR:', err)
+      valid = false
     } finally {
+      if (!valid) {
+        // cleanup
+        feedbackScannerRef.current?.stop()
+        setScanningFeedback(false)
+      }
       processingRef.current = false
     }
   }
 
+  const wasPlayingRef = useRef(false)
   const handleStartFeedbackScan = () => {
-    // Pause QR generation while scanning feedback
-    if (isPlaying) {
-      setIsPlaying(false)
-    }
+    wasPlayingRef.current = isPlaying
+    if (isPlaying) setIsPlaying(false)
     setScanningFeedback(true)
     setError('')
   }
 
   const handleStopFeedbackScan = () => {
     setScanningFeedback(false)
-    if (feedbackScannerRef.current) {
-      feedbackScannerRef.current.stop()
-    }
+    feedbackScannerRef.current?.stop()
+    if (wasPlayingRef.current) setIsPlaying(true)
   }
 
   if (error) {
@@ -711,7 +728,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             📷 Scan Receiver's Feedback QR
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-1">
-            Check receiver's decoding progress
+            Check receiver's progress (auto-resumes after scan)
           </p>
         </div>
       </div>

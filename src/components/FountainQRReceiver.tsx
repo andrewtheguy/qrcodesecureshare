@@ -61,6 +61,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const [isLegacyMode] = useState<boolean>(!initialMetadata.windowEnabled && !initialMetadata.initialWindowBlocks && !initialMetadata.windowExpansionFactor && !initialMetadata.windowTriggerThreshold && !initialMetadata.windowStart)
+  const [show90Prompt, setShow90Prompt] = useState(false)
+  const [dismissed90Prompt, setDismissed90Prompt] = useState(false)
+  const prevProgressRef = useRef(0)
   const sessionId = initialMetadata.sessionId
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
@@ -138,6 +141,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      const windowDecodePercent = decodedInWindow / windowSize
      const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
+     const seq = feedbackSequence; // or compute next via ref
      let feedback: FountainFeedback
      if (overallProgress < 0.9) {
        // Statistics-only feedback - compact format
@@ -145,7 +149,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'statistics',
          sessionId: sessionId,
-         sequence: feedbackSequence,
+         sequence: seq,
          decodedInWindow: decodedInWindow,
          totalDecoded: decodedBlockIndices.length,
          totalBlocks: fountainMetadata.totalSourceBlocks,
@@ -161,7 +165,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'targeted',
          sessionId: sessionId,
-         sequence: feedbackSequence,
+         sequence: seq,
          receivedBlocks: decodedBlockIndices,
          totalBlocks: fountainMetadata.totalSourceBlocks,
          windowStart: currentWindowStart,
@@ -177,13 +181,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
      setFeedbackSequence(prev => prev + 1)
-     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${feedbackSequence}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
      addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks)`)
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
      }
    } finally { generatingRef.current = false }
- }, [showFeedbackQR, isAwaitingFeedback, fountainMetadata.totalSourceBlocks, addDebugLog, currentWindowStart, currentWindowEnd, windowTriggerThreshold])
+ }, [feedbackSequence, sessionId, isWindowEnabled, showFeedbackQR, isAwaitingFeedback, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -296,6 +300,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(true)
   }, [])
 
+  // Detect 90% threshold crossing for targeted mode prompt
+  useEffect(() => {
+    const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
+    const isNinetyEligible = progress >= 90 && progress < 100 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode
+    const crossedTo90 = prevProgressRef.current < 90 && progress >= 90
+    if (crossedTo90 && !dismissed90Prompt) setShow90Prompt(true)
+    prevProgressRef.current = progress
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissed90Prompt, isLegacyMode, showFeedbackQR, success, isAwaitingFeedback])
+
   const handleStartScan = () => {
     setIsScanning(true)
     setReceivedFountainChunks(0)
@@ -333,6 +346,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
     setFeedbackSequence(0)
+    setShow90Prompt(false)
+    setDismissed90Prompt(false)
   }
 
   const handleDownload = () => {
@@ -409,6 +424,34 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               </p>
               <Button onClick={handleCloseFeedbackQR} variant="outline" className="w-full">
                 Close
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* 90% Targeted Mode Prompt */}
+      {progress >= 90 && progress < 100 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && show90Prompt && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">🎯 90% Complete - Targeted Mode Available!</p>
+              <p className="text-sm">
+                You've decoded 90% of the file. Generate a feedback QR now to enable targeted mode on the sender. This will speed up the final 10% significantly by focusing on missing blocks.
+              </p>
+              <Button
+                onClick={handleGenerateFeedbackQR}
+                variant="default"
+                className="w-full"
+              >
+                📊 Generate Feedback QR for Targeted Mode
+              </Button>
+              <Button
+                onClick={() => { setShow90Prompt(false); setDismissed90Prompt(true) }}
+                variant="outline"
+                className="w-full"
+              >
+                Maybe Later
               </Button>
             </div>
           </AlertDescription>
@@ -595,7 +638,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       </div>
 
       {/* Feedback QR Button */}
-      {!success && decodedBlocks > 0 && !showFeedbackQR && (
+      {!success && decodedBlocks > 0 && !showFeedbackQR && !isAwaitingFeedback && (
         <div className="pt-2 border-t">
           <Button
             onClick={handleGenerateFeedbackQR}
@@ -603,10 +646,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             size="sm"
             className="w-full"
           >
-            {isAwaitingFeedback ? "📊 Generate Feedback QR (Required to Continue)" : "📊 Generate Feedback QR"}
+            {progress >= 90 && progress < 100 ? "📊 Generate Feedback QR (Enable Targeted Mode)" : isAwaitingFeedback ? "📊 Generate Feedback QR (Required to Continue)" : "📊 Generate Feedback QR"}
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-1">
-            {isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
+            {progress >= 90 && progress < 100 ? "Enables targeted mode for faster completion" : isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
           </p>
         </div>
       )}
