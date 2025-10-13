@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { DEFRAG_CRITICAL_PREFIX_SIZE, DEFRAG_CRITICAL_PREFIX_RATIO, DEFRAG_MAX_TARGETS, DEFRAG_MIN_FIRST_MISSING, DEFRAG_MAX_MISSING_COUNT } from '@/utils/fountainConfig'
+import { DEFRAG_CRITICAL_PREFIX_SIZE, DEFRAG_CRITICAL_PREFIX_RATIO, DEFRAG_MAX_TARGETS, DEFRAG_MIN_FIRST_MISSING, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -63,12 +63,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const [isLegacyMode] = useState<boolean>(!initialMetadata.windowEnabled && !initialMetadata.initialWindowBlocks && !initialMetadata.windowExpansionFactor && !initialMetadata.windowTriggerThreshold && !initialMetadata.windowStart)
-  const [show90Prompt, setShow90Prompt] = useState(false)
-  const [dismissed90Prompt, setDismissed90Prompt] = useState(false)
+  const [showActionPrompt, setShowActionPrompt] = useState<'none' | 'targeted' | 'defrag'>('none')
+  const [dismissedTargetedPrompt, setDismissedTargetedPrompt] = useState(false)
   const [expectingSenderFeedback, setExpectingSenderFeedback] = useState(false)
   const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] = useState(-1)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
-  const prevProgressRef = useRef(0)
+  const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
@@ -201,8 +201,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        lastDefragTargetsRef.current.every(t => decodedSet.has(t))
 
      const seq = feedbackSequence; // or compute next via ref
+     const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
      let feedback: FountainFeedback
-     if (overallProgress < 0.9) {
+     if (missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS) {
        // Statistics-only feedback - compact format
        feedback = {
          type: 'FOUNTAIN_FEEDBACK',
@@ -327,6 +328,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
      }
+     // Log the decision
+     addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${TARGETED_MODE_MAX_MISSING_BLOCKS}, mode: ${missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
  }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog])
 
@@ -497,14 +500,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(true)
   }, [])
 
-  // Detect 90% threshold crossing for targeted mode prompt
+  // Detect missing blocks threshold crossing for targeted mode prompt
   useEffect(() => {
-    const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-    const isNinetyEligible = progress >= 90 && progress < 100 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode
-    const crossedTo90 = prevProgressRef.current < 90 && progress >= 90
-    if (crossedTo90 && !dismissed90Prompt) setShow90Prompt(true)
-    prevProgressRef.current = progress
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissed90Prompt, isLegacyMode, showFeedbackQR, success, isAwaitingFeedback])
+    const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
+    const isTargetedEligible = currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode
+    const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
+    if (crossedToTargeted && !dismissedTargetedPrompt) setShowActionPrompt('targeted')
+    prevMissingBlocksRef.current = currentMissingBlocks
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissedTargetedPrompt, isLegacyMode, showFeedbackQR, success, isAwaitingFeedback])
 
   // Detect fragmentation and show proactive UI prompt
   useEffect(() => {
@@ -512,7 +515,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
     const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock, fountainMetadata.totalSourceBlocks)
     if (fragmentation.isFragmented && !showFeedbackQR) {
-      setShow90Prompt(true) // Reuse the existing prompt UI for defrag
+      setShowActionPrompt('defrag') // Reuse the existing prompt UI for defrag
     }
   }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR])
 
@@ -553,8 +556,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
     setFeedbackSequence(0)
-    setShow90Prompt(false)
-    setDismissed90Prompt(false)
+    setShowActionPrompt('none')
+    setDismissedTargetedPrompt(false)
     setExpectingSenderFeedback(false)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
@@ -592,6 +595,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
+  const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
   // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
   const k = fountainMetadata.totalSourceBlocks
@@ -627,7 +631,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round(progress)}%)
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                {decodedBlocks / fountainMetadata.totalSourceBlocks < 0.9 ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
+                {currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR code to the sender to share your progress
@@ -640,18 +644,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         </Alert>
       )}
 
-      {/* 90% Targeted Mode Prompt or Defrag Prompt */}
-      {((progress >= 90 && progress < 100 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && show90Prompt) ||
-        (show90Prompt && !showFeedbackQR)) && (
+      {/* Targeted Mode Prompt or Defrag Prompt */}
+      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && showActionPrompt === 'targeted') ||
+        (showActionPrompt !== 'none' && !showFeedbackQR)) && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
               <p className="font-medium">
-                {progress >= 90 ? "🎯 90% Complete - Targeted Mode Available!" : "🔧 Fragmentation Detected - Defrag Mode Available!"}
+                {showActionPrompt === 'targeted' ? `🎯 Final ${currentMissingBlocks} Blocks - Targeted Mode Available!` : "🔧 Fragmentation Detected - Defrag Mode Available!"}
               </p>
               <p className="text-sm">
-                {progress >= 90
-                  ? "You've decoded 90% of the file. Generate a feedback QR now to enable targeted mode on the sender. This will speed up the final 10% significantly by focusing on missing blocks."
+                {showActionPrompt === 'targeted'
+                  ? `Only ${currentMissingBlocks} blocks remaining! Generate a feedback QR now to enable targeted mode on the sender. This will focus exclusively on the missing blocks to complete the transfer quickly.`
                   : "Fragmentation detected in your decoded blocks. Generate a feedback QR to request defrag mode from the sender, which will prioritize filling the gaps."
                 }
               </p>
@@ -660,10 +664,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 variant="default"
                 className="w-full"
               >
-                📊 Generate Feedback QR {progress >= 90 ? "(Enable Targeted Mode)" : "(Enable Defrag Mode)"}
+                📊 Generate Feedback QR {showActionPrompt === 'targeted' ? "(Request Final Blocks)" : "(Enable Defrag Mode)"}
               </Button>
               <Button
-                onClick={() => { setShow90Prompt(false); setDismissed90Prompt(true) }}
+                onClick={() => { setShowActionPrompt('none'); setDismissedTargetedPrompt(true) }}
                 variant="outline"
                 className="w-full"
               >
@@ -900,10 +904,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             size="sm"
             className="w-full"
           >
-            {progress >= 90 && progress < 100 ? "📊 Generate Feedback QR (Enable Targeted Mode)" : isAwaitingFeedback ? "📊 Generate Feedback QR (Required to Continue)" : "📊 Generate Feedback QR"}
+            {currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 ? "📊 Generate Feedback QR (Request Final Blocks)" : isAwaitingFeedback ? "📊 Generate Feedback QR (Required to Continue)" : "📊 Generate Feedback QR"}
           </Button>
           <p className="text-xs text-muted-foreground text-center mt-1">
-            {progress >= 90 && progress < 100 ? "Enables targeted mode for faster completion" : isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
+            {currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 ? "Enables targeted mode for faster completion" : isAwaitingFeedback ? "Required to resume scanning" : "Share your progress with the sender"}
           </p>
         </div>
       )}

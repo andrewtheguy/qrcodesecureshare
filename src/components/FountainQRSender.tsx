@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
-import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { computeChecksum } from '@/utils/checksum'
 import { SENDER_FEEDBACK_DISPLAY_DURATION, SENDER_FEEDBACK_AUTO_RESUME_DELAY } from '@/utils/fountainConfig'
 
@@ -19,6 +19,15 @@ const CHUNK_SIZE = 600
 
 // Maximum QR code size in bytes (with some safety margin)
 const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
+
+function flattenReceivedBlocks(rb: number[] | { ranges: [number, number][] }): number[] {
+  if (Array.isArray(rb)) return rb
+  const out: number[] = []
+  for (const [s, e] of rb.ranges) {
+    for (let i = s; i <= e; i++) out.push(i)
+  }
+  return out
+}
 
 export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
@@ -491,9 +500,10 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           setLastProcessedSequence(feedbackSequence)
           setIsPlaying(true)
           console.log('Feedback processed - auto-resuming playback')
-        } else if (feedback.mode === 'targeted' && Array.isArray(feedback.receivedBlocks)) {
-          // Targeted feedback with full block list
-          console.log('Received targeted feedback:', feedback.receivedBlocks.length, 'blocks')
+        } else if (feedback.mode === 'targeted') {
+          // Targeted feedback with full block list or compact ranges
+          const received = flattenReceivedBlocks((feedback as FountainFeedbackTargeted).receivedBlocks)
+          console.log('Received targeted feedback:', received.length, 'blocks')
 
           // Handle defrag targets
           if (feedback.defragTargets && feedback.defragTargets.length > 0) {
@@ -559,13 +569,13 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           }
 
           // Enable targeted encoding and apply skip threshold
-          setReceivedBlocks(new Set(feedback.receivedBlocks))
+          setReceivedBlocks(new Set(received))
           setLastStats(null) // Clear statistics mode
           if (encoder) {
-            encoder.setReceivedBlocks(feedback.receivedBlocks)
+            encoder.setReceivedBlocks(received)
             encoder.setSkipBlocksBelow(firstMissingBlock)
             setWindowInfo(encoder.getWindowInfo())
-            console.log('Skip blocks below:', firstMissingBlock, '/', feedback.receivedBlocks.length, 'received')
+            console.log('Skip blocks below:', firstMissingBlock, '/', received.length, 'received')
 
             // Check for window expansion
             const currentWindow = encoder.getWindowInfo()
@@ -573,7 +583,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               // Skip expansion logic if windowing not enabled or already complete
             } else {
               // Calculate decoded blocks in current window
-              const decodedInWindow = feedback.receivedBlocks.filter((blockIdx: number) =>
+              const decodedInWindow = received.filter((blockIdx: number) =>
                 blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
               ).length
 
@@ -603,7 +613,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
           // Update estimated chunks needed based on feedback
           const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-          const blocksReceived = feedback.receivedBlocks.length
+          const blocksReceived = received.length
           const missingBlocks = totalBlocks - blocksReceived
           const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
 
@@ -755,7 +765,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
                           {lastProcessedSequence >= 0 && (
                             <p>Last feedback: sequence {lastProcessedSequence}</p>
                           )}
-                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when {'>'}90% decoded</p>
+                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when only a few blocks remain</p>
                           {defragMode && (
                             <p className="text-orange-600 dark:text-orange-400 font-medium mt-1">
                               🔧 Defrag mode active: targeting {defragTargets.length} blocks
@@ -783,7 +793,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
                       </p>
                     ) : (
                       <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                        🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
+                        🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
                         {defragMode && (
                           <span className="block text-orange-600 dark:text-orange-400">
                             🔧 Defrag mode active: prioritizing {defragTargets.length} blocks
@@ -954,7 +964,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
               )}
               <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
-              <li className="text-blue-600 dark:text-blue-400">When {'>'}90% decoded, feedback includes block details for targeted encoding</li>
+              <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
               <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
               <li className="text-blue-600 dark:text-blue-400">Sender will display feedback QR codes to signal defrag completion or request rollback</li>
               <li className="text-blue-600 dark:text-blue-400">If checksum mismatch is detected, sender will request rollback to last valid block</li>
