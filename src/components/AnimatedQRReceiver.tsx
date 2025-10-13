@@ -13,6 +13,7 @@ interface DetectedMetadata {
   name: string
   size: number
   type: string
+  sessionId: number
   totalChunks?: number // for sequential
   totalSourceBlocks?: number // for fountain
   blockSize?: number // for fountain
@@ -54,12 +55,18 @@ export function AnimatedQRReceiver() {
         throw new Error('Unknown transfer mode')
       }
 
+      // Strict validation for sessionId
+      if (typeof parsed.sessionId !== 'number' || parsed.sessionId < 0 || parsed.sessionId > 65535) {
+        throw new Error('Invalid sessionId: must be a number between 0 and 65535')
+      }
+
       if (parsed.mode === 'sequential') {
         setDetectedMetadata({
           mode: 'sequential',
           name: parsed.fileName,
           size: parsed.fileSize,
           type: parsed.fileType,
+          sessionId: parsed.sessionId,
           totalChunks: parsed.totalChunks,
           checksum: parsed.checksum,
           checksumAlg: parsed.checksumAlg
@@ -71,6 +78,7 @@ export function AnimatedQRReceiver() {
           name: parsed.fileName,
           size: parsed.fileSize,
           type: parsed.fileType,
+          sessionId: parsed.sessionId,
           totalSourceBlocks: parsed.totalSourceBlocks,
           blockSize: parsed.blockSize,
           checksum: parsed.checksum,
@@ -318,6 +326,7 @@ export function AnimatedQRReceiver() {
               name: detectedMetadata.name,
               size: detectedMetadata.size,
               type: detectedMetadata.type,
+              sessionId: detectedMetadata.sessionId,
               totalChunks: detectedMetadata.totalChunks || 0,
               checksum: detectedMetadata.checksum,
               checksumAlg: detectedMetadata.checksumAlg
@@ -330,6 +339,7 @@ export function AnimatedQRReceiver() {
               name: detectedMetadata.name,
               size: detectedMetadata.size,
               type: detectedMetadata.type,
+              sessionId: detectedMetadata.sessionId,
               totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
               blockSize: detectedMetadata.blockSize,
               checksum: detectedMetadata.checksum,

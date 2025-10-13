@@ -26,7 +26,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [metadataJson, setMetadataJson] = useState<any | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [metadataError, setMetadataError] = useState<string>('')
-  const [sessionId, setSessionId] = useState(0) // force remount of sender components when restarting
+  const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
+  const [currentSessionId, setCurrentSessionId] = useState<number>(0)
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -42,25 +43,28 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         setMetadataQR('')
 
         if (transferMode === 'sequential') {
-          // Sequential metadata requires file length + chunk calculation
-          const arrayBuffer = await file.arrayBuffer()
-            // arrayBuffer length is available but we need byte length specifically
-          const bytes = new Uint8Array(arrayBuffer)
-          const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
-          const checksum = await computeChecksum(bytes, 'crc32')
-          const meta = {
-            type: 'METADATA',
-            mode: 'sequential',
-            version: 1,
-            fileName: file.name,
-            fileType: file.type || 'application/octet-stream',
-            fileSize: bytes.length,
-            totalChunks: totalDataChunks,
-            chunkSize: SEQUENTIAL_CHUNK_SIZE,
-            timestamp: Date.now(),
-            checksumAlg: 'crc32',
-            checksum
-          }
+           // Sequential metadata requires file length + chunk calculation
+           const arrayBuffer = await file.arrayBuffer()
+             // arrayBuffer length is available but we need byte length specifically
+           const bytes = new Uint8Array(arrayBuffer)
+           const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
+           const checksum = await computeChecksum(bytes, 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
+           const meta = {
+             type: 'METADATA',
+             mode: 'sequential',
+             version: 1,
+             sessionId: sessionId,
+             fileName: file.name,
+             fileType: file.type || 'application/octet-stream',
+             fileSize: bytes.length,
+             totalChunks: totalDataChunks,
+             chunkSize: SEQUENTIAL_CHUNK_SIZE,
+             timestamp: Date.now(),
+             checksumAlg: 'crc32',
+             checksum
+           }
           if (cancelled) return
           const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
           const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
@@ -78,6 +82,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
            const size = arrayBuffer.byteLength
            const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
            const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
 
            // Calculate window configuration
            let windowEnabled = false
@@ -95,6 +101,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             type: 'METADATA',
             mode: 'fountain',
             version: 1,
+            sessionId: sessionId,
             fileName: file.name,
             fileType: file.type || 'application/octet-stream',
             fileSize: size,
@@ -144,8 +151,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
   const handleStartTransfer = () => {
     setStep('transfer')
-    // Force remount of sender by incrementing session id (so internal state like metadata chunk is fresh)
-    setSessionId(id => id + 1)
+    // Force remount of sender by incrementing sender remount key (so internal state like metadata chunk is fresh)
+    setSenderRemountKey(id => id + 1)
   }
 
   const handleResetSession = () => {
@@ -155,7 +162,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     setMetadataJson(null)
     setMetadataError('')
     setMetadataLoading(false)
-    setSessionId(id => id + 1)
+    setSenderRemountKey(id => id + 1)
+    setCurrentSessionId(0)
     if (onReset) onReset()
   }
 
@@ -402,11 +410,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         </div>
 
         {/* Render appropriate sender component */}
-        {transferMode === 'sequential' ? (
-          <SequentialQRSender key={`seq-${sessionId}`} file={file} />
-        ) : (
-          <FountainQRSender key={`fount-${sessionId}`} file={file} />
-        )}
+         {transferMode === 'sequential' ? (
+           <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+         ) : (
+           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+         )}
       </CardContent>
     </Card>
   )

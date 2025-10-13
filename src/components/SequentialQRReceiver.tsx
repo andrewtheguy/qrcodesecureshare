@@ -19,16 +19,17 @@ interface ChunkData {
 }
 
 interface SequentialQRReceiverProps {
-  // initialMetadata is required; metadata QR should be handled by parent
-  initialMetadata: {
-    name: string
-    size: number
-    type: string
-    totalChunks: number
-    checksum?: string
-    checksumAlg?: string
-  }
-}
+   // initialMetadata is required; metadata QR should be handled by parent
+   initialMetadata: {
+     name: string
+     size: number
+     type: string
+     totalChunks: number
+     checksum?: string
+     checksumAlg?: string
+     sessionId: number
+   }
+ }
 
 export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverProps) {
   // Metadata always provided by parent
@@ -230,14 +231,15 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     }
 
     // Create feedback payload
-    const feedback = {
-      type: 'MISSING_CHUNKS_FEEDBACK',
-  timestamp: metadata.timestamp || Date.now(),
-  fileName: metadata.name || 'unknown',
-      totalChunks: totalChunks,
-      receivedCount: receivedChunks.size,
-      missingChunks
-    }
+     const feedback = {
+       type: 'MISSING_CHUNKS_FEEDBACK',
+       sessionId: initialMetadata.sessionId,
+   timestamp: metadata.timestamp || Date.now(),
+   fileName: metadata.name || 'unknown',
+       totalChunks: totalChunks,
+       receivedCount: receivedChunks.size,
+       missingChunks
+     }
 
     try {
       const qrUrl = await QRCode.toDataURL(JSON.stringify(feedback), {

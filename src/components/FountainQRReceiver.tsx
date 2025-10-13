@@ -12,6 +12,7 @@ interface FountainQRReceiverProps {
     name: string
     size: number
     type: string
+    sessionId: number
     totalSourceBlocks: number
     blockSize?: number
     checksum?: string
@@ -57,6 +58,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
+  const sessionId = initialMetadata.sessionId
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
@@ -139,6 +141,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        feedback = {
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'statistics',
+         sessionId: sessionId,
          decodedInWindow: decodedInWindow,
          totalDecoded: decodedBlockIndices.length,
          totalBlocks: fountainMetadata.totalSourceBlocks,
@@ -153,6 +156,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        feedback = {
          type: 'FOUNTAIN_FEEDBACK',
          mode: 'targeted',
+         sessionId: sessionId,
          receivedBlocks: decodedBlockIndices,
          totalBlocks: fountainMetadata.totalSourceBlocks,
          windowStart: currentWindowStart,
@@ -167,7 +171,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setFeedbackQRUrl(dataUrl)
      setShowFeedbackQR(true)
      setLastFeedbackTime(Date.now())
-     addDebugLog(`📤 Generated feedback QR (${feedback.mode}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
      addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks)`)
      if (feedback.mode === 'statistics') {
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)

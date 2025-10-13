@@ -8,6 +8,7 @@ import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 
 interface FountainQRSenderProps {
   file: File
+  sessionId: number
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
@@ -16,7 +17,7 @@ const CHUNK_SIZE = 600
 // Maximum QR code size in bytes (with some safety margin)
 const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
 
-export function FountainQRSender({ file }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -284,10 +285,16 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   }, [scanningFeedback])
 
   const handleFeedbackScan = (data: string) => {
-    try {
-      const feedback = JSON.parse(data)
+     try {
+       const feedback = JSON.parse(data)
 
-      if (feedback.type === 'FOUNTAIN_FEEDBACK') {
+       // Early validation guard
+       if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
+         console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
+         return
+       }
+
+       if (feedback.type === 'FOUNTAIN_FEEDBACK') {
         // Extract firstMissingBlock from feedback (default to 0 if not present)
         const firstMissingBlock = feedback.firstMissingBlock ?? 0
 
@@ -397,26 +404,6 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
           }
-        } else if (Array.isArray(feedback.receivedBlocks)) {
-          // Legacy format without mode field - treat as targeted
-          console.log('Received legacy targeted feedback:', feedback.receivedBlocks.length, 'blocks')
-
-          // Enable targeted encoding and apply skip threshold
-          setReceivedBlocks(new Set(feedback.receivedBlocks))
-          setLastStats(null) // Clear statistics mode
-          if (encoder) {
-            encoder.setReceivedBlocks(feedback.receivedBlocks)
-            encoder.setSkipBlocksBelow(firstMissingBlock)
-            setWindowInfo(encoder.getWindowInfo())
-          }
-
-          // Update estimated chunks needed based on feedback
-          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-          const blocksReceived = feedback.receivedBlocks.length
-          const missingBlocks = totalBlocks - blocksReceived
-          if (missingBlocks > 0) {
-            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
-          }
         }
 
         setScanningFeedback(false)
@@ -496,6 +483,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
               <p className="font-medium">🪟 Window Progress</p>
               <div className="text-sm">
                 <p>Window: blocks {windowInfo.windowStart}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({((windowInfo.windowSize / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                <p className="text-xs text-muted-foreground">Session ID: {sessionId}</p>
                 {windowInfo.isWindowComplete ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
                     ✅ Full file now in transfer window
