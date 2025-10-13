@@ -60,6 +60,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
+  const [isLegacyMode] = useState<boolean>(!initialMetadata.windowEnabled && !initialMetadata.initialWindowBlocks && !initialMetadata.windowExpansionFactor && !initialMetadata.windowTriggerThreshold && !initialMetadata.windowStart)
   const sessionId = initialMetadata.sessionId
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
@@ -228,20 +229,20 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
-    // Check for window saturation if windowing is enabled
-    if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
-      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-      const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-      const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
+    // Check for window saturation if windowing is enabled (skip for legacy mode)
+     if (isWindowEnabled && !isLegacyMode && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
+       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+       const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+       const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
 
-      if (windowDecodePercentage >= windowTriggerThreshold) {
-        setIsAwaitingFeedback(true)
-        setIsScanning(false)
-        addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
-        // Auto-open feedback QR to streamline user flow
-        handleGenerateFeedbackQR()
-      }
-    }
+       if (windowDecodePercentage >= windowTriggerThreshold) {
+         setIsAwaitingFeedback(true)
+         setIsScanning(false)
+         addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
+         // Auto-open feedback QR to streamline user flow
+         handleGenerateFeedbackQR()
+       }
+     }
 
     if (decoded) {
       const elapsedTime = scanStartTimeRef.current ? Date.now() - scanStartTimeRef.current : 0
@@ -377,10 +378,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Memoize decodedInWindow to avoid repeated filter calls
   const decodedInWindow = useMemo(() => {
-    if (!isWindowEnabled) return 0
+    if (!isWindowEnabled || isLegacyMode) return 0
     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
     return decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-  }, [isWindowEnabled, currentWindowStart, currentWindowEnd, decodedBlocks])
+  }, [isWindowEnabled, isLegacyMode, currentWindowStart, currentWindowEnd, decodedBlocks])
 
   return (
     <div className="space-y-4">
@@ -528,7 +529,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       {!isScanning && !success && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
+            <p className="font-medium mb-2">📱 Fountain Code Transfer Mode{isLegacyMode ? ' (Simple)' : ''}:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
               <li>Click "Start Scanning" to activate camera</li>
               <li>Scan the metadata QR code first</li>
@@ -536,6 +537,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               <li>You only need ~110% of chunks (can miss some)</li>
               <li>Progress shows decoded blocks, not chunks scanned</li>
               <li>File will download when fully decoded</li>
+              {isLegacyMode && (
+                <li className="text-blue-600 dark:text-blue-400">Simple mode: No windowing or auto-pause. Generate feedback QR manually if you want to check progress.</li>
+              )}
             </ol>
           </AlertDescription>
         </Alert>

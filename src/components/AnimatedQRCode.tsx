@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './FountainQRSender'
+import { FountainQRSenderLegacy } from './FountainQRSenderLegacy'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
 import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from '@/utils/fountainConfig'
@@ -16,7 +17,7 @@ interface AnimatedQRCodeProps {
 
 export const MAX_FILE_SIZE = 512 * 1024 // 512KB
 
-type TransferMode = 'sequential' | 'fountain'
+type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
@@ -128,6 +129,41 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             if (cancelled) return
             setMetadataJson(meta)
             setMetadataQR(qrUrl)
+        } else if (transferMode === 'fountain-legacy') {
+           // Fountain legacy metadata (no windowing)
+           const arrayBuffer = await file.arrayBuffer()
+           const size = arrayBuffer.byteLength
+           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
+           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
+
+          const meta = {
+            type: 'METADATA',
+            mode: 'fountain-legacy',
+            version: 1,
+            sessionId: sessionId,
+            fileName: file.name,
+            fileType: file.type || 'application/octet-stream',
+            fileSize: size,
+            timestamp: Date.now(),
+            totalSourceBlocks,
+            blockSize: DEFAULT_BLOCK_SIZE,
+            chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
+            checksumAlg: 'crc32',
+            checksum
+          }
+          if (cancelled) return
+            const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
+            const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
+              width: 400,
+              margin: 2,
+              errorCorrectionLevel: 'M',
+              color: { dark: '#000000', light: '#FFFFFF' }
+            })
+            if (cancelled) return
+            setMetadataJson(meta)
+            setMetadataQR(qrUrl)
         }
       } catch (e) {
         if (!cancelled) {
@@ -226,6 +262,21 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             </div>
           </Button>
 
+          {/* Fountain Legacy Mode - Simple/No Camera */}
+          <Button
+            onClick={() => handleSelectMode('fountain-legacy')}
+            variant="outline"
+            className="w-full h-auto py-6 flex flex-col items-start gap-2"
+          >
+            <div className="font-bold text-lg">🔁 Fountain Code (Simple) - No Camera Needed</div>
+            <div className="text-sm text-left text-muted-foreground">
+              • Generates random coded chunks (no windowing)<br/>
+              • No feedback scanning required - works without camera<br/>
+              • Receiver needs ~110% of source blocks<br/>
+              • Ideal for senders without camera access
+            </div>
+          </Button>
+
           {/* Sequential Mode - Legacy/Backup
               Not recommended for large files. May become backup-only or code-frozen. */}
           <Button
@@ -258,7 +309,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : '🔁 Fountain Transfer Metadata'}
+            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : transferMode === 'fountain-legacy' ? '🔁 Fountain Transfer Metadata (Simple Mode)' : '🔁 Fountain Transfer Metadata'}
           </CardTitle>
           <div className="text-sm text-muted-foreground text-center space-y-1">
             <p className="font-medium">{file.name}</p>
@@ -307,7 +358,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
                         <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
                       </>
                     )}
-                    {transferMode === 'fountain' && (
+                    {(transferMode === 'fountain' || transferMode === 'fountain-legacy') && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
                         <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>
@@ -376,7 +427,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Transfer' : '🔁 Fountain Code Transfer'}
+          {transferMode === 'sequential' ? '📋 Sequential Transfer' : transferMode === 'fountain-legacy' ? '🔁 Fountain Code Transfer (Simple)' : '🔁 Fountain Code Transfer'}
         </CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
@@ -412,8 +463,10 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         {/* Render appropriate sender component */}
          {transferMode === 'sequential' ? (
            <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
-         ) : (
+         ) : transferMode === 'fountain' ? (
            <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+         ) : (
+           <FountainQRSenderLegacy key={`fount-legacy-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
          )}
       </CardContent>
     </Card>

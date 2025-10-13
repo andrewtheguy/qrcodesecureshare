@@ -6,10 +6,10 @@ import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './FountainQRReceiver'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
-type TransferMode = 'sequential' | 'fountain' | null
+type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy' | null
 
 interface DetectedMetadata {
-  mode: 'sequential' | 'fountain'
+  mode: 'sequential' | 'fountain' | 'fountain-legacy'
   name: string
   size: number
   type: string
@@ -51,7 +51,7 @@ export function AnimatedQRReceiver() {
       if (parsed.type !== 'METADATA') {
         throw new Error('Missing METADATA type field')
       }
-      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain') {
+      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain' && parsed.mode !== 'fountain-legacy') {
         throw new Error('Unknown transfer mode')
       }
 
@@ -72,7 +72,7 @@ export function AnimatedQRReceiver() {
           checksumAlg: parsed.checksumAlg
         })
         addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
-      } else {
+      } else if (parsed.mode === 'fountain') {
         setDetectedMetadata({
           mode: 'fountain',
           name: parsed.fileName,
@@ -90,6 +90,20 @@ export function AnimatedQRReceiver() {
           windowStart: parsed.windowStart
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
+      } else if (parsed.mode === 'fountain-legacy') {
+        setDetectedMetadata({
+          mode: 'fountain-legacy',
+          name: parsed.fileName,
+          size: parsed.fileSize,
+          type: parsed.fileType,
+          sessionId: parsed.sessionId,
+          totalSourceBlocks: parsed.totalSourceBlocks,
+          blockSize: parsed.blockSize,
+          checksum: parsed.checksum,
+          checksumAlg: parsed.checksumAlg
+          // Window fields will be undefined for legacy mode
+        })
+        addDebugLog(`✓ Fountain legacy metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
 
       setIsScanning(false)
@@ -221,7 +235,7 @@ export function AnimatedQRReceiver() {
 
   // Metadata detected - show confirmation screen
   if (detectedMetadata && !transferMode) {
-    const estimatedChunks = detectedMetadata.mode === 'fountain' && detectedMetadata.totalSourceBlocks
+    const estimatedChunks = (detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy') && detectedMetadata.totalSourceBlocks
       ? Math.ceil(detectedMetadata.totalSourceBlocks * 1.1)
       : detectedMetadata.totalChunks || 0
 
@@ -229,7 +243,7 @@ export function AnimatedQRReceiver() {
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : '📋 Sequential Transfer'}
+            {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : detectedMetadata.mode === 'fountain-legacy' ? '🔁 Fountain Code Transfer (Simple)' : '📋 Sequential Transfer'}
           </CardTitle>
           <p className="text-sm text-muted-foreground text-center">
             Transfer mode detected automatically
@@ -243,7 +257,7 @@ export function AnimatedQRReceiver() {
                 <p className="font-medium text-lg">{detectedMetadata.name}</p>
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p>📦 Size: {(detectedMetadata.size / 1024).toFixed(2)}KB</p>
-                  {detectedMetadata.mode === 'fountain' ? (
+                  {detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy' ? (
                     <>
                       <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
                       <p>📊 Est. Chunks Needed: ~{estimatedChunks}</p>
@@ -260,14 +274,17 @@ export function AnimatedQRReceiver() {
           <Alert>
             <AlertDescription>
               <p className="font-medium mb-2">
-                {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : '📋 Sequential Mode'}
+                {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : detectedMetadata.mode === 'fountain-legacy' ? '🔁 Fountain Code (Simple) Mode' : '📋 Sequential Mode'}
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                {detectedMetadata.mode === 'fountain' ? (
+                {detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy' ? (
                   <>
                     <li>Receives random coded chunks</li>
                     <li>Only needs ~110% of chunks to decode</li>
                     <li>Can skip/miss chunks and still succeed</li>
+                    {detectedMetadata.mode === 'fountain-legacy' && (
+                      <li>No camera needed for feedback scanning</li>
+                    )}
                   </>
                 ) : (
                   <>
@@ -299,7 +316,7 @@ export function AnimatedQRReceiver() {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Receiver' : '🔁 Fountain Code Receiver'}
+          {transferMode === 'sequential' ? '📋 Sequential Receiver' : transferMode === 'fountain-legacy' ? '🔁 Fountain Code Receiver (Simple)' : '🔁 Fountain Code Receiver'}
         </CardTitle>
         {detectedMetadata && (
           <p className="text-sm text-muted-foreground text-center">
@@ -332,7 +349,7 @@ export function AnimatedQRReceiver() {
               checksumAlg: detectedMetadata.checksumAlg
             }}
           />
-        ) : transferMode === 'fountain' && detectedMetadata ? (
+        ) : (transferMode === 'fountain' || transferMode === 'fountain-legacy') && detectedMetadata ? (
           <FountainQRReceiver
             key={receiverKey}
             initialMetadata={{
