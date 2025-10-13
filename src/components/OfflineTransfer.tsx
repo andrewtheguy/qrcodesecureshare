@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
-import { MAX_FILE_SIZE } from './AnimatedQRCode'
+import { MAX_FILE_SIZE_FOUNTAIN } from './AnimatedQRCode'
 
 export default function OfflineTransfer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -15,8 +15,8 @@ export default function OfflineTransfer() {
     const file = e.target.files?.[0]
     if (file) {
 
-      if (file.size > MAX_FILE_SIZE) {
-        alert(`File size must be under ${MAX_FILE_SIZE / 1024}KB. Selected file is ${(file.size / 1024).toFixed(2)}KB`)
+      if (file.size > MAX_FILE_SIZE_FOUNTAIN) {
+        alert(`File size must be under ${MAX_FILE_SIZE_FOUNTAIN / 1024 / 1024}MB. Selected file is ${(file.size / 1024).toFixed(2)}KB. Note: Some transfer modes support smaller limits.`)
         return
       }
       setSelectedFile(file)
@@ -34,7 +34,7 @@ export default function OfflineTransfer() {
       <header className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Offline QR File Transfer</h1>
         <p className="text-muted-foreground">
-          Transfer files up to ${MAX_FILE_SIZE / 1024}KB using animated QR codes - no internet required!
+          Transfer files up to {MAX_FILE_SIZE_FOUNTAIN / 1024 / 1024}MB using animated QR codes - no internet required!
         </p>
       </header>
 
@@ -48,7 +48,7 @@ export default function OfflineTransfer() {
             <CardContent>
               <div className="space-y-4">
                 <p className="text-sm text-muted-foreground text-center">
-                  Select a file (max {MAX_FILE_SIZE / 1024}KB) to convert into animated QR codes
+                  Select a file (up to {MAX_FILE_SIZE_FOUNTAIN / 1024 / 1024}MB) to convert into animated QR codes
                 </p>
                 <input
                   type="file"
@@ -139,7 +139,7 @@ export default function OfflineTransfer() {
             <div className="space-y-2">
               <h3 className="font-semibold">✨ Features:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Transfer files up to {MAX_FILE_SIZE / 1024}KB completely offline</li>
+                <li>Transfer files up to {MAX_FILE_SIZE_FOUNTAIN / 1024 / 1024}MB completely offline (mode-dependent)</li>
                 <li>No internet connection required</li>
                 <li>Works between any two devices with cameras</li>
                 <li>Automatic chunking and reconstruction</li>

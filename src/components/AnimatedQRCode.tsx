@@ -10,12 +10,17 @@ import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
 import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from '@/utils/fountainConfig'
 
+const kb = (n: number) => `${Math.round(n / 1024)}KB`
+const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
+
 interface AnimatedQRCodeProps {
   file: File | null
   onReset?: () => void
 }
 
-export const MAX_FILE_SIZE = 512 * 1024 // 512KB
+export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
+export const MAX_FILE_SIZE_FOUNTAIN = 2 * 1024 * 1024
+export const MAX_FILE_SIZE_FOUNTAIN_LEGACY = 512 * 1024
 
 type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
 
@@ -29,6 +34,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [metadataError, setMetadataError] = useState<string>('')
   const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
+  const [modeSizeError, setModeSizeError] = useState<string>('')
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -179,6 +185,28 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   }, [file, transferMode, step])
 
   const handleSelectMode = (mode: TransferMode) => {
+    if (!file) return
+
+    let maxSize: number
+    let modeName: string
+
+    if (mode === 'sequential') {
+      maxSize = MAX_FILE_SIZE_SEQUENTIAL
+      modeName = 'Sequential'
+    } else if (mode === 'fountain') {
+      maxSize = MAX_FILE_SIZE_FOUNTAIN
+      modeName = 'Fountain (Windowed)'
+    } else {
+      maxSize = MAX_FILE_SIZE_FOUNTAIN_LEGACY
+      modeName = 'Fountain (Simple)'
+    }
+
+    if (file.size > maxSize) {
+      setModeSizeError(`${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`)
+      return
+    }
+
+    setModeSizeError('')
     setTransferMode(mode)
     setStep('metadata')
     setMetadataQR('')
@@ -200,28 +228,10 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     setMetadataLoading(false)
     setSenderRemountKey(id => id + 1)
     setCurrentSessionId(0)
+    setModeSizeError('')
     if (onReset) onReset()
   }
 
-  // Validate file size
-  if (file && file.size > MAX_FILE_SIZE) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <Alert variant="destructive">
-            <AlertDescription>
-              File size ({(file.size / 1024).toFixed(2)}KB) exceeds maximum of {(MAX_FILE_SIZE / 1024).toFixed(2)}KB
-            </AlertDescription>
-          </Alert>
-          {onReset && (
-            <Button onClick={onReset} className="mt-4 w-full">
-              Try Another File
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
 
   if (!file) {
     return (
@@ -245,6 +255,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {modeSizeError && (
+            <Alert variant="destructive">
+              <AlertDescription>{modeSizeError}</AlertDescription>
+            </Alert>
+          )}
           {/* Fountain Mode - RECOMMENDED (shown first)
               Fountain coding is preferred for files large enough to need chunking.
               Sequential mode may be deprecated or code-frozen in the future as a backup option only. */}
@@ -258,7 +273,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               • Generates random coded chunks<br/>
               • Receiver needs ~105-115% of source blocks (varies by file size)<br/>
               • Can skip/miss chunks and still decode<br/>
-              • Preferred for large files
+              • Preferred for large files<br/>
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
             </div>
           </Button>
 
@@ -273,7 +289,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               • Generates random coded chunks (no windowing)<br/>
               • No feedback scanning required - works without camera<br/>
               • Receiver needs ~110% of source blocks<br/>
-              • Ideal for senders without camera access
+              • Ideal for senders without camera access<br/>
+              • Maximum file size: {kb(MAX_FILE_SIZE_FOUNTAIN_LEGACY)}
             </div>
           </Button>
 
@@ -289,7 +306,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               • Sends chunks in order (1, 2, 3...)<br/>
               • Receiver needs ALL chunks, which might need to be repeated<br/>
               • Can speed up by skipping received chunks with feedback QR<br/>
-              • Not ideal for large files
+              • Not ideal for large files<br/>
+              • Maximum file size: {kb(MAX_FILE_SIZE_SEQUENTIAL)}
             </div>
           </Button>
 
