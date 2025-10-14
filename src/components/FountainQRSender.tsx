@@ -19,15 +19,6 @@ const CHUNK_SIZE = 600
 // Maximum QR code size in bytes (with some safety margin)
 const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
 
-function flattenReceivedBlocks(rb: number[] | { ranges: [number, number][] }): number[] {
-  if (Array.isArray(rb)) return rb
-  const out: number[] = []
-  for (const [s, e] of rb.ranges) {
-    for (let i = s; i <= e; i++) out.push(i)
-  }
-  return out
-}
-
 export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
@@ -486,122 +477,121 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           setLastProcessedSequence(feedbackSequence)
           console.log('Feedback processed - ACK QR generated')
         } else if (feedback.mode === 'targeted') {
-          // Targeted feedback with full block list or compact ranges
-          const received = flattenReceivedBlocks((feedback as FountainFeedbackTargeted).receivedBlocks)
-          console.log('Received targeted feedback:', received.length, 'blocks')
+           // Targeted feedback with missing block indices
+           const missingBlocks = (feedback as FountainFeedbackTargeted).missingBlocks
+           console.log('Received targeted feedback:', missingBlocks.length, 'missing blocks')
 
-          // Handle defrag targets
-          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
-            if (encoder) {
-              encoder.setDefragTargets(feedback.defragTargets)
-              setDefragMode(true)
-              setDefragTargets(feedback.defragTargets)
-              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
-            }
-          } else if (defragMode) {
-            // Defrag was active but no longer requested - exit
-            if (encoder) {
-              encoder.exitDefragMode()
-              setDefragMode(false)
-              setDefragTargets([])
-            }
-          }
+           // Handle defrag targets
+           if (feedback.defragTargets && feedback.defragTargets.length > 0) {
+             if (encoder) {
+               encoder.setDefragTargets(feedback.defragTargets)
+               setDefragMode(true)
+               setDefragTargets(feedback.defragTargets)
+               console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
+             }
+           } else if (defragMode) {
+             // Defrag was active but no longer requested - exit
+             if (encoder) {
+               encoder.exitDefragMode()
+               setDefragMode(false)
+               setDefragTargets([])
+             }
+           }
 
-          // Validate checksum
-          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
-            const [start, end] = feedback.contiguousChecksumRange
-            if (end > start && encoder) {
-              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
-                setChecksumValidation(validation)
-                console.log('🔐', validation.message)
+           // Validate checksum
+           if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
+             const [start, end] = feedback.contiguousChecksumRange
+             if (end > start && encoder) {
+               validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
+                 setChecksumValidation(validation)
+                 console.log('🔐', validation.message)
 
-                // If checksum mismatch, generate rollback sender feedback
-                if (!validation.valid) {
-                  const rollbackFeedback: SenderFeedback = {
-                    type: 'SENDER_FEEDBACK',
-                    sessionId: sessionId,
-                    sequence: senderFeedbackSequence,
-                    command: 'rollback',
-                    rollbackToBlock: start,
-                    reason: `Checksum mismatch detected: ${validation.message}`,
-                    lastValidChecksum: validation.computedChecksum,
-                    lastValidChecksumRange: [start, end]
-                  }
-                  generateSenderFeedbackQR(rollbackFeedback)
-                }
-              })
-            }
-          }
+                 // If checksum mismatch, generate rollback sender feedback
+                 if (!validation.valid) {
+                   const rollbackFeedback: SenderFeedback = {
+                     type: 'SENDER_FEEDBACK',
+                     sessionId: sessionId,
+                     sequence: senderFeedbackSequence,
+                     command: 'rollback',
+                     rollbackToBlock: start,
+                     reason: `Checksum mismatch detected: ${validation.message}`,
+                     lastValidChecksum: validation.computedChecksum,
+                     lastValidChecksumRange: [start, end]
+                   }
+                   generateSenderFeedbackQR(rollbackFeedback)
+                 }
+               })
+             }
+           }
 
-          // Enable targeted encoding and apply skip threshold
-          setReceivedBlocks(new Set(received))
-          setLastStats(null) // Clear statistics mode
-          if (encoder) {
-            encoder.setReceivedBlocks(received)
-            encoder.setSkipBlocksBelow(firstMissingBlock)
-            setWindowInfo(encoder.getWindowInfo())
-            console.log('Skip blocks below:', firstMissingBlock, '/', received.length, 'received')
+           // Enable targeted encoding with missing blocks
+           setReceivedBlocks(new Set()) // Clear received blocks since we're now using missing blocks
+           setLastStats(null) // Clear statistics mode
+           if (encoder) {
+             encoder.setMissingBlocks(missingBlocks)
+             encoder.setSkipBlocksBelow(firstMissingBlock)
+             setWindowInfo(encoder.getWindowInfo())
+             console.log('Skip blocks below:', firstMissingBlock, '/', missingBlocks.length, 'missing')
 
-            // Check for window expansion
-            const currentWindow = encoder.getWindowInfo()
-            if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
-              // Skip expansion logic if windowing not enabled or already complete
-            } else {
-              // Calculate decoded blocks in current window
-              const decodedInWindow = received.filter((blockIdx: number) =>
-                blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
-              ).length
+             // Check for window expansion
+             const currentWindow = encoder.getWindowInfo()
+             if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
+               // Skip expansion logic if windowing not enabled or already complete
+             } else {
+               // Calculate decoded blocks in current window (total - missing in window)
+               const missingInWindow = missingBlocks.filter((blockIdx: number) =>
+                 blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
+               ).length
+               const decodedInWindow = currentWindow.windowSize - missingInWindow
 
-              if (decodedInWindow > lastDecodedInWindow) {
-                // Update last decoded count
-                setLastDecodedInWindow(decodedInWindow)
+               if (decodedInWindow > lastDecodedInWindow) {
+                 // Update last decoded count
+                 setLastDecodedInWindow(decodedInWindow)
 
-                // Calculate window decode percentage
-                const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+                 // Calculate window decode percentage
+                 const windowDecodePercent = decodedInWindow / currentWindow.windowSize
 
-                // Check expansion trigger (50% threshold)
-                if (windowDecodePercent >= 0.5) {
-                  // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
-                  const now = Date.now()
-                  if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                    const expanded = encoder.expandWindow()
-                    if (expanded) {
-                      setWindowInfo(encoder.getWindowInfo())
-                      setLastWindowExpansion(now)
-                      console.log('Window expanded:', encoder.getWindowInfo())
-                    }
-                  }
-                }
-              }
-            }
-          }
+                 // Check expansion trigger (50% threshold)
+                 if (windowDecodePercent >= 0.5) {
+                   // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
+                   const now = Date.now()
+                   if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                     const expanded = encoder.expandWindow()
+                     if (expanded) {
+                       setWindowInfo(encoder.getWindowInfo())
+                       setLastWindowExpansion(now)
+                       console.log('Window expanded:', encoder.getWindowInfo())
+                     }
+                   }
+                 }
+               }
+             }
+           }
 
-          // Update estimated chunks needed based on feedback
-          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-          const blocksReceived = received.length
-          const missingBlocks = totalBlocks - blocksReceived
+           // Update estimated chunks needed based on feedback
+           const blocksMissing = missingBlocks.length
 
-          // Adjust estimate based on how many blocks are missing
-          if (missingBlocks > 0) {
-            // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
-            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
-          }
+           // Adjust estimate based on how many blocks are missing
+           if (blocksMissing > 0) {
+             // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
+             setEstimatedChunksNeeded(chunkCount + Math.ceil(blocksMissing * 1.5))
+           }
 
-          // Generate ACK QR
-          const ackFeedback: SenderFeedback = {
-            type: 'SENDER_FEEDBACK',
-            sessionId: sessionId,
-            sequence: senderFeedbackSequence,
-            command: 'acknowledge',
-            acknowledgedSequence: feedbackSequence,
-            message: `Targeted mode activated. Focusing on ${missingBlocks} missing blocks.`
-          }
-          await generateSenderFeedbackQR(ackFeedback)
-          setSenderMode('ack-display')
+           // Generate ACK QR
+           const ackFeedback: SenderFeedback = {
+             type: 'SENDER_FEEDBACK',
+             sessionId: sessionId,
+             sequence: senderFeedbackSequence,
+             command: 'acknowledge',
+             acknowledgedSequence: feedbackSequence,
+             message: `Targeted mode activated. Focusing on ${blocksMissing} missing blocks.`
+           }
+           await generateSenderFeedbackQR(ackFeedback)
+           setSenderMode('ack-display')
 
-          // Update last processed sequence after successful processing
-          setLastProcessedSequence(feedbackSequence)
-          console.log('Feedback processed - ACK QR generated')
+           // Update last processed sequence after successful processing
+           setLastProcessedSequence(feedbackSequence)
+           console.log('Feedback processed - ACK QR generated')
         }
 
         setScanningFeedback(false)

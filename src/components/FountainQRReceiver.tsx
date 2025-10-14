@@ -230,8 +230,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragComplete: defragComplete
        }
      } else {
-       // Targeted feedback with block indices - for final stage
-       // Try compact representation first
+       // Targeted feedback with missing block indices - for final stage
+       const decodedSet = new Set(decodedBlockIndices)
+       const missingBlocks: number[] = []
+       for (let i = 0; i < fountainMetadata.totalSourceBlocks; i++) {
+         if (!decodedSet.has(i)) {
+           missingBlocks.push(i)
+         }
+       }
+
        const feedbackBase = {
          type: 'FOUNTAIN_FEEDBACK' as const,
          mode: 'targeted' as const,
@@ -249,48 +256,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragComplete: defragComplete
        }
 
-       // Attempt compact ranges representation
-       const ranges: [number, number][] = []
-       let start = decodedBlockIndices[0]
-       let prev = start
-       for (let i = 1; i < decodedBlockIndices.length; i++) {
-         if (decodedBlockIndices[i] !== prev + 1) {
-           ranges.push([start, prev])
-           start = decodedBlockIndices[i]
-         }
-         prev = decodedBlockIndices[i]
-       }
-       if (decodedBlockIndices.length > 0) {
-         ranges.push([start, prev])
-       }
-       const compactFeedback = { ...feedbackBase, receivedBlocks: { ranges } }
-       const compactJson = JSON.stringify(compactFeedback)
+       const targetedFeedback = { ...feedbackBase, missingBlocks }
+       const targetedJson = JSON.stringify(targetedFeedback)
 
-       // Check if compact version fits (rough estimate: QR capacity ~3KB for version 40)
-       if (compactJson.length <= 2500) {
-         feedback = compactFeedback
+       // Check if targeted version fits (rough estimate: QR capacity ~3KB for version 40)
+       if (targetedJson.length <= 2500) {
+         feedback = targetedFeedback
        } else {
-         // Fallback to statistics mode with expansion request
-         addDebugLog(`📊 Payload too large (${compactJson.length} bytes), falling back to statistics mode with window expansion request`)
-         feedback = {
-           type: 'FOUNTAIN_FEEDBACK' as const,
-           mode: 'statistics' as const,
-           sessionId: sessionId,
-           sequence: seq,
-           decodedInWindow: decodedInWindow,
-           totalDecoded: decodedBlockIndices.length,
-           totalBlocks: fountainMetadata.totalSourceBlocks,
-           windowStart: currentWindowStart,
-           windowEnd: currentWindowEnd,
-           progress: overallProgress * 100,
-           requestWindowExpansion: true, // Force expansion
-           firstMissingBlock: firstMissingBlock,
-           defragTargets: fragmentation.defragTargets,
-           fragmentationScore: fragmentation.fragmentationScore,
-           contiguousChecksum: contiguousChecksum,
-           contiguousChecksumRange: contiguousChecksumRange,
-           defragComplete: defragComplete
-         }
+         // Since threshold is so small, disable fallback to statistics mode
+         addDebugLog(`📊 Payload too large (${targetedJson.length} bytes), but threshold is small - keeping targeted mode`)
+         feedback = targetedFeedback // No fallback - threshold is small enough
        }
      }
 

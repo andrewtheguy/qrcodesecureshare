@@ -51,12 +51,12 @@ export interface FountainFeedbackStatistics extends FountainFeedbackBase {
 }
 
 /**
- * Targeted mode feedback payload - includes full block list for final transfer stages.
+ * Targeted mode feedback payload - includes missing block indices for final transfer stages.
  */
 export interface FountainFeedbackTargeted extends FountainFeedbackBase {
   mode: 'targeted';
-  /** Array of decoded block indices or compact ranges representation */
-  receivedBlocks: number[] | { ranges: [number, number][] };
+  /** Array of missing block indices that need to be sent */
+  missingBlocks: number[];
 }
 
 /**
