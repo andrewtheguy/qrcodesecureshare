@@ -5,17 +5,24 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './FountainQRSender'
+import { FountainQRSenderLegacy } from './FountainQRSenderLegacy'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from '@/utils/fountainConfig'
+
+const kb = (n: number) => `${Math.round(n / 1024)}KB`
+const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
 interface AnimatedQRCodeProps {
   file: File | null
   onReset?: () => void
 }
 
-export const MAX_FILE_SIZE = 512 * 1024 // 512KB
+export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
+export const MAX_FILE_SIZE_FOUNTAIN = 2 * 1024 * 1024
+export const MAX_FILE_SIZE_FOUNTAIN_LEGACY = 512 * 1024
 
-type TransferMode = 'sequential' | 'fountain'
+type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
 
 export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
@@ -25,7 +32,9 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   const [metadataJson, setMetadataJson] = useState<any | null>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
   const [metadataError, setMetadataError] = useState<string>('')
-  const [sessionId, setSessionId] = useState(0) // force remount of sender components when restarting
+  const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
+  const [currentSessionId, setCurrentSessionId] = useState<number>(0)
+  const [modeSizeError, setModeSizeError] = useState<string>('')
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -41,25 +50,28 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         setMetadataQR('')
 
         if (transferMode === 'sequential') {
-          // Sequential metadata requires file length + chunk calculation
-          const arrayBuffer = await file.arrayBuffer()
-            // arrayBuffer length is available but we need byte length specifically
-          const bytes = new Uint8Array(arrayBuffer)
-          const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
-          const checksum = await computeChecksum(bytes, 'crc32')
-          const meta = {
-            type: 'METADATA',
-            mode: 'sequential',
-            version: 1,
-            fileName: file.name,
-            fileType: file.type || 'application/octet-stream',
-            fileSize: bytes.length,
-            totalChunks: totalDataChunks,
-            chunkSize: SEQUENTIAL_CHUNK_SIZE,
-            timestamp: Date.now(),
-            checksumAlg: 'crc32',
-            checksum
-          }
+           // Sequential metadata requires file length + chunk calculation
+           const arrayBuffer = await file.arrayBuffer()
+             // arrayBuffer length is available but we need byte length specifically
+           const bytes = new Uint8Array(arrayBuffer)
+           const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
+           const checksum = await computeChecksum(bytes, 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
+           const meta = {
+             type: 'METADATA',
+             mode: 'sequential',
+             version: 1,
+             sessionId: sessionId,
+             fileName: file.name,
+             fileType: file.type || 'application/octet-stream',
+             fileSize: bytes.length,
+             totalChunks: totalDataChunks,
+             chunkSize: SEQUENTIAL_CHUNK_SIZE,
+             timestamp: Date.now(),
+             checksumAlg: 'crc32',
+             checksum
+           }
           if (cancelled) return
           const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
           const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
@@ -72,23 +84,78 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           setMetadataJson(meta)
           setMetadataQR(qrUrl)
         } else if (transferMode === 'fountain') {
-          // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
-          const BLOCK_SIZE = 600
-          const arrayBuffer = await file.arrayBuffer()
-          const size = arrayBuffer.byteLength
-          const totalSourceBlocks = Math.ceil(size / BLOCK_SIZE)
-          const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
+           const arrayBuffer = await file.arrayBuffer()
+           const size = arrayBuffer.byteLength
+           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
+           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
+
+           // Calculate window configuration
+           let windowEnabled = false
+           let initialWindowBlocks = totalSourceBlocks
+           if (size >= WINDOW_ENABLE_THRESHOLD) {
+             windowEnabled = true
+             if (size <= WINDOW_HALF_THRESHOLD) {
+               initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
+             } else {
+               initialWindowBlocks = Math.min(Math.ceil(WINDOW_MAX_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
+             }
+           }
+
           const meta = {
             type: 'METADATA',
             mode: 'fountain',
             version: 1,
+            sessionId: sessionId,
             fileName: file.name,
             fileType: file.type || 'application/octet-stream',
             fileSize: size,
             timestamp: Date.now(),
             totalSourceBlocks,
-            blockSize: BLOCK_SIZE,
-            chunkSize: BLOCK_SIZE, // include for parity
+            blockSize: DEFAULT_BLOCK_SIZE,
+            chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
+            checksumAlg: 'crc32',
+            checksum,
+            windowEnabled,
+            initialWindowBlocks,
+            windowExpansionFactor: 0.5,
+            windowTriggerThreshold: 0.5,
+            windowStart: 0
+          }
+          if (cancelled) return
+            const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
+            const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
+              width: 400,
+              margin: 2,
+              errorCorrectionLevel: 'M',
+              color: { dark: '#000000', light: '#FFFFFF' }
+            })
+            if (cancelled) return
+            setMetadataJson(meta)
+            setMetadataQR(qrUrl)
+        } else if (transferMode === 'fountain-legacy') {
+           // Fountain legacy metadata (no windowing)
+           const arrayBuffer = await file.arrayBuffer()
+           const size = arrayBuffer.byteLength
+           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
+           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+           const sessionId = Math.floor(Math.random() * 65536)
+           setCurrentSessionId(sessionId)
+
+          const meta = {
+            type: 'METADATA',
+            mode: 'fountain-legacy',
+            version: 1,
+            sessionId: sessionId,
+            fileName: file.name,
+            fileType: file.type || 'application/octet-stream',
+            fileSize: size,
+            timestamp: Date.now(),
+            totalSourceBlocks,
+            blockSize: DEFAULT_BLOCK_SIZE,
+            chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
             checksumAlg: 'crc32',
             checksum
           }
@@ -118,6 +185,28 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
   }, [file, transferMode, step])
 
   const handleSelectMode = (mode: TransferMode) => {
+    if (!file) return
+
+    let maxSize: number
+    let modeName: string
+
+    if (mode === 'sequential') {
+      maxSize = MAX_FILE_SIZE_SEQUENTIAL
+      modeName = 'Sequential'
+    } else if (mode === 'fountain') {
+      maxSize = MAX_FILE_SIZE_FOUNTAIN
+      modeName = 'Fountain (Windowed)'
+    } else {
+      maxSize = MAX_FILE_SIZE_FOUNTAIN_LEGACY
+      modeName = 'Fountain (Simple)'
+    }
+
+    if (file.size > maxSize) {
+      setModeSizeError(`${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`)
+      return
+    }
+
+    setModeSizeError('')
     setTransferMode(mode)
     setStep('metadata')
     setMetadataQR('')
@@ -126,8 +215,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
 
   const handleStartTransfer = () => {
     setStep('transfer')
-    // Force remount of sender by incrementing session id (so internal state like metadata chunk is fresh)
-    setSessionId(id => id + 1)
+    // Force remount of sender by incrementing sender remount key (so internal state like metadata chunk is fresh)
+    setSenderRemountKey(id => id + 1)
   }
 
   const handleResetSession = () => {
@@ -137,29 +226,12 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     setMetadataJson(null)
     setMetadataError('')
     setMetadataLoading(false)
-    setSessionId(id => id + 1)
+    setSenderRemountKey(id => id + 1)
+    setCurrentSessionId(0)
+    setModeSizeError('')
     if (onReset) onReset()
   }
 
-  // Validate file size
-  if (file && file.size > MAX_FILE_SIZE) {
-    return (
-      <Card>
-        <CardContent className="p-6">
-          <Alert variant="destructive">
-            <AlertDescription>
-              File size ({(file.size / 1024).toFixed(2)}KB) exceeds maximum of {(MAX_FILE_SIZE / 1024).toFixed(2)}KB
-            </AlertDescription>
-          </Alert>
-          {onReset && (
-            <Button onClick={onReset} className="mt-4 w-full">
-              Try Another File
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-    )
-  }
 
   if (!file) {
     return (
@@ -183,6 +255,11 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {modeSizeError && (
+            <Alert variant="destructive">
+              <AlertDescription>{modeSizeError}</AlertDescription>
+            </Alert>
+          )}
           {/* Fountain Mode - RECOMMENDED (shown first)
               Fountain coding is preferred for files large enough to need chunking.
               Sequential mode may be deprecated or code-frozen in the future as a backup option only. */}
@@ -196,7 +273,24 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               • Generates random coded chunks<br/>
               • Receiver needs ~105-115% of source blocks (varies by file size)<br/>
               • Can skip/miss chunks and still decode<br/>
-              • Preferred for large files
+              • Preferred for large files<br/>
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
+            </div>
+          </Button>
+
+          {/* Fountain Legacy Mode - Simple/No Camera */}
+          <Button
+            onClick={() => handleSelectMode('fountain-legacy')}
+            variant="outline"
+            className="w-full h-auto py-6 flex flex-col items-start gap-2"
+          >
+            <div className="font-bold text-lg">🔁 Fountain Code (Simple) - No Camera Needed</div>
+            <div className="text-sm text-left text-muted-foreground">
+              • Generates random coded chunks (no windowing)<br/>
+              • No feedback scanning required - works without camera<br/>
+              • Receiver needs ~110% of source blocks<br/>
+              • Ideal for senders without camera access<br/>
+              • Maximum file size: {kb(MAX_FILE_SIZE_FOUNTAIN_LEGACY)}
             </div>
           </Button>
 
@@ -212,7 +306,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
               • Sends chunks in order (1, 2, 3...)<br/>
               • Receiver needs ALL chunks, which might need to be repeated<br/>
               • Can speed up by skipping received chunks with feedback QR<br/>
-              • Not ideal for large files
+              • Not ideal for large files<br/>
+              • Maximum file size: {kb(MAX_FILE_SIZE_SEQUENTIAL)}
             </div>
           </Button>
 
@@ -232,7 +327,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : '🔁 Fountain Transfer Metadata'}
+            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : transferMode === 'fountain-legacy' ? '🔁 Fountain Transfer Metadata (Simple Mode)' : '🔁 Fountain Transfer Metadata'}
           </CardTitle>
           <div className="text-sm text-muted-foreground text-center space-y-1">
             <p className="font-medium">{file.name}</p>
@@ -281,7 +376,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
                         <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
                       </>
                     )}
-                    {transferMode === 'fountain' && (
+                    {(transferMode === 'fountain' || transferMode === 'fountain-legacy') && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
                         <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>
@@ -350,7 +445,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Transfer' : '🔁 Fountain Code Transfer'}
+          {transferMode === 'sequential' ? '📋 Sequential Transfer' : transferMode === 'fountain-legacy' ? '🔁 Fountain Code Transfer (Simple)' : '🔁 Fountain Code Transfer'}
         </CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
@@ -384,11 +479,13 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
         </div>
 
         {/* Render appropriate sender component */}
-        {transferMode === 'sequential' ? (
-          <SequentialQRSender key={`seq-${sessionId}`} file={file} />
-        ) : (
-          <FountainQRSender key={`fount-${sessionId}`} file={file} />
-        )}
+         {transferMode === 'sequential' ? (
+           <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+         ) : transferMode === 'fountain' ? (
+           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+         ) : (
+           <FountainQRSenderLegacy key={`fount-legacy-${senderRemountKey}`} file={file} />
+         )}
       </CardContent>
     </Card>
   )

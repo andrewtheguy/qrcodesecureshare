@@ -5,9 +5,12 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
+import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
+import { computeChecksum } from '@/utils/checksum'
 
 interface FountainQRSenderProps {
   file: File
+  sessionId: number
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
@@ -16,7 +19,16 @@ const CHUNK_SIZE = 600
 // Maximum QR code size in bytes (with some safety margin)
 const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
 
-export function FountainQRSender({ file }: FountainQRSenderProps) {
+function flattenReceivedBlocks(rb: number[] | { ranges: [number, number][] }): number[] {
+  if (Array.isArray(rb)) return rb
+  const out: number[] = []
+  for (const [s, e] of rb.ranges) {
+    for (let i = s; i <= e; i++) out.push(i)
+  }
+  return out
+}
+
+export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -27,11 +39,36 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const [scanningFeedback, setScanningFeedback] = useState(false)
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
+  const [windowInfo, setWindowInfo] = useState<{
+    windowEnabled: boolean
+    windowStart: number
+    windowEnd: number
+    windowSize: number
+    totalBlocks: number
+    isWindowComplete: boolean
+    skipBlocksBelow: number
+  } | null>(null)
+  const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
+  const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
+  const [lastStats, setLastStats] = useState<{
+    totalDecoded: number
+    totalBlocks: number
+    windowStart?: number
+    windowEnd?: number
+  } | null>(null)
+  const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
+  const [defragMode, setDefragMode] = useState(false)
+  const [defragTargets, setDefragTargets] = useState<number[]>([])
+  const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
+  const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
+  const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
+  const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
+  const processingRef = useRef(false)
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -51,14 +88,16 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
           blockSize: CHUNK_SIZE,
           c: 0.2,
-            delta: 0.01,
+             delta: 0.01,
           // Optional: override doping rates here if experimenting
           degree1Rate: 0.08,
           lowDegreeRate: 0.15
         })
         setEncoder(fountainEncoder)
+        setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
         setChunkCount(0)
+        setLastAckQRUrl('')
 
         // Estimate chunks needed: typically 105-110% of source blocks
         const meta = fountainEncoder.getMetadata()
@@ -87,6 +126,11 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encoder])
+
+  // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
+  useEffect(() => {
+    setLastProcessedSequence(-1)
+  }, [sessionId, file])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -196,9 +240,10 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
 
   // Metadata generation removed – handled by parent component
 
+
   // Animation loop
   useEffect(() => {
-    if (!isPlaying || !encoder) return
+    if (!isPlaying || !encoder || senderMode !== 'data-display') return
 
     // Generate first chunk immediately
     generateAndShowNextChunk()
@@ -208,7 +253,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, encoder, fps])
+  }, [isPlaying, encoder, fps, senderMode])
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
@@ -265,57 +310,334 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
     }
   }, [scanningFeedback])
 
-  const handleFeedbackScan = (data: string) => {
+  const validateContiguousChecksum = async (encoder: FountainEncoder, startIdx: number, endIdx: number, expectedChecksum: string): Promise<{ valid: boolean, message: string, range: string, computedChecksum: string }> => {
+    const data = encoder.getContiguousBlocksData(startIdx, endIdx)
+    if (!data) {
+      return { valid: false, message: 'Could not get contiguous blocks data', range: `${startIdx}-${endIdx}`, computedChecksum: '' }
+    }
+
+    const computedChecksum = await computeChecksum(data, 'crc32')
+    const valid = computedChecksum === expectedChecksum
+    const message = valid
+      ? `Checksum valid: ${computedChecksum}`
+      : `Checksum mismatch: expected ${expectedChecksum}, got ${computedChecksum}`
+
+    return { valid, message, range: `${startIdx}-${endIdx}`, computedChecksum }
+  }
+
+  const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
+    const feedbackJson = JSON.stringify(feedback)
+    const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M' })
+    setSenderFeedbackSequence(prev => prev + 1)
+    setLastAckQRUrl(dataUrl)
+  }
+
+  const handleFeedbackScan = async (data: string) => {
+    // Guard against multiple rapid callbacks
+    if (processingRef.current) {
+      console.warn('Already processing feedback, ignoring duplicate callback')
+      return
+    }
+    processingRef.current = true
+
+    let valid = true
     try {
-      const feedback = JSON.parse(data)
+      const feedback: FountainFeedback = JSON.parse(data)
 
-      if (feedback.type === 'FOUNTAIN_FEEDBACK' && Array.isArray(feedback.receivedBlocks)) {
-        // Update the set of blocks the receiver has successfully decoded
-        setReceivedBlocks(new Set(feedback.receivedBlocks))
+      // Early validation guard
+      if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
+        console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
+        valid = false
+      }
 
-        // Enable targeted encoding - encoder will now focus on missing blocks
-        if (encoder) {
-          encoder.setReceivedBlocks(feedback.receivedBlocks)
-        }
+      const feedbackSequence = feedback.sequence
 
-        // Update estimated chunks needed based on feedback
-        const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-        const blocksReceived = feedback.receivedBlocks.length
-        const missingBlocks = totalBlocks - blocksReceived
-        const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
+      // Validate sequence is a number
+      if (typeof feedbackSequence !== 'number') {
+        console.warn('Invalid feedback: missing or invalid sequence number')
+        valid = false
+      }
 
-        // Adjust estimate based on how many blocks are missing
-        if (missingBlocks > 0) {
-          // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
-          setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
+      // Reject duplicate or out-of-order feedback
+      if (feedbackSequence <= lastProcessedSequence) {
+        console.warn(`Ignoring duplicate/stale feedback: sequence ${feedbackSequence} (last processed: ${lastProcessedSequence})`)
+        valid = false
+      }
+
+      if (!valid) {
+        // cleanup
+        feedbackScannerRef.current?.stop()
+        setScanningFeedback(false)
+        processingRef.current = false
+        return
+      }
+
+       if (feedback.type === 'FOUNTAIN_FEEDBACK') {
+        // Extract firstMissingBlock from feedback (default to 0 if not present)
+        const firstMissingBlock = feedback.firstMissingBlock ?? 0
+
+        console.log('Processing feedback sequence:', feedbackSequence, '(last:', lastProcessedSequence, ')')
+
+        // Handle both statistics and targeted feedback modes
+        if (feedback.mode === 'statistics') {
+          // Statistics-only feedback - no targeted encoding
+          console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
+
+          // Handle defrag targets
+          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
+            if (encoder) {
+              encoder.setDefragTargets(feedback.defragTargets)
+              setDefragMode(true)
+              setDefragTargets(feedback.defragTargets)
+              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
+            }
+          } else if (defragMode) {
+            // Defrag was active but no longer requested - exit
+            if (encoder) {
+              encoder.exitDefragMode()
+              setDefragMode(false)
+              setDefragTargets([])
+            }
+          }
+
+          // Validate checksum
+          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
+            const [start, end] = feedback.contiguousChecksumRange
+            if (end > start && encoder) {
+              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
+                setChecksumValidation(validation)
+                console.log('🔐', validation.message)
+
+                // If checksum mismatch, generate rollback sender feedback
+                if (!validation.valid) {
+                  const rollbackFeedback: SenderFeedback = {
+                    type: 'SENDER_FEEDBACK',
+                    sessionId: sessionId,
+                    sequence: senderFeedbackSequence,
+                    command: 'rollback',
+                    rollbackToBlock: start,
+                    reason: `Checksum mismatch detected: ${validation.message}`,
+                    lastValidChecksum: validation.computedChecksum,
+                    lastValidChecksumRange: [start, end]
+                  }
+                  generateSenderFeedbackQR(rollbackFeedback)
+                }
+              })
+            }
+          }
+
+          // Clear targeted mode so encoder doesn't use stale missing-blocks information
+          if (encoder) {
+            encoder.setReceivedBlocks([])
+          }
+
+          // Apply skip threshold
+          if (encoder) {
+            encoder.setSkipBlocksBelow(firstMissingBlock)
+            setWindowInfo(encoder.getWindowInfo())
+            console.log('Skip blocks below:', firstMissingBlock, '(contiguous prefix)')
+          }
+
+          // Update UI state for progress display
+          setReceivedBlocks(new Set()) // Clear targeted mode
+          setLastStats({
+            totalDecoded: feedback.totalDecoded,
+            totalBlocks: feedback.totalBlocks,
+            windowStart: feedback.windowStart,
+            windowEnd: feedback.windowEnd,
+          })
+
+          // Check if window expansion is requested
+          if (encoder && feedback.requestWindowExpansion) {
+            const currentWindow = encoder.getWindowInfo()
+            if (!currentWindow.isWindowComplete) {
+              const now = Date.now()
+              if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                const expanded = encoder.expandWindow()
+                if (expanded) {
+                  setWindowInfo(encoder.getWindowInfo())
+                  setLastWindowExpansion(now)
+                  console.log('Window expanded based on statistics feedback:', encoder.getWindowInfo())
+                }
+              }
+            }
+          }
+
+          // Update estimated chunks based on statistics
+          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+          const missingBlocks = totalBlocks - feedback.totalDecoded
+          if (missingBlocks > 0) {
+            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
+          }
+
+          // Generate ACK QR
+          const ackFeedback: SenderFeedback = {
+            type: 'SENDER_FEEDBACK',
+            sessionId: sessionId,
+            sequence: senderFeedbackSequence,
+            command: 'acknowledge',
+            acknowledgedSequence: feedbackSequence,
+            message: `Feedback processed successfully. Window expanded, ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.`
+          }
+          await generateSenderFeedbackQR(ackFeedback)
+          setSenderMode('ack-display')
+
+          // Update last processed sequence after successful processing
+          setLastProcessedSequence(feedbackSequence)
+          console.log('Feedback processed - ACK QR generated')
+        } else if (feedback.mode === 'targeted') {
+          // Targeted feedback with full block list or compact ranges
+          const received = flattenReceivedBlocks((feedback as FountainFeedbackTargeted).receivedBlocks)
+          console.log('Received targeted feedback:', received.length, 'blocks')
+
+          // Handle defrag targets
+          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
+            if (encoder) {
+              encoder.setDefragTargets(feedback.defragTargets)
+              setDefragMode(true)
+              setDefragTargets(feedback.defragTargets)
+              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
+            }
+          } else if (defragMode) {
+            // Defrag was active but no longer requested - exit
+            if (encoder) {
+              encoder.exitDefragMode()
+              setDefragMode(false)
+              setDefragTargets([])
+            }
+          }
+
+          // Validate checksum
+          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
+            const [start, end] = feedback.contiguousChecksumRange
+            if (end > start && encoder) {
+              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
+                setChecksumValidation(validation)
+                console.log('🔐', validation.message)
+
+                // If checksum mismatch, generate rollback sender feedback
+                if (!validation.valid) {
+                  const rollbackFeedback: SenderFeedback = {
+                    type: 'SENDER_FEEDBACK',
+                    sessionId: sessionId,
+                    sequence: senderFeedbackSequence,
+                    command: 'rollback',
+                    rollbackToBlock: start,
+                    reason: `Checksum mismatch detected: ${validation.message}`,
+                    lastValidChecksum: validation.computedChecksum,
+                    lastValidChecksumRange: [start, end]
+                  }
+                  generateSenderFeedbackQR(rollbackFeedback)
+                }
+              })
+            }
+          }
+
+          // Enable targeted encoding and apply skip threshold
+          setReceivedBlocks(new Set(received))
+          setLastStats(null) // Clear statistics mode
+          if (encoder) {
+            encoder.setReceivedBlocks(received)
+            encoder.setSkipBlocksBelow(firstMissingBlock)
+            setWindowInfo(encoder.getWindowInfo())
+            console.log('Skip blocks below:', firstMissingBlock, '/', received.length, 'received')
+
+            // Check for window expansion
+            const currentWindow = encoder.getWindowInfo()
+            if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
+              // Skip expansion logic if windowing not enabled or already complete
+            } else {
+              // Calculate decoded blocks in current window
+              const decodedInWindow = received.filter((blockIdx: number) =>
+                blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
+              ).length
+
+              if (decodedInWindow > lastDecodedInWindow) {
+                // Update last decoded count
+                setLastDecodedInWindow(decodedInWindow)
+
+                // Calculate window decode percentage
+                const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+
+                // Check expansion trigger (50% threshold)
+                if (windowDecodePercent >= 0.5) {
+                  // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
+                  const now = Date.now()
+                  if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                    const expanded = encoder.expandWindow()
+                    if (expanded) {
+                      setWindowInfo(encoder.getWindowInfo())
+                      setLastWindowExpansion(now)
+                      console.log('Window expanded:', encoder.getWindowInfo())
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          // Update estimated chunks needed based on feedback
+          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
+          const blocksReceived = received.length
+          const missingBlocks = totalBlocks - blocksReceived
+
+          // Adjust estimate based on how many blocks are missing
+          if (missingBlocks > 0) {
+            // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
+            setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
+          }
+
+          // Generate ACK QR
+          const ackFeedback: SenderFeedback = {
+            type: 'SENDER_FEEDBACK',
+            sessionId: sessionId,
+            sequence: senderFeedbackSequence,
+            command: 'acknowledge',
+            acknowledgedSequence: feedbackSequence,
+            message: `Targeted mode activated. Focusing on ${missingBlocks} missing blocks.`
+          }
+          await generateSenderFeedbackQR(ackFeedback)
+          setSenderMode('ack-display')
+
+          // Update last processed sequence after successful processing
+          setLastProcessedSequence(feedbackSequence)
+          console.log('Feedback processed - ACK QR generated')
         }
 
         setScanningFeedback(false)
 
-        // Stop the scanner
+        // Stop the scanner immediately after validation to avoid multiple rapid callbacks
         if (feedbackScannerRef.current) {
           feedbackScannerRef.current.stop()
         }
       }
     } catch (err) {
       console.error('Failed to parse feedback QR:', err)
+      valid = false
+    } finally {
+      if (!valid) {
+        // cleanup
+        feedbackScannerRef.current?.stop()
+        setScanningFeedback(false)
+      }
+      processingRef.current = false
     }
   }
 
+  const wasPlayingRef = useRef(false)
   const handleStartFeedbackScan = () => {
-    // Pause QR generation while scanning feedback
-    if (isPlaying) {
-      setIsPlaying(false)
-    }
+    wasPlayingRef.current = isPlaying
+    if (isPlaying) setIsPlaying(false)
     setScanningFeedback(true)
+    setSenderMode('feedback-scanning')
     setError('')
   }
 
   const handleStopFeedbackScan = () => {
     setScanningFeedback(false)
-    if (feedbackScannerRef.current) {
-      feedbackScannerRef.current.stop()
-    }
+    feedbackScannerRef.current?.stop()
+    setSenderMode('data-display')
+    if (wasPlayingRef.current) setIsPlaying(true)
   }
 
   if (error) {
@@ -333,7 +655,7 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
   return (
     <div className="space-y-4">
       {/* Feedback Scanner Mode */}
-      {scanningFeedback && (
+      {senderMode === 'feedback-scanning' && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
@@ -359,21 +681,22 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         </Alert>
       )}
 
-      {/* Receiver Progress Alert */}
-      {receivedBlocksCount > 0 && (
+      {/* Window Progress Alert */}
+      {windowInfo && windowInfo.windowEnabled && (
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress (Targeted Mode Active)</p>
+              <p className="font-medium">🪟 Window Progress</p>
               <div className="text-sm">
-                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                {decodingProgress >= 100 ? (
+                <p>Window: blocks {windowInfo.windowStart}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({((windowInfo.windowSize / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                <p className="text-xs text-muted-foreground">Session ID: {sessionId}</p>
+                {windowInfo.isWindowComplete ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                    ✅ Transfer complete! You can stop sending.
+                    ✅ Full file now in transfer window
                   </p>
                 ) : (
                   <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                    🎯 Now sending targeted chunks for {sourceBlocks - receivedBlocksCount} missing blocks
+                    📈 Window will expand automatically as blocks are decoded
                   </p>
                 )}
               </div>
@@ -382,15 +705,107 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
         </Alert>
       )}
 
+      {/* Checksum Validation Alert */}
+      {checksumValidation && (
+        <Alert variant={checksumValidation.valid ? "default" : "destructive"}>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p className="font-medium">🔐 Checksum Validation</p>
+              <p className="text-sm">{checksumValidation.message}</p>
+              <p className="text-xs text-muted-foreground">Range: {checksumValidation.range}</p>
+              {!checksumValidation.valid && (
+                <p className="text-xs text-red-600 dark:text-red-400">
+                  ⚠️ Rollback request sent to receiver
+                </p>
+              )}
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Receiver Progress Alert */}
+      {(lastStats || receivedBlocksCount > 0) && (
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-2">
+              <p className="font-medium">📊 Receiver Progress {receivedBlocksCount === 0 ? '(Statistics Mode)' : '(Targeted Mode Active)'}</p>
+              <div className="text-sm">
+                {receivedBlocksCount === 0 && lastStats ? (
+                  <>
+                    <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
+                          {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
+                            <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
+                          )}
+                          {windowInfo && windowInfo.skipBlocksBelow > 0 && (
+                            <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                          )}
+                          {lastProcessedSequence >= 0 && (
+                            <p>Last feedback: sequence {lastProcessedSequence}</p>
+                          )}
+                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when only a few blocks remain</p>
+                          {defragMode && (
+                            <p className="text-orange-600 dark:text-orange-400 font-medium mt-1">
+                              🔧 Defrag mode active: targeting {defragTargets.length} blocks
+                            </p>
+                          )}
+                  </>
+                ) : (
+                  <>
+                    {windowInfo && windowInfo.windowEnabled ? (
+                      <>
+                        <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                        <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
+                          blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
+                        ).length} / {windowInfo.windowSize} blocks</p>
+                        {windowInfo && windowInfo.skipBlocksBelow > 0 && (
+                          <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                        )}
+                      </>
+                    ) : (
+                      <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                    )}
+                    {decodingProgress >= 100 ? (
+                      <p className="text-green-600 dark:text-green-400 font-medium mt-1">
+                        ✅ Transfer complete! You can stop sending.
+                      </p>
+                    ) : (
+                      <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
+                        🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
+                        {defragMode && (
+                          <span className="block text-orange-600 dark:text-orange-400">
+                            🔧 Defrag mode active: prioritizing {defragTargets.length} blocks
+                          </span>
+                        )}
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </AlertDescription>
+        </Alert>
+      )}
+
+
       {/* QR Code Display (clean container without overlays) */}
       <div className="flex justify-center bg-white p-4 rounded-lg">
         <canvas ref={canvasRef} style={{ display: 'none' }} />
-        {qrCodeUrl ? (
+        {senderMode === 'data-display' && qrCodeUrl ? (
           <img
             src={qrCodeUrl}
             alt={`Fountain coded chunk`}
             className="max-w-full h-auto"
           />
+        ) : senderMode === 'feedback-scanning' ? (
+          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
+            <p className="text-muted-foreground">Feedback scanning mode active<br/>Scan receiver's feedback QR below</p>
+          </div>
+        ) : senderMode === 'ack-display' && lastAckQRUrl ? (
+          <div className="space-y-3">
+            <img src={lastAckQRUrl} alt="ACK QR Code" className="max-w-full h-auto" />
+            <p className="text-sm text-center font-medium">ACK QR Code - Show to receiver</p>
+            <p className="text-xs text-center text-muted-foreground">Receiver must scan this before resuming data scanning</p>
+          </div>
         ) : (
           <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
             <p className="text-muted-foreground">
@@ -403,10 +818,16 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
         <span className="font-medium">{chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}</span>
-        {isPlaying && (
+        {isPlaying && senderMode === 'data-display' && (
           <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
           </span>
+        )}
+        {senderMode === 'feedback-scanning' && (
+          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">MODE: Scanning Feedback</span>
+        )}
+        {senderMode === 'ack-display' && (
+          <span className="px-2 py-0.5 rounded bg-green-500 text-white font-semibold">MODE: ACK Display - Show to receiver</span>
         )}
         {skippedChunks > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
@@ -464,10 +885,36 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           <Button
             size="sm"
             onClick={handlePlayPause}
-            disabled={!encoder}
+            disabled={!encoder || senderMode !== 'data-display'}
           >
             {isPlaying ? '⏸ Pause' : '▶ Play'}
           </Button>
+          <Button
+            size="sm"
+            onClick={handleStartFeedbackScan}
+            disabled={!encoder || senderMode === 'feedback-scanning' || senderMode === 'ack-display'}
+            variant={senderMode === 'feedback-scanning' ? 'default' : 'outline'}
+          >
+            📷 Scan Feedback QR
+          </Button>
+          {senderMode === 'ack-display' && (
+            <Button
+              size="sm"
+              onClick={() => { setSenderMode('data-display'); setIsPlaying(true) }}
+              variant="default"
+            >
+              ▶ Resume Data Display
+            </Button>
+          )}
+          {senderMode === 'data-display' && lastAckQRUrl && (
+            <Button
+              size="sm"
+              onClick={() => setSenderMode('ack-display')}
+              variant="outline"
+            >
+              📊 Show Last ACK QR
+            </Button>
+          )}
         </div>
 
         {/* Speed Control */}
@@ -490,21 +937,6 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
           </div>
         </div>
 
-        {/* Feedback QR Scanner Button */}
-        <div className="pt-2 border-t">
-          <Button
-            onClick={handleStartFeedbackScan}
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={scanningFeedback || !encoder}
-          >
-            📷 Scan Receiver's Feedback QR
-          </Button>
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Check receiver's decoding progress
-          </p>
-        </div>
       </div>
 
       {/* Instructions */}
@@ -517,11 +949,29 @@ export function FountainQRSender({ file }: FountainQRSenderProps) {
             <li>Can skip/miss chunks and still decode successfully</li>
             <li>Keep playing until receiver shows 100% decoded</li>
             <li>More robust than sequential chunk transfer</li>
+            <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
+            <li>After scanning feedback, sender will display ACK QR automatically</li>
+            <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
+            <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
+            <li>Receiver must scan ACK before resuming data scanning</li>
+            {windowInfo && windowInfo.windowEnabled && (
+              <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
+              )}
+              <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+              <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
+              <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
+              <li className="text-blue-600 dark:text-blue-400">Sender will display feedback QR codes to signal defrag completion or request rollback</li>
+              <li className="text-blue-600 dark:text-blue-400">If checksum mismatch is detected, sender will request rollback to last valid block</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
               <span className="font-medium">⚠️ Note:</span> {skippedChunks} chunk{skippedChunks > 1 ? 's were' : ' was'} too large for QR encoding and {skippedChunks > 1 ? 'were' : 'was'} automatically skipped.
               This is normal - fountain coding generates new chunks on the fly.
+            </p>
+          )}
+          {windowInfo && windowInfo.windowEnabled && (
+            <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 pt-3 border-t">
+              <span className="font-medium">🪟 Tip:</span> Scan feedback QR periodically to enable automatic window expansion for large files.
             </p>
           )}
         </AlertDescription>

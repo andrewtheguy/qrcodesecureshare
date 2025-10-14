@@ -9,6 +9,7 @@ import { Slider } from '@/components/ui/slider'
 
 interface SequentialQRSenderProps {
   file: File
+  sessionId: number
 }
 
 // Maximum bytes per QR code chunk - using binary mode instead of base64
@@ -16,7 +17,7 @@ interface SequentialQRSenderProps {
 // Binary mode is more efficient (no base64 overhead)
 export const CHUNK_SIZE = 600 // bytes of raw binary data
 
-export function SequentialQRSender({ file }: SequentialQRSenderProps) {
+export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps) {
   // Metadata removed: parent component is responsible for metadata QR
   const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)
@@ -227,6 +228,12 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
       const feedback = JSON.parse(data)
 
       if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
+        // Validate session ID
+        const feedbackSessionId = feedback.sessionId
+        if (feedbackSessionId !== sessionId) {
+          console.warn(`Ignoring feedback from different session: expected ${sessionId}, got ${feedbackSessionId}`)
+          return
+        }
         // Receiver already uses 0-based data chunk indices, so use them directly
         setMissingChunksQueue(feedback.missingChunks)
         setPlayingMissingOnly(true)

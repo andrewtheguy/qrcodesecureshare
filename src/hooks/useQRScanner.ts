@@ -5,20 +5,29 @@ interface UseQRScannerOptions {
   onScan: (data: string) => void
   isScanning: boolean
   debounceMs?: number
+  /**
+   * Optional error callback. If not provided, errors will only be logged to console.
+   * This allows components to handle errors gracefully while keeping the hook flexible.
+   */
+  onError?: (errorMessage: string) => void
 }
 
-export function useQRScanner({ onScan, isScanning, debounceMs = 500 }: UseQRScannerOptions) {
-  const [error, setError] = useState<string>('')
+export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError }: UseQRScannerOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
   const onScanRef = useRef(onScan)
+  const onErrorRef = useRef(onError)
 
-  // Keep the callback ref up to date
+  // Keep the callback refs up to date
   useEffect(() => {
     onScanRef.current = onScan
   }, [onScan])
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  }, [onError])
 
   useEffect(() => {
     if (!isScanning || !videoRef.current) {
@@ -59,7 +68,7 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500 }: UseQRScan
     scannerRef.current = scanner
     scanner.start().catch((err) => {
       console.error('Scanner start error:', err)
-      setError('Failed to start camera. Please ensure camera permissions are granted.')
+      onErrorRef.current?.('Failed to start camera. Please ensure camera permissions are granted.')
     })
 
     return () => {
@@ -83,7 +92,7 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500 }: UseQRScan
         await scannerRef.current.start()
       } catch (err) {
         console.error('Scanner restart error:', err)
-        setError('Failed to restart camera')
+        onErrorRef.current?.('Failed to restart camera')
       }
     }
   }
@@ -91,8 +100,6 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500 }: UseQRScan
   return {
     videoRef,
     scannerRef,
-    error,
-    setError,
     stopScanner,
     restartScanner
   }
