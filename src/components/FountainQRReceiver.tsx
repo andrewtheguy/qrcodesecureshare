@@ -365,8 +365,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
-    // Priority 1: Check for window saturation if windowing is enabled (HIGHEST PRIORITY)
-    // This check happens inline during chunk processing for immediate response
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // PRIORITY 1: WINDOW SATURATION CHECK (HIGHEST PRIORITY - MANDATORY)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // This check happens inline during chunk processing for immediate response.
+    // See comprehensive documentation at lines ~506-543 for full priority ordering
+    // and mutual exclusivity requirements.
+    // ═══════════════════════════════════════════════════════════════════════════════
     if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && !showFeedbackQR && !isAwaitingFeedback) {
       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
       const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
@@ -503,10 +508,44 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     restartScannerRef.current = restartScanner
   }, [restartScanner])
 
-  // Detect conditions for feedback QR generation with priority ordering
-  // Priority: 1. Window saturation (handled inline in handleBinaryFountainChunk)
-  //           2. Targeted mode (few blocks remaining)
-  //           3. Fragmentation (optimization, only checked if NOT in targeted mode)
+  // ═══════════════════════════════════════════════════════════════════════════════
+  // FEEDBACK QR GENERATION - MUTUALLY EXCLUSIVE TRIGGERS WITH PRIORITY ORDERING
+  // ═══════════════════════════════════════════════════════════════════════════════
+  //
+  // ⚠️  CRITICAL: All feedback QR generation triggers MUST be mutually exclusive!
+  //     Only ONE trigger should fire at a time to prevent sequence conflicts and
+  //     ensure predictable sender/receiver synchronization.
+  //
+  // Priority Order (highest to lowest):
+  //
+  //   1. WINDOW SATURATION (HIGHEST PRIORITY - MANDATORY)
+  //      Location: Inline in handleBinaryFountainChunk (lines ~368-382)
+  //      When: windowDecodePercentage >= windowTriggerThreshold
+  //      Why highest: Required for windowed transfers to continue; blocking operation
+  //      Guards: !showFeedbackQR && !isAwaitingFeedback
+  //
+  //   2. TARGETED MODE (SECOND PRIORITY - EFFICIENCY)
+  //      Location: This useEffect (lines ~515-523)
+  //      When: currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
+  //      Why: Optimize final blocks transfer; more specific than fragmentation
+  //      Guards: !showFeedbackQR && !success && !isAwaitingFeedback
+  //      Exits early: ✓ Returns before fragmentation check
+  //
+  //   3. FRAGMENTATION DETECTION (LOWEST PRIORITY - OPTIMIZATION)
+  //      Location: This useEffect (lines ~526-538)
+  //      When: fragmentation.isFragmented && currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS
+  //      Why: Fill gaps in decoded blocks; general optimization
+  //      Guards: !showFeedbackQR && !success && !isAwaitingFeedback
+  //      Mutual exclusivity: ONLY checked when NOT in targeted mode
+  //
+  // ⚠️  FUTURE DEVELOPERS: When adding new feedback triggers:
+  //     1. Add priority-based guards to prevent conflicts with existing triggers
+  //     2. Use early returns to enforce priority ordering
+  //     3. Ensure new trigger checks !showFeedbackQR && !isAwaitingFeedback
+  //     4. Document the priority level and mutual exclusivity conditions
+  //     5. Test that only ONE trigger fires in edge cases
+  //
+  // ═══════════════════════════════════════════════════════════════════════════════
   useEffect(() => {
     // Skip all checks if already showing feedback, transfer complete, or awaiting feedback
     if (showFeedbackQR || success || isAwaitingFeedback) return
