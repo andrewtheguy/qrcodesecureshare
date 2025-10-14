@@ -69,7 +69,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [error, setError] = useState<string>('')
 
   // Defrag testing state
-  const [isDefragTestActive, setIsDefragTestActive] = useState(true)
+  const [isDefragTestActive, setIsDefragTestActive] = useState(false)
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
@@ -383,8 +383,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // To use: uncomment the array and add the block indices you want to ignore
     // Suggested test file size: 60KB (100 blocks) for meaningful defrag testing
     // ════════════════════════════════════════════════════════════════════════════
-    if (isDefragTestActive) {
-      const defragTestIgnoreBlocks: number[] = [2, 4, 6, 8] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
+    if (process.env.NODE_ENV === 'development' && isDefragTestActive) {
+      const defragTestIgnoreBlocks: number[] = [] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
       if (defragTestIgnoreBlocks.length > 0) {
         const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
         if (containsIgnoredBlock) {
