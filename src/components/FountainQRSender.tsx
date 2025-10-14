@@ -7,14 +7,12 @@ import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { computeChecksum } from '@/utils/checksum'
+import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 
 interface FountainQRSenderProps {
   file: File
   sessionId: number
 }
-
-// Maximum bytes per QR code chunk (raw data before encoding)
-const CHUNK_SIZE = 400
 
 // Maximum QR code size in bytes (with some safety margin)
 const MAX_QR_DATA_SIZE = 1200 // Conservative limit to ensure QR generation succeeds
@@ -77,20 +75,20 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         }
 
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
-          blockSize: CHUNK_SIZE,
-          c: 0.2,
-              delta: 0.01,
-           // Optional: override doping rates here if experimenting
-           degree1Rate: 0.08
-        })
+           blockSize: DEFAULT_BLOCK_SIZE,
+           c: 0.2,
+               delta: 0.01,
+            // Optional: override doping rates here if experimenting
+            degree1Rate: 0.08
+         })
 
-        // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with CHUNK_SIZE
-        const encoderBlockSize = fountainEncoder.getMetadata().blockSize
-        if (encoderBlockSize !== CHUNK_SIZE) {
-          setError(`Block size mismatch: encoder has ${encoderBlockSize} bytes, expected ${CHUNK_SIZE} bytes`)
-          console.warn(`Block size mismatch detected: encoder=${encoderBlockSize}, CHUNK_SIZE=${CHUNK_SIZE}`)
-          return
-        }
+         // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
+         const encoderBlockSize = fountainEncoder.getMetadata().blockSize
+         if (encoderBlockSize !== DEFAULT_BLOCK_SIZE) {
+           setError(`Block size mismatch: encoder has ${encoderBlockSize} bytes, expected ${DEFAULT_BLOCK_SIZE} bytes`)
+           console.warn(`Block size mismatch detected: encoder=${encoderBlockSize}, DEFAULT_BLOCK_SIZE=${DEFAULT_BLOCK_SIZE}`)
+           return
+         }
 
         setEncoder(fountainEncoder)
         setWindowInfo(fountainEncoder.getWindowInfo())
@@ -159,6 +157,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           1 + // numIndices
           (numIndices * 2) + // indices (2 bytes each)
           chunk.data.length // chunk data
+
+        // Guardrail test for worst-case data QR size (dev-only)
+        if (import.meta.env.DEV) {
+          console.assert(expectedSize <= 1200, `QR size ${expectedSize} exceeds limit 1200 for blockSize=400, maxDegree<=40`)
+        }
 
         // Pre-check: Skip chunks that are too large before attempting QR generation
         if (expectedSize > MAX_QR_DATA_SIZE) {

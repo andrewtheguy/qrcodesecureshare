@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { DEFRAG_MAX_TARGETS, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS, DEFRAG_PREFIX_WINDOW_BLOCKS, DEFRAG_PREFIX_WINDOW_RATIO, DEFRAG_MIN_OVERALL_PROGRESS } from '@/utils/fountainConfig'
+import { getDefragMaxTargets, getDefragMaxMissingCount, getTargetedModeMaxMissingBlocks, getDefragPrefixWindowBlocks, DEFRAG_PREFIX_WINDOW_RATIO, DEFRAG_MIN_OVERALL_PROGRESS, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -105,8 +105,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
     }
 
-    // Compute absolute prefix-window size
-    const prefixWindowSize = Math.min(DEFRAG_PREFIX_WINDOW_BLOCKS, Math.ceil(totalBlocks * DEFRAG_PREFIX_WINDOW_RATIO), totalBlocks)
+    // Compute absolute prefix-window size using byte-based threshold
+    const prefixWindowSize = Math.min(getDefragPrefixWindowBlocks(fountainMetadata.blockSize), Math.ceil(totalBlocks * DEFRAG_PREFIX_WINDOW_RATIO), totalBlocks)
 
     // Build decodedSet and collect missingBlocks for prefix window [0, prefixWindowSize)
     const decodedSet = new Set(decodedBlockIndices)
@@ -117,14 +117,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       }
     }
 
-    // Respect DEFRAG_MAX_MISSING_COUNT and DEFRAG_MAX_TARGETS
-    if (missingBlocks.length > DEFRAG_MAX_MISSING_COUNT) {
+    // Respect byte-based thresholds converted to blocks
+    const maxMissingCount = getDefragMaxMissingCount(fountainMetadata.blockSize)
+    if (missingBlocks.length > maxMissingCount) {
       return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
     }
 
     // Compute fragmentationScore with prefixWindowSize (safe division)
     const fragmentationScore = prefixWindowSize > 0 ? missingBlocks.length / prefixWindowSize : 0
-    const isFragmented = missingBlocks.length > 0 && missingBlocks.length <= DEFRAG_MAX_TARGETS
+    const maxTargets = getDefragMaxTargets(fountainMetadata.blockSize)
+    const isFragmented = missingBlocks.length > 0 && missingBlocks.length <= maxTargets
 
     return {
       isFragmented,
@@ -210,8 +212,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
      const seq = feedbackSequence; // or compute next via ref
      const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
+     const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
      let feedback: FountainFeedback
-     if (missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS) {
+     if (missingBlocksCount > targetedModeThreshold) {
        // Statistics-only feedback - compact format
        feedback = {
          type: 'FOUNTAIN_FEEDBACK',
@@ -323,7 +326,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
      }
      // Log the decision
-     addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${TARGETED_MODE_MAX_MISSING_BLOCKS}, mode: ${missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'statistics' : 'targeted'}`)
+     addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${targetedModeThreshold}, mode: ${missingBlocksCount > targetedModeThreshold ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
  }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive, isTargetedModeTestActive])
 
@@ -408,7 +411,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // and mutual exclusivity requirements.
     // IMPORTANT: Skip for very small files (< 5x TARGETED_MODE_MAX_MISSING_BLOCKS)
     // ═══════════════════════════════════════════════════════════════════════════════
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= TARGETED_MODE_MAX_MISSING_BLOCKS * 5
+    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
     if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && !showFeedbackQR && !isAwaitingFeedback && isFileLargeEnoughForFeedback) {
       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
       const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
@@ -603,7 +606,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Priority 0: Skip ALL feedback for very small files
     // Files smaller than 5x the targeted mode threshold don't benefit from feedback
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= TARGETED_MODE_MAX_MISSING_BLOCKS * 5
+    const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
+    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
     if (!isFileLargeEnoughForFeedback) {
       // No feedback QR needed for very small files - they decode quickly without it
       return
@@ -612,7 +616,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
 
     // Priority 2: Check for targeted mode threshold
-    const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
+    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
     if (crossedToTargeted) {
       addDebugLog(`🎯 Targeted mode threshold reached (${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
       handleGenerateFeedbackQR()
@@ -623,7 +627,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
 
     // Priority 3: Check for fragmentation ONLY if NOT in targeted mode
-    if (currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS) {
+    if (currentMissingBlocks > targetedModeThreshold) {
       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
       const fragmentation = detectFragmentation(decodedBlockIndices, fountainMetadata.totalSourceBlocks)
@@ -728,7 +732,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round(progress)}%)
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                {currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
+                {currentMissingBlocks > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR to sender, then switch to ACK scanning mode to receive acknowledgment. You can toggle back if needed.
