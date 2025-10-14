@@ -702,27 +702,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         </Alert>
       )}
 
-      {/* Window Saturation Alert */}
-      {isAwaitingFeedback && (
-        <Alert variant="destructive">
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">⏸️ Transfer Paused - Feedback Required</p>
-              <p className="text-sm">
-                You've decoded {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks in the current window ({((decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100).toFixed(1)}%). The sender needs to expand the transfer window. Please generate and scan the feedback QR code to continue.
-              </p>
-              <Button
-                onClick={() => { handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
-                variant="default"
-                className="w-full"
-              >
-                📊 Generate Feedback QR (Required to Continue)
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Expecting Sender Feedback Alert */}
       {expectingSenderFeedback && (
         <Alert>
