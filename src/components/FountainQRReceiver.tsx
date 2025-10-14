@@ -61,8 +61,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
-  const [showActionPrompt, setShowActionPrompt] = useState<'none' | 'targeted' | 'defrag'>('none')
-  const [dismissedTargetedPrompt, setDismissedTargetedPrompt] = useState(false)
   const [expectingSenderFeedback, setExpectingSenderFeedback] = useState(false)
   const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] = useState(-1)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
@@ -75,9 +73,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const generatingRef = useRef(false)
   const lastDefragTargetsRef = useRef<number[]>([])
 
-  const addDebugLog = (message: string) => {
+  const addDebugLog = useCallback((message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
-  }
+  }, [])
 
   const calculateFirstMissingBlock = (decodedBlockIndices: number[]): number => {
     // Rely on the sorted order of getDecodedBlockIndices() - no re-sorting needed
@@ -504,23 +502,31 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     restartScannerRef.current = restartScanner
   }, [restartScanner])
 
-  // Detect missing blocks threshold crossing for targeted mode prompt
+  // Detect missing blocks threshold crossing for targeted mode and auto-generate feedback
   useEffect(() => {
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
     const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
-    if (crossedToTargeted && !dismissedTargetedPrompt) setShowActionPrompt('targeted')
+    if (crossedToTargeted && !showFeedbackQR && !success && !isAwaitingFeedback) {
+      addDebugLog(`🎯 Targeted mode threshold reached (${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
+      handleGenerateFeedbackQR()
+      setReceiverMode('feedback-display')
+      setIsScanning(false)
+    }
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissedTargetedPrompt, showFeedbackQR, success, isAwaitingFeedback])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
 
-  // Detect fragmentation and show proactive UI prompt
+  // Detect fragmentation and auto-generate feedback
   useEffect(() => {
     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
     const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
-    if (fragmentation.isFragmented && !showFeedbackQR) {
-      setShowActionPrompt('defrag') // Reuse the existing prompt UI for defrag
+    if (fragmentation.isFragmented && !showFeedbackQR && !success && !isAwaitingFeedback) {
+      addDebugLog(`🔧 Fragmentation detected (${fragmentation.defragTargets.length} gaps) - auto-generating feedback`)
+      handleGenerateFeedbackQR()
+      setReceiverMode('feedback-display')
+      setIsScanning(false)
     }
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
 
   const handleStartScan = () => {
     setIsScanning(true)
@@ -555,8 +561,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
     setFeedbackSequence(0)
-    setShowActionPrompt('none')
-    setDismissedTargetedPrompt(false)
     setExpectingSenderFeedback(false)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
@@ -639,40 +643,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               </p>
               <Button onClick={() => setReceiverMode('feedback-display')} variant="outline" className="w-full">
                 Switch Back to Feedback QR Display
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Targeted Mode Prompt or Defrag Prompt */}
-      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && showActionPrompt === 'targeted') ||
-        (showActionPrompt !== 'none' && !showFeedbackQR)) && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">
-                {showActionPrompt === 'targeted' ? `🎯 Final ${currentMissingBlocks} Blocks - Targeted Mode Available!` : "🔧 Fragmentation Detected - Defrag Mode Available!"}
-              </p>
-              <p className="text-sm">
-                {showActionPrompt === 'targeted'
-                  ? `Only ${currentMissingBlocks} blocks remaining! Generate a feedback QR now to enable targeted mode on the sender. This will focus exclusively on the missing blocks to complete the transfer quickly.`
-                  : "Fragmentation detected in your decoded blocks. Generate a feedback QR to request defrag mode from the sender, which will prioritize filling the gaps."
-                }
-              </p>
-              <Button
-                onClick={() => { handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
-                variant="default"
-                className="w-full"
-              >
-                📊 Generate Feedback QR {showActionPrompt === 'targeted' ? "(Request Final Blocks)" : "(Enable Defrag Mode)"}
-              </Button>
-              <Button
-                onClick={() => { setShowActionPrompt('none'); setDismissedTargetedPrompt(true) }}
-                variant="outline"
-                className="w-full"
-              >
-                Maybe Later
               </Button>
             </div>
           </AlertDescription>

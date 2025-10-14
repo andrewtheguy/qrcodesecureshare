@@ -892,7 +892,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           <Button
             size="sm"
             onClick={handleStartFeedbackScan}
-            disabled={!encoder || senderMode === 'feedback-scanning'}
+            disabled={!encoder || senderMode === 'feedback-scanning' || senderMode === 'ack-display'}
             variant={senderMode === 'feedback-scanning' ? 'default' : 'outline'}
           >
             📷 Scan Feedback QR
