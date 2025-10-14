@@ -114,22 +114,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       }
     }
 
-    // Check if missing blocks are contiguous starting from 0
-    // If so, this is NOT fragmentation - just blocks that haven't been received yet
-    if (missingBlocks.length > 0 && missingBlocks[0] === 0) {
-      let isContiguousFromStart = true
-      for (let i = 1; i < missingBlocks.length; i++) {
-        if (missingBlocks[i] !== missingBlocks[i-1] + 1) {
-          isContiguousFromStart = false
-          break
-        }
-      }
-      if (isContiguousFromStart) {
-        // Contiguous missing blocks from start - NOT fragmentation
-        return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
-      }
-    }
-
     // Respect DEFRAG_MAX_MISSING_COUNT and DEFRAG_MAX_TARGETS
     if (missingBlocks.length > DEFRAG_MAX_MISSING_COUNT) {
       return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
