@@ -71,6 +71,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Defrag testing state
   const [isDefragTestActive, setIsDefragTestActive] = useState(false)
 
+  // Targeted mode testing state
+  const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
+
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
   const generatingRef = useRef(false)
@@ -230,6 +233,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragComplete: defragComplete
        }
      } else {
+       if (isTargetedModeTestActive) {
+         setIsTargetedModeTestActive(false)
+         addDebugLog('🎯 [TARGETED MODE TEST] Deactivated block ignoring to allow recovery.')
+       }
        // Targeted feedback with missing block indices - for final stage
        const decodedSet = new Set(decodedBlockIndices)
        const missingBlocks: number[] = []
@@ -318,7 +325,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      // Log the decision
      addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${TARGETED_MODE_MAX_MISSING_BLOCKS}, mode: ${missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive])
+ }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive, isTargetedModeTestActive])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -364,6 +371,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
         if (containsIgnoredBlock) {
           addDebugLog(`💣 [DEFRAG TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
+          return
+        }
+      }
+    }
+    // ════════════════════════════════════════════════════════════════════════════
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
+    // To use: uncomment the array and add the block indices you want to ignore
+    // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
+    // ════════════════════════════════════════════════════════════════════════════
+    if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
+      const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
+      if (targetedModeTestIgnoreBlocks.length > 0) {
+        const containsIgnoredBlock = chunk.indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
+        if (containsIgnoredBlock) {
+          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
           return
         }
       }
