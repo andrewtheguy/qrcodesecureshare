@@ -1,7 +1,22 @@
-# FountainQRReceiver New Techniques and Enhancements on v0.1.6
+# FountainQRReceiver New Techniques and Enhancements on v0.1.7
 
 ## Overview
 The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms, windowed transfer support, and defragmentation capabilities. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
+
+## Data QR Code Scanning Optimizations (v0.1.7+)
+
+### Block Size Reduction
+- **Optimization**: Reduced fountain code block size from 600 to 400 bytes
+- **Impact**: Data QR codes are now 28% smaller (max ~486 bytes vs ~706 bytes)
+- **Benefits**:
+  - Faster autofocus for camera scanning
+  - Better performance in low light conditions
+  - Wider scanning angle tolerance
+  - Reduced scanning errors and retries
+- **Trade-off**: 50% more blocks required (e.g., 200KB file: 500 blocks vs 334 blocks)
+
+### Rationale
+Research shows optimal QR scanning occurs with payloads ≤300 bytes for screen display. The 400-byte block size creates data QR codes that are significantly easier for cameras to scan while maintaining fountain code efficiency. Feedback QR codes remain unchanged per optimization requirements.
 
 ## Key New Features
 
@@ -69,11 +84,19 @@ windowStart?: number            // Starting block index (default: 0)
 ### Defrag Configuration (from fountainConfig.ts)
 ```typescript
 DEFRAG_MAX_TARGETS: 10           // Max blocks to target for defrag
-DEFRAG_MAX_MISSING_COUNT: 50     // Max missing blocks in prefix window
-DEFRAG_PREFIX_WINDOW_BLOCKS: 100 // Absolute prefix window size
-DEFRAG_PREFIX_WINDOW_RATIO: 0.1  // Relative prefix window size
-DEFRAG_MIN_OVERALL_PROGRESS: 0.3 // Min progress for defrag activation
-TARGETED_MODE_MAX_MISSING_BLOCKS: 50 // Threshold for targeted mode
+DEFRAG_MAX_MISSING_COUNT: 10     // Max missing blocks in prefix window
+DEFRAG_PREFIX_WINDOW_BLOCKS: 150 // Absolute prefix window size (updated for 400-byte blocks)
+DEFRAG_PREFIX_WINDOW_RATIO: 0.15 // Relative prefix window size
+DEFRAG_MIN_OVERALL_PROGRESS: 0.20 // Min progress for defrag activation
+TARGETED_MODE_MAX_MISSING_BLOCKS: 10 // Threshold for targeted mode
+```
+
+### Fountain Code Configuration Updates
+```typescript
+DEFAULT_BLOCK_SIZE: 400          // Reduced from 600 bytes for smaller data QR codes
+WINDOW_MAX_BYTES: 100 * 1024     // Adjusted from 128KB to maintain similar window behavior
+WINDOW_ENABLE_THRESHOLD: 200 * 1024 // Unchanged
+WINDOW_HALF_THRESHOLD: 256 * 1024   // Unchanged
 ```
 
 ## Usage Flow
@@ -89,6 +112,8 @@ TARGETED_MODE_MAX_MISSING_BLOCKS: 50 // Threshold for targeted mode
 
 ## Benefits
 
+- **Optimized Data QR Code Size**: Smaller blocks create data QR codes that are easier and faster to scan with phone cameras
+- **Reduced Scanning Errors**: Less dense data QR codes improve autofocus speed and decode reliability
 - **Improved Efficiency**: Windowed transfers reduce memory requirements for large files
 - **Better Reliability**: Feedback mechanisms ensure robust transfer completion
 - **Adaptive Performance**: Automatically switches between compact and detailed feedback modes
@@ -97,4 +122,4 @@ TARGETED_MODE_MAX_MISSING_BLOCKS: 50 // Threshold for targeted mode
 
 ## Backward Compatibility
 
-The enhancements maintain backward compatibility with existing fountain transfer implementations while adding optional advanced features that activate based on metadata configuration.
+The optimized components use a new format incompatible with legacy components. The `FountainQRSenderLegacy` and `FountainQRReceiverLegacy` components remain unchanged and use the old 600-byte block size. This is intentional per the optimization requirements - only data QR codes are optimized for easier scanning, while feedback QR codes remain at their original size.

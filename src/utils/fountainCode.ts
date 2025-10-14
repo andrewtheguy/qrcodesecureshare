@@ -11,9 +11,9 @@ import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from
  *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
  *  - Simplified generateChunk(): no parameter – encoder owns all tuning
  *
- * Recommended single-session max file size with default blockSize=600 bytes:
- *   Green zone: ≤ ~200 KB (k ≲ 334)
- *   Yellow zone: 200–250 KB (k 334–417) – still fine
+ * Recommended single-session max file size with default blockSize=400 bytes:
+ *   Green zone: ≤ ~200 KB (k ≲ 500)
+ *   Yellow zone: 200–250 KB (k 500–625) – still fine
  *   Red (split recommended): > 250 KB
  * Time estimate (default fps=2, overhead≈1.08): T ≈ 0.0009 * fileBytes seconds
  */
@@ -156,7 +156,7 @@ export class FountainEncoder {
     metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
     opts: FountainEncoderOptions = {}
   ) {
-    this.blockSize = opts.blockSize ?? 600
+    this.blockSize = opts.blockSize ?? 400
     const numBlocks = Math.ceil(data.length / this.blockSize)
 
     for (let i = 0; i < numBlocks; i++) {
@@ -167,13 +167,13 @@ export class FountainEncoder {
       this.sourceBlocks.push(block)
     }
 
-    const adaptiveMaxDegree = opts.maxDegree ?? Math.min(50, Math.max(8, Math.round(3 * Math.sqrt(numBlocks))))
+    const adaptiveMaxDegree = opts.maxDegree ?? Math.min(40, Math.max(8, Math.round(2.5 * Math.sqrt(numBlocks))))
     const c = opts.c ?? 0.2
     const delta = opts.delta ?? 0.01
     this.degreeDist = buildDegreeDistribution(numBlocks, c, delta, adaptiveMaxDegree)
     this.samplerOpts = {
       degree1Rate: opts.degree1Rate ?? 0.08,
-      lowDegreeRate: opts.lowDegreeRate ?? 0.15
+      lowDegreeRate: opts.lowDegreeRate ?? 0.18
     }
 
     this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }

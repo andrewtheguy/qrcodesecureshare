@@ -1,14 +1,14 @@
-export const DEFAULT_BLOCK_SIZE = 600
+export const DEFAULT_BLOCK_SIZE = 400
 export const WINDOW_ENABLE_THRESHOLD = 200 * 1024
 export const WINDOW_HALF_THRESHOLD = 256 * 1024
-export const WINDOW_MAX_BYTES = 128 * 1024
+export const WINDOW_MAX_BYTES = 100 * 1024
 
 // Defragmentation thresholds
 export const DEFRAG_MAX_TARGETS = 10
 export const DEFRAG_MAX_MISSING_COUNT = 10
 
 // Prefix-window defragmentation parameters
-export const DEFRAG_PREFIX_WINDOW_BLOCKS = 100
+export const DEFRAG_PREFIX_WINDOW_BLOCKS = 150
 export const DEFRAG_PREFIX_WINDOW_RATIO = 0.15
 export const DEFRAG_MIN_OVERALL_PROGRESS = 0.20
 
