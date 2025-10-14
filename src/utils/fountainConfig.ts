@@ -15,7 +15,3 @@ export const DEFRAG_MAX_MISSING_COUNT = 10
 // Fountain code handles 50-100 missing blocks efficiently without targeting
 // Targeted mode is most effective for the "tail problem" (few scattered blocks)
 export const TARGETED_MODE_MAX_MISSING_BLOCKS = 10
-
-// Sender feedback constants
-export const SENDER_FEEDBACK_DISPLAY_DURATION = 5000
-export const SENDER_FEEDBACK_AUTO_RESUME_DELAY = 1000
