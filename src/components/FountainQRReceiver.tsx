@@ -546,6 +546,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     restartScannerRef.current = restartScanner
   }, [restartScanner])
 
+  // Auto-start scanning when component mounts (after metadata is scanned)
+  useEffect(() => {
+    if (!isScanning && !success && !isAwaitingFeedback && receiverMode === 'data-scanning') {
+      addDebugLog('🚀 Auto-starting data scanning after metadata initialization')
+      handleStartScan()
+    }
+  }, []) // Empty dependency array - only run once on mount
+
   // ═══════════════════════════════════════════════════════════════════════════════
   // FEEDBACK QR GENERATION - MUTUALLY EXCLUSIVE TRIGGERS WITH PRIORITY ORDERING
   // ═══════════════════════════════════════════════════════════════════════════════
