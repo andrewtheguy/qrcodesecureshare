@@ -167,6 +167,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
  const handleGenerateFeedbackQR = useCallback(async () => {
    if (generatingRef.current) return; generatingRef.current = true
+   setIsAwaitingFeedback(true)
    try {
      stopScannerRef.current?.()
      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
@@ -383,7 +384,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
        if (windowDecodePercentage >= windowTriggerThreshold) {
          addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
          // Auto-open feedback QR to streamline user flow
-         setIsAwaitingFeedback(true)
          handleGenerateFeedbackQR()
          setReceiverMode('feedback-display')
          setIsScanning(false)
@@ -514,10 +514,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     restartScannerRef.current = restartScanner
   }, [restartScanner])
-  // Auto-start scanning on mount
-  useEffect(() => {
-    setIsScanning(true)
-  }, [])
 
   // Detect missing blocks threshold crossing for targeted mode prompt
   useEffect(() => {
@@ -680,7 +676,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 }
               </p>
               <Button
-                onClick={() => { setIsAwaitingFeedback(true); handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
+                onClick={() => { handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
                 variant="default"
                 className="w-full"
               >
@@ -708,7 +704,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 You've decoded {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks in the current window ({((decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100).toFixed(1)}%). The sender needs to expand the transfer window. Please generate and scan the feedback QR code to continue.
               </p>
               <Button
-                onClick={() => { setIsAwaitingFeedback(true); handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
+                onClick={() => { handleGenerateFeedbackQR(); setReceiverMode('feedback-display'); setIsScanning(false) }}
                 variant="default"
                 className="w-full"
               >
@@ -756,16 +752,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Video Preview */}
-      {receiverMode === 'ack-scanning' && (
+      {(receiverMode === 'data-scanning' || receiverMode === 'ack-scanning') && (
         <div className="relative bg-black rounded-lg overflow-hidden">
           <video
             ref={videoRef}
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
           />
-          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
-            ● SCANNING
-          </div>
+          {receiverMode === 'ack-scanning' && (
+            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
+              ● SCANNING
+            </div>
+          )}
         </div>
       )}
 
@@ -892,7 +890,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
       {/* Control Buttons */}
       <div className="flex gap-2">
-        {receiverMode === 'data-scanning' && !isScanning && !success && (
+        {receiverMode === 'data-scanning' && !isScanning && !success && !isAwaitingFeedback && (
           <Button onClick={handleStartScan} className="flex-1">
             📷 Start Scanning
           </Button>

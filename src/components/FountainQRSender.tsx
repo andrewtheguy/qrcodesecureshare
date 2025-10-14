@@ -326,7 +326,6 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   }
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
-    setIsPlaying(false)
     const feedbackJson = JSON.stringify(feedback)
     const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M' })
     setSenderFeedbackSequence(prev => prev + 1)
