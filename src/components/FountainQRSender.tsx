@@ -14,10 +14,10 @@ interface FountainQRSenderProps {
 }
 
 // Maximum bytes per QR code chunk (raw data before encoding)
-const CHUNK_SIZE = 600
+const CHUNK_SIZE = 400
 
 // Maximum QR code size in bytes (with some safety margin)
-const MAX_QR_DATA_SIZE = 1800 // Conservative limit to ensure QR generation succeeds
+const MAX_QR_DATA_SIZE = 1200 // Conservative limit to ensure QR generation succeeds
 
 export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
@@ -79,11 +79,19 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
           blockSize: CHUNK_SIZE,
           c: 0.2,
-             delta: 0.01,
-          // Optional: override doping rates here if experimenting
-          degree1Rate: 0.08,
-          lowDegreeRate: 0.15
+              delta: 0.01,
+           // Optional: override doping rates here if experimenting
+           degree1Rate: 0.08
         })
+
+        // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with CHUNK_SIZE
+        const encoderBlockSize = fountainEncoder.getMetadata().blockSize
+        if (encoderBlockSize !== CHUNK_SIZE) {
+          setError(`Block size mismatch: encoder has ${encoderBlockSize} bytes, expected ${CHUNK_SIZE} bytes`)
+          console.warn(`Block size mismatch detected: encoder=${encoderBlockSize}, CHUNK_SIZE=${CHUNK_SIZE}`)
+          return
+        }
+
         setEncoder(fountainEncoder)
         setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
