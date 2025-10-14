@@ -158,6 +158,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           (numIndices * 2) + // indices (2 bytes each)
           chunk.data.length // chunk data
 
+        // Guardrail test for worst-case data QR size (dev-only)
+        if (import.meta.env.DEV) {
+          console.assert(expectedSize <= 1200, `QR size ${expectedSize} exceeds limit 1200 for blockSize=400, maxDegree<=40`)
+        }
+
         // Pre-check: Skip chunks that are too large before attempting QR generation
         if (expectedSize > MAX_QR_DATA_SIZE) {
           console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit, skipping (attempt ${attempt + 1}/${maxRetries})`)
