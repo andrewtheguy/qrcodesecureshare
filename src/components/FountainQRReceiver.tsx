@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { DEFRAG_CRITICAL_PREFIX_SIZE, DEFRAG_CRITICAL_PREFIX_RATIO, DEFRAG_MAX_TARGETS, DEFRAG_MIN_FIRST_MISSING, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS } from '@/utils/fountainConfig'
+import { DEFRAG_MAX_TARGETS, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -60,7 +60,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [windowTriggerThreshold] = useState<number>(initialMetadata.windowTriggerThreshold ?? 0.5)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
-  const [lastFeedbackTime, setLastFeedbackTime] = useState<number | null>(null)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const [isLegacyMode] = useState<boolean>(!initialMetadata.windowEnabled && !initialMetadata.initialWindowBlocks && !initialMetadata.windowExpansionFactor && !initialMetadata.windowTriggerThreshold && !initialMetadata.windowStart)
   const [showActionPrompt, setShowActionPrompt] = useState<'none' | 'targeted' | 'defrag'>('none')
@@ -96,7 +95,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     return decodedBlockIndices.length
   }
 
-  const detectFragmentation = (decodedBlockIndices: number[], firstMissingBlock: number, totalBlocks: number): { isFragmented: boolean, fragmentationScore: number, defragTargets: number[] } => {
+  const detectFragmentation = (decodedBlockIndices: number[], firstMissingBlock: number): { isFragmented: boolean, fragmentationScore: number, defragTargets: number[] } => {
     // Compute missing blocks below firstMissingBlock via Set
     const decodedSet = new Set(decodedBlockIndices)
     const missingBlocks: number[] = []
@@ -121,11 +120,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }
 
-  const checkDefragComplete = (decodedBlockIndices: number[], defragTargets: number[]): boolean => {
-    if (defragTargets.length === 0) return false
-    const decodedSet = new Set(decodedBlockIndices)
-    return defragTargets.every(target => decodedSet.has(target))
-  }
 
   const computeContiguousChecksum = async (decoder: FountainDecoder, startIdx: number, endIdx: number): Promise<string> => {
     const data = decoder.getContiguousBlocksData(startIdx, endIdx)
@@ -181,7 +175,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
      // Detect fragmentation and compute checksum
-     const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock, fountainMetadata.totalSourceBlocks)
+     const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
      const contiguousChecksum = firstMissingBlock > 0 ? await computeContiguousChecksum(fountainDecoderRef.current, 0, firstMissingBlock) : ''
      const contiguousChecksumRange: [number, number] = [0, firstMissingBlock]
 
@@ -315,7 +309,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setFeedbackQRUrl(dataUrl)
      setFeedbackMode(feedback.mode)
      setShowFeedbackQR(true)
-     setLastFeedbackTime(Date.now())
      setFeedbackSequence(prev => prev + 1)
      addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
      addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks), checksum: ${contiguousChecksum}`)
@@ -503,7 +496,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Detect missing blocks threshold crossing for targeted mode prompt
   useEffect(() => {
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
-    const isTargetedEligible = currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode
     const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
     if (crossedToTargeted && !dismissedTargetedPrompt) setShowActionPrompt('targeted')
     prevMissingBlocksRef.current = currentMissingBlocks
@@ -513,7 +505,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-    const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock, fountainMetadata.totalSourceBlocks)
+    const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
     if (fragmentation.isFragmented && !showFeedbackQR) {
       setShowActionPrompt('defrag') // Reuse the existing prompt UI for defrag
     }
@@ -552,7 +544,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(false)
     setShowFeedbackQR(false)
     setFeedbackQRUrl('')
-    setLastFeedbackTime(null)
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
     setFeedbackSequence(0)
@@ -610,7 +601,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     if (!isWindowEnabled || isLegacyMode) return 0
     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
     return decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-  }, [isWindowEnabled, isLegacyMode, currentWindowStart, currentWindowEnd, decodedBlocks])
+  }, [isWindowEnabled, isLegacyMode, currentWindowStart, currentWindowEnd])
 
   return (
     <div className="space-y-4">

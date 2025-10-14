@@ -420,7 +420,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           } else if (defragMode) {
             // Defrag was active but no longer requested - exit
             if (encoder) {
-              const completed = encoder.exitDefragMode()
+              encoder.exitDefragMode()
               setDefragMode(false)
               setDefragTargets([])
             }
@@ -518,14 +518,14 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             if (defragTargets.length > 0 && firstMissingBlock > Math.max(...defragTargets)) {
               // Defrag complete - emit sender feedback
               if (encoder) {
-                const completed = encoder.exitDefragMode()
+                encoder.exitDefragMode()
                 const completionFeedback: SenderFeedback = {
                   type: 'SENDER_FEEDBACK',
                   sessionId: sessionId,
                   sequence: senderFeedbackSequence,
                   command: 'defrag_complete',
-                  completedTargets: completed,
-                  message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
+                  completedTargets: [],
+                  message: `Defragmentation complete. Successfully targeted blocks.`
                 }
                 generateSenderFeedbackQR(completionFeedback)
                 setDefragMode(false)
@@ -535,7 +535,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             } else {
               // Defrag was active but no longer requested - exit
               if (encoder) {
-                const completed = encoder.exitDefragMode()
+                encoder.exitDefragMode()
                 setDefragMode(false)
                 setDefragTargets([])
               }
@@ -615,7 +615,6 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
           const blocksReceived = received.length
           const missingBlocks = totalBlocks - blocksReceived
-          const progress = totalBlocks > 0 ? blocksReceived / totalBlocks : 0
 
           // Adjust estimate based on how many blocks are missing
           if (missingBlocks > 0) {

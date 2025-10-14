@@ -8,12 +8,11 @@ import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode.legacy
 
 interface FountainQRSenderLegacyProps {
   file: File
-  sessionId: number
 }
 
 const MAX_QR_DATA_SIZE = 1800 // bytes
 
-export function FountainQRSenderLegacy({ file, sessionId }: FountainQRSenderLegacyProps) {
+export function FountainQRSenderLegacy({ file }: FountainQRSenderLegacyProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -25,7 +24,6 @@ export function FountainQRSenderLegacy({ file, sessionId }: FountainQRSenderLega
 
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
   // Initialize encoder when file changes

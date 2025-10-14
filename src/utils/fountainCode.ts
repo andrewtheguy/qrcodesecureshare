@@ -1,4 +1,4 @@
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
