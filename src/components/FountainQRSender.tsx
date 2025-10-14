@@ -7,7 +7,6 @@ import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { computeChecksum } from '@/utils/checksum'
-import { SENDER_FEEDBACK_DISPLAY_DURATION, SENDER_FEEDBACK_AUTO_RESUME_DELAY } from '@/utils/fountainConfig'
 
 interface FountainQRSenderProps {
   file: File
@@ -60,9 +59,9 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const [defragMode, setDefragMode] = useState(false)
   const [defragTargets, setDefragTargets] = useState<number[]>([])
-  const [showSenderFeedbackQR, setShowSenderFeedbackQR] = useState(false)
-  const [senderFeedbackQRUrl, setSenderFeedbackQRUrl] = useState<string>('')
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
+  const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
+  const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
   const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
@@ -98,6 +97,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
         setChunkCount(0)
+        setLastAckQRUrl('')
 
         // Estimate chunks needed: typically 105-110% of source blocks
         const meta = fountainEncoder.getMetadata()
@@ -240,28 +240,10 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
   // Metadata generation removed – handled by parent component
 
-  // Defrag completion detection
-  useEffect(() => {
-    if (defragMode && encoder && encoder.isDefragComplete()) {
-      // Generate defrag completion sender feedback
-      const completed = encoder.exitDefragMode()
-      const completionFeedback: SenderFeedback = {
-        type: 'SENDER_FEEDBACK',
-        sessionId: sessionId,
-        sequence: senderFeedbackSequence,
-        command: 'defrag_complete',
-        completedTargets: completed,
-        message: `Defragmentation complete. Successfully targeted ${completed.length} blocks.`
-      }
-      generateSenderFeedbackQR(completionFeedback)
-      setDefragMode(false)
-      setDefragTargets([])
-    }
-  }, [defragMode, encoder, receivedBlocks, sessionId, senderFeedbackSequence])
 
   // Animation loop
   useEffect(() => {
-    if (!isPlaying || !encoder) return
+    if (!isPlaying || !encoder || senderMode !== 'data-display') return
 
     // Generate first chunk immediately
     generateAndShowNextChunk()
@@ -271,7 +253,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, encoder, fps])
+  }, [isPlaying, encoder, fps, senderMode])
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
@@ -347,18 +329,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     setIsPlaying(false)
     const feedbackJson = JSON.stringify(feedback)
     const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M' })
-    setSenderFeedbackQRUrl(dataUrl)
-    setShowSenderFeedbackQR(true)
     setSenderFeedbackSequence(prev => prev + 1)
-
-    setTimeout(() => {
-      setShowSenderFeedbackQR(false)
-      setSenderFeedbackQRUrl('')
-      setTimeout(() => setIsPlaying(true), SENDER_FEEDBACK_AUTO_RESUME_DELAY)
-    }, SENDER_FEEDBACK_DISPLAY_DURATION)
+    setLastAckQRUrl(dataUrl)
   }
 
-  const handleFeedbackScan = (data: string) => {
+  const handleFeedbackScan = async (data: string) => {
     // Guard against multiple rapid callbacks
     if (processingRef.current) {
       console.warn('Already processing feedback, ignoring duplicate callback')
@@ -496,10 +471,21 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
           }
 
+          // Generate ACK QR
+          const ackFeedback: SenderFeedback = {
+            type: 'SENDER_FEEDBACK',
+            sessionId: sessionId,
+            sequence: senderFeedbackSequence,
+            command: 'acknowledge',
+            acknowledgedSequence: feedbackSequence,
+            message: `Feedback processed successfully. Window expanded, ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.`
+          }
+          await generateSenderFeedbackQR(ackFeedback)
+          setSenderMode('ack-display')
+
           // Update last processed sequence after successful processing
           setLastProcessedSequence(feedbackSequence)
-          setIsPlaying(true)
-          console.log('Feedback processed - auto-resuming playback')
+          console.log('Feedback processed - ACK QR generated')
         } else if (feedback.mode === 'targeted') {
           // Targeted feedback with full block list or compact ranges
           const received = flattenReceivedBlocks((feedback as FountainFeedbackTargeted).receivedBlocks)
@@ -514,31 +500,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
             }
           } else if (defragMode) {
-            // Check if defrag completion can be detected
-            if (defragTargets.length > 0 && firstMissingBlock > Math.max(...defragTargets)) {
-              // Defrag complete - emit sender feedback
-              if (encoder) {
-                encoder.exitDefragMode()
-                const completionFeedback: SenderFeedback = {
-                  type: 'SENDER_FEEDBACK',
-                  sessionId: sessionId,
-                  sequence: senderFeedbackSequence,
-                  command: 'defrag_complete',
-                  completedTargets: [],
-                  message: `Defragmentation complete. Successfully targeted blocks.`
-                }
-                generateSenderFeedbackQR(completionFeedback)
-                setDefragMode(false)
-                setDefragTargets([])
-                console.log('✅ Defrag completion detected in statistics mode')
-              }
-            } else {
-              // Defrag was active but no longer requested - exit
-              if (encoder) {
-                encoder.exitDefragMode()
-                setDefragMode(false)
-                setDefragTargets([])
-              }
+            // Defrag was active but no longer requested - exit
+            if (encoder) {
+              encoder.exitDefragMode()
+              setDefragMode(false)
+              setDefragTargets([])
             }
           }
 
@@ -622,10 +588,21 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.5))
           }
 
+          // Generate ACK QR
+          const ackFeedback: SenderFeedback = {
+            type: 'SENDER_FEEDBACK',
+            sessionId: sessionId,
+            sequence: senderFeedbackSequence,
+            command: 'acknowledge',
+            acknowledgedSequence: feedbackSequence,
+            message: `Targeted mode activated. Focusing on ${missingBlocks} missing blocks.`
+          }
+          await generateSenderFeedbackQR(ackFeedback)
+          setSenderMode('ack-display')
+
           // Update last processed sequence after successful processing
           setLastProcessedSequence(feedbackSequence)
-          setIsPlaying(true)
-          console.log('Feedback processed - auto-resuming playback')
+          console.log('Feedback processed - ACK QR generated')
         }
 
         setScanningFeedback(false)
@@ -653,12 +630,14 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
     wasPlayingRef.current = isPlaying
     if (isPlaying) setIsPlaying(false)
     setScanningFeedback(true)
+    setSenderMode('feedback-scanning')
     setError('')
   }
 
   const handleStopFeedbackScan = () => {
     setScanningFeedback(false)
     feedbackScannerRef.current?.stop()
+    setSenderMode('data-display')
     if (wasPlayingRef.current) setIsPlaying(true)
   }
 
@@ -677,7 +656,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   return (
     <div className="space-y-4">
       {/* Feedback Scanner Mode */}
-      {scanningFeedback && (
+      {senderMode === 'feedback-scanning' && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
@@ -808,31 +787,26 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         </Alert>
       )}
 
-      {/* Sender Feedback QR Display */}
-      {showSenderFeedbackQR && senderFeedbackQRUrl && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📤 Sender Feedback QR Code</p>
-              <div className="flex justify-center bg-white p-4 rounded-lg">
-                <img src={senderFeedbackQRUrl} alt="Sender Feedback QR" className="max-w-full h-auto" />
-              </div>
-              <p className="text-sm text-center">Show this QR code to the receiver to signal state change</p>
-              <p className="text-xs text-muted-foreground text-center">Auto-resuming in {SENDER_FEEDBACK_DISPLAY_DURATION/1000}s...</p>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* QR Code Display (clean container without overlays) */}
       <div className="flex justify-center bg-white p-4 rounded-lg">
         <canvas ref={canvasRef} style={{ display: 'none' }} />
-        {qrCodeUrl ? (
+        {senderMode === 'data-display' && qrCodeUrl ? (
           <img
             src={qrCodeUrl}
             alt={`Fountain coded chunk`}
             className="max-w-full h-auto"
           />
+        ) : senderMode === 'feedback-scanning' ? (
+          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
+            <p className="text-muted-foreground">Feedback scanning mode active<br/>Scan receiver's feedback QR below</p>
+          </div>
+        ) : senderMode === 'ack-display' && lastAckQRUrl ? (
+          <div className="space-y-3">
+            <img src={lastAckQRUrl} alt="ACK QR Code" className="max-w-full h-auto" />
+            <p className="text-sm text-center font-medium">ACK QR Code - Show to receiver</p>
+            <p className="text-xs text-center text-muted-foreground">Receiver must scan this before resuming data scanning</p>
+          </div>
         ) : (
           <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
             <p className="text-muted-foreground">
@@ -845,10 +819,16 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
         <span className="font-medium">{chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}</span>
-        {isPlaying && (
+        {isPlaying && senderMode === 'data-display' && (
           <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
           </span>
+        )}
+        {senderMode === 'feedback-scanning' && (
+          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">MODE: Scanning Feedback</span>
+        )}
+        {senderMode === 'ack-display' && (
+          <span className="px-2 py-0.5 rounded bg-green-500 text-white font-semibold">MODE: ACK Display - Show to receiver</span>
         )}
         {skippedChunks > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
@@ -906,10 +886,36 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           <Button
             size="sm"
             onClick={handlePlayPause}
-            disabled={!encoder}
+            disabled={!encoder || senderMode !== 'data-display'}
           >
             {isPlaying ? '⏸ Pause' : '▶ Play'}
           </Button>
+          <Button
+            size="sm"
+            onClick={handleStartFeedbackScan}
+            disabled={!encoder || senderMode === 'feedback-scanning'}
+            variant={senderMode === 'feedback-scanning' ? 'default' : 'outline'}
+          >
+            📷 Scan Feedback QR
+          </Button>
+          {senderMode === 'ack-display' && (
+            <Button
+              size="sm"
+              onClick={() => { setSenderMode('data-display'); setIsPlaying(true) }}
+              variant="default"
+            >
+              ▶ Resume Data Display
+            </Button>
+          )}
+          {senderMode === 'data-display' && lastAckQRUrl && (
+            <Button
+              size="sm"
+              onClick={() => setSenderMode('ack-display')}
+              variant="outline"
+            >
+              📊 Show Last ACK QR
+            </Button>
+          )}
         </div>
 
         {/* Speed Control */}
@@ -932,21 +938,6 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           </div>
         </div>
 
-        {/* Feedback QR Scanner Button */}
-        <div className="pt-2 border-t">
-          <Button
-            onClick={handleStartFeedbackScan}
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={scanningFeedback || !encoder}
-          >
-            📷 Scan Receiver's Feedback QR
-          </Button>
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Check receiver's progress (auto-resumes after scan)
-          </p>
-        </div>
       </div>
 
       {/* Instructions */}
@@ -959,6 +950,11 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             <li>Can skip/miss chunks and still decode successfully</li>
             <li>Keep playing until receiver shows 100% decoded</li>
             <li>More robust than sequential chunk transfer</li>
+            <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
+            <li>After scanning feedback, sender will display ACK QR automatically</li>
+            <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
+            <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
+            <li>Receiver must scan ACK before resuming data scanning</li>
             {windowInfo && windowInfo.windowEnabled && (
               <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
               )}
