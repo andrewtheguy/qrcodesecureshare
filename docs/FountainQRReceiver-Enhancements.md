@@ -1,4 +1,4 @@
-# FountainQRReceiver New Techniques and Enhancements on v0.1.5
+# FountainQRReceiver New Techniques and Enhancements on v0.1.6
 
 ## Overview
 The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms, windowed transfer support, and defragmentation capabilities. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
