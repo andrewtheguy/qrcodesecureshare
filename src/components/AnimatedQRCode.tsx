@@ -484,7 +484,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
          ) : transferMode === 'fountain' ? (
            <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
          ) : (
-           <FountainQRSenderLegacy key={`fount-legacy-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+           <FountainQRSenderLegacy key={`fount-legacy-${senderRemountKey}`} file={file} />
          )}
       </CardContent>
     </Card>
