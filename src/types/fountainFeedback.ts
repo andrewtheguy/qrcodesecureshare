@@ -48,6 +48,8 @@ export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   totalDecoded: number;
   /** Whether sender should expand the transfer window */
   requestWindowExpansion: boolean;
+  /** Whether receiver requests higher ECC level due to scan failures */
+  requestHigherECC?: boolean;
 }
 
 /**
@@ -75,7 +77,7 @@ interface SenderFeedbackBase {
   /** Sequence number to prevent duplicate processing */
   sequence: number;
   /** Action for receiver to take */
-  command: 'defrag_complete' | 'rollback' | 'acknowledge';
+  command: 'defrag_complete' | 'rollback' | 'acknowledge' | 'requestHigherECC';
 }
 
 /**
@@ -116,6 +118,15 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
 }
 
 /**
+ * Sender feedback for higher ECC level request.
+ */
+export interface SenderFeedbackRequestHigherECC extends SenderFeedbackBase {
+  command: 'requestHigherECC';
+  /** Human-readable status message */
+  message: string;
+}
+
+/**
  * Union type for all sender feedback payloads.
  */
-export type SenderFeedback = SenderFeedbackDefragComplete | SenderFeedbackRollback | SenderFeedbackAcknowledge;
+export type SenderFeedback = SenderFeedbackDefragComplete | SenderFeedbackRollback | SenderFeedbackAcknowledge | SenderFeedbackRequestHigherECC;
