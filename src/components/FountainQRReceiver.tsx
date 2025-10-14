@@ -38,7 +38,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     blockSize: initialMetadata.blockSize || 600
   }
 
-  const [isScanning, setIsScanning] = useState(true)
+  const [isScanning, setIsScanning] = useState(false)
   // Metadata is immutable for this mount (component remounted per file)
   const fountainMetadata: FountainMetadata = initialMeta
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
