@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { DEFRAG_MAX_TARGETS, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS } from '@/utils/fountainConfig'
+import { DEFRAG_MAX_TARGETS, DEFRAG_MAX_MISSING_COUNT, TARGETED_MODE_MAX_MISSING_BLOCKS, DEFRAG_PREFIX_WINDOW_BLOCKS, DEFRAG_PREFIX_WINDOW_RATIO, DEFRAG_MIN_OVERALL_PROGRESS } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -68,6 +68,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
 
+  // Defrag testing state
+  const [isDefragTestActive, setIsDefragTestActive] = useState(true)
+
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
   const generatingRef = useRef(false)
@@ -92,13 +95,38 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     return decodedBlockIndices.length
   }
 
-  const detectFragmentation = (decodedBlockIndices: number[], firstMissingBlock: number): { isFragmented: boolean, fragmentationScore: number, defragTargets: number[] } => {
-    // Compute missing blocks below firstMissingBlock via Set
+  const detectFragmentation = (decodedBlockIndices: number[], totalBlocks: number): { isFragmented: boolean, fragmentationScore: number, defragTargets: number[] } => {
+    // Early return if overall progress is too low
+    const overallProgress = decodedBlockIndices.length / totalBlocks
+    if (overallProgress < DEFRAG_MIN_OVERALL_PROGRESS) {
+      return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
+    }
+
+    // Compute absolute prefix-window size
+    const prefixWindowSize = Math.min(DEFRAG_PREFIX_WINDOW_BLOCKS, Math.ceil(totalBlocks * DEFRAG_PREFIX_WINDOW_RATIO), totalBlocks)
+
+    // Build decodedSet and collect missingBlocks for prefix window [0, prefixWindowSize)
     const decodedSet = new Set(decodedBlockIndices)
     const missingBlocks: number[] = []
-    for (let i = 0; i < firstMissingBlock; i++) {
+    for (let i = 0; i < prefixWindowSize; i++) {
       if (!decodedSet.has(i)) {
         missingBlocks.push(i)
+      }
+    }
+
+    // Check if missing blocks are contiguous starting from 0
+    // If so, this is NOT fragmentation - just blocks that haven't been received yet
+    if (missingBlocks.length > 0 && missingBlocks[0] === 0) {
+      let isContiguousFromStart = true
+      for (let i = 1; i < missingBlocks.length; i++) {
+        if (missingBlocks[i] !== missingBlocks[i-1] + 1) {
+          isContiguousFromStart = false
+          break
+        }
+      }
+      if (isContiguousFromStart) {
+        // Contiguous missing blocks from start - NOT fragmentation
+        return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
       }
     }
 
@@ -107,7 +135,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       return { isFragmented: false, fragmentationScore: 0, defragTargets: [] }
     }
 
-    const fragmentationScore = missingBlocks.length / firstMissingBlock
+    // Compute fragmentationScore with prefixWindowSize (safe division)
+    const fragmentationScore = prefixWindowSize > 0 ? missingBlocks.length / prefixWindowSize : 0
     const isFragmented = missingBlocks.length > 0 && missingBlocks.length <= DEFRAG_MAX_TARGETS
 
     return {
@@ -173,7 +202,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
      // Detect fragmentation and compute checksum
-     const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
+     const fragmentation = detectFragmentation(decodedBlockIndices, fountainMetadata.totalSourceBlocks)
      const contiguousChecksum = firstMissingBlock > 0 ? await computeContiguousChecksum(fountainDecoderRef.current, 0, firstMissingBlock) : ''
      const contiguousChecksumRange: [number, number] = [0, firstMissingBlock]
 
@@ -283,8 +312,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
      // Set expecting sender feedback if fragmentation detected
      if (fragmentation.isFragmented) {
+       const isScattered = fragmentation.defragTargets.length > 1 && (fragmentation.defragTargets[fragmentation.defragTargets.length - 1] - fragmentation.defragTargets[0] + 1) !== fragmentation.defragTargets.length
        setExpectingSenderFeedback(true)
-       addDebugLog(`🔧 Fragmentation detected: ${fragmentation.defragTargets.length} targets, requesting defrag mode`)
+       addDebugLog(`🔧 Fragmentation detected: ${fragmentation.defragTargets.length} ${isScattered ? 'scattered' : 'contiguous'} missing blocks in prefix window`)
+       // Deactivate test mode so we can receive the missing blocks
+       if (isDefragTestActive) {
+         setIsDefragTestActive(false)
+         addDebugLog('💣 [DEFRAG TEST] Deactivated block ignoring to allow recovery.')
+       }
      }
 
      // Clear expecting sender feedback if defrag is complete
@@ -324,7 +359,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      // Log the decision
      addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${TARGETED_MODE_MAX_MISSING_BLOCKS}, mode: ${missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog])
+ }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -358,6 +393,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Metadata is always available (provided by parent)
     const chunk = { seed, degree, indices, data }
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // DEFRAG TEST LOGIC: IGNORE CERTAIN BLOCKS TO SIMULATE FRAGMENTATION
+    // To use: uncomment the array and add the block indices you want to ignore
+    // Suggested test file size: 60KB (100 blocks) for meaningful defrag testing
+    // ════════════════════════════════════════════════════════════════════════════
+    if (isDefragTestActive) {
+      const defragTestIgnoreBlocks: number[] = [2, 4, 6, 8] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
+      if (defragTestIgnoreBlocks.length > 0) {
+        const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
+        if (containsIgnoredBlock) {
+          addDebugLog(`💣 [DEFRAG TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
+          return
+        }
+      }
+    }
+    // ════════════════════════════════════════════════════════════════════════════
 
     const decoded = fountainDecoderRef.current.addChunk(chunk)
     setReceivedFountainChunks(prev => prev + 1)
@@ -583,7 +635,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     if (currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS) {
       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-      const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
+      const fragmentation = detectFragmentation(decodedBlockIndices, fountainMetadata.totalSourceBlocks)
       if (fragmentation.isFragmented) {
         addDebugLog(`🔧 Fragmentation detected (${fragmentation.defragTargets.length} gaps, ${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
         handleGenerateFeedbackQR()
