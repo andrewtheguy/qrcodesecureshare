@@ -16,4 +16,4 @@ export const DEFRAG_MIN_OVERALL_PROGRESS = 0.20
 // When missing blocks <= this threshold, receiver switches to targeted mode
 // Fountain code handles 50-100 missing blocks efficiently without targeting
 // Targeted mode is most effective for the "tail problem" (few scattered blocks)
-export const TARGETED_MODE_MAX_MISSING_BLOCKS = 5
+export const TARGETED_MODE_MAX_MISSING_BLOCKS = 10
