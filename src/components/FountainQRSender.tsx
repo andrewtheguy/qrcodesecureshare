@@ -61,7 +61,8 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
   const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
   const [chunkBuffer, setChunkBuffer] = useState<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
-  const [bufferTargetSize] = useState(5) // Target 5 pre-generated chunks
+  const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
+  const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
@@ -165,18 +166,51 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     }
   }, [])
 
-  // Background chunk generation effect for buffering
+  // Update buffer target size based on FPS
   useEffect(() => {
+    // For low FPS (<=5), use smaller buffer to avoid over-generation
+    // For high FPS, use larger buffer to ensure smooth playback
+    if (fps <= 5) {
+      bufferTargetSizeRef.current = 2 // Small buffer for low FPS
+    } else if (fps <= 15) {
+      bufferTargetSizeRef.current = 3
+    } else {
+      bufferTargetSizeRef.current = 5
+    }
+  }, [fps])
+
+  // Background chunk generation effect for buffering with FPS-aware throttling
+  useEffect(() => {
+    const bufferTargetSize = bufferTargetSizeRef.current
     if (!encoder || isGeneratingBuffer || chunkBuffer.length >= bufferTargetSize) return
+
+    // Throttle buffer generation based on FPS
+    // Don't generate new chunks faster than the display rate
+    const minTimeBetweenGenerations = 1000 / fps / 2 // Generate at most 2x the display rate
+    const now = Date.now()
+    const timeSinceLastGeneration = now - lastBufferGenerationRef.current
+
+    if (timeSinceLastGeneration < minTimeBetweenGenerations && lastBufferGenerationRef.current > 0) {
+      // Too soon to generate another chunk, schedule for later
+      const timeoutId = setTimeout(() => {
+        // Trigger re-check by updating a dummy state
+        setChunkBuffer(prev => prev.slice()) // No-op update to trigger effect
+      }, minTimeBetweenGenerations - timeSinceLastGeneration)
+      return () => clearTimeout(timeoutId)
+    }
 
     const generateBufferChunk = async () => {
       setIsGeneratingBuffer(true)
+      lastBufferGenerationRef.current = Date.now()
+
       try {
         const batch: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}> = []
         const maxRetries = 20
 
-        // Fill buffer in tight loop
-        while (batch.length < bufferTargetSize - chunkBuffer.length) {
+        // Generate only one chunk at a time to respect FPS throttling
+        const chunksToGenerate = Math.min(1, bufferTargetSize - chunkBuffer.length)
+
+        while (batch.length < chunksToGenerate) {
           let attempt = 0
           let success = false
 
@@ -259,7 +293,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, chunkBuffer.length, bufferTargetSize, chunkCount])
+  }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps])
 
   // Generate QR in worker
   const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
