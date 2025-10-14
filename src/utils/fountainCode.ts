@@ -213,6 +213,21 @@ export class FountainEncoder {
   }
 
   /**
+   * Set which blocks the receiver still needs (missing blocks)
+   * This enables targeted encoding that focuses on missing blocks
+   */
+  setMissingBlocks(blockIndices: number[]): void {
+    const totalBlocks = this.sourceBlocks.length
+    this.receivedBlocks = new Set()
+    for (let i = 0; i < totalBlocks; i++) {
+      if (!blockIndices.includes(i)) {
+        this.receivedBlocks.add(i)
+      }
+    }
+    this.targetedMode = this.receivedBlocks.size > 0
+  }
+
+  /**
    * Set the threshold below which blocks should be skipped
    * This represents the first block index that should be considered for chunk generation
    */

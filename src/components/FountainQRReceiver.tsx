@@ -71,6 +71,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Defrag testing state
   const [isDefragTestActive, setIsDefragTestActive] = useState(false)
 
+  // Targeted mode testing state
+  const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
+
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
   const generatingRef = useRef(false)
@@ -230,8 +233,19 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragComplete: defragComplete
        }
      } else {
-       // Targeted feedback with block indices - for final stage
-       // Try compact representation first
+       if (isTargetedModeTestActive) {
+         setIsTargetedModeTestActive(false)
+         addDebugLog('🎯 [TARGETED MODE TEST] Deactivated block ignoring to allow recovery.')
+       }
+       // Targeted feedback with missing block indices - for final stage
+       const decodedSet = new Set(decodedBlockIndices)
+       const missingBlocks: number[] = []
+       for (let i = 0; i < fountainMetadata.totalSourceBlocks; i++) {
+         if (!decodedSet.has(i)) {
+           missingBlocks.push(i)
+         }
+       }
+
        const feedbackBase = {
          type: 'FOUNTAIN_FEEDBACK' as const,
          mode: 'targeted' as const,
@@ -249,48 +263,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          defragComplete: defragComplete
        }
 
-       // Attempt compact ranges representation
-       const ranges: [number, number][] = []
-       let start = decodedBlockIndices[0]
-       let prev = start
-       for (let i = 1; i < decodedBlockIndices.length; i++) {
-         if (decodedBlockIndices[i] !== prev + 1) {
-           ranges.push([start, prev])
-           start = decodedBlockIndices[i]
-         }
-         prev = decodedBlockIndices[i]
-       }
-       if (decodedBlockIndices.length > 0) {
-         ranges.push([start, prev])
-       }
-       const compactFeedback = { ...feedbackBase, receivedBlocks: { ranges } }
-       const compactJson = JSON.stringify(compactFeedback)
+       const targetedFeedback = { ...feedbackBase, missingBlocks }
+       const targetedJson = JSON.stringify(targetedFeedback)
 
-       // Check if compact version fits (rough estimate: QR capacity ~3KB for version 40)
-       if (compactJson.length <= 2500) {
-         feedback = compactFeedback
+       // Check if targeted version fits (rough estimate: QR capacity ~3KB for version 40)
+       if (targetedJson.length <= 2500) {
+         feedback = targetedFeedback
        } else {
-         // Fallback to statistics mode with expansion request
-         addDebugLog(`📊 Payload too large (${compactJson.length} bytes), falling back to statistics mode with window expansion request`)
-         feedback = {
-           type: 'FOUNTAIN_FEEDBACK' as const,
-           mode: 'statistics' as const,
-           sessionId: sessionId,
-           sequence: seq,
-           decodedInWindow: decodedInWindow,
-           totalDecoded: decodedBlockIndices.length,
-           totalBlocks: fountainMetadata.totalSourceBlocks,
-           windowStart: currentWindowStart,
-           windowEnd: currentWindowEnd,
-           progress: overallProgress * 100,
-           requestWindowExpansion: true, // Force expansion
-           firstMissingBlock: firstMissingBlock,
-           defragTargets: fragmentation.defragTargets,
-           fragmentationScore: fragmentation.fragmentationScore,
-           contiguousChecksum: contiguousChecksum,
-           contiguousChecksumRange: contiguousChecksumRange,
-           defragComplete: defragComplete
-         }
+         // Since threshold is so small, disable fallback to statistics mode
+         addDebugLog(`📊 Payload too large (${targetedJson.length} bytes), but threshold is small - keeping targeted mode`)
+         feedback = targetedFeedback // No fallback - threshold is small enough
        }
      }
 
@@ -343,7 +325,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      // Log the decision
      addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${TARGETED_MODE_MAX_MISSING_BLOCKS}, mode: ${missingBlocksCount > TARGETED_MODE_MAX_MISSING_BLOCKS ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive])
+ }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive, isTargetedModeTestActive])
 
  const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
     // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
@@ -389,6 +371,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
         if (containsIgnoredBlock) {
           addDebugLog(`💣 [DEFRAG TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
+          return
+        }
+      }
+    }
+    // ════════════════════════════════════════════════════════════════════════════
+
+    // ════════════════════════════════════════════════════════════════════════════
+    // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
+    // To use: uncomment the array and add the block indices you want to ignore
+    // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
+    // ════════════════════════════════════════════════════════════════════════════
+    if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
+      const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
+      if (targetedModeTestIgnoreBlocks.length > 0) {
+        const containsIgnoredBlock = chunk.indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
+        if (containsIgnoredBlock) {
+          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
           return
         }
       }
