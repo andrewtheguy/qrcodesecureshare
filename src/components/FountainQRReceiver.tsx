@@ -365,25 +365,26 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
-    // Check for window saturation if windowing is enabled
-     if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
-       const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-       const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-       const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
+    // Priority 1: Check for window saturation if windowing is enabled (HIGHEST PRIORITY)
+    // This check happens inline during chunk processing for immediate response
+    if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && !showFeedbackQR && !isAwaitingFeedback) {
+      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+      const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+      const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
 
-       if (windowDecodePercentage >= windowTriggerThreshold) {
-         addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
-         // Auto-open feedback QR to streamline user flow
-         handleGenerateFeedbackQR()
-         setReceiverMode('feedback-display')
-         setIsScanning(false)
-       }
-     }
+      if (windowDecodePercentage >= windowTriggerThreshold) {
+        addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
+        // Auto-open feedback QR to streamline user flow
+        handleGenerateFeedbackQR()
+        setReceiverMode('feedback-display')
+        setIsScanning(false)
+      }
+    }
 
     if (decoded) {
       reconstructFountainFile(fountainDecoderRef.current)
     }
-  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, setIsScanning, handleGenerateFeedbackQR])
+  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, setIsScanning, handleGenerateFeedbackQR, showFeedbackQR, isAwaitingFeedback])
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
     try {
@@ -502,30 +503,43 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     restartScannerRef.current = restartScanner
   }, [restartScanner])
 
-  // Detect missing blocks threshold crossing for targeted mode and auto-generate feedback
+  // Detect conditions for feedback QR generation with priority ordering
+  // Priority: 1. Window saturation (handled inline in handleBinaryFountainChunk)
+  //           2. Targeted mode (few blocks remaining)
+  //           3. Fragmentation (optimization, only checked if NOT in targeted mode)
   useEffect(() => {
+    // Skip all checks if already showing feedback, transfer complete, or awaiting feedback
+    if (showFeedbackQR || success || isAwaitingFeedback) return
+
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
+
+    // Priority 2: Check for targeted mode threshold
     const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
-    if (crossedToTargeted && !showFeedbackQR && !success && !isAwaitingFeedback) {
+    if (crossedToTargeted) {
       addDebugLog(`🎯 Targeted mode threshold reached (${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
       handleGenerateFeedbackQR()
       setReceiverMode('feedback-display')
       setIsScanning(false)
+      prevMissingBlocksRef.current = currentMissingBlocks
+      return // Exit early - don't check fragmentation
     }
-    prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
 
-  // Detect fragmentation and auto-generate feedback
-  useEffect(() => {
-    const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-    const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-    const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
-    if (fragmentation.isFragmented && !showFeedbackQR && !success && !isAwaitingFeedback) {
-      addDebugLog(`🔧 Fragmentation detected (${fragmentation.defragTargets.length} gaps) - auto-generating feedback`)
-      handleGenerateFeedbackQR()
-      setReceiverMode('feedback-display')
-      setIsScanning(false)
+    // Priority 3: Check for fragmentation ONLY if NOT in targeted mode
+    if (currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS) {
+      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+      const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+      const fragmentation = detectFragmentation(decodedBlockIndices, firstMissingBlock)
+      if (fragmentation.isFragmented) {
+        addDebugLog(`🔧 Fragmentation detected (${fragmentation.defragTargets.length} gaps, ${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
+        handleGenerateFeedbackQR()
+        setReceiverMode('feedback-display')
+        setIsScanning(false)
+        prevMissingBlocksRef.current = currentMissingBlocks
+        return
+      }
     }
+
+    prevMissingBlocksRef.current = currentMissingBlocks
   }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
 
   const handleStartScan = () => {
