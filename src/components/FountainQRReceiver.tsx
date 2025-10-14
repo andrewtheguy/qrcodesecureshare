@@ -69,6 +69,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
+  const [error, setError] = useState<string>('')
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
@@ -472,9 +473,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [addDebugLog, handleBinaryFountainChunk, handleSenderFeedbackScan])
 
-  const { videoRef, error, setError, stopScanner, restartScanner } = useQRScanner({
+  const handleScanError = useCallback((errorMessage: string) => {
+    setError(errorMessage)
+  }, [])
+
+  const { videoRef, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
-    isScanning
+    isScanning,
+    onError: handleScanError
   })
 
   const stopScannerRef = useRef(stopScanner)

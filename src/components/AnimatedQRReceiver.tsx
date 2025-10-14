@@ -34,6 +34,7 @@ export function AnimatedQRReceiver() {
   const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
   const [receiverKey, setReceiverKey] = useState(0)
+  const [error, setError] = useState<string>('')
 
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -116,9 +117,14 @@ export function AnimatedQRReceiver() {
     }
   }, [addDebugLog])
 
-  const { videoRef, error, setError, stopScanner } = useQRScanner({
+  const handleScanError = useCallback((errorMessage: string) => {
+    setError(errorMessage)
+  }, [])
+
+  const { videoRef, stopScanner } = useQRScanner({
     onScan: handleMetadataScan,
-    isScanning
+    isScanning,
+    onError: handleScanError
   })
 
   const handleStartScan = () => {

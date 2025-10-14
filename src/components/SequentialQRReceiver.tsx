@@ -54,6 +54,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     `[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
+  const [error, setError] = useState<string>('')
 
   const addDebugLog = (message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
@@ -120,9 +121,14 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     }
   }, [addDebugLog, metadata, totalChunks])
 
-  const { videoRef, error, setError, stopScanner } = useQRScanner({
+  const handleScanError = useCallback((errorMessage: string) => {
+    setError(errorMessage)
+  }, [])
+
+  const { videoRef, stopScanner } = useQRScanner({
     onScan: handleScan,
-    isScanning
+    isScanning,
+    onError: handleScanError
   })
 
   // Auto-start scanning on mount
