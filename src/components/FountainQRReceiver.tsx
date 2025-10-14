@@ -61,7 +61,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
-  const [isLegacyMode] = useState<boolean>(!initialMetadata.windowEnabled && !initialMetadata.initialWindowBlocks && !initialMetadata.windowExpansionFactor && !initialMetadata.windowTriggerThreshold && !initialMetadata.windowStart)
   const [showActionPrompt, setShowActionPrompt] = useState<'none' | 'targeted' | 'defrag'>('none')
   const [dismissedTargetedPrompt, setDismissedTargetedPrompt] = useState(false)
   const [expectingSenderFeedback, setExpectingSenderFeedback] = useState(false)
@@ -368,8 +367,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
 
-    // Check for window saturation if windowing is enabled (skip for legacy mode)
-     if (isWindowEnabled && !isLegacyMode && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
+    // Check for window saturation if windowing is enabled
+     if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks) {
        const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
        const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
        const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
@@ -511,7 +510,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const crossedToTargeted = prevMissingBlocksRef.current > TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
     if (crossedToTargeted && !dismissedTargetedPrompt) setShowActionPrompt('targeted')
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissedTargetedPrompt, isLegacyMode, showFeedbackQR, success, isAwaitingFeedback])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, dismissedTargetedPrompt, showFeedbackQR, success, isAwaitingFeedback])
 
   // Detect fragmentation and show proactive UI prompt
   useEffect(() => {
@@ -589,10 +588,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Memoize decodedInWindow to avoid repeated filter calls
   const decodedInWindow = useMemo(() => {
-    if (!isWindowEnabled || isLegacyMode) return 0
+    if (!isWindowEnabled) return 0
     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
     return decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-  }, [isWindowEnabled, isLegacyMode, currentWindowStart, currentWindowEnd])
+  }, [isWindowEnabled, currentWindowStart, currentWindowEnd])
 
   return (
     <div className="space-y-4">
@@ -647,7 +646,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Targeted Mode Prompt or Defrag Prompt */}
-      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && !isLegacyMode && showActionPrompt === 'targeted') ||
+      {((currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS && currentMissingBlocks > 0 && !success && !showFeedbackQR && !isAwaitingFeedback && showActionPrompt === 'targeted') ||
         (showActionPrompt !== 'none' && !showFeedbackQR)) && (
         <Alert>
           <AlertDescription>
@@ -827,7 +826,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       {!isScanning && !success && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium mb-2">📱 Fountain Code Transfer Mode{isLegacyMode ? ' (Simple)' : ''}:</p>
+            <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
               <li>Click "Start Scanning" to activate camera</li>
               <li>Scan the metadata QR code first</li>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './FountainQRReceiver'
+import { FountainQRReceiverLegacy } from './FountainQRReceiverLegacy'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
 type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy' | null
@@ -355,7 +356,21 @@ export function AnimatedQRReceiver() {
               checksumAlg: detectedMetadata.checksumAlg
             }}
           />
-        ) : (transferMode === 'fountain' || transferMode === 'fountain-legacy') && detectedMetadata ? (
+        ) : transferMode === 'fountain-legacy' && detectedMetadata ? (
+          <FountainQRReceiverLegacy
+            key={receiverKey}
+            initialMetadata={{
+              name: detectedMetadata.name,
+              size: detectedMetadata.size,
+              type: detectedMetadata.type,
+              sessionId: detectedMetadata.sessionId,
+              totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
+              blockSize: detectedMetadata.blockSize,
+              checksum: detectedMetadata.checksum,
+              checksumAlg: detectedMetadata.checksumAlg
+            }}
+          />
+        ) : transferMode === 'fountain' && detectedMetadata ? (
           <FountainQRReceiver
             key={receiverKey}
             initialMetadata={{
