@@ -72,7 +72,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Targeted mode testing state
   const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
 
-  const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
   const workerRef = useRef<Worker | null>(null)
   const messageIdCounterRef = useRef<number>(0)
   const decodedBlockIndicesRef = useRef<number[]>([])
@@ -92,10 +91,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Worker initialization and cleanup
   useEffect(() => {
-    const worker = new FountainDecoderWorker()
-    workerRef.current = worker
+    let worker: Worker | null = null
+    try {
+      worker = new FountainDecoderWorker()
+      workerRef.current = worker
 
-    worker.onmessage = (event: MessageEvent) => {
+      worker.onerror = (e) => {
+        setError('Worker runtime error')
+        addDebugLog(`Worker runtime error: ${e.message || 'Unknown error'}`)
+      }
+
+      worker.onmessage = (event: MessageEvent) => {
       const { type, id, ...data } = event.data
 
       switch (type) {
@@ -132,8 +138,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
         case 'complete': {
           const { data: reconstructedData, integrityOk, checksum } = data
-          const uint8Copy = new Uint8Array(reconstructedData)
-          const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
+          const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           setDownloadUrl(url)
@@ -178,11 +183,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Initialize worker
     worker.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
     addDebugLog('🔧 Initializing fountain decoder worker')
+    } catch (error) {
+      setError('Failed to initialize decoding worker')
+      addDebugLog(`Failed to initialize decoding worker: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      return
+    }
 
     // Cleanup
     return () => {
-      worker.terminate()
-      workerRef.current = null
+      if (worker) {
+        worker.terminate()
+        workerRef.current = null
+      }
     }
   }, []) // Empty dependency array - only run on mount/unmount
 
@@ -364,8 +376,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         case 'rollback':
            addDebugLog(`⚠️ Rolling back to block ${parsed.rollbackToBlock}: ${parsed.reason}`)
            workerRef.current?.postMessage({ type: 'rollback', id: messageIdCounterRef.current++, blockIndex: parsed.rollbackToBlock })
-           // Clear receivedChunkSeedsRef and reset chunk counters
-           receivedChunkSeedsRef.current.clear()
            setReceivedFountainChunks(0)
            setSenderFeedbackMessage(parsed.reason)
            break
@@ -589,7 +599,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(true)
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)
-    receivedChunkSeedsRef.current = new Set()
     setError('')
     setSuccess(false)
     setDownloadUrl('')
@@ -606,7 +615,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)
-    receivedChunkSeedsRef.current.clear()
     decodedBlockIndicesRef.current = []
     setError('')
     setSuccess(false)
