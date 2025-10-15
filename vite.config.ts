@@ -26,18 +26,30 @@ const copyQrWorkerPlugin = () => {
 
 // Custom plugin to verify worker build output
 const verifyWorkerBuildPlugin = () => {
+  interface RollupChunk {
+    type: 'chunk'
+    facadeModuleId?: string
+    fileName: string
+    code: string
+  }
+
   return {
     name: 'verify-worker-build',
     writeBundle(options: unknown, bundle: Record<string, unknown>) {
-      const workerChunks = Object.keys(bundle).filter((key: string) => key.includes('worker') && key.endsWith('.js'))
+      const workerChunks: [string, RollupChunk][] = []
+      for (const [key, chunk] of Object.entries(bundle)) {
+        if (typeof chunk === 'object' && chunk !== null && 'type' in chunk && chunk.type === 'chunk') {
+          const chunkObj = chunk as RollupChunk
+          if (typeof chunkObj.facadeModuleId === 'string' && /src\/workers\/.+\.worker\.(t|j)sx?$/.test(chunkObj.facadeModuleId)) {
+            workerChunks.push([key, chunkObj])
+          }
+        }
+      }
       if (workerChunks.length > 0) {
         console.log('✓ Worker chunks found in build output:')
-        workerChunks.forEach((chunk: string) => {
-          const chunkData = bundle[chunk]
-          if (chunkData && typeof chunkData === 'object' && 'code' in chunkData && typeof (chunkData as { code?: unknown }).code === 'string') {
-            const size = ((chunkData as { code: string }).code.length || 0) / 1024
-            console.log(`  - ${chunk} (${size.toFixed(2)} KB)`)
-          }
+        workerChunks.forEach(([key, chunk]) => {
+          const size = chunk.code.length / 1024
+          console.log(`  - ${chunk.fileName} (${size.toFixed(2)} KB)`)
         })
       } else {
         console.warn('⚠ No worker chunks found in build output')
@@ -86,7 +98,13 @@ export default defineConfig({
   // Note: fountainDecoder.worker.ts and qrGenerator.worker.ts dependencies (fountainCode, checksum)
   // are properly bundled and not externalized, ensuring workers are self-contained
   worker: {
-    format: 'es', // Use ES modules format for workers (modern and efficient)
+    format: 'es',
+    rollupOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+      },
+    },
   },
   plugins: [
     copyQrWorkerPlugin(),
@@ -101,7 +119,7 @@ export default defineConfig({
         // Workers are .js files and should be covered by globPatterns, but explicit caching ensures reliability
         runtimeCaching: [
           {
-            urlPattern: /.*worker.*\.js$/,
+            urlPattern: /\/assets\/(fountainDecoder\.worker|qrGenerator\.worker)-[\w-]+\.js$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'worker-cache',
