@@ -445,6 +445,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     try {
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
+      if (receiverMode === 'ack-scanning') {
+        if (data.startsWith('{')) {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'SENDER_FEEDBACK') {
+            addDebugLog('🔁 Processing sender feedback (ACK scan mode)')
+            handleSenderFeedbackScan(data)
+          }
+        }
+        return
+      }
+
       // Try to check if it is JSON first by checking
       // if it begins with { (sender feedback)
       if (data.startsWith('{')) {
@@ -580,6 +591,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
 
+    // Add guard to prevent feedback when all blocks are decoded
+    if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
+
     // Priority 2: Check for targeted mode threshold
     const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
     if (crossedToTargeted) {
@@ -667,8 +681,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   return (
     <div className="space-y-4">
-      {/* Feedback QR Display */}
-      {receiverMode === 'feedback-display' && feedbackQRUrl && (
+      {/* Unified Feedback/ACK UI */}
+      {(receiverMode === 'feedback-display' || receiverMode === 'ack-scanning') && feedbackQRUrl && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
@@ -687,30 +701,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 {currentMissingBlocks > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                Show this QR to sender, then switch to ACK scanning mode to receive acknowledgment. You can toggle back if needed.
+                {receiverMode === 'feedback-display'
+                  ? 'Show this QR to sender, then click the button below to scan for ACK'
+                  : 'Scanning for ACK QR from sender. Point camera at sender\'s ACK QR code'
+                }
               </p>
-              <Button onClick={() => setReceiverMode('ack-scanning')} variant="default" className="w-full">
-                Switch to ACK Scanning Mode
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* ACK Scanning Mode */}
-      {receiverMode === 'ack-scanning' && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📷 Scanning for ACK QR Code</p>
-              <p className="text-sm">
-                Waiting for sender to scan feedback and generate ACK QR. Point camera at sender's ACK QR code.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                After scanning ACK, data scanning will resume automatically. You can switch back to view the feedback QR if needed.
-              </p>
-              <Button onClick={() => setReceiverMode('feedback-display')} variant="outline" className="w-full">
-                Switch Back to Feedback QR Display
+              <Button
+                onClick={() => setReceiverMode(receiverMode === 'feedback-display' ? 'ack-scanning' : 'feedback-display')}
+                variant={receiverMode === 'feedback-display' ? 'default' : 'outline'}
+                className="w-full"
+              >
+                {receiverMode === 'feedback-display' ? 'Start Scanning for ACK' : 'Stop ACK Scanning'}
               </Button>
             </div>
           </AlertDescription>
@@ -895,16 +896,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               Reset
             </Button>
           </>
-        )}
-        {receiverMode === 'feedback-display' && !success && (
-          <Button disabled className="flex-1" variant="secondary">
-            📊 Showing Feedback QR - Toggle above to scan ACK
-          </Button>
-        )}
-        {receiverMode === 'ack-scanning' && !success && (
-          <Button disabled className="flex-1" variant="secondary">
-            📷 Scanning for ACK QR - Toggle above to view feedback
-          </Button>
         )}
       </div>
 
