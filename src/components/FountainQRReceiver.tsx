@@ -61,6 +61,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
+  const feedbackSequenceRef = useRef<number>(0)
   const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] = useState(-1)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const prevMissingBlocksRef = useRef<number>(Infinity)
@@ -232,7 +233,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Compute checksum
 
-    const seq = feedbackSequence; // or compute next via ref
+    const seq = feedbackSequenceRef.current; // Use ref for atomic increment
     const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
     const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
     let feedback: FountainFeedback
@@ -341,7 +342,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setShowFeedbackQR(true)
     setReceiverMode('feedback-display')
     setIsScanning(false)
-    setFeedbackSequence(prev => prev + 1)
+    feedbackSequenceRef.current += 1 // Atomic increment using ref
+    setFeedbackSequence(feedbackSequenceRef.current) // Update state for UI consistency
     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
     if (feedback.mode === 'statistics') {
       addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
@@ -462,7 +464,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           setShowFeedbackQR(true)
           setReceiverMode('feedback-display')
           setIsScanning(false)
-          setFeedbackSequence(prev => prev + 1)
+          feedbackSequenceRef.current += 1 // Atomic increment using ref
+          setFeedbackSequence(feedbackSequenceRef.current) // Update state for UI consistency
           addDebugLog(`📤 Generated ECC upgrade request feedback QR (${eccFeedbackJson.length} bytes)`)
           break
         }
@@ -659,6 +662,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setReceiverMode('data-scanning')
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
     setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+    feedbackSequenceRef.current = 0
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
