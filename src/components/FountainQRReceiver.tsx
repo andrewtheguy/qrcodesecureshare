@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
-import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { getDefragMaxTargets, getDefragMaxMissingCount, getTargetedModeMaxMissingBlocks, getDefragPrefixWindowBlocks, DEFRAG_PREFIX_WINDOW_RATIO, DEFRAG_MIN_OVERALL_PROGRESS, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
@@ -483,6 +483,40 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
           }
           setSenderFeedbackMessage(parsed.message)
+          break
+
+        case 'requestHigherECC':
+          addDebugLog(`📈 Receiver requested higher ECC level due to scan failures`)
+          // Generate feedback QR requesting higher ECC level
+          const eccFeedback: FountainFeedbackStatistics = {
+            type: 'FOUNTAIN_FEEDBACK',
+            mode: 'statistics',
+            sessionId: sessionId,
+            sequence: feedbackSequence,
+            decodedInWindow: decodedInWindow,
+            totalDecoded: decodedBlocks,
+            totalBlocks: fountainMetadata.totalSourceBlocks,
+            windowStart: currentWindowStart,
+            windowEnd: currentWindowEnd,
+            progress: progress,
+            requestWindowExpansion: false,
+            firstMissingBlock: calculateFirstMissingBlock(fountainDecoderRef.current.getDecodedBlockIndices()),
+            defragTargets: [],
+            fragmentationScore: 0,
+            contiguousChecksum: '',
+            contiguousChecksumRange: [0, 0],
+            defragComplete: false,
+            requestHigherECC: true
+          }
+          const eccFeedbackJson = JSON.stringify(eccFeedback)
+          const eccDataUrl = await QRCode.toDataURL(eccFeedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+          setFeedbackQRUrl(eccDataUrl)
+          setFeedbackMode('statistics')
+          setShowFeedbackQR(true)
+          setReceiverMode('feedback-display')
+          setIsScanning(false)
+          setFeedbackSequence(prev => prev + 1)
+          addDebugLog(`📤 Generated ECC upgrade request feedback QR (${eccFeedbackJson.length} bytes)`)
           break
       }
     } catch (err) {

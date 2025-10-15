@@ -8,20 +8,25 @@ import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { computeChecksum } from '@/utils/checksum'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
+import QRWorker from '../workers/qrGenerator.worker.ts?worker'
 
 interface FountainQRSenderProps {
   file: File
   sessionId: number
+  qrOptions?: {
+    errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
+    margin: number
+  }
 }
 
 // Maximum QR code size in bytes (with some safety margin)
-const MAX_QR_DATA_SIZE = 1200 // Conservative limit to ensure QR generation succeeds
+const MAX_QR_DATA_SIZE = 1300 // Increased due to lower error correction level
 
-export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(20)
+  const [fps, setFps] = useState(4)
   const [error, setError] = useState<string>('')
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)
@@ -49,15 +54,24 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
   const [defragMode, setDefragMode] = useState(false)
   const [defragTargets, setDefragTargets] = useState<number[]>([])
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
+  const [currentQROptions, setCurrentQROptions] = useState(qrOptions)
+  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
   const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
+  const [chunkBuffer, setChunkBuffer] = useState<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
+  const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
+  const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
+  const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
   const processingRef = useRef(false)
+  const workerRef = useRef<Worker | null>(null)
+  const pendingRequests = useRef<Map<number, {resolve: (url: string) => void, reject: (err: Error) => void}>>(new Map())
+  const requestIdRef = useRef(0)
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -126,8 +140,202 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
-    setLastProcessedSequence(-1)
+     setLastProcessedSequence(-1)
   }, [sessionId, file])
+
+  // Initialize QR generation worker
+  useEffect(() => {
+    try {
+      workerRef.current = new QRWorker()
+      workerRef.current.onmessage = (e) => {
+        const { type, id, qrUrl, error } = e.data
+        const resolver = pendingRequests.current.get(id)
+        if (resolver) {
+          if (type === 'success') resolver.resolve(qrUrl)
+          else resolver.reject(new Error(error || 'Worker error'))
+          pendingRequests.current.delete(id)
+        }
+      }
+    } catch (err) {
+      console.warn('Module workers not supported, falling back to main thread QR generation:', err)
+      workerRef.current = null
+    }
+
+    return () => {
+      workerRef.current?.terminate()
+    }
+  }, [])
+
+  // Update buffer target size based on FPS
+  useEffect(() => {
+    // For low FPS (<=5), use smaller buffer to avoid over-generation
+    // For high FPS, use larger buffer to ensure smooth playback
+    if (fps <= 5) {
+      bufferTargetSizeRef.current = 2 // Small buffer for low FPS
+    } else if (fps <= 15) {
+      bufferTargetSizeRef.current = 3
+    } else {
+      bufferTargetSizeRef.current = 5
+    }
+  }, [fps])
+
+  // Background chunk generation effect for buffering with FPS-aware throttling
+  useEffect(() => {
+    const bufferTargetSize = bufferTargetSizeRef.current
+    if (!encoder || isGeneratingBuffer || chunkBuffer.length >= bufferTargetSize) return
+
+    // Throttle buffer generation based on FPS
+    // Don't generate new chunks faster than the display rate
+    const minTimeBetweenGenerations = 1000 / fps / 2 // Generate at most 2x the display rate
+    const now = Date.now()
+    const timeSinceLastGeneration = now - lastBufferGenerationRef.current
+
+    if (timeSinceLastGeneration < minTimeBetweenGenerations && lastBufferGenerationRef.current > 0) {
+      // Too soon to generate another chunk, schedule for later
+      const timeoutId = setTimeout(() => {
+        // Trigger re-check by updating a dummy state
+        setChunkBuffer(prev => prev.slice()) // No-op update to trigger effect
+      }, minTimeBetweenGenerations - timeSinceLastGeneration)
+      return () => clearTimeout(timeoutId)
+    }
+
+    const generateBufferChunk = async () => {
+      setIsGeneratingBuffer(true)
+      lastBufferGenerationRef.current = Date.now()
+
+      try {
+        const batch: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}> = []
+        const maxRetries = 20
+
+        // Generate only one chunk at a time to respect FPS throttling
+        const chunksToGenerate = Math.min(1, bufferTargetSize - chunkBuffer.length)
+
+        while (batch.length < chunksToGenerate) {
+          let attempt = 0
+          let success = false
+
+          while (attempt < maxRetries && !success) {
+            try {
+              const chunk = encoder.generateChunk()
+
+              const numIndices = chunk.indices.length
+              const expectedSize =
+                2 + // magic bytes
+                2 + // seed
+                1 + // degree
+                1 + // numIndices
+                (numIndices * 2) + // indices (2 bytes each)
+                chunk.data.length // chunk data
+
+              if (expectedSize > MAX_QR_DATA_SIZE) {
+                attempt++
+                continue
+              }
+
+              const binaryData = new Uint8Array(expectedSize)
+              let offset = 0
+              binaryData[offset++] = 0xFF // Magic byte 1
+              binaryData[offset++] = 0xFD // Magic byte 2
+
+              // Seed (2 bytes)
+              binaryData[offset++] = (chunk.seed >> 8) & 0xFF
+              binaryData[offset++] = chunk.seed & 0xFF
+
+              // Degree (1 byte)
+              binaryData[offset++] = chunk.degree & 0xFF
+
+              // Number of indices (1 byte)
+              binaryData[offset++] = numIndices & 0xFF
+
+              // Indices (2 bytes each)
+              for (const idx of chunk.indices) {
+                binaryData[offset++] = (idx >> 8) & 0xFF
+                binaryData[offset++] = idx & 0xFF
+              }
+
+              // Chunk data
+              binaryData.set(chunk.data, offset)
+
+              const binaryString = String.fromCharCode(...binaryData)
+
+              const dataUrl = await generateQRInWorker(binaryString, {
+                  width: 400,
+                  margin: currentQROptions.margin,
+                  errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
+                  color: {
+                    dark: '#000000',
+                    light: '#FFFFFF'
+                  }
+                })
+
+              const chunkNum = chunkCount + chunkBuffer.length + batch.length + 1
+              batch.push({ chunk, qrUrl: dataUrl, chunkNum })
+              success = true
+
+            } catch (err) {
+              attempt++
+              if (attempt >= maxRetries) {
+                console.error('Failed to generate buffer chunk after max retries')
+              }
+            }
+          }
+
+          if (!success) break // Stop trying if we can't generate any more chunks
+        }
+
+        // Single batched state update
+        if (batch.length > 0) {
+          setChunkBuffer(prev => [...prev, ...batch])
+        }
+      } finally {
+        setIsGeneratingBuffer(false)
+      }
+    }
+
+    generateBufferChunk()
+  }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps])
+
+  // Generate QR in worker
+  const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
+    const workerPromise = new Promise<string>((resolve, reject) => {
+      if (!workerRef.current) {
+        // Fallback to direct QRCode.toDataURL if worker is unavailable
+        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+        return
+      }
+
+      const id = requestIdRef.current++
+      const timeout = setTimeout(() => {
+        pendingRequests.current.delete(id)
+        reject(new Error('Worker timeout'))
+      }, 5000) // 5 second timeout
+
+      pendingRequests.current.set(id, {
+        resolve: (qrUrl: string) => {
+          clearTimeout(timeout)
+          resolve(qrUrl)
+        },
+        reject: (err: Error) => {
+          clearTimeout(timeout)
+          reject(err)
+        }
+      })
+
+      try {
+        workerRef.current.postMessage({ type: 'generate', id, binaryString, options })
+      } catch (err) {
+        clearTimeout(timeout)
+        pendingRequests.current.delete(id)
+        // Fallback to direct QRCode.toDataURL on worker error
+        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+      }
+    })
+
+    return workerPromise.catch((err) => {
+      console.warn('QR worker failed, falling back to main thread:', err)
+      return QRCode.toDataURL(binaryString, options)
+    })
+  }
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -165,10 +373,10 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
         // Pre-check: Skip chunks that are too large before attempting QR generation
         if (expectedSize > MAX_QR_DATA_SIZE) {
-          console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit, skipping (attempt ${attempt + 1}/${maxRetries})`)
-          setSkippedChunks(prev => prev + 1)
-          attempt++
-          continue
+           console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit ${MAX_QR_DATA_SIZE}, skipping (attempt ${attempt + 1}/${maxRetries})`)
+           setSkippedChunks(prev => prev + 1)
+           attempt++
+           continue
         }
 
         const binaryData = new Uint8Array(expectedSize)
@@ -199,10 +407,10 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         // Convert to string for QR encoding (ISO-8859-1/Latin1)
         const binaryString = String.fromCharCode(...binaryData)
 
-        const dataUrl = await QRCode.toDataURL(binaryString, {
+        const dataUrl = await generateQRInWorker(binaryString, {
           width: 400,
-          margin: 2,
-          errorCorrectionLevel: 'M',
+          margin: currentQROptions.margin,
+          errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
           color: {
             dark: '#000000',
             light: '#FFFFFF'
@@ -245,24 +453,43 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
   // Animation loop
   useEffect(() => {
-    if (!isPlaying || !encoder || senderMode !== 'data-display') return
+     if (!isPlaying || !encoder || senderMode !== 'data-display') return
 
-    // Generate first chunk immediately
-    generateAndShowNextChunk()
+     // Generate first chunk immediately (from buffer if available, otherwise generate)
+     if (chunkBuffer.length > 0) {
+       const bufferedItem = chunkBuffer[0]
+       currentChunkRef.current = bufferedItem.chunk
+       setChunkCount(prev => prev + 1)
+       setQrCodeUrl(bufferedItem.qrUrl)
+       lastSuccessfulQrRef.current = bufferedItem.qrUrl
+       setChunkBuffer(prev => prev.slice(1))
+     } else {
+       generateAndShowNextChunk()
+     }
 
-    const interval = setInterval(() => {
-      generateAndShowNextChunk()
-    }, 1000 / fps)
+     const interval = setInterval(() => {
+       if (chunkBuffer.length > 0) {
+         const bufferedItem = chunkBuffer[0]
+         currentChunkRef.current = bufferedItem.chunk
+         setChunkCount(prev => prev + 1)
+         setQrCodeUrl(bufferedItem.qrUrl)
+         lastSuccessfulQrRef.current = bufferedItem.qrUrl
+         setChunkBuffer(prev => prev.slice(1))
+       } else {
+         generateAndShowNextChunk()
+       }
+     }, 1000 / fps)
 
-    return () => clearInterval(interval)
-  }, [isPlaying, encoder, fps, senderMode])
+     return () => clearInterval(interval)
+  }, [isPlaying, encoder, fps, senderMode, chunkBuffer])
 
   const handlePlayPause = () => {
-    if (!isPlaying && encoder) {
-      setChunkCount(0)
-      setSkippedChunks(0)
-    }
-    setIsPlaying(!isPlaying)
+     if (!isPlaying && encoder) {
+       setChunkCount(0)
+       setSkippedChunks(0)
+       setChunkBuffer([]) // Clear buffer on restart
+     }
+     setIsPlaying(!isPlaying)
   }
 
   const handleSpeedChange = (newFps: number) => {
@@ -329,7 +556,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
     const feedbackJson = JSON.stringify(feedback)
-    const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M' })
+    const dataUrl = await generateQRInWorker(feedbackJson, { width: 400, margin: currentQROptions.margin, errorCorrectionLevel: 'M' })
     setSenderFeedbackSequence(prev => prev + 1)
     setLastAckQRUrl(dataUrl)
   }
@@ -384,7 +611,14 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         if (feedback.mode === 'statistics') {
           // Statistics-only feedback - no targeted encoding
           console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
-
+  
+          // Handle ECC level upgrade request
+          if (feedback.requestHigherECC) {
+            console.log('📈 Receiver requested higher ECC level due to scan failures')
+            setCurrentQROptions(prev => ({ ...prev, errorCorrectionLevel: 'M' }))
+            setSenderFeedbackMessage('Switched to higher error correction level (M) for better scan reliability')
+          }
+  
           // Handle defrag targets
           if (feedback.defragTargets && feedback.defragTargets.length > 0) {
             if (encoder) {
@@ -401,7 +635,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               setDefragTargets([])
             }
           }
-
+  
           // Validate checksum
           if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
             const [start, end] = feedback.contiguousChecksumRange
@@ -409,7 +643,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
                 setChecksumValidation(validation)
                 console.log('🔐', validation.message)
-
+  
                 // If checksum mismatch, generate rollback sender feedback
                 if (!validation.valid) {
                   const rollbackFeedback: SenderFeedback = {
@@ -427,19 +661,25 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               })
             }
           }
-
+  
           // Clear targeted mode so encoder doesn't use stale missing-blocks information
           if (encoder) {
             encoder.setReceivedBlocks([])
           }
-
+  
+          // Clear buffer when state changes
+          setChunkBuffer([])
+  
+          // Clear buffer when state changes
+          setChunkBuffer([])
+  
           // Apply skip threshold
           if (encoder) {
             encoder.setSkipBlocksBelow(firstMissingBlock)
             setWindowInfo(encoder.getWindowInfo())
             console.log('Skip blocks below:', firstMissingBlock, '(contiguous prefix)')
           }
-
+  
           // Update UI state for progress display
           setReceivedBlocks(new Set()) // Clear targeted mode
           setLastStats({
@@ -448,7 +688,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             windowStart: feedback.windowStart,
             windowEnd: feedback.windowEnd,
           })
-
+  
           // Check if window expansion is requested
           if (encoder && feedback.requestWindowExpansion) {
             const currentWindow = encoder.getWindowInfo()
@@ -464,14 +704,14 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
               }
             }
           }
-
+  
           // Update estimated chunks based on statistics
           const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
           const missingBlocks = totalBlocks - feedback.totalDecoded
           if (missingBlocks > 0) {
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
           }
-
+  
           // Generate ACK QR
           const ackFeedback: SenderFeedback = {
             type: 'SENDER_FEEDBACK',
@@ -483,7 +723,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
           }
           await generateSenderFeedbackQR(ackFeedback)
           setSenderMode('ack-display')
-
+  
           // Update last processed sequence after successful processing
           setLastProcessedSequence(feedbackSequence)
           console.log('Feedback processed - ACK QR generated')
@@ -587,6 +827,9 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
              // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
              setEstimatedChunksNeeded(chunkCount + Math.ceil(blocksMissing * 1.5))
            }
+
+           // Clear buffer when switching to targeted mode
+           setChunkBuffer([])
 
            // Generate ACK QR
            const ackFeedback: SenderFeedback = {
@@ -833,6 +1076,9 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
         {skippedChunks > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
         )}
+        {chunkBuffer.length > 0 && (
+          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Buffer: {chunkBuffer.length}</span>
+        )}
       </div>
 
       {/* Chunk details */}
@@ -931,6 +1177,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             max={60}
             step={1}
             className="w-full"
+            defaultValue={[4]}
           />
           <div className="flex justify-between text-xs text-muted-foreground px-2">
             <span>1 fps</span>
@@ -955,6 +1202,7 @@ export function FountainQRSender({ file, sessionId }: FountainQRSenderProps) {
             <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
             <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
             <li>Receiver must scan ACK before resuming data scanning</li>
+            <li>Transfer speed is now optimized at 4 FPS (adjust with slider if needed)</li>
             {windowInfo && windowInfo.windowEnabled && (
               <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
               )}
