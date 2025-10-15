@@ -25,12 +25,6 @@ interface FountainFeedbackBase {
   progress: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
-  /** Blocks needing urgent decoding */
-  defragTargets: number[];
-  /** Severity metric (0-1) */
-  fragmentationScore: number;
-  /** Indicates receiver has decoded all defrag targets */
-  defragComplete?: boolean;
 }
 
 /**
@@ -73,19 +67,9 @@ interface SenderFeedbackBase {
   /** Sequence number to prevent duplicate processing */
   sequence: number;
   /** Action for receiver to take */
-  command: 'defrag_complete' | 'rollback' | 'acknowledge' | 'requestHigherECC';
+  command: 'rollback' | 'acknowledge' | 'requestHigherECC';
 }
 
-/**
- * Sender feedback for defragmentation completion.
- */
-export interface SenderFeedbackDefragComplete extends SenderFeedbackBase {
-  command: 'defrag_complete';
-  /** Which blocks were successfully targeted */
-  completedTargets: number[];
-  /** Human-readable status message */
-  message: string;
-}
 
 /**
  * Sender feedback for rollback request.
@@ -121,4 +105,4 @@ export interface SenderFeedbackRequestHigherECC extends SenderFeedbackBase {
 /**
  * Union type for all sender feedback payloads.
  */
-export type SenderFeedback = SenderFeedbackDefragComplete | SenderFeedbackRollback | SenderFeedbackAcknowledge | SenderFeedbackRequestHigherECC;
+export type SenderFeedback = SenderFeedbackRollback | SenderFeedbackAcknowledge | SenderFeedbackRequestHigherECC;

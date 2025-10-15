@@ -68,9 +68,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [error, setError] = useState<string>('')
   const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
 
-  // Defrag testing state
-  const [isDefragTestActive, setIsDefragTestActive] = useState(false)
-
   // Targeted mode testing state
   const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
 
@@ -169,9 +166,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          progress: overallProgress * 100,
          requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
          firstMissingBlock: firstMissingBlock,
-         defragTargets: [],
-         fragmentationScore: 0,
-         defragComplete: false
        }
      } else {
        if (isTargetedModeTestActive) {
@@ -197,9 +191,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          windowEnd: currentWindowEnd,
          progress: overallProgress * 100,
          firstMissingBlock: firstMissingBlock,
-         defragTargets: [],
-         fragmentationScore: 0,
-         defragComplete: false
        }
 
        const targetedFeedback = { ...feedbackBase, missingBlocks }
@@ -239,7 +230,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      // Log the decision
      addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${targetedModeThreshold}, mode: ${missingBlocksCount > targetedModeThreshold ? 'statistics' : 'targeted'}`)
    } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive, isTargetedModeTestActive])
+ }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isTargetedModeTestActive])
 
  const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
    // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...][checksum(4)]
@@ -295,23 +286,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Metadata is always available (provided by parent)
     const chunk = { seed, degree, indices, data }
-
-    // ════════════════════════════════════════════════════════════════════════════
-    // DEFRAG TEST LOGIC: IGNORE CERTAIN BLOCKS TO SIMULATE FRAGMENTATION
-    // To use: uncomment the array and add the block indices you want to ignore
-    // Suggested test file size: 60KB (100 blocks) for meaningful defrag testing
-    // ════════════════════════════════════════════════════════════════════════════
-    if (process.env.NODE_ENV === 'development' && isDefragTestActive) {
-      const defragTestIgnoreBlocks: number[] = [2,4,6,8,10,12] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
-      if (defragTestIgnoreBlocks.length > 0) {
-        const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
-        if (containsIgnoredBlock) {
-          addDebugLog(`💣 [DEFRAG TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
-          return
-        }
-      }
-    }
-    // ════════════════════════════════════════════════════════════════════════════
 
     // ════════════════════════════════════════════════════════════════════════════
     // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
@@ -385,8 +359,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setLastSenderFeedbackSequence(parsed.sequence)
 
       switch (parsed.command) {
-        // case 'defrag_complete': // Removed - receiver now handles completion internally
-
         case 'rollback':
            addDebugLog(`⚠️ Rolling back to block ${parsed.rollbackToBlock}: ${parsed.reason}`)
            fountainDecoderRef.current.rollbackToBlock(parsed.rollbackToBlock)
@@ -437,9 +409,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             progress: currentProgress,
             requestWindowExpansion: false,
             firstMissingBlock: calculateFirstMissingBlock(decodedBlockIndices),
-            defragTargets: [],
-            fragmentationScore: 0,
-            defragComplete: false,
             requestHigherECC: true
           }
           const eccFeedbackJson = JSON.stringify(eccFeedback)
@@ -550,16 +519,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   //   2. TARGETED MODE (SECOND PRIORITY - EFFICIENCY)
   //      Location: This useEffect (lines ~515-523)
   //      When: currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
-  //      Why: Optimize final blocks transfer; more specific than fragmentation
-  //      Guards: !showFeedbackQR && !success && !isAwaitingFeedback
-  //      Exits early: ✓ Returns before fragmentation check
-  //
-  //   3. FRAGMENTATION DETECTION (LOWEST PRIORITY - OPTIMIZATION)
-  //      Location: This useEffect (lines ~526-538)
-  //      When: fragmentation.isFragmented && currentMissingBlocks > TARGETED_MODE_MAX_MISSING_BLOCKS
-  //      Why: Fill gaps in decoded blocks; general optimization
-  //      Guards: !showFeedbackQR && !success && !isAwaitingFeedback
-  //      Mutual exclusivity: ONLY checked when NOT in targeted mode
+  //      Why: Optimize final blocks transfer efficiency
   //
   // ⚠️  FUTURE DEVELOPERS: When adding new feedback triggers:
   //     1. Add priority-based guards to prevent conflicts with existing triggers
@@ -592,7 +552,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setReceiverMode('feedback-display')
       setIsScanning(false)
       prevMissingBlocksRef.current = currentMissingBlocks
-      return // Exit early - don't check fragmentation
+      return
     }
 
 
