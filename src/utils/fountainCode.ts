@@ -575,40 +575,4 @@ export class FountainDecoder {
     return result
   }
 
-  /**
-   * Rollback to a specific block index (discard blocks >= blockIdx)
-   */
-  rollbackToBlock(blockIdx: number): void {
-    // Purge receivedChunks that reference indices >= the rollback index
-    this.receivedChunks = this.receivedChunks.filter(chunk =>
-      !chunk.indices.some(idx => idx >= blockIdx)
-    )
-
-    const blocksToRemove: number[] = []
-    for (const [idx] of this.decodedBlocks) {
-      if (idx >= blockIdx) {
-        blocksToRemove.push(idx)
-      }
-    }
-
-    for (const idx of blocksToRemove) {
-      this.decodedBlocks.delete(idx)
-    }
-
-    this.isDecoded = false
-  }
-
-  /**
-   * Get rollback information for UI display
-   */
-  getRollbackInfo(): { canRollback: boolean, currentFirstMissing: number, decodedCount: number } {
-    const decodedIndices = this.getDecodedBlockIndices()
-    const firstMissing = decodedIndices.length > 0 ? decodedIndices[decodedIndices.length - 1] + 1 : 0
-
-    return {
-      canRollback: decodedIndices.length > 0,
-      currentFirstMissing: firstMissing,
-      decodedCount: decodedIndices.length
-    }
-  }
 }

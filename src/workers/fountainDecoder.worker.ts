@@ -203,25 +203,6 @@ self.onmessage = async (event: MessageEvent) => {
                 break;
             }
 
-            case 'rollback': {
-                ensureDecoder();
-                const { blockIndex } = data as { blockIndex: number };
-                decoder!.rollbackToBlock(blockIndex);
-                // Reinitialize receivedSeeds from processedSeeds to retain duplicate protection
-                receivedSeeds = new Set(processedSeeds);
-
-                const decodedBlockCount_ = decoder!.getDecodedBlockCount();
-                const decodedBlockIndices_ = decoder!.getDecodedBlockIndices();
-
-                self.postMessage({
-                    type: 'rollbackComplete',
-                    id,
-                    blockIndex,
-                    decodedBlockCount: decodedBlockCount_,
-                    decodedBlockIndices: decodedBlockIndices_
-                });
-                break;
-            }
 
             case 'getStatus': {
                 ensureDecoder();

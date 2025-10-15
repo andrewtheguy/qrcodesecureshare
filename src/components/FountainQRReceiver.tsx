@@ -173,13 +173,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
         }
 
-        case 'rollbackComplete': {
-          const { blockIndex, decodedBlockCount, decodedBlockIndices } = data
-          setDecodedBlocks(decodedBlockCount)
-          decodedBlockIndicesRef.current = decodedBlockIndices
-          addDebugLog(`⚠️ Rollback complete to block ${blockIndex}`)
-          break
-        }
       }
     }
 
@@ -411,12 +404,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setLastSenderFeedbackSequence(parsed.sequence)
 
       switch (parsed.command) {
-        case 'rollback':
-           addDebugLog(`⚠️ Rolling back to block ${parsed.rollbackToBlock}: ${parsed.reason}`)
-           workerRef.current?.postMessage({ type: 'rollback', id: messageIdCounterRef.current++, blockIndex: parsed.rollbackToBlock })
-           setReceivedFountainChunks(0)
-           setSenderFeedbackMessage(parsed.reason)
-           break
 
         case 'acknowledge':
             addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
@@ -443,39 +430,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
            setSenderFeedbackMessage(parsed.message)
            break
 
-        case 'requestHigherECC': {
-          addDebugLog(`📈 Receiver requested higher ECC level due to scan failures`)
-          // Generate feedback QR requesting higher ECC level
-          const decodedBlockIndices = decodedBlockIndicesRef.current
-          const currentDecodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
-          const currentProgress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-          const eccFeedback: FountainFeedbackStatistics = {
-            type: 'FOUNTAIN_FEEDBACK',
-            mode: 'statistics',
-            sessionId: sessionId,
-            sequence: feedbackSequence,
-            decodedInWindow: currentDecodedInWindow,
-            totalDecoded: decodedBlocks,
-            totalBlocks: fountainMetadata.totalSourceBlocks,
-            windowStart: currentWindowStart,
-            windowEnd: currentWindowEnd,
-            progress: currentProgress,
-            requestWindowExpansion: false,
-            firstMissingBlock: calculateFirstMissingBlock(decodedBlockIndices),
-            requestHigherECC: true
-          }
-          const eccFeedbackJson = JSON.stringify(eccFeedback)
-          const eccDataUrl = await generateNonDataQR(eccFeedback)
-          setFeedbackQRUrl(eccDataUrl)
-          setFeedbackMode('statistics')
-          setShowFeedbackQR(true)
-          setReceiverMode('feedback-display')
-          setIsScanning(false)
-          feedbackSequenceRef.current += 1 // Atomic increment using ref
-          setFeedbackSequence(feedbackSequenceRef.current) // Update state for UI consistency
-          addDebugLog(`📤 Generated ECC upgrade request feedback QR (${eccFeedbackJson.length} bytes)`)
-          break
-        }
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'

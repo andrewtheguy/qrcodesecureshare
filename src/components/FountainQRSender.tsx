@@ -626,12 +626,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           // Statistics-only feedback - no targeted encoding
           console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
   
-          // Handle ECC level upgrade request
-          if (feedback.requestHigherECC) {
-            console.log('📈 Receiver requested higher ECC level due to scan failures')
-            setCurrentQROptions(prev => ({ ...prev, errorCorrectionLevel: 'M' }))
-            setSenderFeedbackMessage('Switched to higher error correction level (M) for better scan reliability')
-          }
   
   
   
