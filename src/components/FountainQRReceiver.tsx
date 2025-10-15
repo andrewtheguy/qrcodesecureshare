@@ -296,6 +296,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const feedbackJson = JSON.stringify(feedback)
     let dataUrl: string
     try {
+      // Feedback QR generation intentionally uses main thread (not worker) for reliability
+      // These are small JSON payloads generated infrequently, so main thread is reliable and performant
       dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
     } catch (qrError) {
       addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)

@@ -560,7 +560,9 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
     const feedbackJson = JSON.stringify(feedback)
-    const dataUrl = await generateQRInWorker(feedbackJson, { width: 400, margin: currentQROptions.margin, errorCorrectionLevel: 'M' })
+    // ACK/feedback QR generation uses main thread to avoid worker canvas API limitations
+    // These are small JSON payloads generated infrequently, so main thread is reliable and performant
+    const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: currentQROptions.margin, errorCorrectionLevel: 'M' })
     setSenderFeedbackSequence(prev => prev + 1)
     setLastAckQRUrl(dataUrl)
   }
