@@ -68,9 +68,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
   const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
+  const [showMetadataInfo, setShowMetadataInfo] = useState<boolean>(false)
 
   // Targeted mode testing state
   const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
+
+  // Overlay positioning flags
+  const showScanningBadge = receiverMode === 'ack-scanning'
+  const showSenderMsg = senderFeedbackMessage && senderFeedbackMessage.trim() !== ''
 
   const workerRef = useRef<Worker | null>(null)
   const messageIdCounterRef = useRef<number>(0)
@@ -681,6 +686,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
     setInvalidChecksumCount(0)
+    setShowMetadataInfo(false)
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -719,7 +725,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   return (
     <div className="space-y-4">
       {/* Unified Feedback/ACK UI */}
-      {(receiverMode === 'feedback-display' || receiverMode === 'ack-scanning') && feedbackQRUrl && (
+      {receiverMode === 'feedback-display' && feedbackQRUrl && (
         <Alert>
           <AlertDescription>
             <div className="space-y-3">
@@ -738,17 +744,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 {currentMissingBlocks > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                {receiverMode === 'feedback-display'
-                  ? 'Show this QR to sender, then click the button below to scan for ACK'
-                  : 'Scanning for ACK QR from sender. Point camera at sender\'s ACK QR code'
-                }
+                Show this QR to sender, then click the button below to scan for ACK
               </p>
               <Button
-                onClick={() => setReceiverMode(receiverMode === 'feedback-display' ? 'ack-scanning' : 'feedback-display')}
-                variant={receiverMode === 'feedback-display' ? 'default' : 'outline'}
+                onClick={() => setReceiverMode('ack-scanning')}
+                variant="default"
                 className="w-full"
               >
-                {receiverMode === 'feedback-display' ? 'Start Scanning for ACK' : 'Stop ACK Scanning'}
+                Start Scanning for ACK
               </Button>
             </div>
           </AlertDescription>
@@ -756,24 +759,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
 
-      {/* Sender Feedback Message Alert */}
-      {senderFeedbackMessage && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📬 Sender Message</p>
-              <p className="text-sm">{senderFeedbackMessage}</p>
-              <Button
-                onClick={() => setSenderFeedbackMessage('')}
-                variant="outline"
-                size="sm"
-              >
-                OK
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Video Preview */}
       {(receiverMode === 'data-scanning' || receiverMode === 'ack-scanning') && (
@@ -783,9 +768,29 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
           />
-          {receiverMode === 'ack-scanning' && (
-            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
+          {showScanningBadge && (
+            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
               ● SCANNING
+            </div>
+          )}
+          {receiverMode === 'ack-scanning' && (
+            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+              <p className="text-sm text-center">
+                Scanning for ACK QR from sender. Point camera at sender's ACK QR code
+              </p>
+            </div>
+          )}
+          {showSenderMsg && (
+            <div className={`absolute ${showScanningBadge ? 'top-12' : 'top-2'} right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20`}>
+              <div className="flex items-start gap-2">
+                <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+                <button
+                  onClick={() => setSenderFeedbackMessage('')}
+                  className="text-white hover:text-gray-200 text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -817,14 +822,24 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Metadata Info */}
-      {!success && (
+      {!success && showMetadataInfo && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium">{fountainMetadata.name}</p>
-            <p className="text-sm text-muted-foreground">
-              Expected size: {(fountainMetadata.size / 1024).toFixed(2)}KB |
-              Blocks: {fountainMetadata.totalSourceBlocks}
-            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-medium">{fountainMetadata.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Expected size: {(fountainMetadata.size / 1024).toFixed(2)}KB |
+                  Blocks: {fountainMetadata.totalSourceBlocks}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowMetadataInfo(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
@@ -933,6 +948,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               Reset
             </Button>
           </>
+        )}
+        {!success && (
+          <Button
+            onClick={() => setShowMetadataInfo(!showMetadataInfo)}
+            variant="ghost"
+            size="sm"
+          >
+            {showMetadataInfo ? '▼' : '▶'} File Info
+          </Button>
         )}
       </div>
 
