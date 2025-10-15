@@ -76,6 +76,12 @@ export function FountainQRDataDisplay({
   const workerRef = useRef<Worker | null>(null)
   const pendingRequests = useRef<Map<number, {resolve: (url: string) => void, reject: (err: Error) => void}>>(new Map())
   const requestIdRef = useRef(0)
+  const chunkBufferRef = useRef(chunkBuffer)
+
+  // Sync ref with latest chunkBuffer
+  useEffect(() => {
+    chunkBufferRef.current = chunkBuffer
+  }, [chunkBuffer])
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
@@ -104,6 +110,7 @@ export function FountainQRDataDisplay({
     setChunkCount(0)
     setSkippedChunks(0)
     setChunkBuffer([])
+    onBufferUpdate(0)
   }, [sessionId])
 
   // Initialize QR generation worker
@@ -145,6 +152,7 @@ export function FountainQRDataDisplay({
   // Background chunk generation effect for buffering with FPS-aware throttling
   useEffect(() => {
     const bufferTargetSize = bufferTargetSizeRef.current
+    if (!isActive) return
     if (!encoder || isGeneratingBuffer || chunkBuffer.length >= bufferTargetSize) return
 
     // Throttle buffer generation based on FPS
@@ -267,7 +275,7 @@ export function FountainQRDataDisplay({
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps, onBufferUpdate])
+  }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps, onBufferUpdate, currentQROptions.margin, currentQROptions.errorCorrectionLevel])
 
   // Generate QR in worker (for data chunks only)
   const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
@@ -405,10 +413,13 @@ export function FountainQRDataDisplay({
 
         // Success! Update state and display
         currentChunkRef.current = chunk
-        setChunkCount(prev => prev + 1)
+        setChunkCount(prev => {
+          const next = prev + 1
+          onChunkGenerated(next, chunk)
+          return next
+        })
         setQrCodeUrl(dataUrl)
         lastSuccessfulQrRef.current = dataUrl
-        onChunkGenerated(chunkCount + 1, chunk)
         return // Exit successfully
 
       } catch (err) {
@@ -441,40 +452,45 @@ export function FountainQRDataDisplay({
     if (!isPlaying || !encoder || !isActive) return
 
     // Generate first chunk immediately (from buffer if available, otherwise generate)
-    if (chunkBuffer.length > 0) {
-      const bufferedItem = chunkBuffer[0]
+    if (chunkBufferRef.current.length > 0) {
+      const bufferedItem = chunkBufferRef.current[0]
       currentChunkRef.current = bufferedItem.chunk
-      setChunkCount(prev => prev + 1)
+      setChunkCount(bufferedItem.chunkNum)
       setQrCodeUrl(bufferedItem.qrUrl)
       lastSuccessfulQrRef.current = bufferedItem.qrUrl
       setChunkBuffer(prev => prev.slice(1))
-      onChunkGenerated(chunkCount + 1, bufferedItem.chunk)
+      onBufferUpdate(chunkBufferRef.current.length - 1)
+      onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
     } else {
       generateAndShowNextChunk()
     }
 
     const interval = setInterval(() => {
-      if (chunkBuffer.length > 0) {
-        const bufferedItem = chunkBuffer[0]
+      if (chunkBufferRef.current.length > 0) {
+        const bufferedItem = chunkBufferRef.current[0]
         currentChunkRef.current = bufferedItem.chunk
-        setChunkCount(prev => prev + 1)
+        setChunkCount(bufferedItem.chunkNum)
         setQrCodeUrl(bufferedItem.qrUrl)
         lastSuccessfulQrRef.current = bufferedItem.qrUrl
         setChunkBuffer(prev => prev.slice(1))
-        onChunkGenerated(chunkCount + 1, bufferedItem.chunk)
+        onBufferUpdate(chunkBufferRef.current.length - 1)
+        onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
       } else {
         generateAndShowNextChunk()
       }
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, encoder, fps, isActive, chunkBuffer, onChunkGenerated])
+    // generateAndShowNextChunk is intentionally omitted from deps to prevent re-subscription churn
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, encoder, fps, isActive, onChunkGenerated])
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
       setChunkCount(0)
       setSkippedChunks(0)
       setChunkBuffer([]) // Clear buffer on restart
+      onBufferUpdate(0)
     }
     setIsPlaying(!isPlaying)
   }
