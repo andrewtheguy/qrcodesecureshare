@@ -357,6 +357,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      indices.push(idx)
    }
 
+   if (bytes.length < offset + 4) {
+     setInvalidChecksumCount(prev => prev + 1)
+     addDebugLog(`❌ Truncated chunk #${seed}: insufficient bytes (${bytes.length}) for checksum`)
+     return
+   }
+
    // Extract checksum (last 4 bytes)
    const checksumStart = bytes.length - 4
    const checksumBytes = bytes.slice(checksumStart, bytes.length)
@@ -502,22 +508,25 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           setSenderFeedbackMessage(parsed.message)
           break
 
-        case 'requestHigherECC':
+        case 'requestHigherECC': {
           addDebugLog(`📈 Receiver requested higher ECC level due to scan failures`)
           // Generate feedback QR requesting higher ECC level
+          const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
+          const currentDecodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+          const currentProgress = (fountainDecoderRef.current.getDecodedBlockCount() / fountainMetadata.totalSourceBlocks) * 100
           const eccFeedback: FountainFeedbackStatistics = {
             type: 'FOUNTAIN_FEEDBACK',
             mode: 'statistics',
             sessionId: sessionId,
             sequence: feedbackSequence,
-            decodedInWindow: decodedInWindow,
-            totalDecoded: decodedBlocks,
+            decodedInWindow: currentDecodedInWindow,
+            totalDecoded: fountainDecoderRef.current.getDecodedBlockCount(),
             totalBlocks: fountainMetadata.totalSourceBlocks,
             windowStart: currentWindowStart,
             windowEnd: currentWindowEnd,
-            progress: progress,
+            progress: currentProgress,
             requestWindowExpansion: false,
-            firstMissingBlock: calculateFirstMissingBlock(fountainDecoderRef.current.getDecodedBlockIndices()),
+            firstMissingBlock: calculateFirstMissingBlock(decodedBlockIndices),
             defragTargets: [],
             fragmentationScore: 0,
             contiguousChecksum: '',
@@ -535,6 +544,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           setFeedbackSequence(prev => prev + 1)
           addDebugLog(`📤 Generated ECC upgrade request feedback QR (${eccFeedbackJson.length} bytes)`)
           break
+        }
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
