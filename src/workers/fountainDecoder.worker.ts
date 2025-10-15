@@ -16,6 +16,7 @@ function ensureDecoder(): void {
 // Worker state
 let decoder: FountainDecoder | null = null;
 let receivedSeeds: Set<number> = new Set();
+let processedSeeds: Set<number> = new Set();
 let metadata: FountainMetadata | null = null;
 
 /**
@@ -130,6 +131,7 @@ self.onmessage = async (event: MessageEvent) => {
 
                 // Add to received seeds
                 receivedSeeds.add(chunk.seed);
+                processedSeeds.add(chunk.seed);
 
                 // Add chunk to decoder
                 decoder!.addChunk(chunk);
@@ -154,8 +156,7 @@ self.onmessage = async (event: MessageEvent) => {
                 if (isComplete) {
                     const reconstructedData = decoder!.getDecodedData();
                     if (reconstructedData) {
-                        // For now, assume integrity OK (can be validated in reconstructFile if needed)
-                        self.postMessage({ type: 'complete', id, data: reconstructedData, integrityOk: true }, [reconstructedData.buffer]);
+                        self.postMessage({ type: 'complete', id, data: reconstructedData }, [reconstructedData.buffer]);
                     }
                 }
                 break;
@@ -170,19 +171,23 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                let integrityOk = true;
                 if (expectedChecksumStr) {
                     const computed = await computeChecksum(reconstructedData, checksumAlg as ChecksumAlgorithm || 'crc32');
-                    integrityOk = computed === expectedChecksumStr;
+                    const integrityOk = computed === expectedChecksumStr;
+                    self.postMessage({
+                        type: 'complete',
+                        id,
+                        data: reconstructedData,
+                        integrityOk,
+                        checksum: expectedChecksumStr
+                    }, [reconstructedData.buffer]);
+                } else {
+                    self.postMessage({
+                        type: 'complete',
+                        id,
+                        data: reconstructedData
+                    }, [reconstructedData.buffer]);
                 }
-
-                self.postMessage({
-                    type: 'complete',
-                    id,
-                    data: reconstructedData,
-                    integrityOk,
-                    checksum: expectedChecksumStr
-                }, [reconstructedData.buffer]);
                 break;
             }
 
@@ -190,8 +195,8 @@ self.onmessage = async (event: MessageEvent) => {
                 ensureDecoder();
                 const { blockIndex } = data as { blockIndex: number };
                 decoder!.rollbackToBlock(blockIndex);
-                // Clear all received seeds (simplified - in practice, track seed-to-indices mapping)
-                receivedSeeds.clear();
+                // Reinitialize receivedSeeds from processedSeeds to retain duplicate protection
+                receivedSeeds = new Set(processedSeeds);
 
                 const decodedBlockCount_ = decoder!.getDecodedBlockCount();
                 const decodedBlockIndices_ = decoder!.getDecodedBlockIndices();
