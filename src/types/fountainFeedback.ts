@@ -91,6 +91,8 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   acknowledgedSequence: number;
   /** Status message */
   message: string;
+  /** Whether the window was expanded */
+  windowExpanded: boolean;
 }
 
 /**

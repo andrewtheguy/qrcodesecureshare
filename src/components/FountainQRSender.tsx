@@ -42,6 +42,10 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     totalBlocks: number
     isWindowComplete: boolean
     skipBlocksBelow: number
+    currentSegment: number
+    totalSegments: number
+    segmentProgress: number
+    segmentSizeBlocks: number
   } | null>(null)
   const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
   const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
@@ -659,13 +663,14 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           })
   
           // Check if window expansion is requested
+          let windowExpanded = false
           if (encoder && feedback.requestWindowExpansion) {
             const currentWindow = encoder.getWindowInfo()
             if (!currentWindow.isWindowComplete) {
               const now = Date.now()
               if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                const expanded = encoder.expandWindow()
-                if (expanded) {
+                windowExpanded = encoder.expandWindow()
+                if (windowExpanded) {
                   setWindowInfo(encoder.getWindowInfo())
                   setLastWindowExpansion(now)
                   console.log('Window expanded based on statistics feedback:', encoder.getWindowInfo())
@@ -673,14 +678,14 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
               }
             }
           }
-  
+
           // Update estimated chunks based on statistics
           const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
           const missingBlocks = totalBlocks - feedback.totalDecoded
           if (missingBlocks > 0) {
             setEstimatedChunksNeeded(chunkCount + Math.ceil(missingBlocks * 1.1))
           }
-  
+
           // Generate ACK QR
           const ackFeedback: SenderFeedback = {
             type: 'SENDER_FEEDBACK',
@@ -688,7 +693,8 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
             sequence: senderFeedbackSequence,
             command: 'acknowledge',
             acknowledgedSequence: feedbackSequence,
-            message: `Feedback processed successfully. Window expanded, ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.`
+            message: windowExpanded ? `Feedback processed successfully. Window expanded, ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.` : `Feedback processed successfully. ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.`,
+            windowExpanded: windowExpanded
           }
           await generateSenderFeedbackQR(ackFeedback)
           setSenderMode('ack-display')
@@ -697,77 +703,78 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           setLastProcessedSequence(feedbackSequence)
           console.log('Feedback processed - ACK QR generated')
         } else if (feedback.mode === 'targeted') {
-           // Targeted feedback with missing block indices
-           const missingBlocks = (feedback as FountainFeedbackTargeted).missingBlocks
-           console.log('Received targeted feedback:', missingBlocks.length, 'missing blocks')
+            // Targeted feedback with missing block indices
+            const missingBlocks = (feedback as FountainFeedbackTargeted).missingBlocks
+            console.log('Received targeted feedback:', missingBlocks.length, 'missing blocks')
 
+            let windowExpanded = false
 
+            // Enable targeted encoding with missing blocks
+            setReceivedBlocks(new Set()) // Clear received blocks since we're now using missing blocks
+            setLastStats(null) // Clear statistics mode
+            if (encoder) {
+              encoder.setMissingBlocks(missingBlocks)
+              encoder.setSkipBlocksBelow(firstMissingBlock)
+              setWindowInfo(encoder.getWindowInfo())
+              console.log('Skip blocks below:', firstMissingBlock, '/', missingBlocks.length, 'missing')
 
-           // Enable targeted encoding with missing blocks
-           setReceivedBlocks(new Set()) // Clear received blocks since we're now using missing blocks
-           setLastStats(null) // Clear statistics mode
-           if (encoder) {
-             encoder.setMissingBlocks(missingBlocks)
-             encoder.setSkipBlocksBelow(firstMissingBlock)
-             setWindowInfo(encoder.getWindowInfo())
-             console.log('Skip blocks below:', firstMissingBlock, '/', missingBlocks.length, 'missing')
+              // Check for window expansion
+              const currentWindow = encoder.getWindowInfo()
+              if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
+                // Skip expansion logic if windowing not enabled or already complete
+              } else {
+                // Calculate decoded blocks in current window (total - missing in window)
+                const missingInWindow = missingBlocks.filter((blockIdx: number) =>
+                  blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
+                ).length
+                const decodedInWindow = currentWindow.windowSize - missingInWindow
 
-             // Check for window expansion
-             const currentWindow = encoder.getWindowInfo()
-             if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
-               // Skip expansion logic if windowing not enabled or already complete
-             } else {
-               // Calculate decoded blocks in current window (total - missing in window)
-               const missingInWindow = missingBlocks.filter((blockIdx: number) =>
-                 blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
-               ).length
-               const decodedInWindow = currentWindow.windowSize - missingInWindow
+                if (decodedInWindow > lastDecodedInWindow) {
+                  // Update last decoded count
+                  setLastDecodedInWindow(decodedInWindow)
 
-               if (decodedInWindow > lastDecodedInWindow) {
-                 // Update last decoded count
-                 setLastDecodedInWindow(decodedInWindow)
+                  // Calculate window decode percentage
+                  const windowDecodePercent = decodedInWindow / currentWindow.windowSize
 
-                 // Calculate window decode percentage
-                 const windowDecodePercent = decodedInWindow / currentWindow.windowSize
+                  // Check expansion trigger (50% threshold)
+                  if (windowDecodePercent >= 0.5) {
+                    // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
+                    const now = Date.now()
+                    if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+                      windowExpanded = encoder.expandWindow()
+                      if (windowExpanded) {
+                        setWindowInfo(encoder.getWindowInfo())
+                        setLastWindowExpansion(now)
+                        console.log('Window expanded:', encoder.getWindowInfo())
+                      }
+                    }
+                  }
+                }
+              }
+            }
 
-                 // Check expansion trigger (50% threshold)
-                 if (windowDecodePercent >= 0.5) {
-                   // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
-                   const now = Date.now()
-                   if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                     const expanded = encoder.expandWindow()
-                     if (expanded) {
-                       setWindowInfo(encoder.getWindowInfo())
-                       setLastWindowExpansion(now)
-                       console.log('Window expanded:', encoder.getWindowInfo())
-                     }
-                   }
-                 }
-               }
-             }
-           }
+            // Update estimated chunks needed based on feedback
+            const blocksMissing = missingBlocks.length
 
-           // Update estimated chunks needed based on feedback
-           const blocksMissing = missingBlocks.length
+            // Adjust estimate based on how many blocks are missing
+            if (blocksMissing > 0) {
+              // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
+              setEstimatedChunksNeeded(chunkCount + Math.ceil(blocksMissing * 1.5))
+            }
 
-           // Adjust estimate based on how many blocks are missing
-           if (blocksMissing > 0) {
-             // For missing blocks, we need ~1.5x chunks (more conservative for targeted encoding)
-             setEstimatedChunksNeeded(chunkCount + Math.ceil(blocksMissing * 1.5))
-           }
+            // Clear buffer when switching to targeted mode
+            setChunkBuffer([])
 
-           // Clear buffer when switching to targeted mode
-           setChunkBuffer([])
-
-           // Generate ACK QR
-           const ackFeedback: SenderFeedback = {
-             type: 'SENDER_FEEDBACK',
-             sessionId: sessionId,
-             sequence: senderFeedbackSequence,
-             command: 'acknowledge',
-             acknowledgedSequence: feedbackSequence,
-             message: `Targeted mode activated. Focusing on ${blocksMissing} missing blocks.`
-           }
+            // Generate ACK QR
+            const ackFeedback: SenderFeedback = {
+              type: 'SENDER_FEEDBACK',
+              sessionId: sessionId,
+              sequence: senderFeedbackSequence,
+              command: 'acknowledge',
+              acknowledgedSequence: feedbackSequence,
+              message: windowExpanded ? `Targeted mode activated. Window expanded, focusing on ${blocksMissing} missing blocks.` : `Targeted mode activated. Focusing on ${blocksMissing} missing blocks.`,
+              windowExpanded: windowExpanded
+            }
            await generateSenderFeedbackQR(ackFeedback)
            setSenderMode('ack-display')
 
@@ -861,6 +868,8 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
               <p className="font-medium">🪟 Window Progress</p>
               <div className="text-sm">
                 <p>Window: blocks {windowInfo.windowStart}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({((windowInfo.windowSize / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                <p>Segment: {windowInfo.currentSegment} / {windowInfo.totalSegments}</p>
+                <p>Segment progress: {windowInfo.segmentProgress.toFixed(1)}%</p>
                 <p className="text-xs text-muted-foreground">Session ID: {sessionId}</p>
                 {windowInfo.isWindowComplete ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
