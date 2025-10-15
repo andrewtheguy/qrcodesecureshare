@@ -9,6 +9,7 @@ import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from 
 import { computeChecksum } from '@/utils/checksum'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import QRWorker from '../workers/qrGenerator.worker.ts?worker'
+import { generateNonDataQR } from '@/utils/qrUtils'
 
 interface FountainQRSenderProps {
   file: File
@@ -302,7 +303,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     generateBufferChunk()
   }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps])
 
-  // Generate QR in worker
+  // Generate QR in worker (for data chunks only)
   const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
     const workerPromise = new Promise<string>((resolve, reject) => {
       if (!workerRef.current) {
@@ -343,6 +344,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
       return QRCode.toDataURL(binaryString, options)
     })
   }
+
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -559,12 +561,14 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
 
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
-    const feedbackJson = JSON.stringify(feedback)
-    // ACK/feedback QR generation uses main thread to avoid worker canvas API limitations
-    // These are small JSON payloads generated infrequently, so main thread is reliable and performant
-    const dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: currentQROptions.margin, errorCorrectionLevel: 'M' })
-    setSenderFeedbackSequence(prev => prev + 1)
-    setLastAckQRUrl(dataUrl)
+    try {
+      const dataUrl = await generateNonDataQR(feedback)
+      setSenderFeedbackSequence(prev => prev + 1)
+      setLastAckQRUrl(dataUrl)
+    } catch (err) {
+      console.error('ACK QR generation failed:', err)
+      setError('Failed to generate ACK QR. Please try scanning feedback again.')
+    }
   }
 
   const handleFeedbackScan = async (data: string) => {
