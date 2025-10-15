@@ -68,9 +68,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
   const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
+  const [showMetadataInfo, setShowMetadataInfo] = useState<boolean>(false)
 
   // Targeted mode testing state
   const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
+
+  // Overlay positioning flags
+  const showScanningBadge = receiverMode === 'ack-scanning'
+  const showSenderMsg = senderFeedbackMessage && senderFeedbackMessage.trim() !== ''
 
   const workerRef = useRef<Worker | null>(null)
   const messageIdCounterRef = useRef<number>(0)
@@ -481,6 +486,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     try {
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
+      if (receiverMode === 'ack-scanning') {
+        if (data.startsWith('{')) {
+          const parsed = JSON.parse(data)
+          if (parsed.type === 'SENDER_FEEDBACK') {
+            addDebugLog('🔁 Processing sender feedback (ACK scan mode)')
+            handleSenderFeedbackScan(data)
+          }
+        }
+        return
+      }
+
       // Try to check if it is JSON first by checking
       // if it begins with { (sender feedback)
       if (data.startsWith('{')) {
@@ -616,6 +632,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
 
+    // Add guard to prevent feedback when all blocks are decoded
+    if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
+
     // Priority 2: Check for targeted mode threshold
     const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
     if (crossedToTargeted) {
@@ -667,6 +686,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
     setInvalidChecksumCount(0)
+    setShowMetadataInfo(false)
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -704,7 +724,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   return (
     <div className="space-y-4">
-      {/* Feedback QR Display */}
+      {/* Unified Feedback/ACK UI */}
       {receiverMode === 'feedback-display' && feedbackQRUrl && (
         <Alert>
           <AlertDescription>
@@ -724,55 +744,21 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 {currentMissingBlocks > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                Show this QR to sender, then switch to ACK scanning mode to receive acknowledgment. You can toggle back if needed.
+                Show this QR to sender, then click the button below to scan for ACK
               </p>
-              <Button onClick={() => setReceiverMode('ack-scanning')} variant="default" className="w-full">
-                Switch to ACK Scanning Mode
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* ACK Scanning Mode */}
-      {receiverMode === 'ack-scanning' && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📷 Scanning for ACK QR Code</p>
-              <p className="text-sm">
-                Waiting for sender to scan feedback and generate ACK QR. Point camera at sender's ACK QR code.
-              </p>
-              <p className="text-xs text-muted-foreground">
-                After scanning ACK, data scanning will resume automatically. You can switch back to view the feedback QR if needed.
-              </p>
-              <Button onClick={() => setReceiverMode('feedback-display')} variant="outline" className="w-full">
-                Switch Back to Feedback QR Display
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-
-      {/* Sender Feedback Message Alert */}
-      {senderFeedbackMessage && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📬 Sender Message</p>
-              <p className="text-sm">{senderFeedbackMessage}</p>
               <Button
-                onClick={() => setSenderFeedbackMessage('')}
-                variant="outline"
-                size="sm"
+                onClick={() => setReceiverMode('ack-scanning')}
+                variant="default"
+                className="w-full"
               >
-                OK
+                Start Scanning for ACK
               </Button>
             </div>
           </AlertDescription>
         </Alert>
       )}
+
+
 
       {/* Video Preview */}
       {(receiverMode === 'data-scanning' || receiverMode === 'ack-scanning') && (
@@ -782,9 +768,29 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
           />
-          {receiverMode === 'ack-scanning' && (
-            <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
+          {showScanningBadge && (
+            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
               ● SCANNING
+            </div>
+          )}
+          {receiverMode === 'ack-scanning' && (
+            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+              <p className="text-sm text-center">
+                Scanning for ACK QR from sender. Point camera at sender's ACK QR code
+              </p>
+            </div>
+          )}
+          {showSenderMsg && (
+            <div className={`absolute ${showScanningBadge ? 'top-12' : 'top-2'} right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20`}>
+              <div className="flex items-start gap-2">
+                <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+                <button
+                  onClick={() => setSenderFeedbackMessage('')}
+                  className="text-white hover:text-gray-200 text-sm font-bold"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -816,14 +822,24 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       )}
 
       {/* Metadata Info */}
-      {!success && (
+      {!success && showMetadataInfo && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium">{fountainMetadata.name}</p>
-            <p className="text-sm text-muted-foreground">
-              Expected size: {(fountainMetadata.size / 1024).toFixed(2)}KB |
-              Blocks: {fountainMetadata.totalSourceBlocks}
-            </p>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="font-medium">{fountainMetadata.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  Expected size: {(fountainMetadata.size / 1024).toFixed(2)}KB |
+                  Blocks: {fountainMetadata.totalSourceBlocks}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowMetadataInfo(false)}
+                className="text-muted-foreground hover:text-foreground text-sm"
+              >
+                ✕
+              </button>
+            </div>
           </AlertDescription>
         </Alert>
       )}
@@ -934,13 +950,32 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           </>
         )}
         {receiverMode === 'feedback-display' && !success && (
-          <Button disabled className="flex-1" variant="secondary">
-            📊 Showing Feedback QR - Toggle above to scan ACK
-          </Button>
+          <>
+            <Button disabled className="flex-1" variant="secondary">
+              📊 Showing Feedback QR - Toggle above to scan ACK
+            </Button>
+            <Button onClick={() => setReceiverMode('ack-scanning')} className="flex-1">
+              📷 Switch to ACK Scanning
+            </Button>
+          </>
         )}
         {receiverMode === 'ack-scanning' && !success && (
-          <Button disabled className="flex-1" variant="secondary">
-            📷 Scanning for ACK QR - Toggle above to view feedback
+          <>
+            <Button onClick={() => setReceiverMode('feedback-display')} className="flex-1">
+              📊 Switch to Feedback QR
+            </Button>
+            <Button disabled className="flex-1" variant="secondary">
+              📷 Scanning for ACK QR - Toggle above to view feedback qr
+            </Button>
+          </>
+        )}
+        {!success && (
+          <Button
+            onClick={() => setShowMetadataInfo(!showMetadataInfo)}
+            variant="ghost"
+            size="sm"
+          >
+            {showMetadataInfo ? '▼' : '▶'} File Info
           </Button>
         )}
       </div>
