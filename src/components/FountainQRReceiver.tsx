@@ -67,6 +67,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
+  const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
 
   // Defrag testing state
   const [isDefragTestActive, setIsDefragTestActive] = useState(false)
@@ -330,35 +331,51 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
    } finally { generatingRef.current = false }
  }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isDefragTestActive, isTargetedModeTestActive])
 
- const handleBinaryFountainChunk = useCallback((bytes: Uint8Array) => {
-    // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...]
-    let offset = 2 // Skip magic bytes
+ const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
+   // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...][checksum(4)]
+   let offset = 2 // Skip magic bytes
 
-    // Read seed (2 bytes)
-    const seed = (bytes[offset++] << 8) | bytes[offset++]
+   // Read seed (2 bytes)
+   const seed = (bytes[offset++] << 8) | bytes[offset++]
 
-    // Check for duplicate seed
-    if (receivedChunkSeedsRef.current.has(seed)) {
-      addDebugLog(`⊗ Duplicate chunk seed ${seed}, ignoring`)
-      return
-    }
-    receivedChunkSeedsRef.current.add(seed)
+   // Check for duplicate seed
+   if (receivedChunkSeedsRef.current.has(seed)) {
+     addDebugLog(`⊗ Duplicate chunk seed ${seed}, ignoring`)
+     return
+   }
 
-    // Read degree (1 byte)
-    const degree = bytes[offset++]
+   // Read degree (1 byte)
+   const degree = bytes[offset++]
 
-    // Read numIndices (1 byte)
-    const numIndices = bytes[offset++]
+   // Read numIndices (1 byte)
+   const numIndices = bytes[offset++]
 
-    // Read indices (2 bytes each)
-    const indices: number[] = []
-    for (let i = 0; i < numIndices; i++) {
-      const idx = (bytes[offset++] << 8) | bytes[offset++]
-      indices.push(idx)
-    }
+   // Read indices (2 bytes each)
+   const indices: number[] = []
+   for (let i = 0; i < numIndices; i++) {
+     const idx = (bytes[offset++] << 8) | bytes[offset++]
+     indices.push(idx)
+   }
 
-    // Read chunk data (rest of bytes)
-    const data = bytes.slice(offset)
+   // Extract checksum (last 4 bytes)
+   const checksumStart = bytes.length - 4
+   const checksumBytes = bytes.slice(checksumStart, bytes.length)
+   const extractedChecksum = Array.from(checksumBytes).map(b => b.toString(16).padStart(2, '0')).join('')
+
+   // Extract chunk data (everything except the last 4 bytes)
+   const data = bytes.slice(offset, checksumStart)
+
+   // Validate per-QR checksum
+   const computedChecksum = await computeChecksum(data, 'crc32')
+   if (computedChecksum !== extractedChecksum) {
+     setInvalidChecksumCount(prev => prev + 1)
+     addDebugLog(`❌ Invalid checksum for chunk #${seed}: expected ${computedChecksum}, got ${extractedChecksum}`)
+     return
+   }
+   addDebugLog(`✓ Checksum valid for chunk #${seed}`)
+
+   // Record seed only after checksum validation passes
+   receivedChunkSeedsRef.current.add(seed)
 
     // Metadata is always available (provided by parent)
     const chunk = { seed, degree, indices, data }
@@ -714,6 +731,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setExpectingSenderFeedback(false)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
+    setInvalidChecksumCount(0)
   }
 
   const handleDownload = () => {
@@ -861,6 +879,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           <Progress value={progress} />
           <div className="text-xs text-muted-foreground">
             Received {receivedFountainChunks} chunks (est. {estimatedChunksNeeded} needed)
+            {invalidChecksumCount > 0 && (
+              <div className="text-red-600">
+                Invalid checksums: {invalidChecksumCount} chunks skipped
+              </div>
+            )}
           </div>
           {isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && (
             <div className="text-xs text-muted-foreground">

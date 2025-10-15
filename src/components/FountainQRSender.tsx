@@ -225,7 +225,8 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
                 1 + // degree
                 1 + // numIndices
                 (numIndices * 2) + // indices (2 bytes each)
-                chunk.data.length // chunk data
+                chunk.data.length + // chunk data
+                4 // CRC32 checksum (4 bytes)
 
               if (expectedSize > MAX_QR_DATA_SIZE) {
                 attempt++
@@ -255,6 +256,15 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
 
               // Chunk data
               binaryData.set(chunk.data, offset)
+              offset += chunk.data.length
+
+              // Compute and append CRC32 checksum of chunk data
+              const checksumHex = await computeChecksum(chunk.data, 'crc32')
+              // Convert hex string to 4 bytes (big-endian)
+              for (let i = 0; i < 8; i += 2) {
+                const byte = parseInt(checksumHex.slice(i, i + 2), 16)
+                binaryData[offset++] = byte
+              }
 
               const binaryString = String.fromCharCode(...binaryData)
 
@@ -356,6 +366,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         // [numIndices(1 byte)]
         // [indices... (2 bytes each)]
         // [chunk data...]
+        // [checksum(4 bytes)] - CRC32 checksum of chunk data
 
         const numIndices = chunk.indices.length
         const expectedSize =
@@ -364,11 +375,12 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           1 + // degree
           1 + // numIndices
           (numIndices * 2) + // indices (2 bytes each)
-          chunk.data.length // chunk data
+          chunk.data.length + // chunk data
+          4 // CRC32 checksum (4 bytes)
 
         // Guardrail test for worst-case data QR size (dev-only)
         if (import.meta.env.DEV) {
-          console.assert(expectedSize <= 1200, `QR size ${expectedSize} exceeds limit 1200 for blockSize=400, maxDegree<=40`)
+          console.assert(expectedSize <= 1204, `QR size ${expectedSize} exceeds limit 1204 for blockSize=400, maxDegree<=40`)
         }
 
         // Pre-check: Skip chunks that are too large before attempting QR generation
@@ -403,6 +415,15 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
 
         // Chunk data
         binaryData.set(chunk.data, offset)
+        offset += chunk.data.length
+
+        // Compute and append CRC32 checksum of chunk data
+        const checksumHex = await computeChecksum(chunk.data, 'crc32')
+        // Convert hex string to 4 bytes (big-endian)
+        for (let i = 0; i < 8; i += 2) {
+          const byte = parseInt(checksumHex.slice(i, i + 2), 16)
+          binaryData[offset++] = byte
+        }
 
         // Convert to string for QR encoding (ISO-8859-1/Latin1)
         const binaryString = String.fromCharCode(...binaryData)
