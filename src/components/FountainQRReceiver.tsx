@@ -1,6 +1,4 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import QRCode from 'qrcode'
-import { computeChecksum } from '@/utils/checksum'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -9,6 +7,7 @@ import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
+import { generateNonDataQR } from '@/utils/qrUtils'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -296,12 +295,46 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const feedbackJson = JSON.stringify(feedback)
     let dataUrl: string
     try {
-      dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+      // Feedback QR generation intentionally uses main thread (not worker) for reliability
+      // These are small JSON payloads generated infrequently, so main thread is reliable and performant
+      dataUrl = await generateNonDataQR(feedback)
     } catch (qrError) {
       addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)
-      // Fallback: set error state and return without generating QR
-      setError('Failed to generate feedback QR code - payload too large. Try again later or use statistics mode.')
-      return
+
+      // Recovery action: if targeted mode failed due to payload size, auto-switch to statistics mode
+      if (feedback.mode === 'targeted') {
+        addDebugLog('🔄 Auto-switching to statistics mode due to payload size limit')
+        // Create statistics feedback as fallback
+        const statisticsFeedback: FountainFeedbackStatistics = {
+          type: 'FOUNTAIN_FEEDBACK',
+          mode: 'statistics',
+          sessionId: sessionId,
+          sequence: seq,
+          decodedInWindow: decodedInWindow,
+          totalDecoded: decodedBlockIndices.length,
+          totalBlocks: fountainMetadata.totalSourceBlocks,
+          windowStart: currentWindowStart,
+          windowEnd: currentWindowEnd,
+          progress: overallProgress * 100,
+          requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
+          firstMissingBlock: firstMissingBlock,
+        }
+
+        try {
+          dataUrl = await generateNonDataQR(statisticsFeedback)
+          feedback = statisticsFeedback // Update feedback reference for later use
+          setError('') // Clear any previous error
+          addDebugLog('✅ Successfully generated statistics feedback QR after targeted mode failed')
+        } catch (retryError) {
+          addDebugLog(`❌ Statistics mode QR generation also failed: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`)
+          setError('Failed to generate feedback QR code - both targeted and statistics modes exceeded payload capacity. Try again later.')
+          return
+        }
+      } else {
+        // Statistics mode failed - no recovery possible
+        setError('Failed to generate feedback QR code - payload too large. Try again later or use statistics mode.')
+        return
+      }
     }
     setFeedbackQRUrl(dataUrl)
     setFeedbackMode(feedback.mode)
@@ -423,7 +456,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             requestHigherECC: true
           }
           const eccFeedbackJson = JSON.stringify(eccFeedback)
-          const eccDataUrl = await QRCode.toDataURL(eccFeedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+          const eccDataUrl = await generateNonDataQR(eccFeedback)
           setFeedbackQRUrl(eccDataUrl)
           setFeedbackMode('statistics')
           setShowFeedbackQR(true)

@@ -8,3 +8,14 @@ export interface EncryptedFileData {
   filename: string
   uploadedAt?: string
 }
+
+// Shared QR options for non-data QR codes (feedback, ACK, etc.)
+export const NON_DATA_QR_OPTIONS = {
+  width: 400,
+  margin: 2,
+  errorCorrectionLevel: 'M' as const,
+  color: {
+    dark: '#000',
+    light: '#FFF'
+  }
+}
