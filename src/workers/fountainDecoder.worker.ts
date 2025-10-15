@@ -46,6 +46,10 @@ function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: n
         throw new Error('Invalid numIndices: ' + numIndices);
     }
 
+    // Ensure metadata is initialized and validate against total source blocks
+    if (!metadata) throw new Error('Decoder metadata not initialized');
+    if (numIndices > metadata.totalSourceBlocks) throw new Error('Invalid numIndices: exceeds total source blocks');
+
     // Check length for indices and checksum
     const expectedMinLength = 6 + numIndices * 2 + 4;
     if (bytes.length < expectedMinLength) {
@@ -113,12 +117,13 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                // Validate checksum over payload data only (between indices and checksum)
-                const payload = binaryData.slice(6, chunk.checksumStart);
+                // Validate checksum over payload data only (the data portion), not including header/indices
+                const payload = chunk.data;
                 const expectedChecksumStr = Array.from(binaryData.slice(chunk.checksumStart))
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join('');
-                if (!(await validateChunkChecksum(payload, expectedChecksumStr))) {
+                const ok = (await computeChecksum(payload, 'crc32')) === expectedChecksumStr;
+                if (!ok) {
                     self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
                     break;
                 }
