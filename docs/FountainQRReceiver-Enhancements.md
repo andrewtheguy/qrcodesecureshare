@@ -1,7 +1,7 @@
 # FountainQRReceiver New Techniques and Enhancements on v0.1.8
 
 ## Overview
-The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms, windowed transfer support, defragmentation capabilities, and QR generation optimizations. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
+The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms, windowed transfer support, and QR generation optimizations. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
 
 ## Performance Optimizations (v0.1.8+)
 
@@ -80,17 +80,7 @@ Research shows optimal QR scanning occurs with payloads ≤300 bytes for screen 
 - **Priority-Based Triggers**: Implements mutually exclusive feedback generation with strict priority ordering:
   1. **Window Saturation** (Highest Priority): Triggers when window decode percentage reaches threshold
   2. **Targeted Mode**: Activates when missing blocks drop below `TARGETED_MODE_MAX_MISSING_BLOCKS`
-  3. **Fragmentation Detection** (Lowest Priority): Identifies gaps in decoded blocks for defragmentation
 
-### 3. Defragmentation (Defrag) System
-- **Fragmentation Detection**: Analyzes prefix window (first N blocks) for missing contiguous blocks
-- **Configurable Parameters**:
-  - `DEFRAG_MAX_TARGETS`: Maximum missing blocks to target (default: 10)
-  - `DEFRAG_MAX_MISSING_COUNT`: Maximum missing blocks in prefix window (default: 50)
-  - `DEFRAG_PREFIX_WINDOW_BLOCKS`: Absolute prefix window size (default: 100)
-  - `DEFRAG_PREFIX_WINDOW_RATIO`: Relative prefix window size (default: 0.1)
-  - `DEFRAG_MIN_OVERALL_PROGRESS`: Minimum progress required for defrag (default: 0.3)
-- **Smart Targeting**: Only targets fragmented blocks when beneficial, respecting maximum limits
 
 ### 4. Receiver Mode Management
 - **Three Operational Modes**:
@@ -115,7 +105,7 @@ Research shows optimal QR scanning occurs with payloads ≤300 bytes for screen 
 - **Efficient State Management**: Minimizes re-renders through strategic state updates
 
 ### 8. Testing and Debugging Features
-- **Defrag Test Mode**: Development-only feature to simulate fragmentation by ignoring specific blocks
+- **Targeted Mode Test**: Development-only feature to simulate targeted mode by ignoring specific blocks
 - **Comprehensive Logging**: Detailed debug logs for all major operations and state changes
 - **Error Handling**: Robust error handling with user-friendly messages
 
@@ -130,15 +120,6 @@ windowTriggerThreshold?: number  // Window saturation threshold (default: 0.5)
 windowStart?: number            // Starting block index (default: 0)
 ```
 
-### Defrag Configuration (from fountainConfig.ts)
-```typescript
-DEFRAG_MAX_TARGETS: 10           // Max blocks to target for defrag
-DEFRAG_MAX_MISSING_COUNT: 10     // Max missing blocks in prefix window
-DEFRAG_PREFIX_WINDOW_BLOCKS: 150 // Absolute prefix window size (updated for 400-byte blocks)
-DEFRAG_PREFIX_WINDOW_RATIO: 0.15 // Relative prefix window size
-DEFRAG_MIN_OVERALL_PROGRESS: 0.20 // Min progress for defrag activation
-TARGETED_MODE_MAX_MISSING_BLOCKS: 10 // Threshold for targeted mode
-```
 
 ### Fountain Code Configuration Updates
 ```typescript
@@ -156,7 +137,6 @@ WINDOW_HALF_THRESHOLD: 256 * 1024   // Unchanged
 4. **Feedback Display**: Shows QR to sender, switches to feedback-display mode
 5. **ACK Scanning**: Switches to ack-scanning mode to receive sender acknowledgment
 6. **Window Expansion**: Upon ACK, expands window and resumes data scanning
-7. **Defrag Handling**: Detects fragmentation and requests targeted block transmission
 8. **Completion**: File reconstruction when all blocks decoded
 
 ## Performance Tuning
@@ -192,7 +172,6 @@ WINDOW_HALF_THRESHOLD: 256 * 1024   // Unchanged
 - **Improved Efficiency**: Windowed transfers reduce memory requirements for large files
 - **Better Reliability**: Feedback mechanisms ensure robust transfer completion
 - **Adaptive Performance**: Automatically switches between compact and detailed feedback modes
-- **Fragmentation Recovery**: Intelligent gap-filling for interrupted transfers
 - **User Experience**: Clear mode indicators and seamless sender-receiver synchronization
 
 ## Backward Compatibility

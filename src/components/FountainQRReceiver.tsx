@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
-import { getDefragMaxTargets, getDefragMaxMissingCount, getTargetedModeMaxMissingBlocks, getDefragPrefixWindowBlocks, DEFRAG_PREFIX_WINDOW_RATIO, DEFRAG_MIN_OVERALL_PROGRESS, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
