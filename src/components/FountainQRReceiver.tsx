@@ -949,6 +949,26 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             </Button>
           </>
         )}
+        {receiverMode === 'feedback-display' && !success && (
+          <>
+            <Button disabled className="flex-1" variant="secondary">
+              📊 Showing Feedback QR - Toggle above to scan ACK
+            </Button>
+            <Button onClick={() => setReceiverMode('ack-scanning')} className="flex-1">
+              📷 Switch to ACK Scanning
+            </Button>
+          </>
+        )}
+        {receiverMode === 'ack-scanning' && !success && (
+          <>
+            <Button onClick={() => setReceiverMode('feedback-display')} className="flex-1">
+              📊 Switch to Feedback QR
+            </Button>
+            <Button disabled className="flex-1" variant="secondary">
+              📷 Scanning for ACK QR - Toggle above to view feedback qr
+            </Button>
+          </>
+        )}
         {!success && (
           <Button
             onClick={() => setShowMetadataInfo(!showMetadataInfo)}
