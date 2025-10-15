@@ -37,3 +37,11 @@ export function getFeedbackFileSizeThresholdBlocks(blockSize: number): number {
   return Math.ceil(FEEDBACK_FILE_SIZE_THRESHOLD_BYTES / blockSize)
 }
 
+export function getSegmentSizeBlocks(blockSize: number): number {
+  return Math.ceil(SEGMENT_SIZE_BYTES / blockSize)
+}
+
+export function getWindowExpansionSizeBlocks(blockSize: number): number {
+  return Math.ceil(WINDOW_EXPANSION_SIZE_BYTES / blockSize)
+}
+
