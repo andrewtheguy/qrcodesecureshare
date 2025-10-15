@@ -51,8 +51,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     windowEnd?: number
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [defragMode, setDefragMode] = useState(false)
-  const [defragTargets, setDefragTargets] = useState<number[]>([])
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
   const [currentQROptions, setCurrentQROptions] = useState(qrOptions)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
@@ -625,22 +623,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
             setSenderFeedbackMessage('Switched to higher error correction level (M) for better scan reliability')
           }
   
-          // Handle defrag targets
-          if (feedback.defragTargets && feedback.defragTargets.length > 0) {
-            if (encoder) {
-              encoder.setDefragTargets(feedback.defragTargets)
-              setDefragMode(true)
-              setDefragTargets(feedback.defragTargets)
-              console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
-            }
-          } else if (defragMode) {
-            // Defrag was active but no longer requested - exit
-            if (encoder) {
-              encoder.exitDefragMode()
-              setDefragMode(false)
-              setDefragTargets([])
-            }
-          }
   
   
           // Clear targeted mode so encoder doesn't use stale missing-blocks information
@@ -713,22 +695,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
            const missingBlocks = (feedback as FountainFeedbackTargeted).missingBlocks
            console.log('Received targeted feedback:', missingBlocks.length, 'missing blocks')
 
-           // Handle defrag targets
-           if (feedback.defragTargets && feedback.defragTargets.length > 0) {
-             if (encoder) {
-               encoder.setDefragTargets(feedback.defragTargets)
-               setDefragMode(true)
-               setDefragTargets(feedback.defragTargets)
-               console.log('🔧 Defrag mode activated:', feedback.defragTargets.length, 'targets')
-             }
-           } else if (defragMode) {
-             // Defrag was active but no longer requested - exit
-             if (encoder) {
-               encoder.exitDefragMode()
-               setDefragMode(false)
-               setDefragTargets([])
-             }
-           }
 
 
            // Enable targeted encoding with missing blocks
@@ -926,11 +892,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
                             <p>Last feedback: sequence {lastProcessedSequence}</p>
                           )}
                           <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when only a few blocks remain</p>
-                          {defragMode && (
-                            <p className="text-orange-600 dark:text-orange-400 font-medium mt-1">
-                              🔧 Defrag mode active: targeting {defragTargets.length} blocks
-                            </p>
-                          )}
                   </>
                 ) : (
                   <>
@@ -954,11 +915,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
                     ) : (
                       <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
                         🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
-                        {defragMode && (
-                          <span className="block text-orange-600 dark:text-orange-400">
-                            🔧 Defrag mode active: prioritizing {defragTargets.length} blocks
-                          </span>
-                        )}
                       </p>
                     )}
                   </>
@@ -1148,7 +1104,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
               <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
               <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
               <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
-              <li className="text-blue-600 dark:text-blue-400">Sender will display feedback QR codes to signal defrag completion or request rollback</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
