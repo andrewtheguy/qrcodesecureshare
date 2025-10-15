@@ -58,7 +58,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
-  const [checksumValidation, setChecksumValidation] = useState<{ valid: boolean, message: string, range: string } | null>(null)
   const [chunkBuffer, setChunkBuffer] = useState<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
@@ -906,23 +905,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         </Alert>
       )}
 
-      {/* Checksum Validation Alert */}
-      {checksumValidation && (
-        <Alert variant={checksumValidation.valid ? "default" : "destructive"}>
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="font-medium">🔐 Checksum Validation</p>
-              <p className="text-sm">{checksumValidation.message}</p>
-              <p className="text-xs text-muted-foreground">Range: {checksumValidation.range}</p>
-              {!checksumValidation.valid && (
-                <p className="text-xs text-red-600 dark:text-red-400">
-                  ⚠️ Rollback request sent to receiver
-                </p>
-              )}
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Receiver Progress Alert */}
       {(lastStats || receivedBlocksCount > 0) && (
@@ -1167,7 +1149,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
               <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
               <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
               <li className="text-blue-600 dark:text-blue-400">Sender will display feedback QR codes to signal defrag completion or request rollback</li>
-              <li className="text-blue-600 dark:text-blue-400">If checksum mismatch is detected, sender will request rollback to last valid block</li>
           </ol>
           {skippedChunks > 0 && (
             <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
