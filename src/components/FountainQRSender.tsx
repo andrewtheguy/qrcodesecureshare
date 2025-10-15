@@ -982,22 +982,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         )}
       </div>
 
-      {/* Chunk details */}
-      {(currentChunkRef.current && encoder) && (() => {
-        const stats = encoder.getStats()
-        return (
-          <div className="text-xs text-center text-muted-foreground space-y-1">
-            <div>
-              <span className="font-medium">Degree: {currentChunkRef.current.degree}</span>
-              <span className="mx-2">|</span>
-              <span>Blocks: {currentChunkRef.current.indices.slice(0, 10).join(', ')}{currentChunkRef.current.indices.length > 10 ? '...' : ''}</span>
-            </div>
-            <div className="opacity-80">
-              avg degree {stats.avgDegree.toFixed(2)} • coverage {(stats.uniqueBlockCoverage * 100).toFixed(1)}%
-            </div>
-          </div>
-        )
-      })()}
 
       {/* Progress */}
       {chunkCount > 0 && (
