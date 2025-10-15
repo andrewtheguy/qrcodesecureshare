@@ -114,6 +114,8 @@ export interface FountainMetadata {
   timestamp: number
   totalSourceBlocks: number
   blockSize: number
+  checksum?: string
+  checksumAlg?: string
 }
 
 export interface FountainEncoderOptions {

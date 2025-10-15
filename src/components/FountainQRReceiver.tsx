@@ -4,10 +4,11 @@ import { computeChecksum } from '@/utils/checksum'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { FountainDecoder, type FountainMetadata } from '@/utils/fountainCode'
+import type { FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
+import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -72,12 +73,118 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
 
   const receivedChunkSeedsRef = useRef<Set<number>>(new Set())
-  const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
+  const workerRef = useRef<Worker | null>(null)
+  const messageIdCounterRef = useRef<number>(0)
+  const decodedBlockIndicesRef = useRef<number[]>([])
   const generatingRef = useRef(false)
+
+  // Refs for worker onmessage handler to avoid stale closures
+  const isWindowEnabledRef = useRef(isWindowEnabled)
+  const currentWindowStartRef = useRef(currentWindowStart)
+  const currentWindowEndRef = useRef(currentWindowEnd)
+  const windowTriggerThresholdRef = useRef(windowTriggerThreshold)
+  const showFeedbackQRRef = useRef(showFeedbackQR)
+  const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
 
   const addDebugLog = useCallback((message: string) => {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
+
+  // Worker initialization and cleanup
+  useEffect(() => {
+    const worker = new FountainDecoderWorker()
+    workerRef.current = worker
+
+    worker.onmessage = (event: MessageEvent) => {
+      const { type, id, ...data } = event.data
+
+      switch (type) {
+        case 'initialized':
+          addDebugLog('✓ Fountain decoder worker initialized')
+          break
+
+        case 'chunkProcessed': {
+          const { duplicate, seed, decodedBlockCount, progress, isComplete, decodedBlockIndices } = data
+          if (duplicate) {
+            addDebugLog(`⊗ Duplicate chunk seed ${seed}, ignoring`)
+            return
+          }
+          setReceivedFountainChunks(prev => prev + 1)
+          setDecodedBlocks(decodedBlockCount)
+          decodedBlockIndicesRef.current = decodedBlockIndices
+          addDebugLog(`✓ Fountain chunk #${seed} - decoded ${decodedBlockCount}/${fountainMetadata.totalSourceBlocks} blocks`)
+
+          // Window saturation check
+          const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !showFeedbackQRRef.current && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback) {
+            const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
+            const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
+
+            if (windowDecodePercentage >= windowTriggerThresholdRef.current) {
+              addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEndRef.current - currentWindowStartRef.current} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
+              handleGenerateFeedbackQR()
+              setReceiverMode('feedback-display')
+              setIsScanning(false)
+            }
+          }
+          break
+        }
+
+        case 'complete': {
+          const { data: reconstructedData, integrityOk, checksum } = data
+          const uint8Copy = new Uint8Array(reconstructedData)
+          const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
+          const url = URL.createObjectURL(blob)
+
+          setDownloadUrl(url)
+          setSuccess(true)
+          setIsScanning(false)
+
+          if (integrityOk !== undefined) {
+            setIntegrityOk(integrityOk)
+            addDebugLog(integrityOk
+              ? `🔐 Integrity OK (${checksum})`
+              : `❌ Integrity FAILED (expected ${checksum}, got computed checksum)`)
+          } else {
+            setIntegrityOk(null)
+          }
+
+          addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
+          break
+        }
+
+        case 'error': {
+          const { error, seed } = data
+          if (error === 'Invalid checksum') {
+            setInvalidChecksumCount(prev => prev + 1)
+            addDebugLog(`❌ Invalid checksum for chunk #${seed}`)
+          } else {
+            addDebugLog(`❌ Worker error: ${error}`)
+            setError(`Worker error: ${error}`)
+          }
+          break
+        }
+
+        case 'rollbackComplete': {
+          const { blockIndex, decodedBlockCount, decodedBlockIndices } = data
+          setDecodedBlocks(decodedBlockCount)
+          decodedBlockIndicesRef.current = decodedBlockIndices
+          addDebugLog(`⚠️ Rollback complete to block ${blockIndex}`)
+          break
+        }
+      }
+    }
+
+    // Initialize worker
+    worker.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
+    addDebugLog('🔧 Initializing fountain decoder worker')
+
+    // Cleanup
+    return () => {
+      worker.terminate()
+      workerRef.current = null
+    }
+  }, []) // Empty dependency array - only run on mount/unmount
 
   const calculateFirstMissingBlock = (decodedBlockIndices: number[]): number => {
     // Rely on the sorted order of getDecodedBlockIndices() - no re-sorting needed
@@ -97,246 +204,141 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
 
-  const reconstructFountainFile = useCallback(async (decoder: FountainDecoder) => {
-    try {
-      const reconstructedData = decoder.getDecodedData()
-      if (!reconstructedData) {
-        throw new Error('Failed to get decoded data')
-      }
-
-      // Ensure we pass an ArrayBuffer or valid BlobPart; slice to detach if needed
-      const uint8Copy = new Uint8Array(reconstructedData) // Ensures standard Uint8Array
-      const blob = new Blob([uint8Copy], { type: fountainMetadata.type || 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-
-      setDownloadUrl(url)
-      setSuccess(true)
-      setIsScanning(false)
-
-      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
-        const calc = await computeChecksum(uint8Copy, 'crc32')
-        const match = calc === initialMetadata.checksum
-        setIntegrityOk(match)
-        addDebugLog(match
-          ? `🔐 Integrity OK (crc32 ${calc})`
-          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
-      } else setIntegrityOk(null)
-
-      addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : 'Unknown error'
-      console.error('Reconstruction error:', err)
-      addDebugLog(`✗ Reconstruction error: ${errMsg}`)
-      setError('Failed to reconstruct file from fountain chunks')
-    }
-  }, [fountainMetadata.type, initialMetadata.checksum, initialMetadata.checksumAlg, addDebugLog, setIsScanning])
 
 
 
  const handleGenerateFeedbackQR = useCallback(async () => {
-   if (generatingRef.current) return; generatingRef.current = true
-   setIsAwaitingFeedback(true)
-   try {
-     stopScannerRef.current?.()
-     const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-     const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-     const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
-     const windowDecodePercent = decodedInWindow / windowSize
-     const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
+  if (generatingRef.current) return; generatingRef.current = true
+  setIsAwaitingFeedback(true)
+  try {
+    stopScannerRef.current?.()
+    const decodedBlockIndices = decodedBlockIndicesRef.current
+    const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+    const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
+    const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
+    const windowDecodePercent = decodedInWindow / windowSize
+    const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
-     // Compute checksum
+    // Compute checksum
 
-     const seq = feedbackSequence; // or compute next via ref
-     const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
-     const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
-     let feedback: FountainFeedback
-     if (missingBlocksCount > targetedModeThreshold) {
-       // Statistics-only feedback - compact format
-       feedback = {
-         type: 'FOUNTAIN_FEEDBACK',
-         mode: 'statistics',
-         sessionId: sessionId,
-         sequence: seq,
-         decodedInWindow: decodedInWindow,
-         totalDecoded: decodedBlockIndices.length,
-         totalBlocks: fountainMetadata.totalSourceBlocks,
-         windowStart: currentWindowStart,
-         windowEnd: currentWindowEnd,
-         progress: overallProgress * 100,
-         requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
-         firstMissingBlock: firstMissingBlock,
-       }
-     } else {
-       if (isTargetedModeTestActive) {
-         setIsTargetedModeTestActive(false)
-         addDebugLog('🎯 [TARGETED MODE TEST] Deactivated block ignoring to allow recovery.')
-       }
-       // Targeted feedback with missing block indices - for final stage
-       const decodedSet = new Set(decodedBlockIndices)
-       const missingBlocks: number[] = []
-       for (let i = 0; i < fountainMetadata.totalSourceBlocks; i++) {
-         if (!decodedSet.has(i)) {
-           missingBlocks.push(i)
-         }
-       }
-
-       const feedbackBase = {
-         type: 'FOUNTAIN_FEEDBACK' as const,
-         mode: 'targeted' as const,
-         sessionId: sessionId,
-         sequence: seq,
-         totalBlocks: fountainMetadata.totalSourceBlocks,
-         windowStart: currentWindowStart,
-         windowEnd: currentWindowEnd,
-         progress: overallProgress * 100,
-         firstMissingBlock: firstMissingBlock,
-       }
-
-       const targetedFeedback = { ...feedbackBase, missingBlocks }
-       const targetedJson = JSON.stringify(targetedFeedback)
-
-       // Check if targeted version fits (rough estimate: QR capacity ~3KB for version 40)
-       if (targetedJson.length <= 2500) {
-         feedback = targetedFeedback
-       } else {
-         // Since threshold is so small, disable fallback to statistics mode
-         addDebugLog(`📊 Payload too large (${targetedJson.length} bytes), but threshold is small - keeping targeted mode`)
-         feedback = targetedFeedback // No fallback - threshold is small enough
-       }
-     }
-
-
-     const feedbackJson = JSON.stringify(feedback)
-     let dataUrl: string
-     try {
-       dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
-     } catch (qrError) {
-       addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)
-       // Fallback: set error state and return without generating QR
-       setError('Failed to generate feedback QR code - payload too large. Try again later or use statistics mode.')
-       return
-     }
-     setFeedbackQRUrl(dataUrl)
-     setFeedbackMode(feedback.mode)
-     setShowFeedbackQR(true)
-     setReceiverMode('feedback-display')
-     setIsScanning(false)
-     setFeedbackSequence(prev => prev + 1)
-     addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
-     if (feedback.mode === 'statistics') {
-       addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
-     }
-     // Log the decision
-     addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${targetedModeThreshold}, mode: ${missingBlocksCount > targetedModeThreshold ? 'statistics' : 'targeted'}`)
-   } finally { generatingRef.current = false }
- }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isTargetedModeTestActive])
-
- const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
-   // Binary format: [0xFF][0xFD][seed(2)][degree(1)][numIndices(1)][indices...(2 each)][data...][checksum(4)]
-   let offset = 2 // Skip magic bytes
-
-   // Read seed (2 bytes)
-   const seed = (bytes[offset++] << 8) | bytes[offset++]
-
-   // Check for duplicate seed
-   if (receivedChunkSeedsRef.current.has(seed)) {
-     addDebugLog(`⊗ Duplicate chunk seed ${seed}, ignoring`)
-     return
-   }
-
-   // Read degree (1 byte)
-   const degree = bytes[offset++]
-
-   // Read numIndices (1 byte)
-   const numIndices = bytes[offset++]
-
-   // Read indices (2 bytes each)
-   const indices: number[] = []
-   for (let i = 0; i < numIndices; i++) {
-     const idx = (bytes[offset++] << 8) | bytes[offset++]
-     indices.push(idx)
-   }
-
-   if (bytes.length < offset + 4) {
-     setInvalidChecksumCount(prev => prev + 1)
-     addDebugLog(`❌ Truncated chunk #${seed}: insufficient bytes (${bytes.length}) for checksum`)
-     return
-   }
-
-   // Extract checksum (last 4 bytes)
-   const checksumStart = bytes.length - 4
-   const checksumBytes = bytes.slice(checksumStart, bytes.length)
-   const extractedChecksum = Array.from(checksumBytes).map(b => b.toString(16).padStart(2, '0')).join('')
-
-   // Extract chunk data (everything except the last 4 bytes)
-   const data = bytes.slice(offset, checksumStart)
-
-   // Validate per-QR checksum
-   const computedChecksum = await computeChecksum(data, 'crc32')
-   if (computedChecksum !== extractedChecksum) {
-     setInvalidChecksumCount(prev => prev + 1)
-     addDebugLog(`❌ Invalid checksum for chunk #${seed}: expected ${computedChecksum}, got ${extractedChecksum}`)
-     return
-   }
-   addDebugLog(`✓ Checksum valid for chunk #${seed}`)
-
-   // Record seed only after checksum validation passes
-   receivedChunkSeedsRef.current.add(seed)
-
-    // Metadata is always available (provided by parent)
-    const chunk = { seed, degree, indices, data }
-
-    // ════════════════════════════════════════════════════════════════════════════
-    // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
-    // To use: uncomment the array and add the block indices you want to ignore
-    // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
-    // ════════════════════════════════════════════════════════════════════════════
-    if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
-      const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
-      if (targetedModeTestIgnoreBlocks.length > 0) {
-        const containsIgnoredBlock = chunk.indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
-        if (containsIgnoredBlock) {
-          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
-          return
+    const seq = feedbackSequence; // or compute next via ref
+    const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
+    const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
+    let feedback: FountainFeedback
+    if (missingBlocksCount > targetedModeThreshold) {
+      // Statistics-only feedback - compact format
+      feedback = {
+        type: 'FOUNTAIN_FEEDBACK',
+        mode: 'statistics',
+        sessionId: sessionId,
+        sequence: seq,
+        decodedInWindow: decodedInWindow,
+        totalDecoded: decodedBlockIndices.length,
+        totalBlocks: fountainMetadata.totalSourceBlocks,
+        windowStart: currentWindowStart,
+        windowEnd: currentWindowEnd,
+        progress: overallProgress * 100,
+        requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
+        firstMissingBlock: firstMissingBlock,
+      }
+    } else {
+      if (isTargetedModeTestActive) {
+        setIsTargetedModeTestActive(false)
+        addDebugLog('🎯 [TARGETED MODE TEST] Deactivated block ignoring to allow recovery.')
+      }
+      // Targeted feedback with missing block indices - for final stage
+      const decodedSet = new Set(decodedBlockIndices)
+      const missingBlocks: number[] = []
+      for (let i = 0; i < fountainMetadata.totalSourceBlocks; i++) {
+        if (!decodedSet.has(i)) {
+          missingBlocks.push(i)
         }
       }
-    }
-    // ════════════════════════════════════════════════════════════════════════════
 
-    const decoded = fountainDecoderRef.current.addChunk(chunk)
-    setReceivedFountainChunks(prev => prev + 1)
-    setDecodedBlocks(fountainDecoderRef.current.getDecodedBlockCount())
+      const feedbackBase = {
+        type: 'FOUNTAIN_FEEDBACK' as const,
+        mode: 'targeted' as const,
+        sessionId: sessionId,
+        sequence: seq,
+        totalBlocks: fountainMetadata.totalSourceBlocks,
+        windowStart: currentWindowStart,
+        windowEnd: currentWindowEnd,
+        progress: overallProgress * 100,
+        firstMissingBlock: firstMissingBlock,
+      }
 
-    addDebugLog(`✓ Fountain chunk #${seed} (degree: ${degree}) - decoded ${fountainDecoderRef.current.getDecodedBlockCount()}/${fountainMetadata.totalSourceBlocks} blocks`)
+      const targetedFeedback = { ...feedbackBase, missingBlocks }
+      const targetedJson = JSON.stringify(targetedFeedback)
 
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // PRIORITY 1: WINDOW SATURATION CHECK (HIGHEST PRIORITY - MANDATORY)
-    // ═══════════════════════════════════════════════════════════════════════════════
-    // This check happens inline during chunk processing for immediate response.
-    // See comprehensive documentation at lines ~506-543 for full priority ordering
-    // and mutual exclusivity requirements.
-    // IMPORTANT: Skip for very small files (< 5x TARGETED_MODE_MAX_MISSING_BLOCKS)
-    // ═══════════════════════════════════════════════════════════════════════════════
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
-    if (isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && !showFeedbackQR && !isAwaitingFeedback && isFileLargeEnoughForFeedback) {
-      const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-      const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-      const windowDecodePercentage = decodedInWindow / (currentWindowEnd - currentWindowStart)
-
-      if (windowDecodePercentage >= windowTriggerThreshold) {
-        addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
-        // Auto-open feedback QR to streamline user flow
-        handleGenerateFeedbackQR()
-        setReceiverMode('feedback-display')
-        setIsScanning(false)
+      // Check if targeted version fits (rough estimate: QR capacity ~3KB for version 40)
+      if (targetedJson.length <= 2500) {
+        feedback = targetedFeedback
+      } else {
+        // Since threshold is so small, disable fallback to statistics mode
+        addDebugLog(`📊 Payload too large (${targetedJson.length} bytes), but threshold is small - keeping targeted mode`)
+        feedback = targetedFeedback // No fallback - threshold is small enough
       }
     }
 
-    if (decoded) {
-      reconstructFountainFile(fountainDecoderRef.current)
+
+    const feedbackJson = JSON.stringify(feedback)
+    let dataUrl: string
+    try {
+      dataUrl = await QRCode.toDataURL(feedbackJson, { width: 400, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000', light: '#FFF' } })
+    } catch (qrError) {
+      addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)
+      // Fallback: set error state and return without generating QR
+      setError('Failed to generate feedback QR code - payload too large. Try again later or use statistics mode.')
+      return
     }
-  }, [addDebugLog, fountainMetadata.totalSourceBlocks, reconstructFountainFile, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, setIsScanning, handleGenerateFeedbackQR, showFeedbackQR, isAwaitingFeedback])
+    setFeedbackQRUrl(dataUrl)
+    setFeedbackMode(feedback.mode)
+    setShowFeedbackQR(true)
+    setReceiverMode('feedback-display')
+    setIsScanning(false)
+    setFeedbackSequence(prev => prev + 1)
+    addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+    if (feedback.mode === 'statistics') {
+      addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
+    }
+    // Log the decision
+    addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${targetedModeThreshold}, mode: ${missingBlocksCount > targetedModeThreshold ? 'statistics' : 'targeted'}`)
+  } finally { generatingRef.current = false }
+}, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isTargetedModeTestActive])
+
+ const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
+   // ════════════════════════════════════════════════════════════════════════════
+   // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
+   // To use: uncomment the array and add the block indices you want to ignore
+   // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
+   // ════════════════════════════════════════════════════════════════════════════
+   if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
+     // Parse just enough to check indices
+     let offset = 2 // Skip magic bytes
+     const seed = (bytes[offset++] << 8) | bytes[offset++]
+     const degree = bytes[offset++]
+     const numIndices = bytes[offset++]
+     const indices: number[] = []
+     for (let i = 0; i < numIndices; i++) {
+       const idx = (bytes[offset++] << 8) | bytes[offset++]
+       indices.push(idx)
+     }
+
+     const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
+     if (targetedModeTestIgnoreBlocks.length > 0) {
+       const containsIgnoredBlock = indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
+       if (containsIgnoredBlock) {
+         addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
+         return
+       }
+     }
+   }
+   // ════════════════════════════════════════════════════════════════════════════
+
+   // Send binary data to worker for processing
+   workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
+   addDebugLog('📤 Sent chunk to worker for processing')
+  }, [addDebugLog, isTargetedModeTestActive])
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
     try {
@@ -361,8 +363,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       switch (parsed.command) {
         case 'rollback':
            addDebugLog(`⚠️ Rolling back to block ${parsed.rollbackToBlock}: ${parsed.reason}`)
-           fountainDecoderRef.current.rollbackToBlock(parsed.rollbackToBlock)
-           setDecodedBlocks(fountainDecoderRef.current.getDecodedBlockCount())
+           workerRef.current?.postMessage({ type: 'rollback', id: messageIdCounterRef.current++, blockIndex: parsed.rollbackToBlock })
            // Clear receivedChunkSeedsRef and reset chunk counters
            receivedChunkSeedsRef.current.clear()
            setReceivedFountainChunks(0)
@@ -393,16 +394,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         case 'requestHigherECC': {
           addDebugLog(`📈 Receiver requested higher ECC level due to scan failures`)
           // Generate feedback QR requesting higher ECC level
-          const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-          const currentDecodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-          const currentProgress = (fountainDecoderRef.current.getDecodedBlockCount() / fountainMetadata.totalSourceBlocks) * 100
+          const decodedBlockIndices = decodedBlockIndicesRef.current
+          const currentDecodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
+          const currentProgress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
           const eccFeedback: FountainFeedbackStatistics = {
             type: 'FOUNTAIN_FEEDBACK',
             mode: 'statistics',
             sessionId: sessionId,
             sequence: feedbackSequence,
             decodedInWindow: currentDecodedInWindow,
-            totalDecoded: fountainDecoderRef.current.getDecodedBlockCount(),
+            totalDecoded: decodedBlocks,
             totalBlocks: fountainMetadata.totalSourceBlocks,
             windowStart: currentWindowStart,
             windowEnd: currentWindowEnd,
@@ -485,6 +486,31 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     restartScannerRef.current = restartScanner
   }, [restartScanner])
+
+  // Keep refs in sync with state for worker onmessage handler
+  useEffect(() => {
+    isWindowEnabledRef.current = isWindowEnabled
+  }, [isWindowEnabled])
+
+  useEffect(() => {
+    currentWindowStartRef.current = currentWindowStart
+  }, [currentWindowStart])
+
+  useEffect(() => {
+    currentWindowEndRef.current = currentWindowEnd
+  }, [currentWindowEnd])
+
+  useEffect(() => {
+    windowTriggerThresholdRef.current = windowTriggerThreshold
+  }, [windowTriggerThreshold])
+
+  useEffect(() => {
+    showFeedbackQRRef.current = showFeedbackQR
+  }, [showFeedbackQR])
+
+  useEffect(() => {
+    isAwaitingFeedbackRef.current = isAwaitingFeedback
+  }, [isAwaitingFeedback])
 
   // Auto-start scanning when component mounts (after metadata is scanned)
   useEffect(() => {
@@ -581,6 +607,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setReceivedFountainChunks(0)
     setDecodedBlocks(0)
     receivedChunkSeedsRef.current.clear()
+    decodedBlockIndicesRef.current = []
     setError('')
     setSuccess(false)
     setDownloadUrl('')
@@ -595,6 +622,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
     setInvalidChecksumCount(0)
+    // Reinitialize worker state without recreating the worker instance
+    workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
 
   const handleDownload = () => {
@@ -624,8 +653,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Memoize decodedInWindow to avoid repeated filter calls
   const decodedInWindow = useMemo(() => {
     if (!isWindowEnabled) return 0
-    const decodedBlockIndices = fountainDecoderRef.current.getDecodedBlockIndices()
-    return decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
+    const decodedBlockIndices = decodedBlockIndicesRef.current
+    return decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
   }, [isWindowEnabled, currentWindowStart, currentWindowEnd])
 
   return (

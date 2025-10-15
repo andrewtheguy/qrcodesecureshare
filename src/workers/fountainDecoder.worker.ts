@@ -16,7 +16,7 @@ function ensureDecoder(): void {
 // Worker state
 let decoder: FountainDecoder | null = null;
 let receivedSeeds: Set<number> = new Set();
-let processedSeeds: Set<number> = new Set();
+const processedSeeds: Set<number> = new Set();
 let metadata: FountainMetadata | null = null;
 
 /**
@@ -156,7 +156,19 @@ self.onmessage = async (event: MessageEvent) => {
                 if (isComplete) {
                     const reconstructedData = decoder!.getDecodedData();
                     if (reconstructedData) {
-                        self.postMessage({ type: 'complete', id, data: reconstructedData }, [reconstructedData.buffer]);
+                        if (metadata?.checksum) {
+                            const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
+                            const integrityOk = computed === metadata.checksum;
+                            self.postMessage({
+                                type: 'complete',
+                                id,
+                                data: reconstructedData,
+                                integrityOk,
+                                checksum: metadata.checksum
+                            }, [reconstructedData.buffer]);
+                        } else {
+                            self.postMessage({ type: 'complete', id, data: reconstructedData }, [reconstructedData.buffer]);
+                        }
                     }
                 }
                 break;
