@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import QRCode from 'qrcode'
 import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
@@ -57,8 +57,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
-  const [currentQROptions, setCurrentQROptions] = useState(qrOptions)
-  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
+  const currentQROptions = useMemo(() => qrOptions, [qrOptions])
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
   const [chunkBuffer, setChunkBuffer] = useState<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
