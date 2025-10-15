@@ -369,7 +369,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Suggested test file size: 60KB (100 blocks) for meaningful defrag testing
     // ════════════════════════════════════════════════════════════════════════════
     if (process.env.NODE_ENV === 'development' && isDefragTestActive) {
-      const defragTestIgnoreBlocks: number[] = [] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
+      const defragTestIgnoreBlocks: number[] = [2,4,6,8,10,12] // Ignore blocks [2, 4, 6, 8] to simulate scattered fragmentation (blocks 0, 1, 3, 5, 7, 9 received)
       if (defragTestIgnoreBlocks.length > 0) {
         const containsIgnoredBlock = chunk.indices.some(i => defragTestIgnoreBlocks.includes(i))
         if (containsIgnoredBlock) {
