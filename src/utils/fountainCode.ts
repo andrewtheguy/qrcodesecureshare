@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -10,6 +10,9 @@ import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from
  *  - Renormalizes distribution when truncated by max degree
  *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
  *  - Simplified generateChunk(): no parameter – encoder owns all tuning
+ *  - Segment-based windowing for files > 256KB: treats large files as multiple small file segments
+ *    with fixed 50KB increments instead of percentage-based expansion, optimized for QR code transfers
+ *    where manual camera scanning makes time-based metrics irrelevant
  *
  * Recommended single-session max file size with default blockSize=400 bytes:
  *   Green zone: ≤ ~200 KB (k ≲ 500)
@@ -186,8 +189,9 @@ export class FountainEncoder {
       this.windowEnabled = true
       this.windowEnd = Math.ceil(numBlocks * 0.5)
     } else {
+      // Large files (>256KB): Use segment-based windowing with fixed 100KB segments
       this.windowEnabled = true
-      this.windowEnd = Math.min(Math.ceil(WINDOW_MAX_BYTES / this.blockSize), numBlocks)
+      this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }
   }
 
@@ -235,7 +239,7 @@ export class FountainEncoder {
   }
 
   /**
-   * Expand the window by 50% of current window size
+   * Expand the window by fixed WINDOW_EXPANSION_SIZE_BYTES (50KB ≈ 125 blocks)
    * Returns true if expansion occurred, false if already at end
    */
   expandWindow(): boolean {
@@ -243,9 +247,8 @@ export class FountainEncoder {
       return false // Already at the end
     }
 
-    const currentSize = this.windowEnd - this.windowStart
-    const expansion = Math.ceil(currentSize * 0.5)
-    this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)
+    const expansionBlocks = getWindowExpansionSizeBlocks(this.blockSize)
+    this.windowEnd = Math.min(this.windowEnd + expansionBlocks, this.sourceBlocks.length)
     return true
   }
 
@@ -260,7 +263,16 @@ export class FountainEncoder {
     totalBlocks: number
     isWindowComplete: boolean
     skipBlocksBelow: number
+    currentSegment: number
+    totalSegments: number
+    segmentProgress: number
+    segmentSizeBlocks: number
   } {
+    const { segmentSizeBlocks, totalSegments, currentSegment } = this.getSegmentMetrics()
+    // TODO: segmentProgress should be calculated based on receiver feedback (decoded blocks within current segment)
+    // For now, set to 0 as encoder doesn't track decoded blocks
+    const segmentProgress = 0
+
     return {
       windowEnabled: this.windowEnabled,
       windowStart: this.windowStart,
@@ -268,8 +280,22 @@ export class FountainEncoder {
       windowSize: this.windowEnd - this.windowStart,
       totalBlocks: this.sourceBlocks.length,
       isWindowComplete: this.windowEnd >= this.sourceBlocks.length,
-      skipBlocksBelow: this.skipBlocksBelow
+      skipBlocksBelow: this.skipBlocksBelow,
+      currentSegment,
+      totalSegments,
+      segmentProgress,
+      segmentSizeBlocks
     }
+  }
+
+  /**
+   * Get segment metrics for segment-based windowing calculations
+   */
+  private getSegmentMetrics(): { segmentSizeBlocks: number, totalSegments: number, currentSegment: number } {
+    const segmentSizeBlocks = getSegmentSizeBlocks(this.blockSize)
+    const totalSegments = Math.ceil(this.sourceBlocks.length / segmentSizeBlocks)
+    const currentSegment = Math.min(totalSegments, Math.ceil(this.windowEnd / segmentSizeBlocks))
+    return { segmentSizeBlocks, totalSegments, currentSegment }
   }
 
   /**

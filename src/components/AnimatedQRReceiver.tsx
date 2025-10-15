@@ -22,7 +22,6 @@ interface DetectedMetadata {
   checksumAlg?: string
   windowEnabled?: boolean
   initialWindowBlocks?: number
-  windowExpansionFactor?: number
   windowTriggerThreshold?: number
   windowStart?: number
 }
@@ -87,7 +86,6 @@ export function AnimatedQRReceiver() {
           checksumAlg: parsed.checksumAlg,
           windowEnabled: parsed.windowEnabled,
           initialWindowBlocks: parsed.initialWindowBlocks,
-          windowExpansionFactor: parsed.windowExpansionFactor,
           windowTriggerThreshold: parsed.windowTriggerThreshold,
           windowStart: parsed.windowStart
         })
@@ -384,7 +382,6 @@ export function AnimatedQRReceiver() {
               checksumAlg: detectedMetadata.checksumAlg,
               windowEnabled: detectedMetadata.windowEnabled,
               initialWindowBlocks: detectedMetadata.initialWindowBlocks,
-              windowExpansionFactor: detectedMetadata.windowExpansionFactor,
               windowTriggerThreshold: detectedMetadata.windowTriggerThreshold,
               windowStart: detectedMetadata.windowStart
             }}

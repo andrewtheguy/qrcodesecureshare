@@ -8,7 +8,7 @@ import { FountainQRSender } from './FountainQRSender'
 import { FountainQRSenderLegacy } from './FountainQRSenderLegacy'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES } from '@/utils/fountainConfig'
 
 const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
@@ -100,7 +100,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
              if (size <= WINDOW_HALF_THRESHOLD) {
                initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
              } else {
-               initialWindowBlocks = Math.min(Math.ceil(WINDOW_MAX_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
+               initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
              }
            }
 
@@ -120,8 +120,8 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
             checksum,
             windowEnabled,
             initialWindowBlocks,
-            windowExpansionFactor: 0.5,
-            windowTriggerThreshold: 0.5,
+            windowExpansionSizeBytes: WINDOW_EXPANSION_SIZE_BYTES,
+            segmentSizeBytes: SEGMENT_SIZE_BYTES,
             windowStart: 0
           }
           if (cancelled) return
@@ -270,7 +270,7 @@ export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
           >
             <div className="font-bold text-lg">🔁 Fountain Code Transfer (Recommended)</div>
             <div className="text-sm text-left text-muted-foreground">
-              • Generates random coded chunks<br/>
+              • Generates random coded chunks with segment-based windowing for large files<br/>
               • Receiver needs ~105-115% of source blocks (varies by file size)<br/>
               • Can skip/miss chunks and still decode<br/>
               • Preferred for large files<br/>

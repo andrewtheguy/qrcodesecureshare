@@ -5,7 +5,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
-import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { generateNonDataQR } from '@/utils/qrUtils'
 
@@ -21,7 +21,6 @@ interface FountainQRReceiverProps {
     checksumAlg?: string
     windowEnabled?: boolean
     initialWindowBlocks?: number
-    windowExpansionFactor?: number
     windowTriggerThreshold?: number
     windowStart?: number
   }
@@ -56,7 +55,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
   const [currentWindowEnd, setCurrentWindowEnd] = useState<number>(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
-  const [windowExpansionFactor] = useState<number>(initialMetadata.windowExpansionFactor ?? 0.5)
   const [windowTriggerThreshold] = useState<number>(initialMetadata.windowTriggerThreshold ?? 0.5)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
@@ -421,25 +419,29 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
            break
 
         case 'acknowledge':
-          addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
-          if (parsed.acknowledgedSequence === feedbackSequence - 1) {
-            // Valid ACK - resume data scanning
-            setShowFeedbackQR(false)
-            setFeedbackQRUrl('')
-            setReceiverMode('data-scanning')
-            setIsScanning(true)
-            setIsAwaitingFeedback(false)
-            // Expand window if needed
-            const expansion = Math.ceil((currentWindowEnd - currentWindowStart) * windowExpansionFactor)
-            const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
-            setCurrentWindowEnd(newWindowEnd)
-            addDebugLog(`🪟 Window expanded to ${currentWindowStart}-${newWindowEnd} blocks`)
-            await restartScannerRef.current?.()
-          } else {
-            addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
-          }
-          setSenderFeedbackMessage(parsed.message)
-          break
+            addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
+            if (parsed.acknowledgedSequence === feedbackSequence - 1) {
+              // Valid ACK - resume data scanning
+              setShowFeedbackQR(false)
+              setFeedbackQRUrl('')
+              setReceiverMode('data-scanning')
+              setIsScanning(true)
+              setIsAwaitingFeedback(false)
+              // Expand window only if sender actually expanded it
+              if (parsed.windowExpanded) {
+                const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
+                const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
+                setCurrentWindowEnd(newWindowEnd)
+                addDebugLog(`🪟 Window expanded by fixed segment to ${currentWindowStart}-${newWindowEnd} blocks`)
+              }
+              // Stop the ACK scanner before restarting data scanner
+              stopScannerRef.current?.()
+              await restartScannerRef.current?.()
+            } else {
+              addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
+            }
+           setSenderFeedbackMessage(parsed.message)
+           break
 
         case 'requestHigherECC': {
           addDebugLog(`📈 Receiver requested higher ECC level due to scan failures`)
@@ -480,7 +482,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       addDebugLog(`✗ Error parsing sender feedback: ${errorMsg}`)
       console.error('Sender feedback parse error:', err)
     }
-  }, [sessionId, lastSenderFeedbackSequence, addDebugLog, currentWindowStart, currentWindowEnd, windowExpansionFactor, feedbackSequence, fountainMetadata.totalSourceBlocks])
+  }, [sessionId, lastSenderFeedbackSequence, addDebugLog, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks])
 
   const handleScan = useCallback((data: string) => {
     try {
@@ -643,6 +645,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setReceiverMode('feedback-display')
       setIsScanning(false)
       prevMissingBlocksRef.current = currentMissingBlocks
+      return
+    }
+
+    // Prevent getting stuck in targeted mode when window expansion is needed
+    // If we're in targeted mode but have many missing blocks, switch back to statistics mode
+    const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks
+    if (isStuckInTargetedMode) {
+      addDebugLog(`🔄 Detected stuck targeted mode (${currentMissingBlocks} missing > ${targetedModeThreshold * 2} threshold) - forcing statistics mode for window expansion`)
+      handleGenerateFeedbackQR()
+      setReceiverMode('feedback-display')
+      setIsScanning(false)
       return
     }
 
@@ -814,8 +827,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           </div>
           {isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && (
             <div className="text-xs text-muted-foreground">
-              Current window: {currentWindowStart}-{currentWindowEnd} blocks ({(((currentWindowEnd - currentWindowStart) / fountainMetadata.totalSourceBlocks) * 100).toFixed(1)}% of file) |
-              Decoded in window: {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks
+              Windowing is enabled
             </div>
           )}
         </div>
