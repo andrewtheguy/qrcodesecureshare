@@ -419,25 +419,27 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
            break
 
         case 'acknowledge':
-           addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
-           if (parsed.acknowledgedSequence === feedbackSequence - 1) {
-             // Valid ACK - resume data scanning
-             setShowFeedbackQR(false)
-             setFeedbackQRUrl('')
-             setReceiverMode('data-scanning')
-             setIsScanning(true)
-             setIsAwaitingFeedback(false)
-             // Expand window only if sender actually expanded it
-             if (parsed.windowExpanded) {
-               const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
-               const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
-               setCurrentWindowEnd(newWindowEnd)
-               addDebugLog(`🪟 Window expanded by fixed segment to ${currentWindowStart}-${newWindowEnd} blocks`)
-             }
-             await restartScannerRef.current?.()
-           } else {
-             addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
-           }
+            addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
+            if (parsed.acknowledgedSequence === feedbackSequence - 1) {
+              // Valid ACK - resume data scanning
+              setShowFeedbackQR(false)
+              setFeedbackQRUrl('')
+              setReceiverMode('data-scanning')
+              setIsScanning(true)
+              setIsAwaitingFeedback(false)
+              // Expand window only if sender actually expanded it
+              if (parsed.windowExpanded) {
+                const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
+                const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
+                setCurrentWindowEnd(newWindowEnd)
+                addDebugLog(`🪟 Window expanded by fixed segment to ${currentWindowStart}-${newWindowEnd} blocks`)
+              }
+              // Stop the ACK scanner before restarting data scanner
+              stopScannerRef.current?.()
+              await restartScannerRef.current?.()
+            } else {
+              addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
+            }
            setSenderFeedbackMessage(parsed.message)
            break
 
@@ -646,6 +648,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       return
     }
 
+    // Prevent getting stuck in targeted mode when window expansion is needed
+    // If we're in targeted mode but have many missing blocks, switch back to statistics mode
+    const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks
+    if (isStuckInTargetedMode) {
+      addDebugLog(`🔄 Detected stuck targeted mode (${currentMissingBlocks} missing > ${targetedModeThreshold * 2} threshold) - forcing statistics mode for window expansion`)
+      handleGenerateFeedbackQR()
+      setReceiverMode('feedback-display')
+      setIsScanning(false)
+      return
+    }
+
 
     prevMissingBlocksRef.current = currentMissingBlocks
   }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
@@ -814,8 +827,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           </div>
           {isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && (
             <div className="text-xs text-muted-foreground">
-              Current window: {currentWindowStart}-{currentWindowEnd} blocks ({(((currentWindowEnd - currentWindowStart) / fountainMetadata.totalSourceBlocks) * 100).toFixed(1)}% of file) |
-              Decoded in window: {decodedInWindow}/{currentWindowEnd - currentWindowStart} blocks
+              Windowing is enabled
             </div>
           )}
         </div>
