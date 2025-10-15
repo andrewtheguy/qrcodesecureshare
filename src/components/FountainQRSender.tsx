@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
@@ -7,6 +6,7 @@ import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from 
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { FountainQRDataDisplay } from './FountainQRDataDisplay'
+import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'
 
 interface FountainQRSenderProps {
   file: File
@@ -21,7 +21,6 @@ interface FountainQRSenderProps {
 export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
-  const [scanningFeedback, setScanningFeedback] = useState(false)
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
   const [windowInfo, setWindowInfo] = useState<{
     windowEnabled: boolean
@@ -46,12 +45,8 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
+  const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
-  const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
-  const [lastAckQRUrl, setLastAckQRUrl] = useState<string>('')
-  const feedbackVideoRef = useRef<HTMLVideoElement>(null)
-  const feedbackScannerRef = useRef<QrScanner | null>(null)
-  const processingRef = useRef(false)
 
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
@@ -87,7 +82,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         setEncoder(fountainEncoder)
         setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
-        setLastAckQRUrl('')
       } catch (err) {
         setError('Failed to process file')
         console.error(err)
@@ -106,272 +100,66 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
       setLastProcessedSequence(-1)
    }, [sessionId, file])
 
-  // Feedback scanner initialization
-  useEffect(() => {
-    if (!scanningFeedback || !feedbackVideoRef.current) {
-      return
+
+
+
+
+  const handleFeedbackProcessed = (feedbackData: {
+    sequence: number;
+    mode: 'statistics' | 'targeted';
+    receivedBlocks?: Set<number>;
+    lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number };
+    windowExpanded: boolean;
+    message: string;
+  }) => {
+    setLastProcessedSequence(feedbackData.sequence);
+    setLastFeedbackMode(feedbackData.mode);
+    if (feedbackData.mode === 'statistics') {
+      setLastStats(feedbackData.lastStats || null);
+      setReceivedBlocks(new Set());
+    } else if (feedbackData.mode === 'targeted') {
+      setReceivedBlocks(feedbackData.receivedBlocks || new Set());
+      setLastStats(null);
     }
+    console.log('Feedback processed:', feedbackData);
+  };
 
-    const scanner = new QrScanner(
-      feedbackVideoRef.current,
-      (result) => {
-        handleFeedbackScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
-      }
-    )
+  const handleAckGenerated = (ackUrl: string, sequence: number) => {
+    setSenderFeedbackSequence(sequence + 1);
+  };
 
-    feedbackScannerRef.current = scanner
-    scanner.start().catch((err) => {
-      console.error('Feedback scanner start error:', err)
-      setError('Failed to start camera for feedback scanning')
-      setScanningFeedback(false)
-    })
+  const handleFeedbackModeChange = (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => {
+    setSenderMode(mode);
+    console.log('Mode changed to:', mode);
+  };
 
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [scanningFeedback])
+  const handleFeedbackError = (error: string) => {
+    setError(error);
+  };
 
+  const handleUpdateWindowInfo = (windowInfo: {
+    windowEnabled: boolean;
+    windowStart: number;
+    windowEnd: number;
+    windowSize: number;
+    totalBlocks: number;
+    isWindowComplete: boolean;
+    skipBlocksBelow: number;
+    currentSegment: number;
+    totalSegments: number;
+    segmentProgress: number;
+    segmentSizeBlocks: number;
+  }) => {
+    setWindowInfo(windowInfo);
+  };
 
-  const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
-    try {
-      const dataUrl = await generateNonDataQR(feedback)
-      setSenderFeedbackSequence(prev => prev + 1)
-      setLastAckQRUrl(dataUrl)
-    } catch (err) {
-      console.error('ACK QR generation failed:', err)
-      setError('Failed to generate ACK QR. Please try scanning feedback again.')
-    }
-  }
+  const handleUpdateLastDecodedInWindow = (count: number) => {
+    setLastDecodedInWindow(count);
+  };
 
-  const handleFeedbackScan = async (data: string) => {
-    // Guard against multiple rapid callbacks
-    if (processingRef.current) {
-      console.warn('Already processing feedback, ignoring duplicate callback')
-      return
-    }
-    processingRef.current = true
-
-    let valid = true
-    try {
-      const feedback: FountainFeedback = JSON.parse(data)
-
-      // Early validation guard
-      if (feedback.type !== 'FOUNTAIN_FEEDBACK' || typeof feedback.sessionId !== 'number' || feedback.sessionId !== sessionId) {
-        console.warn(`Invalid feedback: expected type='FOUNTAIN_FEEDBACK' and sessionId=${sessionId}, got type='${feedback.type}' and sessionId=${feedback.sessionId}`)
-        valid = false
-      }
-
-      const feedbackSequence = feedback.sequence
-
-      // Validate sequence is a number
-      if (typeof feedbackSequence !== 'number') {
-        console.warn('Invalid feedback: missing or invalid sequence number')
-        valid = false
-      }
-
-      // Reject duplicate or out-of-order feedback
-      if (feedbackSequence <= lastProcessedSequence) {
-        console.warn(`Ignoring duplicate/stale feedback: sequence ${feedbackSequence} (last processed: ${lastProcessedSequence})`)
-        valid = false
-      }
-
-      if (!valid) {
-        // cleanup
-        feedbackScannerRef.current?.stop()
-        setScanningFeedback(false)
-        processingRef.current = false
-        return
-      }
-
-       if (feedback.type === 'FOUNTAIN_FEEDBACK') {
-        // Extract firstMissingBlock from feedback (default to 0 if not present)
-        const firstMissingBlock = feedback.firstMissingBlock ?? 0
-
-        console.log('Processing feedback sequence:', feedbackSequence, '(last:', lastProcessedSequence, ')')
-
-        // Handle both statistics and targeted feedback modes
-        if (feedback.mode === 'statistics') {
-          // Statistics-only feedback - no targeted encoding
-          console.log('Received statistics feedback:', feedback.totalDecoded, '/', feedback.totalBlocks, 'blocks')
-  
-  
-  
-  
-          // Clear targeted mode so encoder doesn't use stale missing-blocks information
-          if (encoder) {
-            encoder.setReceivedBlocks([])
-          }
-  
-          // Apply skip threshold
-          if (encoder) {
-            encoder.setSkipBlocksBelow(firstMissingBlock)
-            setWindowInfo(encoder.getWindowInfo())
-            console.log('Skip blocks below:', firstMissingBlock, '(contiguous prefix)')
-          }
-  
-          // Update UI state for progress display
-          setReceivedBlocks(new Set()) // Clear targeted mode
-          setLastStats({
-            totalDecoded: feedback.totalDecoded,
-            totalBlocks: feedback.totalBlocks,
-            windowStart: feedback.windowStart,
-            windowEnd: feedback.windowEnd,
-          })
-  
-          // Check if window expansion is requested
-          let windowExpanded = false
-          if (encoder && feedback.requestWindowExpansion) {
-            const currentWindow = encoder.getWindowInfo()
-            if (!currentWindow.isWindowComplete) {
-              const now = Date.now()
-              if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                windowExpanded = encoder.expandWindow()
-                if (windowExpanded) {
-                  setWindowInfo(encoder.getWindowInfo())
-                  setLastWindowExpansion(now)
-                  console.log('Window expanded based on statistics feedback:', encoder.getWindowInfo())
-                }
-              }
-            }
-          }
-
-          // Update estimated chunks based on statistics
-          const totalBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-          const missingBlocks = totalBlocks - feedback.totalDecoded
-          // Note: chunkCount is now managed by subcomponent, so we can't update estimatedChunksNeeded here
-          // The subcomponent will handle its own estimates based on the encoder
-
-          // Generate ACK QR
-          const ackFeedback: SenderFeedback = {
-            type: 'SENDER_FEEDBACK',
-            sessionId: sessionId,
-            sequence: senderFeedbackSequence,
-            command: 'acknowledge',
-            acknowledgedSequence: feedbackSequence,
-            message: windowExpanded ? `Feedback processed successfully. Window expanded, ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.` : `Feedback processed successfully. ${feedback.totalDecoded}/${feedback.totalBlocks} blocks decoded.`,
-            windowExpanded: windowExpanded
-          }
-          await generateSenderFeedbackQR(ackFeedback)
-          setSenderMode('ack-display')
-  
-          // Update last processed sequence after successful processing
-          setLastProcessedSequence(feedbackSequence)
-          console.log('Feedback processed - ACK QR generated')
-        } else if (feedback.mode === 'targeted') {
-            // Targeted feedback with missing block indices
-            const missingBlocks = (feedback as FountainFeedbackTargeted).missingBlocks
-            console.log('Received targeted feedback:', missingBlocks.length, 'missing blocks')
-
-            let windowExpanded = false
-
-            // Enable targeted encoding with missing blocks
-            setReceivedBlocks(new Set()) // Clear received blocks since we're now using missing blocks
-            setLastStats(null) // Clear statistics mode
-            if (encoder) {
-              encoder.setMissingBlocks(missingBlocks)
-              encoder.setSkipBlocksBelow(firstMissingBlock)
-              setWindowInfo(encoder.getWindowInfo())
-              console.log('Skip blocks below:', firstMissingBlock, '/', missingBlocks.length, 'missing')
-
-              // Check for window expansion
-              const currentWindow = encoder.getWindowInfo()
-              if (!currentWindow.windowEnabled || currentWindow.isWindowComplete) {
-                // Skip expansion logic if windowing not enabled or already complete
-              } else {
-                // Calculate decoded blocks in current window (total - missing in window)
-                const missingInWindow = missingBlocks.filter((blockIdx: number) =>
-                  blockIdx >= currentWindow.windowStart && blockIdx < currentWindow.windowEnd
-                ).length
-                const decodedInWindow = currentWindow.windowSize - missingInWindow
-
-                if (decodedInWindow > lastDecodedInWindow) {
-                  // Update last decoded count
-                  setLastDecodedInWindow(decodedInWindow)
-
-                  // Calculate window decode percentage
-                  const windowDecodePercent = decodedInWindow / currentWindow.windowSize
-
-                  // Check expansion trigger (50% threshold)
-                  if (windowDecodePercent >= 0.5) {
-                    // Check if we haven't expanded too recently (minimum 2 seconds between expansions)
-                    const now = Date.now()
-                    if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                      windowExpanded = encoder.expandWindow()
-                      if (windowExpanded) {
-                        setWindowInfo(encoder.getWindowInfo())
-                        setLastWindowExpansion(now)
-                        console.log('Window expanded:', encoder.getWindowInfo())
-                      }
-                    }
-                  }
-                }
-              }
-            }
-
-            // Update estimated chunks needed based on feedback
-            const blocksMissing = missingBlocks.length
-
-            // Note: chunkCount and estimatedChunksNeeded are now managed by subcomponent
-            // The subcomponent will handle its own estimates based on the encoder and feedback
-
-            // Generate ACK QR
-            const ackFeedback: SenderFeedback = {
-              type: 'SENDER_FEEDBACK',
-              sessionId: sessionId,
-              sequence: senderFeedbackSequence,
-              command: 'acknowledge',
-              acknowledgedSequence: feedbackSequence,
-              message: windowExpanded ? `Targeted mode activated. Window expanded, focusing on ${blocksMissing} missing blocks.` : `Targeted mode activated. Focusing on ${blocksMissing} missing blocks.`,
-              windowExpanded: windowExpanded
-            }
-           await generateSenderFeedbackQR(ackFeedback)
-           setSenderMode('ack-display')
-
-           // Update last processed sequence after successful processing
-           setLastProcessedSequence(feedbackSequence)
-           console.log('Feedback processed - ACK QR generated')
-        }
-
-        setScanningFeedback(false)
-
-        // Stop the scanner immediately after validation to avoid multiple rapid callbacks
-        if (feedbackScannerRef.current) {
-          feedbackScannerRef.current.stop()
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse feedback QR:', err)
-      valid = false
-    } finally {
-      if (!valid) {
-        // cleanup
-        feedbackScannerRef.current?.stop()
-        setScanningFeedback(false)
-      }
-      processingRef.current = false
-    }
-  }
-
-  const wasPlayingRef = useRef(false)
-  const handleStartFeedbackScan = () => {
-    wasPlayingRef.current = false // Data display is now handled by subcomponent
-    setScanningFeedback(true)
-    setSenderMode('feedback-scanning')
-    setError('')
-  }
-
-  const handleStopFeedbackScan = () => {
-    setScanningFeedback(false)
-    feedbackScannerRef.current?.stop()
-    setSenderMode('data-display')
-    // Data display will resume automatically when subcomponent becomes active
-  }
+  const handleUpdateLastWindowExpansion = (timestamp: number) => {
+    setLastWindowExpansion(timestamp);
+  };
 
   const handleChunkGenerated = (chunkNum: number, chunk: FountainChunk) => {
     // Optional: Log chunk generation for debugging
@@ -406,32 +194,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
 
   return (
     <div className="space-y-4">
-      {/* Feedback Scanner Mode */}
-      {senderMode === 'feedback-scanning' && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📷 Scanning for Feedback QR</p>
-              <div className="relative bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={feedbackVideoRef}
-                  className="w-full h-auto"
-                  style={{ maxHeight: '300px' }}
-                />
-                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-                  ● SCANNING
-                </div>
-              </div>
-              <p className="text-sm">
-                Point camera at the receiver's feedback QR code to see decoding progress.
-              </p>
-              <Button onClick={handleStopFeedbackScan} variant="outline" className="w-full">
-                Cancel Scan
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* Window Progress Alert */}
       {windowInfo && windowInfo.windowEnabled && (
@@ -465,7 +227,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress {receivedBlocksCount === 0 ? '(Statistics Mode)' : '(Targeted Mode Active)'}</p>
+              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Statistics Mode)'}</p>
               <div className="text-sm">
                 {receivedBlocksCount === 0 && lastStats ? (
                   <>
@@ -529,20 +291,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           onBufferUpdate={handleBufferUpdate}
           onError={handleDataDisplayError}
         />
-      ) : senderMode === 'feedback-scanning' ? (
-        <div className="flex justify-center bg-white p-4 rounded-lg">
-          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-            <p className="text-muted-foreground">Feedback scanning mode active<br/>Scan receiver's feedback QR below</p>
-          </div>
-        </div>
-      ) : senderMode === 'ack-display' && lastAckQRUrl ? (
-        <div className="flex justify-center bg-white p-4 rounded-lg">
-          <div className="space-y-3">
-            <img src={lastAckQRUrl} alt="ACK QR Code" className="max-w-full h-auto" />
-            <p className="text-sm text-center font-medium">ACK QR Code - Show to receiver</p>
-            <p className="text-xs text-center text-muted-foreground">Receiver must scan this before resuming data scanning</p>
-          </div>
-        </div>
       ) : (
         <div className="flex justify-center bg-white p-4 rounded-lg">
           <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
@@ -552,6 +300,25 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           </div>
         </div>
       )}
+
+      {/* Feedback Scanner Component */}
+      <FountainQRFeedbackScanner
+        encoder={encoder}
+        sessionId={sessionId}
+        isActive={senderMode === 'feedback-scanning'}
+        lastProcessedSequence={lastProcessedSequence}
+        senderFeedbackSequence={senderFeedbackSequence}
+        windowInfo={windowInfo}
+        lastDecodedInWindow={lastDecodedInWindow}
+        lastWindowExpansion={lastWindowExpansion}
+        onFeedbackProcessed={handleFeedbackProcessed}
+        onAckGenerated={handleAckGenerated}
+        onModeChange={handleFeedbackModeChange}
+        onError={handleFeedbackError}
+        onUpdateWindowInfo={handleUpdateWindowInfo}
+        onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
+        onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
+      />
 
       {/* Status indicators for non-data-display modes */}
       {senderMode !== 'data-display' && (
@@ -565,37 +332,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         </div>
       )}
 
-      {/* Controls */}
-      <div className="space-y-3">
-        <div className="flex gap-2 justify-center">
-          <Button
-            size="sm"
-            onClick={handleStartFeedbackScan}
-            disabled={!encoder || senderMode === 'feedback-scanning' || senderMode === 'ack-display'}
-            variant={senderMode === 'feedback-scanning' ? 'default' : 'outline'}
-          >
-            📷 Scan Feedback QR
-          </Button>
-          {senderMode === 'ack-display' && (
-            <Button
-              size="sm"
-              onClick={() => setSenderMode('data-display')}
-              variant="default"
-            >
-              ▶ Resume Data Display
-            </Button>
-          )}
-          {senderMode === 'data-display' && lastAckQRUrl && (
-            <Button
-              size="sm"
-              onClick={() => setSenderMode('ack-display')}
-              variant="outline"
-            >
-              📊 Show Last ACK QR
-            </Button>
-          )}
-        </div>
-      </div>
 
       {/* Instructions */}
       <Alert>
