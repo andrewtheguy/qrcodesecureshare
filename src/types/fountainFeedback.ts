@@ -29,10 +29,6 @@ interface FountainFeedbackBase {
   defragTargets: number[];
   /** Severity metric (0-1) */
   fragmentationScore: number;
-  /** CRC32 of contiguous prefix */
-  contiguousChecksum: string;
-  /** Range covered by checksum */
-  contiguousChecksumRange: [number, number];
   /** Indicates receiver has decoded all defrag targets */
   defragComplete?: boolean;
 }
@@ -100,10 +96,6 @@ export interface SenderFeedbackRollback extends SenderFeedbackBase {
   rollbackToBlock: number;
   /** Why rollback is needed */
   reason: string;
-  /** Checksum of blocks [0, rollbackToBlock) */
-  lastValidChecksum: string;
-  /** Explicit range covered by checksum */
-  lastValidChecksumRange: [number, number];
 }
 
 /**

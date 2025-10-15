@@ -137,11 +137,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }
 
 
-  const computeContiguousChecksum = async (decoder: FountainDecoder, startIdx: number, endIdx: number): Promise<string> => {
-    const data = decoder.getContiguousBlocksData(startIdx, endIdx)
-    if (!data) return ''
-    return await computeChecksum(data, 'crc32')
-  }
 
   const reconstructFountainFile = useCallback(async (decoder: FountainDecoder) => {
     try {
@@ -193,8 +188,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
      // Detect fragmentation and compute checksum
      const fragmentation = detectFragmentation(decodedBlockIndices, fountainMetadata.totalSourceBlocks)
-     const contiguousChecksum = firstMissingBlock > 0 ? await computeContiguousChecksum(fountainDecoderRef.current, 0, firstMissingBlock) : ''
-     const contiguousChecksumRange: [number, number] = [0, firstMissingBlock]
 
      // Defensive fallback: clear expectingSenderFeedback if no fragmentation
      if (!fragmentation.isFragmented) {
@@ -232,8 +225,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          firstMissingBlock: firstMissingBlock,
          defragTargets: fragmentation.defragTargets,
          fragmentationScore: fragmentation.fragmentationScore,
-         contiguousChecksum: contiguousChecksum,
-         contiguousChecksumRange: contiguousChecksumRange,
          defragComplete: defragComplete
        }
      } else {
@@ -262,8 +253,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
          firstMissingBlock: firstMissingBlock,
          defragTargets: fragmentation.defragTargets,
          fragmentationScore: fragmentation.fragmentationScore,
-         contiguousChecksum: contiguousChecksum,
-         contiguousChecksumRange: contiguousChecksumRange,
          defragComplete: defragComplete
        }
 
@@ -316,7 +305,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
      setIsScanning(false)
      setFeedbackSequence(prev => prev + 1)
      addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
-     addDebugLog(`📊 Contiguous blocks: 0-${firstMissingBlock - 1} (${firstMissingBlock} blocks), checksum: ${contiguousChecksum}`)
      if (fragmentation.isFragmented) {
        addDebugLog(`🔧 Defrag targets: ${fragmentation.defragTargets.join(', ')}`)
      }
@@ -529,8 +517,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             firstMissingBlock: calculateFirstMissingBlock(decodedBlockIndices),
             defragTargets: [],
             fragmentationScore: 0,
-            contiguousChecksum: '',
-            contiguousChecksumRange: [0, 0],
             defragComplete: false,
             requestHigherECC: true
           }

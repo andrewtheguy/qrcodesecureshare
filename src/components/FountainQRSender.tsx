@@ -560,20 +560,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     }
   }, [scanningFeedback])
 
-  const validateContiguousChecksum = async (encoder: FountainEncoder, startIdx: number, endIdx: number, expectedChecksum: string): Promise<{ valid: boolean, message: string, range: string, computedChecksum: string }> => {
-    const data = encoder.getContiguousBlocksData(startIdx, endIdx)
-    if (!data) {
-      return { valid: false, message: 'Could not get contiguous blocks data', range: `${startIdx}-${endIdx}`, computedChecksum: '' }
-    }
-
-    const computedChecksum = await computeChecksum(data, 'crc32')
-    const valid = computedChecksum === expectedChecksum
-    const message = valid
-      ? `Checksum valid: ${computedChecksum}`
-      : `Checksum mismatch: expected ${expectedChecksum}, got ${computedChecksum}`
-
-    return { valid, message, range: `${startIdx}-${endIdx}`, computedChecksum }
-  }
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback): Promise<void> => {
     const feedbackJson = JSON.stringify(feedback)
@@ -657,31 +643,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
             }
           }
   
-          // Validate checksum
-          if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
-            const [start, end] = feedback.contiguousChecksumRange
-            if (end > start && encoder) {
-              validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
-                setChecksumValidation(validation)
-                console.log('🔐', validation.message)
-  
-                // If checksum mismatch, generate rollback sender feedback
-                if (!validation.valid) {
-                  const rollbackFeedback: SenderFeedback = {
-                    type: 'SENDER_FEEDBACK',
-                    sessionId: sessionId,
-                    sequence: senderFeedbackSequence,
-                    command: 'rollback',
-                    rollbackToBlock: start,
-                    reason: `Checksum mismatch detected: ${validation.message}`,
-                    lastValidChecksum: validation.computedChecksum,
-                    lastValidChecksumRange: [start, end]
-                  }
-                  generateSenderFeedbackQR(rollbackFeedback)
-                }
-              })
-            }
-          }
   
           // Clear targeted mode so encoder doesn't use stale missing-blocks information
           if (encoder) {
@@ -770,31 +731,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
              }
            }
 
-           // Validate checksum
-           if (feedback.contiguousChecksum && feedback.contiguousChecksumRange) {
-             const [start, end] = feedback.contiguousChecksumRange
-             if (end > start && encoder) {
-               validateContiguousChecksum(encoder, start, end, feedback.contiguousChecksum).then(validation => {
-                 setChecksumValidation(validation)
-                 console.log('🔐', validation.message)
-
-                 // If checksum mismatch, generate rollback sender feedback
-                 if (!validation.valid) {
-                   const rollbackFeedback: SenderFeedback = {
-                     type: 'SENDER_FEEDBACK',
-                     sessionId: sessionId,
-                     sequence: senderFeedbackSequence,
-                     command: 'rollback',
-                     rollbackToBlock: start,
-                     reason: `Checksum mismatch detected: ${validation.message}`,
-                     lastValidChecksum: validation.computedChecksum,
-                     lastValidChecksumRange: [start, end]
-                   }
-                   generateSenderFeedbackQR(rollbackFeedback)
-                 }
-               })
-             }
-           }
 
            // Enable targeted encoding with missing blocks
            setReceivedBlocks(new Set()) // Clear received blocks since we're now using missing blocks
