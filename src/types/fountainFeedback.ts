@@ -25,16 +25,6 @@ interface FountainFeedbackBase {
   progress: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
-  /** Blocks needing urgent decoding */
-  defragTargets: number[];
-  /** Severity metric (0-1) */
-  fragmentationScore: number;
-  /** CRC32 of contiguous prefix */
-  contiguousChecksum: string;
-  /** Range covered by checksum */
-  contiguousChecksumRange: [number, number];
-  /** Indicates receiver has decoded all defrag targets */
-  defragComplete?: boolean;
 }
 
 /**
@@ -48,6 +38,8 @@ export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   totalDecoded: number;
   /** Whether sender should expand the transfer window */
   requestWindowExpansion: boolean;
+  /** Whether receiver requests higher ECC level due to scan failures */
+  requestHigherECC?: boolean;
 }
 
 /**
@@ -75,19 +67,9 @@ interface SenderFeedbackBase {
   /** Sequence number to prevent duplicate processing */
   sequence: number;
   /** Action for receiver to take */
-  command: 'defrag_complete' | 'rollback' | 'acknowledge';
+  command: 'rollback' | 'acknowledge' | 'requestHigherECC';
 }
 
-/**
- * Sender feedback for defragmentation completion.
- */
-export interface SenderFeedbackDefragComplete extends SenderFeedbackBase {
-  command: 'defrag_complete';
-  /** Which blocks were successfully targeted */
-  completedTargets: number[];
-  /** Human-readable status message */
-  message: string;
-}
 
 /**
  * Sender feedback for rollback request.
@@ -98,10 +80,6 @@ export interface SenderFeedbackRollback extends SenderFeedbackBase {
   rollbackToBlock: number;
   /** Why rollback is needed */
   reason: string;
-  /** Checksum of blocks [0, rollbackToBlock) */
-  lastValidChecksum: string;
-  /** Explicit range covered by checksum */
-  lastValidChecksumRange: [number, number];
 }
 
 /**
@@ -116,6 +94,15 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
 }
 
 /**
+ * Sender feedback for higher ECC level request.
+ */
+export interface SenderFeedbackRequestHigherECC extends SenderFeedbackBase {
+  command: 'requestHigherECC';
+  /** Human-readable status message */
+  message: string;
+}
+
+/**
  * Union type for all sender feedback payloads.
  */
-export type SenderFeedback = SenderFeedbackDefragComplete | SenderFeedbackRollback | SenderFeedbackAcknowledge;
+export type SenderFeedback = SenderFeedbackRollback | SenderFeedbackAcknowledge | SenderFeedbackRequestHigherECC;
