@@ -24,6 +24,29 @@ const copyQrWorkerPlugin = () => {
   }
 }
 
+// Custom plugin to verify worker build output
+const verifyWorkerBuildPlugin = () => {
+  return {
+    name: 'verify-worker-build',
+    writeBundle(options: unknown, bundle: Record<string, unknown>) {
+      const workerChunks = Object.keys(bundle).filter((key: string) => key.includes('worker') && key.endsWith('.js'))
+      if (workerChunks.length > 0) {
+        console.log('✓ Worker chunks found in build output:')
+        workerChunks.forEach((chunk: string) => {
+          const chunkData = bundle[chunk]
+          if (chunkData && typeof chunkData === 'object' && 'code' in chunkData && typeof (chunkData as { code?: unknown }).code === 'string') {
+            const size = ((chunkData as { code: string }).code.length || 0) / 1024
+            console.log(`  - ${chunk} (${size.toFixed(2)} KB)`)
+          }
+        })
+      } else {
+        console.warn('⚠ No worker chunks found in build output')
+      }
+    }
+  }
+}
+
+
 // https://vite.dev/config/
 export default defineConfig({
   server: {
@@ -50,16 +73,45 @@ export default defineConfig({
   build: {
     rollupOptions: {
       external: ['src/utils/fountainCode.legacy.ts'],
+      // Configure chunk naming for predictable worker chunk names
+      // Workers are automatically split into separate chunks by Vite
+      output: {
+        chunkFileNames: 'assets/[name]-[hash].js',
+      },
     },
+  },
+  // Explicit worker configuration for consistency and clarity
+  // Workers are handled automatically by Vite's built-in support with ?worker suffix
+  // This configuration ensures ES module format for better performance
+  // Note: fountainDecoder.worker.ts and qrGenerator.worker.ts dependencies (fountainCode, checksum)
+  // are properly bundled and not externalized, ensuring workers are self-contained
+  worker: {
+    format: 'es', // Use ES modules format for workers (modern and efficient)
   },
   plugins: [
     copyQrWorkerPlugin(),
+    verifyWorkerBuildPlugin(),
     react(),
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        // Add runtime caching for worker files with CacheFirst strategy for better offline support
+        // Workers are .js files and should be covered by globPatterns, but explicit caching ensures reliability
+        runtimeCaching: [
+          {
+            urlPattern: /.*worker.*\.js$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'worker-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
+              },
+            },
+          },
+        ],
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
@@ -82,4 +134,10 @@ export default defineConfig({
       }
     })
   ],
+  // Testing Recommendations:
+  // 1. Run `npm run build` and check the `dist` directory for worker chunks
+  // 2. Look for files like `fountainDecoder.worker-[hash].js` and `qrGenerator.worker-[hash].js`
+  // 3. Test in production build using `npm run preview`
+  // 4. Verify workers load correctly in both online and offline (PWA) modes
+  // 5. Check browser DevTools Network tab to confirm workers are loaded and cached
 })
