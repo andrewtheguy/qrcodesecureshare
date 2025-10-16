@@ -537,7 +537,6 @@ export function FountainQRDataDisplay({
 
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
-        <span className="font-medium">{chunkCount === 0 ? 'Ready' : `Chunk #${chunkCount}`}</span>
         {isPlaying && (
           <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
             <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
