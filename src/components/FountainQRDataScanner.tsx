@@ -5,6 +5,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
+// Optional: Extract ignored block list to a top-level constant or env for easier test control.
+const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
+
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
   workerRef: React.RefObject<Worker | null>
@@ -15,6 +18,7 @@ interface FountainQRDataScannerProps {
   success: boolean
   decodedBlocks: number
   invalidChecksumCount: number
+  isTargetedModeActive: boolean
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
@@ -34,6 +38,7 @@ export function FountainQRDataScanner({
   success,
   decodedBlocks,
   invalidChecksumCount,
+  isTargetedModeActive,
   onChunkScanned,
   onScanError,
   onScanStart,
@@ -59,10 +64,37 @@ export function FountainQRDataScanner({
   const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
     // ════════════════════════════════════════════════════════════════════════════
     // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
-    // To use: uncomment the array and add the block indices you want to ignore
+    // To enable: set ENABLE_TARGETED_MODE_TEST to true above
     // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
     // ════════════════════════════════════════════════════════════════════════════
     // ════════════════════════════════════════════════════════════════════════════
+
+    const ENABLE_TARGETED_MODE_TEST = false
+
+    const isTargetedModeTestActive = ENABLE_TARGETED_MODE_TEST && !isTargetedModeActive
+
+    if (isTargetedModeTestActive) {
+      // Parse just enough to check indices
+      let offset = 2 // Skip magic bytes
+      const seed = (bytes[offset++] << 8) | bytes[offset++]
+      offset++ // Skip degree
+      const numIndices = bytes[offset++]
+      const indices: number[] = []
+      for (let i = 0; i < numIndices; i++) {
+        const idx = (bytes[offset++] << 8) | bytes[offset++]
+        indices.push(idx)
+      }
+
+      if (TARGETED_TEST_IGNORE_BLOCKS.length > 0) {
+        const containsIgnoredBlock = indices.some(i => TARGETED_TEST_IGNORE_BLOCKS.includes(i))
+        if (containsIgnoredBlock) {
+          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
+          return
+        }
+      }
+    } else if (process.env.NODE_ENV === 'development' && isTargetedModeActive) {
+      addDebugLog(`🎯 [TARGETED MODE TEST] Test disabled due to targeted mode activation.`)
+    }
 
     // Parse seed from bytes (big-endian from bytes[2] and bytes[3])
     const seed = (bytes[2] << 8) | bytes[3]

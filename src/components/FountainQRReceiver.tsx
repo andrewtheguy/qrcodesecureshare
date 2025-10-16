@@ -42,7 +42,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
-  const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
+   const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
+   const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -191,6 +192,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setCurrentWindowEnd(newWindowEnd)
       console.log(`[FountainQRReceiver] Window expanded by sender: new end=${newWindowEnd}`)
     }
+    setIsTargetedModeActive(true)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
@@ -331,6 +333,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setReceiverMode('feedback-display')
       setIsScanning(false)
       setIsAwaitingFeedback(true)
+      setIsTargetedModeActive(true)
       prevMissingBlocksRef.current = currentMissingBlocks
       return
     }
@@ -364,6 +367,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)
     setInvalidChecksumCount(0)
+    setIsTargetedModeActive(false)
     triggeredFeedbackRef.current = false
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
@@ -461,6 +465,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         success={success}
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
+        isTargetedModeActive={isTargetedModeActive}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
