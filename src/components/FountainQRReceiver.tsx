@@ -454,11 +454,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes
                 </span>
               </p>
-              {integrityOk !== null && (
-                <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
-                  {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
-                </p>
-              )}
+              <p className={`text-sm font-medium ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+                {integrityOk === null ? '🔍 Integrity check: Not performed' : integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
+              </p>
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {fountainMetadata.name}
