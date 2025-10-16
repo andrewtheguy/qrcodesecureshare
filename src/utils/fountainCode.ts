@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, WINDOW_MAX_BYTES, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)

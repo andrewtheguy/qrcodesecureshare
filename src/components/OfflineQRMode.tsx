@@ -24,17 +24,70 @@ export const MAX_FILE_SIZE_FOUNTAIN_LEGACY = 512 * 1024
 
 type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
 
+interface SequentialMetadata {
+  type: 'METADATA'
+  mode: 'sequential'
+  version: 1
+  sessionId: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  totalChunks: number
+  chunkSize: number
+  timestamp: number
+  checksumAlg: 'crc32'
+  checksum: string
+}
+
+interface FountainMetadata {
+  type: 'METADATA'
+  mode: 'fountain'
+  version: 1
+  sessionId: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  timestamp: number
+  totalSourceBlocks: number
+  blockSize: number
+  chunkSize: number
+  checksumAlg: 'crc32'
+  checksum: string
+  windowEnabled: boolean
+  initialWindowBlocks: number
+  windowExpansionSizeBytes: number
+  segmentSizeBytes: number
+  windowStart: number
+}
+
+interface FountainLegacyMetadata {
+  type: 'METADATA'
+  mode: 'fountain-legacy'
+  version: 1
+  sessionId: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  timestamp: number
+  totalSourceBlocks: number
+  blockSize: number
+  chunkSize: number
+  checksumAlg: 'crc32'
+  checksum: string
+}
+
+type MetadataJson = SequentialMetadata | FountainMetadata | FountainLegacyMetadata | null
+
 export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
-  const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
-  const [error, setError] = useState<string>('')
-  const [step, setStep] = useState<'mode' | 'metadata' | 'transfer'>('mode')
-  const [metadataQR, setMetadataQR] = useState<string>('')
-  const [metadataJson, setMetadataJson] = useState<any | null>(null)
-  const [metadataLoading, setMetadataLoading] = useState(false)
-  const [metadataError, setMetadataError] = useState<string>('')
-  const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
-  const [currentSessionId, setCurrentSessionId] = useState<number>(0)
-  const [modeSizeError, setModeSizeError] = useState<string>('')
+   const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
+   const [step, setStep] = useState<'mode' | 'metadata' | 'transfer'>('mode')
+   const [metadataQR, setMetadataQR] = useState<string>('')
+   const [metadataJson, setMetadataJson] = useState<MetadataJson>(null)
+   const [metadataLoading, setMetadataLoading] = useState(false)
+   const [metadataError, setMetadataError] = useState<string>('')
+   const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
+   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
+   const [modeSizeError, setModeSizeError] = useState<string>('')
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -58,7 +111,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            const checksum = await computeChecksum(bytes, 'crc32')
            const sessionId = Math.floor(Math.random() * 65536)
            setCurrentSessionId(sessionId)
-           const meta = {
+           const meta: SequentialMetadata = {
              type: 'METADATA',
              mode: 'sequential',
              version: 1,
@@ -104,7 +157,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
              }
            }
 
-          const meta = {
+          const meta: FountainMetadata = {
             type: 'METADATA',
             mode: 'fountain',
             version: 1,
@@ -144,7 +197,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            const sessionId = Math.floor(Math.random() * 65536)
            setCurrentSessionId(sessionId)
 
-          const meta = {
+          const meta: FountainLegacyMetadata = {
             type: 'METADATA',
             mode: 'fountain-legacy',
             version: 1,
@@ -177,7 +230,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           console.error('Metadata preparation error:', e)
         }
       } finally {
-        !cancelled && setMetadataLoading(false)
+        if (!cancelled) setMetadataLoading(false)
       }
     }
     prepare()
@@ -370,13 +423,13 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   <div className="grid grid-cols-2 gap-2">
                     <div><span className="font-semibold">Name:</span> {metadataJson.fileName}</div>
                     <div><span className="font-semibold">Size:</span> {(metadataJson.fileSize / 1024).toFixed(2)}KB</div>
-                    {transferMode === 'sequential' && (
+                    {transferMode === 'sequential' && metadataJson.mode === 'sequential' && (
                       <>
                         <div><span className="font-semibold">Chunks:</span> {metadataJson.totalChunks}</div>
                         <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
                       </>
                     )}
-                    {(transferMode === 'fountain' || transferMode === 'fountain-legacy') && (
+                    {(transferMode === 'fountain' || transferMode === 'fountain-legacy') && (metadataJson.mode === 'fountain' || metadataJson.mode === 'fountain-legacy') && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
                         <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>

@@ -62,7 +62,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   onUpdateLastDecodedInWindow,
   onUpdateLastWindowExpansion,
 }) => {
-  const [scanningFeedback, setScanningFeedback] = useState(false);
   const [ackQRUrl, setAckQRUrl] = useState('');
   const [currentMode, setCurrentMode] = useState<'scanning' | 'ack-display' | 'idle'>('idle');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
@@ -88,12 +87,12 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
               highlightCodeOutline: true,
             });
             await scannerRef.current.start();
-            setScanningFeedback(true);
+            // setScanningFeedback(true);
           }
         } catch (error) {
           console.error('Failed to initialize feedback scanner:', error);
           onError('Failed to access camera for feedback scanning');
-          setScanningFeedback(false);
+          // setScanningFeedback(false);
         }
       };
 
@@ -104,7 +103,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         scannerRef.current.destroy();
         scannerRef.current = null;
       }
-      setScanningFeedback(false);
+      // setScanningFeedback(false);
     }
 
     return () => {
@@ -276,7 +275,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         scannerRef.current = null;
       }
 
-      setScanningFeedback(false);
+      // setScanningFeedback(false);
       scannerRef.current?.stop();
     } catch (error) {
       console.error('Error processing feedback scan:', error);
@@ -284,7 +283,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       onError('Error processing feedback QR code.');
     } finally {
       if (!valid) {
-        setScanningFeedback(false);
+        // setScanningFeedback(false);
         setCurrentMode('idle');
         if (scannerRef.current) {
           scannerRef.current.stop();
@@ -295,13 +294,13 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   };
 
   const handleStartScan = () => {
-    setScanningFeedback(true);
+    // setScanningFeedback(true);
     setCurrentMode('scanning');
     onModeChange('feedback-scanning');
   };
 
   const handleStopScan = () => {
-    setScanningFeedback(false);
+    // setScanningFeedback(false);
     scannerRef.current?.stop();
     setCurrentMode('idle');
     onModeChange('data-display');

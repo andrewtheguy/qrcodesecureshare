@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
@@ -79,13 +79,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       worker = new FountainDecoderWorker()
       workerRef.current = worker
 
-      worker.onerror = (e) => {
+      worker.onerror = () => {
         setError('Worker runtime error')
         // Debug logging moved to subcomponent
       }
 
       worker.onmessage = (event: MessageEvent) => {
-      const { type, id, ...data } = event.data
+      const { type, ...data } = event.data
 
       switch (type) {
         case 'initialized':
@@ -125,7 +125,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }
 
         case 'complete': {
-          const { data: reconstructedData, integrityOk, checksum } = data
+          const { data: reconstructedData, integrityOk } = data
           const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
@@ -162,7 +162,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Initialize worker
     worker.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
     // Debug logging moved to subcomponent
-    } catch (error) {
+    } catch {
       setError('Failed to initialize decoding worker')
       // Debug logging moved to subcomponent
       return
@@ -177,12 +177,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, []) // Empty dependency array - only run on mount/unmount
 
-  const handleFeedbackGenerated = useCallback((feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => {
+  const handleFeedbackGenerated = useCallback(() => {
     setReceiverMode('feedback-display')
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((acknowledgedSequence: number, windowExpanded: boolean, message: string) => {
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean) => {
     // RECEIVER: Rely on sender's ACK windowExpanded flag to update window state
     // Sender is the single authority for window expansion - receiver only reflects it
     if (windowExpanded) {
@@ -215,7 +215,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Window expansion callback - kept for backwards compatibility but unused
   // Receiver now relies solely on ACK windowExpanded flag from sender
-  const handleWindowExpansion = useCallback((newWindowEnd: number) => {
+  const handleWindowExpansion = useCallback(() => {
     // This callback is deprecated - window expansion handled in handleAckReceived
     console.warn('[FountainQRReceiver] handleWindowExpansion called but is deprecated - use handleAckReceived instead')
   }, [])
@@ -382,15 +382,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
 
-  const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-  const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
-
-  // Memoize decodedInWindow to avoid repeated filter calls
-  const decodedInWindow = useMemo(() => {
-    if (!isWindowEnabled) return 0
-    const decodedBlockIndices = decodedBlockIndicesRef.current
-    return decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
-  }, [isWindowEnabled, currentWindowStart, currentWindowEnd])
 
   return (
     <div className="space-y-4">
@@ -470,7 +461,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         success={success}
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
-        onChunkScanned={(seed) => {
+        onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
         onScanError={(error) => {
@@ -485,7 +476,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         onReset={() => {
           handleReset()
         }}
-        onToggleMetadataInfo={(show) => {
+        onToggleMetadataInfo={() => {
           // Optional: handle metadata info toggle if needed
         }}
         onModeChange={handleFeedbackModeChange}

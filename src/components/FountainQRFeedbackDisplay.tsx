@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import type { FountainFeedback, FountainFeedbackStatistics, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
@@ -35,7 +35,6 @@ export function FountainQRFeedbackDisplay({
   sessionId,
   decodedBlocks,
   decodedBlockIndices,
-  currentWindow,
   currentWindowStart,
   currentWindowEnd,
   isWindowEnabled,
@@ -56,10 +55,8 @@ export function FountainQRFeedbackDisplay({
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [error, setError] = useState<string>('')
-  const [isGenerating, setIsGenerating] = useState(false)
   const [ackError, setAckError] = useState<string>('')
 
-  const ackVideoRef = useRef<HTMLVideoElement>(null)
   const generatingRef = useRef<boolean>(false)
   const ackErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -108,7 +105,6 @@ export function FountainQRFeedbackDisplay({
 
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
-    setIsGenerating(true)
     try {
       // Read from refs for stable values
       const decodedBlockIndices = decodedBlockIndicesRef.current
@@ -124,7 +120,6 @@ export function FountainQRFeedbackDisplay({
       // Gate re-generation: only generate if we haven't already generated for this sequence
       if (seq === lastGeneratedSequenceRef.current) {
         generatingRef.current = false
-        setIsGenerating(false)
         return
       }
 
@@ -158,7 +153,6 @@ export function FountainQRFeedbackDisplay({
         // Short-circuit: construct missing blocks by iterating over decoded indices instead of all blocks
         // This is more efficient when missingBlocksCount is small (≤ targetedModeThreshold)
         const missingBlocks: number[] = []
-        const decodedSet = new Set(decodedBlockIndices)
 
         // Optimization: iterate over decoded indices to construct missing indices
         // Since we know missingBlocksCount <= targetedModeThreshold (small), this is faster
@@ -218,13 +212,12 @@ export function FountainQRFeedbackDisplay({
       }
 
 
-      const feedbackJson = JSON.stringify(feedback)
       let dataUrl: string
       try {
         // Feedback QR generation intentionally uses main thread (not worker) for reliability
         // These are small JSON payloads generated infrequently, so main thread is reliable and performant
         dataUrl = await generateNonDataQR(feedback)
-      } catch (qrError) {
+      } catch {
         // Debug logging moved to subcomponent
 
         // Recovery action: if targeted mode failed due to payload size, auto-switch to statistics mode
@@ -251,7 +244,7 @@ export function FountainQRFeedbackDisplay({
             feedback = statisticsFeedback // Update feedback reference for later use
             setError('') // Clear any previous error
             // Debug logging moved to subcomponent
-          } catch (retryError) {
+          } catch {
             // Debug logging moved to subcomponent
             setError('Failed to generate feedback QR code - both targeted and statistics modes exceeded payload capacity. Try again later.')
             return
@@ -271,7 +264,7 @@ export function FountainQRFeedbackDisplay({
       onFeedbackGenerated(dataUrl, feedback.mode, seq)
       onSequenceIncrement()
       onModeChange('feedback-display')
-    } finally { generatingRef.current = false; setIsGenerating(false) }
+    } finally { generatingRef.current = false; }
   }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange])
 
   const showAckError = (message: string) => {
@@ -334,7 +327,6 @@ export function FountainQRFeedbackDisplay({
             console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
             setFeedbackQRUrl('')
             onModeChange('data-scanning')
-            setIsGenerating(false)
             setSenderFeedbackMessage(parsed.message)
 
             // RECEIVER: Only rely on sender's ACK windowExpanded flag to update UI

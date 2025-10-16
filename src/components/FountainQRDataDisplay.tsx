@@ -78,9 +78,9 @@ export function FountainQRDataDisplay({
   encoder,
   sessionId,
   qrOptions,
-  windowInfo,
+  windowInfo: _windowInfo,
   receivedBlocks,
-  lastStats,
+  lastStats: _lastStats,
   isActive,
   activationToken,
   onChunkGenerated,
@@ -320,7 +320,7 @@ export function FountainQRDataDisplay({
             } catch (err) {
               attempt++
               if (attempt >= maxRetries) {
-                console.error('Failed to generate buffer chunk after max retries')
+                console.error('Failed to generate buffer chunk after max retries:', err)
               }
             }
           }
@@ -384,6 +384,7 @@ export function FountainQRDataDisplay({
       try {
         workerRef.current.postMessage({ type: 'generate', id, binaryString, options })
       } catch (err) {
+        console.warn('Worker postMessage failed; falling back:', err)
         clearTimeout(timeout)
         pendingRequests.current.delete(id)
         // Fallback to direct QRCode.toDataURL on worker error

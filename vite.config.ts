@@ -37,17 +37,17 @@ const verifyWorkerBuildPlugin = () => {
     name: 'verify-worker-build',
     writeBundle(options: unknown, bundle: Record<string, unknown>) {
       const workerChunks: [string, RollupChunk][] = []
-      for (const [key, chunk] of Object.entries(bundle)) {
+      for (const [_key, chunk] of Object.entries(bundle)) {
         if (typeof chunk === 'object' && chunk !== null && 'type' in chunk && chunk.type === 'chunk') {
           const chunkObj = chunk as RollupChunk
           if (typeof chunkObj.facadeModuleId === 'string' && /src\/workers\/.+\.worker\.(t|j)sx?$/.test(chunkObj.facadeModuleId)) {
-            workerChunks.push([key, chunkObj])
+            workerChunks.push([_key, chunkObj])
           }
         }
       }
       if (workerChunks.length > 0) {
         console.log('✓ Worker chunks found in build output:')
-        workerChunks.forEach(([key, chunk]) => {
+        workerChunks.forEach(([, chunk]) => {
           const size = chunk.code.length / 1024
           console.log(`  - ${chunk.fileName} (${size.toFixed(2)} KB)`)
         })

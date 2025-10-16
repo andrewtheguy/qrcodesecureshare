@@ -47,7 +47,6 @@ export function FountainQRDataScanner({
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
-  const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
@@ -63,27 +62,6 @@ export function FountainQRDataScanner({
     // To use: uncomment the array and add the block indices you want to ignore
     // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
     // ════════════════════════════════════════════════════════════════════════════
-    if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
-      // Parse just enough to check indices
-      let offset = 2 // Skip magic bytes
-      const seed = (bytes[offset++] << 8) | bytes[offset++]
-      const degree = bytes[offset++]
-      const numIndices = bytes[offset++]
-      const indices: number[] = []
-      for (let i = 0; i < numIndices; i++) {
-        const idx = (bytes[offset++] << 8) | bytes[offset++]
-        indices.push(idx)
-      }
-
-      const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
-      if (targetedModeTestIgnoreBlocks.length > 0) {
-        const containsIgnoredBlock = indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
-        if (containsIgnoredBlock) {
-          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
-          return
-        }
-      }
-    }
     // ════════════════════════════════════════════════════════════════════════════
 
     // Parse seed from bytes (big-endian from bytes[2] and bytes[3])
@@ -96,7 +74,7 @@ export function FountainQRDataScanner({
 
     // Invoke callback with parsed seed
     onChunkScanned(seed)
-  }, [addDebugLog, isTargetedModeTestActive, onChunkScanned])
+  }, [addDebugLog, onChunkScanned])
 
   const handleScan = useCallback((data: string) => {
     try {
@@ -197,7 +175,6 @@ export function FountainQRDataScanner({
   }
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
-  const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
   // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
   const k = fountainMetadata.totalSourceBlocks

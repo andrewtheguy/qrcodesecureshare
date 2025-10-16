@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
+import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { FountainQRDataDisplay } from './FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'

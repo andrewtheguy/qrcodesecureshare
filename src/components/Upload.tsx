@@ -3,7 +3,7 @@ import QRCode from 'qrcode'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { PUBLIC_KEY_JWK } from '../config/publicKey'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
@@ -294,7 +294,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         setWebrtcFile(encryptedFile)
         setWebrtcKey(passphrase)
         setWebrtcOriginalFilename(file.name) // Store original filename
-      } catch (error) {
+      } catch {
         alert('File encryption failed. Please try again.')
       } finally {
         setUploading(false)
@@ -304,7 +304,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
       setUploading(true)
       try {
         await uploadFile(file)
-      } catch (error) {
+      } catch {
         alert('File failed to upload. Please try again.')
       } finally {
         setUploading(false)
@@ -338,6 +338,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
     try {
       await navigator.clipboard.writeText(text)
     } catch (err) {
+      console.warn('Clipboard API failed, falling back to execCommand:', err)
       const textArea = document.createElement('textarea')
       textArea.value = text
       document.body.appendChild(textArea)
@@ -394,21 +395,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
     }
   }
 
-  const resetTextMode = () => {
-    setTextInput('')
-    setTextQrGenerated(false)
-    setShowTextUploadOption(false)
-    setUploadingText(false)
-    setTextUploadCompleted(false)
-    setQrCodeUrl('')
-  }
 
-  const resetFileMode = () => {
-    setUploadedFile(null)
-    setQrCodeUrl('')
-    setWebrtcFile(null)
-    setWebrtcKey('')
-  }
 
   const uploadTextAsFile = async () => {
     if (!textInput.trim()) return
@@ -428,7 +415,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
       setShowTextUploadOption(false)
       setUploadingText(false)
       setTextUploadCompleted(true)
-    } catch (error) {
+    } catch {
       alert('Text failed to upload as encrypted file. Please try again.')
       setUploadingText(false)
     } finally {

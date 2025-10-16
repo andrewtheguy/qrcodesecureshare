@@ -75,7 +75,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       await navigator.clipboard.writeText(text)
       setCopiedFeedback(label || 'Copied!')
       setTimeout(() => setCopiedFeedback(null), 2000)
-    } catch (err) {
+    } catch {
       const textArea = document.createElement('textarea')
       textArea.value = text
       document.body.appendChild(textArea)
@@ -373,11 +373,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
             : (facingMode === 'user' && ids.user) ? ids.user
             : ids.environment || ids.user
           if (preferred) {
-            try { await scanner.setCamera(preferred) } catch (e) { console.warn('Could not set initial facingMode camera', e) }
+            try { await scanner.setCamera(preferred) } catch { console.warn('Could not set initial facingMode camera') }
           }
         }
-      } catch (err) {
-        console.warn('Failed to classify cameras', err)
+      } catch {
+        console.warn('Failed to classify cameras')
         setCameraError('Camera access issue')
       } finally {
         setLoadingCameras(false)
@@ -406,8 +406,8 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     try {
       await scannerRef.current.setCamera(targetId)
       setFacingMode(nextMode)
-    } catch (err) {
-      console.error('Failed to switch facing mode', err)
+    } catch {
+      console.error('Failed to switch facing mode')
       setCameraError('Failed to switch camera')
     }
   }
@@ -522,9 +522,10 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     try {
       // Compute Base58 fingerprint (public portion) before import
       try {
-  const fp = await getJwkSshFingerprint(candidate)
+   const fp = await getJwkSshFingerprint(candidate)
         setPrivateKeyFingerprint(fp)
       } catch (err) {
+        console.warn('Failed to compute fingerprint:', err)
         // If fingerprint cannot be computed (unsupported key), we proceed without it
         setPrivateKeyFingerprint(null)
       }
@@ -532,9 +533,10 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       // Clear raw input immediately after successful import
       setPrivateKeyInput('')
       setPrivateKeyStatus('loaded')
-    } catch (e: any) {
+    } catch (e: unknown) {
       setPrivateKeyStatus('error')
-      setPrivateKeyError(e?.message || 'Failed to import private key')
+      const errorMessage = e instanceof Error ? e.message : 'Failed to import private key'
+      setPrivateKeyError(errorMessage)
       setPrivateKeyFingerprint(null)
     }
   }
@@ -772,7 +774,9 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                               // Select all existing text to make replacement/paste easier
                               // Wrap in setTimeout to ensure mobile browsers sometimes honor it after focus
                               setTimeout(() => {
-                                try { e.target.select() } catch {}
+                                try { e.target.select() } catch {
+                                  /* noop */
+                                }
                               }, 0)
                             }}
                             placeholder={privateKeyStatus === 'loaded' ? 'Private key loaded' : 'Paste private key (JWK JSON format)'}
