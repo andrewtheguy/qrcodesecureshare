@@ -85,14 +85,6 @@ function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: n
     };
 }
 
-/**
- * Validates chunk checksum
- */
-async function validateChunkChecksum(data: Uint8Array, expectedChecksum: string): Promise<boolean> {
-    const computed = await computeChecksum(data, 'crc32');
-    return computed === expectedChecksum;
-}
-
 // Message handler
 self.onmessage = async (event: MessageEvent) => {
     const { type, id, ...data } = event.data;
