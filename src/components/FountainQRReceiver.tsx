@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
-import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './FountainQRDataScanner'
@@ -65,7 +63,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const workerRef = useRef<Worker | null>(null)
   const messageIdCounterRef = useRef<number>(0)
   const decodedBlockIndicesRef = useRef<number[]>([])
-  const generatingRef = useRef(false)
 
   // Refs for worker onmessage handler to avoid stale closures
   const isWindowEnabledRef = useRef(isWindowEnabled)
@@ -73,6 +70,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const currentWindowEndRef = useRef(currentWindowEnd)
   const windowTriggerThresholdRef = useRef(windowTriggerThreshold)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
+  const triggeredFeedbackRef = useRef(false)
 
   // Worker initialization and cleanup
   useEffect(() => {
@@ -95,7 +93,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
 
         case 'chunkProcessed': {
-          const { duplicate, seed, decodedBlockCount, progress, isComplete, decodedBlockIndices } = data
+          const { duplicate, decodedBlockCount, decodedBlockIndices } = data
           if (duplicate) {
             // Debug logging moved to subcomponent
             return
@@ -112,7 +110,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
             if (windowDecodePercentage >= windowTriggerThresholdRef.current) {
+              // Guard: Prevent rapid mode switching by ensuring transition occurs only once per feedback cycle
+              if (triggeredFeedbackRef.current) {
+                return
+              }
               // Debug logging moved to subcomponent
+              triggeredFeedbackRef.current = true
               setReceiverMode('feedback-display')
               setIsScanning(false)
               setIsAwaitingFeedback(true)
@@ -142,7 +145,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }
 
         case 'error': {
-          const { error, seed } = data
+          const { error } = data
           if (error === 'Invalid checksum') {
             setInvalidChecksumCount(prev => prev + 1)
             // Debug logging moved to subcomponent
@@ -180,16 +183,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }, [])
 
   const handleAckReceived = useCallback((acknowledgedSequence: number, windowExpanded: boolean, message: string) => {
+    // RECEIVER: Rely on sender's ACK windowExpanded flag to update window state
+    // Sender is the single authority for window expansion - receiver only reflects it
     if (windowExpanded) {
-      // Window expansion is handled by onWindowExpansion callback
+      const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
+      const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
+      setCurrentWindowEnd(newWindowEnd)
+      console.log(`[FountainQRReceiver] Window expanded by sender: new end=${newWindowEnd}`)
     }
+    triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
-  }, [])
+  }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
     setReceiverMode(mode)
     if (mode === 'data-scanning') {
+      triggeredFeedbackRef.current = false
       setIsAwaitingFeedback(false)
       setIsScanning(true)
     } else if (mode === 'feedback-display') {
@@ -201,8 +211,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [])
 
+  // Window expansion callback - kept for backwards compatibility but unused
+  // Receiver now relies solely on ACK windowExpanded flag from sender
   const handleWindowExpansion = useCallback((newWindowEnd: number) => {
-    setCurrentWindowEnd(newWindowEnd)
+    // This callback is deprecated - window expansion handled in handleAckReceived
+    console.warn('[FountainQRReceiver] handleWindowExpansion called but is deprecated - use handleAckReceived instead')
   }, [])
 
   const handleFeedbackError = useCallback((error: string) => {
@@ -322,7 +335,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Prevent getting stuck in targeted mode when window expansion is needed
     // If we're in targeted mode but have many missing blocks, switch back to statistics mode
-    const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks
+    const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks
     if (isStuckInTargetedMode) {
       // Debug logging moved to subcomponent
       setReceiverMode('feedback-display')
@@ -333,7 +346,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, success, isAwaitingFeedback])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, success, isAwaitingFeedback])
 
   // handleStartScan, handleStopScan moved to subcomponent
 
@@ -355,6 +368,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)
     setInvalidChecksumCount(0)
+    triggeredFeedbackRef.current = false
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }

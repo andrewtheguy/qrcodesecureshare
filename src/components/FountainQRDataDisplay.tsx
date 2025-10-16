@@ -37,14 +37,42 @@ interface FountainQRDataDisplayProps {
     windowEnd?: number
   } | null
   isActive: boolean
+  activationToken: number
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
   onSkippedChunk: () => void
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
 }
 
-// Maximum QR code size in bytes (with some safety margin)
-const MAX_QR_DATA_SIZE = 1300 // Increased due to lower error correction level
+// QR Code capacity mapping based on error correction level and canvas width
+// For a 400px width QR code with binary data encoding (ISO-8859-1)
+// Based on QR Code version 40 (177x177 modules) capacity estimates
+const QR_CAPACITY_MAP: Record<'L' | 'M' | 'Q' | 'H', { base: number, safetyMargin: number }> = {
+  'L': { base: 2953, safetyMargin: 0.6 }, // Low ECC (7% recovery) - ~1772 bytes usable
+  'M': { base: 2331, safetyMargin: 0.6 }, // Medium ECC (15% recovery) - ~1399 bytes usable
+  'Q': { base: 1663, safetyMargin: 0.6 }, // Quartile ECC (25% recovery) - ~998 bytes usable
+  'H': { base: 1273, safetyMargin: 0.6 }  // High ECC (30% recovery) - ~764 bytes usable
+}
+
+/**
+ * Derives dynamic QR capacity based on error correction level
+ * @param eccLevel - Error correction level (L, M, Q, H)
+ * @param canvasWidth - QR code canvas width in pixels (default 400)
+ * @returns Maximum safe data size in bytes
+ */
+const deriveQRCapacity = (eccLevel: 'L' | 'M' | 'Q' | 'H', canvasWidth: number = 400): number => {
+  const capacityInfo = QR_CAPACITY_MAP[eccLevel]
+
+  // Scale capacity based on canvas width (linear approximation)
+  // 400px is our baseline; adjust if different canvas size
+  const scaleFactor = canvasWidth / 400
+  const scaledBase = Math.floor(capacityInfo.base * scaleFactor)
+
+  // Apply safety margin to ensure reliable encoding
+  const safeCapacity = Math.floor(scaledBase * capacityInfo.safetyMargin)
+
+  return safeCapacity
+}
 
 export function FountainQRDataDisplay({
   encoder,
@@ -54,6 +82,7 @@ export function FountainQRDataDisplay({
   receivedBlocks,
   lastStats,
   isActive,
+  activationToken,
   onChunkGenerated,
   onSkippedChunk,
   onBufferUpdate,
@@ -65,8 +94,9 @@ export function FountainQRDataDisplay({
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
-  const [chunkBuffer, setChunkBuffer] = useState<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
+  const [bufferLength, setBufferLength] = useState(0) // Separate state for UI display
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
+  const [workerFallbackHint, setWorkerFallbackHint] = useState('')
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
@@ -76,14 +106,46 @@ export function FountainQRDataDisplay({
   const workerRef = useRef<Worker | null>(null)
   const pendingRequests = useRef<Map<number, {resolve: (url: string) => void, reject: (err: Error) => void}>>(new Map())
   const requestIdRef = useRef(0)
-  const chunkBufferRef = useRef(chunkBuffer)
+  const chunkBufferRef = useRef<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
 
-  // Sync ref with latest chunkBuffer
-  useEffect(() => {
-    chunkBufferRef.current = chunkBuffer
-  }, [chunkBuffer])
+  // Worker failure tracking
+  const consecutiveWorkerFailuresRef = useRef(0)
+  const workerSkipUntilChunkRef = useRef(0)
+  const originalFpsRef = useRef(fps)
+  const originalBufferTargetRef = useRef(5)
+
+  // Helper functions for atomic buffer mutations
+  const pushToBuffer = (items: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>) => {
+    chunkBufferRef.current.push(...items)
+    const newLength = chunkBufferRef.current.length
+    setBufferLength(newLength)
+    onBufferUpdate(newLength)
+  }
+
+  const consumeFromBuffer = (): {chunk: FountainChunk, qrUrl: string, chunkNum: number} | undefined => {
+    const item = chunkBufferRef.current.shift()
+    const newLength = chunkBufferRef.current.length
+    setBufferLength(newLength)
+    onBufferUpdate(newLength)
+    return item
+  }
+
+  const clearBuffer = () => {
+    chunkBufferRef.current = []
+    setBufferLength(0)
+    onBufferUpdate(0)
+  }
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
+
+  // Dynamically compute max QR data size based on error correction level
+  const MAX_QR_DATA_SIZE = useMemo(() => {
+    const capacity = deriveQRCapacity(currentQROptions.errorCorrectionLevel, 400)
+    if (import.meta.env.DEV) {
+      console.log(`[FountainQRDataDisplay] Dynamic QR capacity for ECC ${currentQROptions.errorCorrectionLevel}: ${capacity} bytes`)
+    }
+    return capacity
+  }, [currentQROptions.errorCorrectionLevel])
 
   // Initialize encoder state
   useEffect(() => {
@@ -93,9 +155,10 @@ export function FountainQRDataDisplay({
     }
   }, [encoder])
 
-  // Auto-start playback once encoder is ready
+  // Auto-start playback once encoder is ready and activation token changes
+  // This prevents auto-start during mode transitions in the parent component
   useEffect(() => {
-    if (encoder && isActive && !isPlaying) {
+    if (encoder && isActive && !isPlaying && activationToken > 0) {
       // Reset counters for fresh session
       setChunkCount(0)
       setSkippedChunks(0)
@@ -103,14 +166,13 @@ export function FountainQRDataDisplay({
     }
     // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [encoder, isActive])
+  }, [encoder, isActive, activationToken])
 
   // Reset on session change
   useEffect(() => {
     setChunkCount(0)
     setSkippedChunks(0)
-    setChunkBuffer([])
-    onBufferUpdate(0)
+    clearBuffer()
   }, [sessionId])
 
   // Initialize QR generation worker
@@ -153,7 +215,7 @@ export function FountainQRDataDisplay({
   useEffect(() => {
     const bufferTargetSize = bufferTargetSizeRef.current
     if (!isActive) return
-    if (!encoder || isGeneratingBuffer || chunkBuffer.length >= bufferTargetSize) return
+    if (!encoder || isGeneratingBuffer || bufferLength >= bufferTargetSize) return
 
     // Throttle buffer generation based on FPS
     // Don't generate new chunks faster than the display rate
@@ -164,8 +226,8 @@ export function FountainQRDataDisplay({
     if (timeSinceLastGeneration < minTimeBetweenGenerations && lastBufferGenerationRef.current > 0) {
       // Too soon to generate another chunk, schedule for later
       const timeoutId = setTimeout(() => {
-        // Trigger re-check by updating a dummy state
-        setChunkBuffer(prev => prev.slice()) // No-op update to trigger effect
+        // Trigger re-check by updating buffer length state
+        setBufferLength(chunkBufferRef.current.length)
       }, minTimeBetweenGenerations - timeSinceLastGeneration)
       return () => clearTimeout(timeoutId)
     }
@@ -179,7 +241,7 @@ export function FountainQRDataDisplay({
         const maxRetries = 20
 
         // Generate only one chunk at a time to respect FPS throttling
-        const chunksToGenerate = Math.min(1, bufferTargetSize - chunkBuffer.length)
+        const chunksToGenerate = Math.min(1, bufferTargetSize - bufferLength)
 
         while (batch.length < chunksToGenerate) {
           let attempt = 0
@@ -249,7 +311,7 @@ export function FountainQRDataDisplay({
                   }
                 })
 
-              const chunkNum = chunkCount + chunkBuffer.length + batch.length + 1
+              const chunkNum = chunkCount + bufferLength + batch.length + 1
               batch.push({ chunk, qrUrl: dataUrl, chunkNum })
               success = true
 
@@ -266,8 +328,7 @@ export function FountainQRDataDisplay({
 
         // Single batched state update
         if (batch.length > 0) {
-          setChunkBuffer(prev => [...prev, ...batch])
-          onBufferUpdate(chunkBuffer.length + batch.length)
+          pushToBuffer(batch)
         }
       } finally {
         setIsGeneratingBuffer(false)
@@ -275,10 +336,19 @@ export function FountainQRDataDisplay({
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, chunkBuffer.length, chunkCount, fps, onBufferUpdate, currentQROptions.margin, currentQROptions.errorCorrectionLevel])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive])
 
   // Generate QR in worker (for data chunks only)
   const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
+    // Check if we should skip worker due to recent failures (exponential backoff)
+    const currentChunkNum = chunkCount + bufferLength
+    const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
+
+    if (shouldSkipWorker) {
+      // Direct fallback during backoff period
+      return QRCode.toDataURL(binaryString, options)
+    }
+
     const workerPromise = new Promise<string>((resolve, reject) => {
       if (!workerRef.current) {
         // Fallback to direct QRCode.toDataURL if worker is unavailable
@@ -295,6 +365,9 @@ export function FountainQRDataDisplay({
       pendingRequests.current.set(id, {
         resolve: (qrUrl: string) => {
           clearTimeout(timeout)
+          // Success! Reset failure counter
+          consecutiveWorkerFailuresRef.current = 0
+          setWorkerFallbackHint('')
           resolve(qrUrl)
         },
         reject: (err: Error) => {
@@ -315,6 +388,42 @@ export function FountainQRDataDisplay({
 
     return workerPromise.catch((err) => {
       console.warn('QR worker failed, falling back to main thread:', err)
+
+      // Track consecutive failures
+      consecutiveWorkerFailuresRef.current++
+      const failures = consecutiveWorkerFailuresRef.current
+
+      // Apply exponential backoff after N consecutive failures
+      if (failures >= 3) {
+        // Skip worker for next M chunks (exponential: 2^failures)
+        const skipChunks = Math.min(Math.pow(2, failures - 2), 64) // Cap at 64 chunks
+        workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
+
+        console.warn(`${failures} consecutive worker failures. Skipping worker for next ${skipChunks} chunks.`)
+
+        // Reduce FPS temporarily on persistent failures
+        if (failures >= 5) {
+          originalFpsRef.current = fps
+          const reducedFps = Math.max(Math.floor(fps * 0.7), 2)
+          setFps(reducedFps)
+          console.warn(`Reducing FPS from ${fps} to ${reducedFps} due to worker failures`)
+        }
+
+        // Increase buffer size target temporarily
+        if (failures >= 4) {
+          originalBufferTargetRef.current = bufferTargetSizeRef.current
+          bufferTargetSizeRef.current = Math.min(bufferTargetSizeRef.current + 2, 10)
+          console.warn(`Increasing buffer target to ${bufferTargetSizeRef.current}`)
+        }
+
+        // Set user-visible hint
+        if (failures >= 5) {
+          setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
+        } else if (failures >= 3) {
+          setWorkerFallbackHint('Using backup QR generation method.')
+        }
+      }
+
       return QRCode.toDataURL(binaryString, options)
     })
   }
@@ -452,28 +561,24 @@ export function FountainQRDataDisplay({
     if (!isPlaying || !encoder || !isActive) return
 
     // Generate first chunk immediately (from buffer if available, otherwise generate)
-    if (chunkBufferRef.current.length > 0) {
-      const bufferedItem = chunkBufferRef.current[0]
+    const bufferedItem = consumeFromBuffer()
+    if (bufferedItem) {
       currentChunkRef.current = bufferedItem.chunk
       setChunkCount(bufferedItem.chunkNum)
       setQrCodeUrl(bufferedItem.qrUrl)
       lastSuccessfulQrRef.current = bufferedItem.qrUrl
-      setChunkBuffer(prev => prev.slice(1))
-      onBufferUpdate(chunkBufferRef.current.length - 1)
       onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
     } else {
       generateAndShowNextChunk()
     }
 
     const interval = setInterval(() => {
-      if (chunkBufferRef.current.length > 0) {
-        const bufferedItem = chunkBufferRef.current[0]
+      const bufferedItem = consumeFromBuffer()
+      if (bufferedItem) {
         currentChunkRef.current = bufferedItem.chunk
         setChunkCount(bufferedItem.chunkNum)
         setQrCodeUrl(bufferedItem.qrUrl)
         lastSuccessfulQrRef.current = bufferedItem.qrUrl
-        setChunkBuffer(prev => prev.slice(1))
-        onBufferUpdate(chunkBufferRef.current.length - 1)
         onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
       } else {
         generateAndShowNextChunk()
@@ -489,8 +594,7 @@ export function FountainQRDataDisplay({
     if (!isPlaying && encoder) {
       setChunkCount(0)
       setSkippedChunks(0)
-      setChunkBuffer([]) // Clear buffer on restart
-      onBufferUpdate(0)
+      clearBuffer() // Clear buffer on restart
     }
     setIsPlaying(!isPlaying)
   }
@@ -545,10 +649,19 @@ export function FountainQRDataDisplay({
         {skippedChunks > 0 && (
           <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
         )}
-        {chunkBuffer.length > 0 && (
-          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Buffer: {chunkBuffer.length}</span>
+        {bufferLength > 0 && (
+          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Buffer: {bufferLength}</span>
         )}
       </div>
+
+      {/* Worker fallback hint */}
+      {workerFallbackHint && (
+        <div className="text-center">
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            {workerFallbackHint}
+          </p>
+        </div>
+      )}
 
       {/* Progress */}
       {chunkCount > 0 && (

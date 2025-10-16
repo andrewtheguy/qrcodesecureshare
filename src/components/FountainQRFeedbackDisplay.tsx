@@ -4,7 +4,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackStatistics, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
-import { getTargetedModeMaxMissingBlocks, getWindowExpansionSizeBlocks } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
 interface FountainQRFeedbackDisplayProps {
@@ -57,9 +57,32 @@ export function FountainQRFeedbackDisplay({
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [isGenerating, setIsGenerating] = useState(false)
+  const [ackError, setAckError] = useState<string>('')
 
   const ackVideoRef = useRef<HTMLVideoElement>(null)
   const generatingRef = useRef<boolean>(false)
+  const ackErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Refs for stable inputs to prevent mid-cycle re-generation
+  const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
+  const currentWindowStartRef = useRef<number>(currentWindowStart)
+  const currentWindowEndRef = useRef<number>(currentWindowEnd)
+  const isWindowEnabledRef = useRef<boolean>(isWindowEnabled)
+  const windowTriggerThresholdRef = useRef<number>(windowTriggerThreshold)
+  const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
+  const sessionIdRef = useRef<number>(sessionId)
+  const lastGeneratedSequenceRef = useRef<number>(-1)
+
+  // Update refs when props change
+  useEffect(() => {
+    decodedBlockIndicesRef.current = decodedBlockIndices
+    currentWindowStartRef.current = currentWindowStart
+    currentWindowEndRef.current = currentWindowEnd
+    isWindowEnabledRef.current = isWindowEnabled
+    windowTriggerThresholdRef.current = windowTriggerThreshold
+    fountainMetadataRef.current = fountainMetadata
+    sessionIdRef.current = sessionId
+  }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, isWindowEnabled, windowTriggerThreshold, fountainMetadata, sessionId])
 
   /**
    * Calculate the first missing block index in a sequence.
@@ -87,13 +110,30 @@ export function FountainQRFeedbackDisplay({
     if (generatingRef.current) return; generatingRef.current = true
     setIsGenerating(true)
     try {
+      // Read from refs for stable values
+      const decodedBlockIndices = decodedBlockIndicesRef.current
+      const currentWindowStart = currentWindowStartRef.current
+      const currentWindowEnd = currentWindowEndRef.current
+      const isWindowEnabled = isWindowEnabledRef.current
+      const windowTriggerThreshold = windowTriggerThresholdRef.current
+      const fountainMetadata = fountainMetadataRef.current
+      const sessionId = sessionIdRef.current
+      // Use prop directly - parent owns this value
+      const seq = feedbackSequence
+
+      // Gate re-generation: only generate if we haven't already generated for this sequence
+      if (seq === lastGeneratedSequenceRef.current) {
+        generatingRef.current = false
+        setIsGenerating(false)
+        return
+      }
+
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
       const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
       const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
       const windowDecodePercent = decodedInWindow / windowSize
       const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
-      const seq = feedbackSequence
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
       let feedback: FountainFeedback
@@ -224,27 +264,49 @@ export function FountainQRFeedbackDisplay({
       }
       setFeedbackQRUrl(dataUrl)
       setFeedbackMode(feedback.mode)
+
+      // Mark this sequence as generated atomically
+      lastGeneratedSequenceRef.current = seq
+
       onFeedbackGenerated(dataUrl, feedback.mode, seq)
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; setIsGenerating(false) }
-  }, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, decodedBlockIndices, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+
+  const showAckError = (message: string) => {
+    // Clear any existing timeout
+    if (ackErrorTimeoutRef.current) {
+      clearTimeout(ackErrorTimeoutRef.current)
+    }
+
+    setAckError(message)
+
+    // Auto-clear after 3 seconds
+    ackErrorTimeoutRef.current = setTimeout(() => {
+      setAckError('')
+      ackErrorTimeoutRef.current = null
+    }, 3000)
+  }
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
     try {
       const parsed = JSON.parse(data) as SenderFeedback
       if (parsed.type !== 'SENDER_FEEDBACK') {
         // Debug logging moved to subcomponent
+        showAckError('Invalid QR type - expecting ACK')
         return
       }
 
       if (parsed.sessionId !== sessionId) {
         // Debug logging moved to subcomponent
+        showAckError('Invalid session - wrong QR code')
         return
       }
 
       if (parsed.sequence <= lastSenderFeedbackSequence) {
         // Debug logging moved to subcomponent
+        showAckError('Duplicate ACK - already processed')
         return
       }
 
@@ -253,29 +315,35 @@ export function FountainQRFeedbackDisplay({
       switch (parsed.command) {
 
         case 'acknowledge':
-            // Debug logging moved to subcomponent
-            if (parsed.acknowledgedSequence === feedbackSequence - 1) {
-              // Valid ACK - resume data scanning
-              setFeedbackQRUrl('')
-              onModeChange('data-scanning')
-              setIsGenerating(false)
-              setSenderFeedbackMessage(parsed.message)
-              onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message)
-              // Expand window only if sender actually expanded it
-              if (parsed.windowExpanded) {
-                const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
-                const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
-                onWindowExpansion(newWindowEnd)
-                // Debug logging moved to subcomponent
-              }
-              // Stop the ACK scanner before restarting data scanner
-              // stopScannerRef moved to subcomponent
-              // restartScannerRef moved to subcomponent
-            } else {
-              // Invalid or duplicate ACK - ignore and return early
-              // Debug logging moved to subcomponent
+            // Validate acknowledgedSequence using parent's latest feedbackSequence prop
+            // The ACK should acknowledge the feedback we just sent (feedbackSequence - 1)
+            // because we already incremented feedbackSequence after generating the feedback QR
+            const expectedAcknowledgedSequence = feedbackSequence - 1
+
+            if (parsed.acknowledgedSequence !== expectedAcknowledgedSequence) {
+              // Invalid or duplicate ACK - reject and log
+              console.warn(
+                `[FountainQRFeedbackDisplay] Rejecting ACK: expected acknowledgedSequence=${expectedAcknowledgedSequence}, got ${parsed.acknowledgedSequence}`
+              )
+              showAckError(`Invalid ACK sequence - expected ${expectedAcknowledgedSequence}, got ${parsed.acknowledgedSequence}`)
               return
             }
+
+            // Valid ACK - resume data scanning
+            // Debug logging moved to subcomponent
+            setFeedbackQRUrl('')
+            onModeChange('data-scanning')
+            setIsGenerating(false)
+            setSenderFeedbackMessage(parsed.message)
+
+            // RECEIVER: Only rely on sender's ACK windowExpanded flag to update UI
+            // Window expansion size calculation is delegated to parent via onAckReceived callback
+            // Receiver does NOT compute expansion size itself - sender is the single authority
+            onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message)
+
+            // Stop the ACK scanner before restarting data scanner
+            // stopScannerRef moved to subcomponent
+            // restartScannerRef moved to subcomponent
            break
 
       }
@@ -284,7 +352,7 @@ export function FountainQRFeedbackDisplay({
       // Debug logging moved to subcomponent
       console.error('Sender feedback parse error:', err)
     }
-  }, [sessionId, lastSenderFeedbackSequence, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks, onSenderSequenceUpdate, onModeChange, onWindowExpansion, onAckReceived])
+  }, [sessionId, lastSenderFeedbackSequence, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, onSenderSequenceUpdate, onModeChange, onWindowExpansion, onAckReceived])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
   const { videoRef: ackVideoRefFromHook } = useQRScanner({
@@ -305,6 +373,7 @@ export function FountainQRFeedbackDisplay({
   const handleStartAckScan = () => {
     onModeChange('ack-scanning')
     setError('')
+    setAckError('')
   }
 
   const handleShowFeedbackQR = () => {
@@ -379,6 +448,25 @@ export function FountainQRFeedbackDisplay({
               <button
                 onClick={() => setSenderFeedbackMessage('')}
                 className="text-white hover:text-gray-200 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+        {ackError && (
+          <div className="absolute top-12 left-2 right-2 bg-red-500/90 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+            <div className="flex items-start gap-2">
+              <p className="text-sm font-medium">{ackError}</p>
+              <button
+                onClick={() => {
+                  setAckError('')
+                  if (ackErrorTimeoutRef.current) {
+                    clearTimeout(ackErrorTimeoutRef.current)
+                    ackErrorTimeoutRef.current = null
+                  }
+                }}
+                className="text-white hover:text-gray-200 text-sm font-bold ml-auto"
               >
                 ✕
               </button>

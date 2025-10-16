@@ -34,7 +34,6 @@ interface FountainQRFeedbackScannerProps {
   sessionId: number;
   isActive: boolean;
   lastProcessedSequence: number;
-  senderFeedbackSequence: number;
   windowInfo: WindowInfo | null;
   lastDecodedInWindow: number;
   lastWindowExpansion: number | null;
@@ -52,7 +51,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   sessionId,
   isActive,
   lastProcessedSequence,
-  senderFeedbackSequence,
   windowInfo,
   lastDecodedInWindow,
   lastWindowExpansion,
@@ -67,10 +65,16 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   const [scanningFeedback, setScanningFeedback] = useState(false);
   const [ackQRUrl, setAckQRUrl] = useState('');
   const [currentMode, setCurrentMode] = useState<'scanning' | 'ack-display' | 'idle'>('idle');
+  const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const scannerRef = useRef<QrScanner | null>(null);
   const processingRef = useRef(false);
+
+  // Reset sequence on session change
+  useEffect(() => {
+    setSenderFeedbackSequence(0);
+  }, [sessionId]);
 
   useEffect(() => {
     if (isActive && currentMode === 'scanning') {
@@ -116,7 +120,9 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     try {
       const dataUrl = await generateNonDataQR(feedback);
       setAckQRUrl(dataUrl);
-      onAckGenerated(dataUrl, senderFeedbackSequence);
+      // Increment sequence only after successfully generating ACK
+      setSenderFeedbackSequence(prev => prev + 1);
+      onAckGenerated(dataUrl, feedback.sequence);
     } catch (error) {
       console.error('Failed to generate ACK QR:', error);
       onError('Failed to generate acknowledgment QR code');
@@ -163,6 +169,9 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
           windowEnd: updatedWindowInfo?.windowEnd,
         };
 
+        // SENDER: Single authority for window expansion
+        // Sender processes receiver statistics and decides whether to expand window
+        // Window expansion is initiated ONLY by sender based on receiver's requestWindowExpansion flag
         let windowExpanded = false;
         if (data.requestWindowExpansion && windowInfo && !windowInfo.isWindowComplete) {
           const now = Date.now();
@@ -172,6 +181,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
             const newWindowInfo = encoder?.getWindowInfo();
             if (newWindowInfo) {
               onUpdateWindowInfo(newWindowInfo);
+              console.log(`[FountainQRFeedbackScanner] Window expanded: new end=${newWindowInfo.windowEnd}`);
             }
             onUpdateLastWindowExpansion(now);
           }
@@ -213,6 +223,8 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
           onUpdateWindowInfo(updatedWindowInfo);
         }
 
+        // SENDER: Single authority for window expansion in targeted mode
+        // Sender evaluates decoded blocks in current window and decides whether to expand
         let windowExpanded = false;
         if (windowInfo?.windowEnabled && !windowInfo.isWindowComplete && updatedWindowInfo) {
           const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
@@ -229,6 +241,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
                 const newWindowInfo = encoder?.getWindowInfo();
                 if (newWindowInfo) {
                   onUpdateWindowInfo(newWindowInfo);
+                  console.log(`[FountainQRFeedbackScanner] Window expanded in targeted mode: new end=${newWindowInfo.windowEnd}`);
                 }
                 onUpdateLastWindowExpansion(now);
               }

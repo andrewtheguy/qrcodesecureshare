@@ -1,10 +1,7 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
+import { useState, useEffect, useMemo } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
-import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
-import { generateNonDataQR } from '@/utils/qrUtils'
 import { FountainQRDataDisplay } from './FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'
 
@@ -44,9 +41,9 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     windowEnd?: number
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
   const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
+  const [activationToken, setActivationToken] = useState<number>(0)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Initialize fountain encoder when file is loaded
@@ -125,11 +122,18 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     console.log('Feedback processed:', feedbackData);
   };
 
-  const handleAckGenerated = (ackUrl: string, sequence: number) => {
-    setSenderFeedbackSequence(sequence + 1);
+  const handleAckGenerated = () => {
+    // Sequence management moved to FountainQRFeedbackScanner
+    // This callback now only logs for debugging if needed
+    console.log('ACK generated');
   };
 
   const handleFeedbackModeChange = (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => {
+    // Increment activation token when switching TO data-display mode
+    // This ensures the child component only auto-starts on explicit activation
+    if (mode === 'data-display') {
+      setActivationToken(prev => prev + 1);
+    }
     setSenderMode(mode);
     console.log('Mode changed to:', mode);
   };
@@ -138,7 +142,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     setError(error);
   };
 
-  const handleUpdateWindowInfo = (windowInfo: {
+  const handleUpdateWindowInfo = (updatedWindowInfo: {
     windowEnabled: boolean;
     windowStart: number;
     windowEnd: number;
@@ -151,7 +155,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     segmentProgress: number;
     segmentSizeBlocks: number;
   }) => {
-    setWindowInfo(windowInfo);
+    setWindowInfo(updatedWindowInfo);
   };
 
   const handleUpdateLastDecodedInWindow = (count: number) => {
@@ -162,9 +166,9 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
     setLastWindowExpansion(timestamp);
   };
 
-  const handleChunkGenerated = (chunkNum: number, chunk: FountainChunk) => {
+  const handleChunkGenerated = () => {
     // Optional: Log chunk generation for debugging
-    console.log(`Chunk ${chunkNum} generated`)
+    console.log('Chunk generated')
   }
 
   const handleSkippedChunk = () => {
@@ -287,6 +291,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
           receivedBlocks={receivedBlocks}
           lastStats={lastStats}
           isActive={senderMode === 'data-display'}
+          activationToken={activationToken}
           onChunkGenerated={handleChunkGenerated}
           onSkippedChunk={handleSkippedChunk}
           onBufferUpdate={handleBufferUpdate}
@@ -308,7 +313,6 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         sessionId={sessionId}
         isActive={senderMode === 'feedback-scanning'}
         lastProcessedSequence={lastProcessedSequence}
-        senderFeedbackSequence={senderFeedbackSequence}
         windowInfo={windowInfo}
         lastDecodedInWindow={lastDecodedInWindow}
         lastWindowExpansion={lastWindowExpansion}
