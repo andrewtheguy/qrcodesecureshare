@@ -25,8 +25,8 @@ interface SequentialQRReceiverProps {
      size: number
      type: string
      totalChunks: number
-     checksum?: string
-     checksumAlg?: string
+     checksum: string
+     checksumAlg: string
      sessionId: number
    }
  }

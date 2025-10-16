@@ -14,14 +14,14 @@ interface FountainQRReceiverProps {
     type: string
     sessionId: number
     totalSourceBlocks: number
-    blockSize?: number
-    checksum?: string
-    checksumAlg?: string
-    windowEnabled?: boolean
-    initialWindowBlocks?: number
-    windowTriggerThreshold?: number
-    windowStart?: number
-    feedbackEnabled?: boolean
+    blockSize?: number // for windowed fountain
+    checksum: string
+    checksumAlg: string
+    windowEnabled: boolean
+    initialWindowBlocks?: number // for windowed fountain
+    windowTriggerThreshold?: number // for windowed fountain
+    windowStart?: number // for windowed fountain
+    feedbackEnabled: boolean
   }
 }
 
@@ -35,7 +35,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     type: initialMetadata.type,
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
-    blockSize: initialMetadata.blockSize || 600
+    blockSize: initialMetadata.blockSize || 600,
+    checksum: initialMetadata.checksum,
+    checksumAlg: initialMetadata.checksumAlg,
   }
 
   // Metadata is immutable for this mount (component remounted per file)

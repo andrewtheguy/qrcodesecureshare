@@ -169,7 +169,7 @@ self.onmessage = async (event: MessageEvent) => {
 
             case 'reconstructFile': {
                 ensureDecoder();
-                const { expectedChecksum: expectedChecksumStr, checksumAlg } = data as { expectedChecksum?: string; checksumAlg?: string };
+                const { expectedChecksum: expectedChecksumStr, checksumAlg } = data as { expectedChecksum: string; checksumAlg: string };
                 const reconstructedData = decoder!.getDecodedData();
                 if (!reconstructedData) {
                     self.postMessage({ type: 'error', id, error: 'No decoded data available' });

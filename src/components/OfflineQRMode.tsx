@@ -571,11 +571,15 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         </div>
 
         {/* Render appropriate sender component */}
-         {transferMode === 'sequential' ? (
-           <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
-         ) : (
-           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} feedbackEnabled={feedbackEnabled} />
-         )}
+        {metadataJson && (
+          <>
+            {transferMode === 'sequential' ? (
+              <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+            ) : (
+              <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} feedbackEnabled={feedbackEnabled} checksum={metadataJson.checksum} checksumAlg={metadataJson.checksumAlg} />
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   )

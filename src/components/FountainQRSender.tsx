@@ -9,6 +9,8 @@ interface FountainQRSenderProps {
   file: File
   sessionId: number
   feedbackEnabled?: boolean
+  checksum: string
+  checksumAlg: string
   qrOptions?: {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
@@ -16,7 +18,7 @@ interface FountainQRSenderProps {
 }
 
 
-export function FountainQRSender({ file, sessionId, feedbackEnabled = true, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
@@ -59,7 +61,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, qrOp
           name: file.name,
           size: file.size,
           type: file.type,
-          timestamp: Date.now()
+          timestamp: Date.now(),
+          checksum,
+          checksumAlg
         }
 
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
