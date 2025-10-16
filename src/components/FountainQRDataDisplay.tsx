@@ -291,8 +291,10 @@ export function FountainQRDataDisplay({
               binaryData.set(chunk.data, offset)
               offset += chunk.data.length
 
-              // Compute and append CRC32 checksum of chunk data
-              const checksumHex = await computeChecksum(chunk.data, 'crc32')
+              // Compute and append CRC32 checksum over complete chunk metadata and data
+              // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+              const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
+              const checksumHex = await computeChecksum(checksumPayload, 'crc32')
               // Convert hex string to 4 bytes (big-endian)
               for (let i = 0; i < 8; i += 2) {
                 const byte = parseInt(checksumHex.slice(i, i + 2), 16)
@@ -447,7 +449,7 @@ export function FountainQRDataDisplay({
         // [numIndices(1 byte)]
         // [indices... (2 bytes each)]
         // [chunk data...]
-        // [checksum(4 bytes)] - CRC32 checksum of chunk data
+        // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+data
 
         const numIndices = chunk.indices.length
         const expectedSize =
@@ -499,8 +501,10 @@ export function FountainQRDataDisplay({
         binaryData.set(chunk.data, offset)
         offset += chunk.data.length
 
-        // Compute and append CRC32 checksum of chunk data
-        const checksumHex = await computeChecksum(chunk.data, 'crc32')
+        // Compute and append CRC32 checksum over complete chunk metadata and data
+        // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+        const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
+        const checksumHex = await computeChecksum(checksumPayload, 'crc32')
         // Convert hex string to 4 bytes (big-endian)
         for (let i = 0; i < 8; i += 2) {
           const byte = parseInt(checksumHex.slice(i, i + 2), 16)
