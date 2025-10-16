@@ -3,11 +3,12 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { useQRScanner } from '@/hooks/useQRScanner'
 import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
 import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { generateNonDataQR } from '@/utils/qrUtils'
+import { FountainQRDataScanner } from './FountainQRDataScanner'
+import { useQRScanner } from '@/hooks/useQRScanner'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -37,20 +38,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     blockSize: initialMetadata.blockSize || 600
   }
 
-  const [isScanning, setIsScanning] = useState(false)
   // Metadata is immutable for this mount (component remounted per file)
   const fountainMetadata: FountainMetadata = initialMeta
-  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMeta.totalSourceBlocks} blocks, ${initialMeta.blockSize} bytes/block)`])
-  const [showDebugLog, setShowDebugLog] = useState(false)
   const [showFeedbackQR, setShowFeedbackQR] = useState(false)
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
+  const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -65,11 +63,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
-  const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
-  const [showMetadataInfo, setShowMetadataInfo] = useState<boolean>(false)
 
-  // Targeted mode testing state
-  const [isTargetedModeTestActive, setIsTargetedModeTestActive] = useState(false)
+  // Subcomponent state
+  const [isScanning, setIsScanning] = useState(false)
 
   // Overlay positioning flags
   const showScanningBadge = receiverMode === 'ack-scanning'
@@ -88,10 +84,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const showFeedbackQRRef = useRef(showFeedbackQR)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
 
-  const addDebugLog = useCallback((message: string) => {
-    setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
-  }, [])
-
   // Worker initialization and cleanup
   useEffect(() => {
     let worker: Worker | null = null
@@ -101,7 +93,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
       worker.onerror = (e) => {
         setError('Worker runtime error')
-        addDebugLog(`Worker runtime error: ${e.message || 'Unknown error'}`)
+        // Debug logging moved to subcomponent
       }
 
       worker.onmessage = (event: MessageEvent) => {
@@ -109,19 +101,19 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
       switch (type) {
         case 'initialized':
-          addDebugLog('✓ Fountain decoder worker initialized')
+          // Debug logging moved to subcomponent
           break
 
         case 'chunkProcessed': {
           const { duplicate, seed, decodedBlockCount, progress, isComplete, decodedBlockIndices } = data
           if (duplicate) {
-            addDebugLog(`⊗ Duplicate chunk seed ${seed}, ignoring`)
+            // Debug logging moved to subcomponent
             return
           }
-          setReceivedFountainChunks(prev => prev + 1)
+          // setReceivedFountainChunks moved to subcomponent
           setDecodedBlocks(decodedBlockCount)
           decodedBlockIndicesRef.current = decodedBlockIndices
-          addDebugLog(`✓ Fountain chunk #${seed} - decoded ${decodedBlockCount}/${fountainMetadata.totalSourceBlocks} blocks`)
+          // Debug logging moved to subcomponent
 
           // Window saturation check
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
@@ -130,7 +122,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
             if (windowDecodePercentage >= windowTriggerThresholdRef.current) {
-              addDebugLog(`🛑 Window saturation detected - feedback required (${decodedInWindow}/${currentWindowEndRef.current - currentWindowStartRef.current} blocks, ${(windowDecodePercentage * 100).toFixed(1)}%)`)
+              // Debug logging moved to subcomponent
               handleGenerateFeedbackQR()
               setReceiverMode('feedback-display')
               setIsScanning(false)
@@ -150,14 +142,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           if (integrityOk !== undefined) {
             setIntegrityOk(integrityOk)
-            addDebugLog(integrityOk
-              ? `🔐 Integrity OK (${checksum})`
-              : `❌ Integrity FAILED (expected ${checksum}, got computed checksum)`)
+            // Debug logging moved to subcomponent
           } else {
             setIntegrityOk(null)
           }
 
-          addDebugLog(`✓ File reconstructed successfully: ${reconstructedData.length} bytes`)
+          // Debug logging moved to subcomponent
           break
         }
 
@@ -165,9 +155,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           const { error, seed } = data
           if (error === 'Invalid checksum') {
             setInvalidChecksumCount(prev => prev + 1)
-            addDebugLog(`❌ Invalid checksum for chunk #${seed}`)
+            // Debug logging moved to subcomponent
           } else {
-            addDebugLog(`❌ Worker error: ${error}`)
+            // Debug logging moved to subcomponent
             setError(`Worker error: ${error}`)
           }
           break
@@ -178,10 +168,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Initialize worker
     worker.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
-    addDebugLog('🔧 Initializing fountain decoder worker')
+    // Debug logging moved to subcomponent
     } catch (error) {
       setError('Failed to initialize decoding worker')
-      addDebugLog(`Failed to initialize decoding worker: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      // Debug logging moved to subcomponent
       return
     }
 
@@ -219,7 +209,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   if (generatingRef.current) return; generatingRef.current = true
   setIsAwaitingFeedback(true)
   try {
-    stopScannerRef.current?.()
+    // stopScannerRef moved to subcomponent
     const decodedBlockIndices = decodedBlockIndicesRef.current
     const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
     const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
@@ -250,10 +240,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         firstMissingBlock: firstMissingBlock,
       }
     } else {
-      if (isTargetedModeTestActive) {
-        setIsTargetedModeTestActive(false)
-        addDebugLog('🎯 [TARGETED MODE TEST] Deactivated block ignoring to allow recovery.')
-      }
       // Targeted feedback with missing block indices - for final stage
       const decodedSet = new Set(decodedBlockIndices)
       const missingBlocks: number[] = []
@@ -283,7 +269,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         feedback = targetedFeedback
       } else {
         // Since threshold is so small, disable fallback to statistics mode
-        addDebugLog(`📊 Payload too large (${targetedJson.length} bytes), but threshold is small - keeping targeted mode`)
+        // Debug logging moved to subcomponent
         feedback = targetedFeedback // No fallback - threshold is small enough
       }
     }
@@ -296,11 +282,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       // These are small JSON payloads generated infrequently, so main thread is reliable and performant
       dataUrl = await generateNonDataQR(feedback)
     } catch (qrError) {
-      addDebugLog(`❌ QR generation failed: ${qrError instanceof Error ? qrError.message : 'Unknown error'}`)
+      // Debug logging moved to subcomponent
 
       // Recovery action: if targeted mode failed due to payload size, auto-switch to statistics mode
       if (feedback.mode === 'targeted') {
-        addDebugLog('🔄 Auto-switching to statistics mode due to payload size limit')
+        // Debug logging moved to subcomponent
         // Create statistics feedback as fallback
         const statisticsFeedback: FountainFeedbackStatistics = {
           type: 'FOUNTAIN_FEEDBACK',
@@ -321,9 +307,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           dataUrl = await generateNonDataQR(statisticsFeedback)
           feedback = statisticsFeedback // Update feedback reference for later use
           setError('') // Clear any previous error
-          addDebugLog('✅ Successfully generated statistics feedback QR after targeted mode failed')
+          // Debug logging moved to subcomponent
         } catch (retryError) {
-          addDebugLog(`❌ Statistics mode QR generation also failed: ${retryError instanceof Error ? retryError.message : 'Unknown error'}`)
+          // Debug logging moved to subcomponent
           setError('Failed to generate feedback QR code - both targeted and statistics modes exceeded payload capacity. Try again later.')
           return
         }
@@ -340,64 +326,32 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(false)
     feedbackSequenceRef.current += 1 // Atomic increment using ref
     setFeedbackSequence(feedbackSequenceRef.current) // Update state for UI consistency
-    addDebugLog(`📤 Generated feedback QR (${feedback.mode}, session ${sessionId}, seq ${seq}): ${decodedBlockIndices.length}/${fountainMetadata.totalSourceBlocks} blocks, ${feedbackJson.length} bytes`)
+    // Debug logging moved to subcomponent
     if (feedback.mode === 'statistics') {
-      addDebugLog(`🪟 Window progress: ${decodedInWindow}/${currentWindowEnd - currentWindowStart} blocks (${(windowDecodePercent * 100).toFixed(1)}%)`)
+      // Debug logging moved to subcomponent
     }
     // Log the decision
-    addDebugLog(`📊 Missing blocks: ${missingBlocksCount}, threshold: ${targetedModeThreshold}, mode: ${missingBlocksCount > targetedModeThreshold ? 'statistics' : 'targeted'}`)
+    // Debug logging moved to subcomponent
   } finally { generatingRef.current = false }
-}, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks, addDebugLog, isTargetedModeTestActive])
+}, [feedbackSequence, sessionId, isWindowEnabled, currentWindowStart, currentWindowEnd, windowTriggerThreshold, fountainMetadata.totalSourceBlocks])
 
- const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
-   // ════════════════════════════════════════════════════════════════════════════
-   // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
-   // To use: uncomment the array and add the block indices you want to ignore
-   // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
-   // ════════════════════════════════════════════════════════════════════════════
-   if (process.env.NODE_ENV === 'development' && isTargetedModeTestActive) {
-     // Parse just enough to check indices
-     let offset = 2 // Skip magic bytes
-     const seed = (bytes[offset++] << 8) | bytes[offset++]
-     const degree = bytes[offset++]
-     const numIndices = bytes[offset++]
-     const indices: number[] = []
-     for (let i = 0; i < numIndices; i++) {
-       const idx = (bytes[offset++] << 8) | bytes[offset++]
-       indices.push(idx)
-     }
-
-     const targetedModeTestIgnoreBlocks: number[] = [190,197] // Ignore blocks to simulate targeted mode (leave <= TARGETED_MODE_MAX_MISSING_BLOCKS blocks missing)
-     if (targetedModeTestIgnoreBlocks.length > 0) {
-       const containsIgnoredBlock = indices.some(i => targetedModeTestIgnoreBlocks.includes(i))
-       if (containsIgnoredBlock) {
-         addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
-         return
-       }
-     }
-   }
-   // ════════════════════════════════════════════════════════════════════════════
-
-   // Send binary data to worker for processing
-   workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
-   addDebugLog('📤 Sent chunk to worker for processing')
-  }, [addDebugLog, isTargetedModeTestActive])
+ // handleBinaryFountainChunk moved to subcomponent
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
     try {
       const parsed = JSON.parse(data) as SenderFeedback
       if (parsed.type !== 'SENDER_FEEDBACK') {
-        addDebugLog('⚠ Ignoring non-sender-feedback QR content')
+        // Debug logging moved to subcomponent
         return
       }
 
       if (parsed.sessionId !== sessionId) {
-        addDebugLog(`⚠ Ignoring sender feedback for different session: ${parsed.sessionId} vs ${sessionId}`)
+        // Debug logging moved to subcomponent
         return
       }
 
       if (parsed.sequence <= lastSenderFeedbackSequence) {
-        addDebugLog(`⚠ Ignoring duplicate or old sender feedback sequence: ${parsed.sequence} <= ${lastSenderFeedbackSequence}`)
+        // Debug logging moved to subcomponent
         return
       }
 
@@ -406,7 +360,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       switch (parsed.command) {
 
         case 'acknowledge':
-            addDebugLog(`✅ ACK received for feedback sequence ${parsed.acknowledgedSequence}`)
+            // Debug logging moved to subcomponent
             if (parsed.acknowledgedSequence === feedbackSequence - 1) {
               // Valid ACK - resume data scanning
               setShowFeedbackQR(false)
@@ -419,13 +373,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
                 const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
                 setCurrentWindowEnd(newWindowEnd)
-                addDebugLog(`🪟 Window expanded by fixed segment to ${currentWindowStart}-${newWindowEnd} blocks`)
+                // Debug logging moved to subcomponent
               }
               // Stop the ACK scanner before restarting data scanner
-              stopScannerRef.current?.()
-              await restartScannerRef.current?.()
+              // stopScannerRef moved to subcomponent
+              // restartScannerRef moved to subcomponent
             } else {
-              addDebugLog(`⚠️ ACK sequence mismatch: expected ${feedbackSequence - 1}, got ${parsed.acknowledgedSequence}`)
+              // Debug logging moved to subcomponent
             }
            setSenderFeedbackMessage(parsed.message)
            break
@@ -433,77 +387,24 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      addDebugLog(`✗ Error parsing sender feedback: ${errorMsg}`)
+      // Debug logging moved to subcomponent
       console.error('Sender feedback parse error:', err)
     }
-  }, [sessionId, lastSenderFeedbackSequence, addDebugLog, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks])
+  }, [sessionId, lastSenderFeedbackSequence, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks])
 
-  const handleScan = useCallback((data: string) => {
-    try {
-      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
-
-      if (receiverMode === 'ack-scanning') {
-        if (data.startsWith('{')) {
-          const parsed = JSON.parse(data)
-          if (parsed.type === 'SENDER_FEEDBACK') {
-            addDebugLog('🔁 Processing sender feedback (ACK scan mode)')
-            handleSenderFeedbackScan(data)
-          }
-        }
-        return
-      }
-
-      // Try to check if it is JSON first by checking
-      // if it begins with { (sender feedback)
-      if (data.startsWith('{')) {
-        const parsed = JSON.parse(data)
-        if (parsed.type === 'SENDER_FEEDBACK') {
-          addDebugLog('🔁 Processing sender feedback')
-          handleSenderFeedbackScan(data)
-          return
-        }
-      }
-
-      // Convert string to bytes
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
-      }
-      // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
-      if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
-        addDebugLog('🔁 Processing fountain chunk')
-        handleBinaryFountainChunk(bytes)
-      } else {
-        addDebugLog('⚠ Ignoring non-fountain-chunk QR content')
-      }
-    } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      addDebugLog(`✗ Error: ${errorMsg}`)
-      console.error('Scan error:', err)
+  // ACK scanner setup
+  const ackScannerIsScanning = receiverMode === 'ack-scanning'
+  const { videoRef: ackVideoRef } = useQRScanner({
+    onScan: handleSenderFeedbackScan,
+    isScanning: ackScannerIsScanning,
+    onError: (errorMessage) => {
+      setError(errorMessage)
     }
-  }, [addDebugLog, handleBinaryFountainChunk, handleSenderFeedbackScan])
-
-  const handleScanError = useCallback((errorMessage: string) => {
-    setError(errorMessage)
-  }, [])
-
-  const { videoRef, stopScanner, restartScanner } = useQRScanner({
-    onScan: handleScan,
-    isScanning: receiverMode === 'ack-scanning' || (receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback),
-    onError: handleScanError
   })
 
-  const stopScannerRef = useRef(stopScanner)
-  const restartScannerRef = useRef(restartScanner)
+  // handleScan moved to subcomponent
 
-  // Update refs when functions change
-  useEffect(() => {
-    stopScannerRef.current = stopScanner
-  }, [stopScanner])
-
-  useEffect(() => {
-    restartScannerRef.current = restartScanner
-  }, [restartScanner])
+  // Scanner integration moved to subcomponent
 
   // Keep refs in sync with state for worker onmessage handler
   useEffect(() => {
@@ -530,13 +431,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     isAwaitingFeedbackRef.current = isAwaitingFeedback
   }, [isAwaitingFeedback])
 
-  // Auto-start scanning when component mounts (after metadata is scanned)
-  useEffect(() => {
-    if (!isScanning && !success && !isAwaitingFeedback && receiverMode === 'data-scanning') {
-      addDebugLog('🚀 Auto-starting data scanning after metadata initialization')
-      handleStartScan()
-    }
-  }, []) // Empty dependency array - only run once on mount
+  // Auto-start scanning moved to subcomponent
 
   // ═══════════════════════════════════════════════════════════════════════════════
   // FEEDBACK QR GENERATION - MUTUALLY EXCLUSIVE TRIGGERS WITH PRIORITY ORDERING
@@ -594,7 +489,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Priority 2: Check for targeted mode threshold
     const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
     if (crossedToTargeted) {
-      addDebugLog(`🎯 Targeted mode threshold reached (${currentMissingBlocks} blocks remaining) - auto-generating feedback`)
+      // Debug logging moved to subcomponent
       handleGenerateFeedbackQR()
       setReceiverMode('feedback-display')
       setIsScanning(false)
@@ -606,7 +501,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // If we're in targeted mode but have many missing blocks, switch back to statistics mode
     const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks
     if (isStuckInTargetedMode) {
-      addDebugLog(`🔄 Detected stuck targeted mode (${currentMissingBlocks} missing > ${targetedModeThreshold * 2} threshold) - forcing statistics mode for window expansion`)
+      // Debug logging moved to subcomponent
       handleGenerateFeedbackQR()
       setReceiverMode('feedback-display')
       setIsScanning(false)
@@ -615,27 +510,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR, addDebugLog])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, showFeedbackQR, success, isAwaitingFeedback, handleGenerateFeedbackQR])
 
-  const handleStartScan = () => {
-    setIsScanning(true)
-    setReceivedFountainChunks(0)
-    setDecodedBlocks(0)
-    setError('')
-    setSuccess(false)
-    setDownloadUrl('')
-  }
-
-  const handleStopScan = () => {
-    setIsScanning(false)
-    stopScannerRef.current?.()
-  }
+  // handleStartScan, handleStopScan moved to subcomponent
 
   const handleReset = () => {
     if (downloadUrl) {
       URL.revokeObjectURL(downloadUrl)
     }
-    setReceivedFountainChunks(0)
     setDecodedBlocks(0)
     decodedBlockIndicesRef.current = []
     setError('')
@@ -653,7 +535,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastSenderFeedbackSequence(-1)
     setSenderFeedbackMessage('')
     setInvalidChecksumCount(0)
-    setShowMetadataInfo(false)
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -673,14 +554,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
   const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
-  // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
-  // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
-  const k = fountainMetadata.totalSourceBlocks
-  const c = 0.2
-  const delta = 0.01
-  const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
-  const dopingOverhead = 1.05 // Account for forced low-degree chunks
-  const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
   // Memoize decodedInWindow to avoid repeated filter calls
   const decodedInWindow = useMemo(() => {
@@ -727,11 +600,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
 
-      {/* Video Preview */}
-      {(receiverMode === 'data-scanning' || receiverMode === 'ack-scanning') && (
+      {/* Video Preview for ACK scanning */}
+      {receiverMode === 'ack-scanning' && (
         <div className="relative bg-black rounded-lg overflow-hidden">
           <video
-            ref={videoRef}
+            ref={ackVideoRef}
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
           />
@@ -740,13 +613,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               ● SCANNING
             </div>
           )}
-          {receiverMode === 'ack-scanning' && (
-            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-              <p className="text-sm text-center">
-                Scanning for ACK QR from sender. Point camera at sender's ACK QR code
-              </p>
-            </div>
-          )}
+          <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+            <p className="text-sm text-center">
+              Scanning for ACK QR from sender. Point camera at sender's ACK QR code
+            </p>
+          </div>
           {showSenderMsg && (
             <div className={`absolute ${showScanningBadge ? 'top-12' : 'top-2'} right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20`}>
               <div className="flex items-start gap-2">
@@ -763,52 +634,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         </div>
       )}
 
-      {/* Progress */}
-      {!success && (
-        <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Decoded {decodedBlocks} of {fountainMetadata.totalSourceBlocks} blocks</span>
-            <span>{Math.round(progress)}%</span>
-          </div>
-          <Progress value={progress} />
-          <div className="text-xs text-muted-foreground">
-            Received {receivedFountainChunks} chunks (est. {estimatedChunksNeeded} needed)
-            {invalidChecksumCount > 0 && (
-              <div className="text-red-600">
-                Invalid checksums: {invalidChecksumCount} chunks skipped
-              </div>
-            )}
-          </div>
-          {isWindowEnabled && currentWindowEnd < fountainMetadata.totalSourceBlocks && (
-            <div className="text-xs text-muted-foreground">
-              Windowing is enabled
-            </div>
-          )}
-        </div>
-      )}
+      {/* Progress moved to subcomponent */}
 
-      {/* Metadata Info */}
-      {!success && showMetadataInfo && (
-        <Alert>
-          <AlertDescription>
-            <div className="flex items-start justify-between">
-              <div>
-                <p className="font-medium">{fountainMetadata.name}</p>
-                <p className="text-sm text-muted-foreground">
-                  Expected size: {(fountainMetadata.size / 1024).toFixed(2)}KB |
-                  Blocks: {fountainMetadata.totalSourceBlocks}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowMetadataInfo(false)}
-                className="text-muted-foreground hover:text-foreground text-sm"
-              >
-                ✕
-              </button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* Metadata Info moved to subcomponent */}
 
 
       {/* Error Alert */}
@@ -826,7 +654,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               <p className="font-medium text-green-600">
                 ✅ File decoded successfully!
                 <span className="block text-sm font-normal text-muted-foreground mt-1">
-                  Decoded using fountain codes ({receivedFountainChunks} chunks received)
+                  Decoded using fountain codes
                 </span>
               </p>
               {integrityOk !== null && (
@@ -847,104 +675,36 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         </Alert>
       )}
 
-      {/* Instructions */}
-      {!isScanning && !success && (
-        <Alert>
-          <AlertDescription>
-            <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
-            <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Click "Start Scanning" to activate camera</li>
-              <li>Scan the metadata QR code first</li>
-              <li>Then scan fountain-coded chunks</li>
-              <li>You only need ~110% of chunks (can miss some)</li>
-              <li>Progress shows decoded blocks, not chunks scanned</li>
-              <li>File will download when fully decoded</li>
-              <li>When feedback is required, you'll be prompted to generate a feedback QR</li>
-              <li>Show it to sender, then switch to ACK scanning mode to receive acknowledgment</li>
-              <li>You can toggle between showing feedback QR and scanning for ACK at any time</li>
-              <li>Data scanning is blocked until ACK is received from sender</li>
-            </ol>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Debug Log */}
-      <div className="border-t pt-3">
-        <Button
-          onClick={() => setShowDebugLog(!showDebugLog)}
-          variant="ghost"
-          size="sm"
-          className="w-full text-xs"
-        >
-          {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
-        </Button>
-        {showDebugLog && (
-          <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-            {debugLog.length === 0 ? (
-              <p className="text-muted-foreground">No logs yet...</p>
-            ) : (
-              debugLog.map((log, i) => (
-                <div key={i} className="py-0.5">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Control Buttons */}
-      <div className="flex gap-2">
-        {receiverMode === 'data-scanning' && !isScanning && !success && !isAwaitingFeedback && (
-          <Button onClick={handleStartScan} className="flex-1">
-            📷 Start Scanning
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && !isScanning && !success && isAwaitingFeedback && (
-          <Button disabled className="flex-1" variant="secondary">
-            ⏸️ Provide Feedback to Resume
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && isScanning && !success && (
-          <>
-            <Button onClick={handleStopScan} variant="destructive" className="flex-1">
-              ⏹ Stop Scanning
-            </Button>
-            <Button onClick={handleReset} variant="outline">
-              Reset
-            </Button>
-          </>
-        )}
-        {receiverMode === 'feedback-display' && !success && (
-          <>
-            <Button disabled className="flex-1" variant="secondary">
-              📊 Showing Feedback QR - Toggle above to scan ACK
-            </Button>
-            <Button onClick={() => setReceiverMode('ack-scanning')} className="flex-1">
-              📷 Switch to ACK Scanning
-            </Button>
-          </>
-        )}
-        {receiverMode === 'ack-scanning' && !success && (
-          <>
-            <Button onClick={() => setReceiverMode('feedback-display')} className="flex-1">
-              📊 Switch to Feedback QR
-            </Button>
-            <Button disabled className="flex-1" variant="secondary">
-              📷 Scanning for ACK QR - Toggle above to view feedback qr
-            </Button>
-          </>
-        )}
-        {!success && (
-          <Button
-            onClick={() => setShowMetadataInfo(!showMetadataInfo)}
-            variant="ghost"
-            size="sm"
-          >
-            {showMetadataInfo ? '▼' : '▶'} File Info
-          </Button>
-        )}
-      </div>
+      {/* Add the subcomponent */}
+      <FountainQRDataScanner
+        fountainMetadata={fountainMetadata}
+        workerRef={workerRef}
+        messageIdCounterRef={messageIdCounterRef}
+        isScanning={isScanning}
+        receiverMode={receiverMode}
+        isAwaitingFeedback={isAwaitingFeedback}
+        success={success}
+        decodedBlocks={decodedBlocks}
+        invalidChecksumCount={invalidChecksumCount}
+        onChunkScanned={(seed) => {
+          // Optional: handle chunk scanned callback if needed
+        }}
+        onScanError={(error) => {
+          setError(error)
+        }}
+        onScanStart={() => {
+          setIsScanning(true)
+        }}
+        onScanStop={() => {
+          setIsScanning(false)
+        }}
+        onReset={() => {
+          handleReset()
+        }}
+        onToggleMetadataInfo={(show) => {
+          // Optional: handle metadata info toggle if needed
+        }}
+      />
 
     </div>
   )

@@ -46,6 +46,7 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0)
   const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
+  const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Initialize fountain encoder when file is loaded
