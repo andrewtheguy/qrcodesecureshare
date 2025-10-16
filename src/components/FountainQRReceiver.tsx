@@ -335,14 +335,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Prevent getting stuck in targeted mode when window expansion is needed
     // If we're in targeted mode but have many missing blocks, switch back to statistics mode
-    const isStuckInTargetedMode = currentMissingBlocks > targetedModeThreshold * 2 && isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks
-    if (isStuckInTargetedMode) {
-      // Debug logging moved to subcomponent
-      setReceiverMode('feedback-display')
-      setIsScanning(false)
-      setIsAwaitingFeedback(true)
-      return
-    }
+    // NOTE: This check was causing erroneous mode switches due to stale ref reads
+    // Removed to prevent unpredictable feedback mode transitions
 
 
     prevMissingBlocksRef.current = currentMissingBlocks

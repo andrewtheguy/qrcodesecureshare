@@ -189,7 +189,7 @@ export function FountainQRDataDisplay({
         }
       }
     } catch (err) {
-      console.warn('Module workers not supported, falling back to main thread QR generation:', err)
+      console.warn('QR worker initialization failed, falling back to main thread generation:', err)
       workerRef.current = null
     }
 
@@ -422,7 +422,7 @@ export function FountainQRDataDisplay({
         if (failures >= 5) {
           setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
         } else if (failures >= 3) {
-          setWorkerFallbackHint('Using backup QR generation method.')
+          setWorkerFallbackHint('Using SVG-based QR generation method.')
         }
       }
 
