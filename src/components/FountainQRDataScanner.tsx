@@ -21,6 +21,7 @@ interface FountainQRDataScannerProps {
   onScanStop: () => void
   onReset: () => void
   onToggleMetadataInfo: (show: boolean) => void
+  onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
 }
 
 export function FountainQRDataScanner({
@@ -38,7 +39,8 @@ export function FountainQRDataScanner({
   onScanStart,
   onScanStop,
   onReset,
-  onToggleMetadataInfo
+  onToggleMetadataInfo,
+  onModeChange
 }: FountainQRDataScannerProps) {
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
@@ -106,6 +108,21 @@ export function FountainQRDataScanner({
       // Try to check if it is JSON first by checking
       // if it begins with { (sender feedback)
       if (data.startsWith('{')) {
+        try {
+          const json = JSON.parse(data)
+          if (json.type === 'FOUNTAIN_FEEDBACK') {
+            addDebugLog('📥 Detected FOUNTAIN_FEEDBACK QR, switching to feedback-display mode')
+            onModeChange('feedback-display')
+            return
+          } else if (json.type === 'SENDER_FEEDBACK') {
+            addDebugLog('📥 Detected SENDER_FEEDBACK QR, switching to ack-scanning mode')
+            onModeChange('ack-scanning')
+            return
+          }
+        } catch {
+          // If JSON parsing fails, just ignore
+          addDebugLog('⚠ Ignoring non-feedback JSON QR content')
+        }
         return
       }
 
@@ -126,7 +143,7 @@ export function FountainQRDataScanner({
       addDebugLog(`✗ Error: ${errorMsg}`)
       console.error('Scan error:', err)
     }
-  }, [addDebugLog, handleBinaryFountainChunk, receiverMode])
+  }, [addDebugLog, handleBinaryFountainChunk, receiverMode, onModeChange])
 
   const handleScanError = useCallback((errorMessage: string) => {
     setError(errorMessage)

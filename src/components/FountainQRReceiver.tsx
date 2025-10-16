@@ -492,6 +492,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         onToggleMetadataInfo={(show) => {
           // Optional: handle metadata info toggle if needed
         }}
+        onModeChange={handleFeedbackModeChange}
       />
 
     </div>
