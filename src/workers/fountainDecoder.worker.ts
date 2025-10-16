@@ -118,12 +118,13 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                // Validate checksum over payload data only (the data portion), not including header/indices
-                const payload = chunk.data;
+                // Validate checksum over complete chunk: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+                // This is everything except magic bytes (first 2 bytes) and checksum itself (last 4 bytes)
+                const checksumPayload = binaryData.slice(2, chunk.checksumStart);
                 const expectedChecksumStr = Array.from(binaryData.slice(chunk.checksumStart))
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join('');
-                const ok = (await computeChecksum(payload, 'crc32')) === expectedChecksumStr;
+                const ok = (await computeChecksum(checksumPayload, 'crc32')) === expectedChecksumStr;
                 if (!ok) {
                     self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
                     break;
@@ -203,25 +204,6 @@ self.onmessage = async (event: MessageEvent) => {
                 break;
             }
 
-            case 'rollback': {
-                ensureDecoder();
-                const { blockIndex } = data as { blockIndex: number };
-                decoder!.rollbackToBlock(blockIndex);
-                // Reinitialize receivedSeeds from processedSeeds to retain duplicate protection
-                receivedSeeds = new Set(processedSeeds);
-
-                const decodedBlockCount_ = decoder!.getDecodedBlockCount();
-                const decodedBlockIndices_ = decoder!.getDecodedBlockIndices();
-
-                self.postMessage({
-                    type: 'rollbackComplete',
-                    id,
-                    blockIndex,
-                    decodedBlockCount: decodedBlockCount_,
-                    decodedBlockIndices: decodedBlockIndices_
-                });
-                break;
-            }
 
             case 'getStatus': {
                 ensureDecoder();

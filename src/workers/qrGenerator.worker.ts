@@ -9,7 +9,14 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (type === 'generate') {
     try {
-      const qrUrl = await QRCode.toDataURL(binaryString, options)
+      const svgString = await new Promise<string>((resolve, reject) => {
+        QRCode.toString(binaryString, { ...options, type: 'svg' }, (err, result) => {
+          if (err) reject(err)
+          else resolve(result)
+        })
+      })
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(new TextEncoder().encode(svgString))))
+      const qrUrl = 'data:image/svg+xml;base64,' + base64
       self.postMessage({ type: 'success', id, qrUrl })
     } catch (error) {
       self.postMessage({ type: 'error', id, error: (error as Error).message })

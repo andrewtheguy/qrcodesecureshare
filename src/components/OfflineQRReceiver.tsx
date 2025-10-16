@@ -26,7 +26,7 @@ interface DetectedMetadata {
   windowStart?: number
 }
 
-export function AnimatedQRReceiver() {
+export function OfflineQRReceiver() {
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)
@@ -37,6 +37,7 @@ export function AnimatedQRReceiver() {
   const [error, setError] = useState<string>('')
 
   const addDebugLog = (message: string) => {
+    console.log(`[AnimatedQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 

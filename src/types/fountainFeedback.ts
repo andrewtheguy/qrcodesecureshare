@@ -38,8 +38,6 @@ export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   totalDecoded: number;
   /** Whether sender should expand the transfer window */
   requestWindowExpansion: boolean;
-  /** Whether receiver requests higher ECC level due to scan failures */
-  requestHigherECC?: boolean;
 }
 
 /**
@@ -67,20 +65,10 @@ interface SenderFeedbackBase {
   /** Sequence number to prevent duplicate processing */
   sequence: number;
   /** Action for receiver to take */
-  command: 'rollback' | 'acknowledge' | 'requestHigherECC';
+  command: 'acknowledge';
 }
 
 
-/**
- * Sender feedback for rollback request.
- */
-export interface SenderFeedbackRollback extends SenderFeedbackBase {
-  command: 'rollback';
-  /** Receiver should discard blocks >= this index */
-  rollbackToBlock: number;
-  /** Why rollback is needed */
-  reason: string;
-}
 
 /**
  * Sender feedback for acknowledgment.
@@ -95,16 +83,8 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   windowExpanded: boolean;
 }
 
-/**
- * Sender feedback for higher ECC level request.
- */
-export interface SenderFeedbackRequestHigherECC extends SenderFeedbackBase {
-  command: 'requestHigherECC';
-  /** Human-readable status message */
-  message: string;
-}
 
 /**
  * Union type for all sender feedback payloads.
  */
-export type SenderFeedback = SenderFeedbackRollback | SenderFeedbackAcknowledge | SenderFeedbackRequestHigherECC;
+export type SenderFeedback = SenderFeedbackAcknowledge;

@@ -140,7 +140,8 @@ The app comes pre-configured with my own encryption key pairs for my website, yo
 - `Upload.tsx`: File upload and QR generation
 - `Scan.tsx`: QR code scanning
 - `OfflineTransfer.tsx`: P2P file transfer
-- `AnimatedQRCode.tsx`: Display animated QR codes related the chunks of the file to be transferred for the offline method
+- `OfflineQRMode.tsx`: Mode selection and metadata preparation for offline QR transfers
+- `OfflineQRReceiver.tsx`: Metadata scanning and receiver component selection for offline QR transfers
 - Various sender/receiver components for different transfer methods
 
 ## 🔒 Security Considerations

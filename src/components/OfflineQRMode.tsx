@@ -13,7 +13,7 @@ import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, SEG
 const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
-interface AnimatedQRCodeProps {
+interface OfflineQRModeProps {
   file: File | null
   onReset?: () => void
 }
@@ -24,7 +24,7 @@ export const MAX_FILE_SIZE_FOUNTAIN_LEGACY = 512 * 1024
 
 type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
 
-export function AnimatedQRCode({ file, onReset }: AnimatedQRCodeProps) {
+export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
   const [error, setError] = useState<string>('')
   const [step, setStep] = useState<'mode' | 'metadata' | 'transfer'>('mode')
