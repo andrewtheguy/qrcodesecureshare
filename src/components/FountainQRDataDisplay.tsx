@@ -100,7 +100,6 @@ export function FountainQRDataDisplay({
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
-  const canvasRef = useRef<HTMLCanvasElement>(null)
   const currentChunkRef = useRef<FountainChunk | null>(null)
   const lastSuccessfulQrRef = useRef<string>('')
   const workerRef = useRef<Worker | null>(null)
@@ -110,6 +109,7 @@ export function FountainQRDataDisplay({
 
   // Worker failure tracking
   const consecutiveWorkerFailuresRef = useRef(0)
+  const consecutiveWorkerSuccessesRef = useRef(0)
   const workerSkipUntilChunkRef = useRef(0)
   const originalFpsRef = useRef(fps)
   const originalBufferTargetRef = useRef(5)
@@ -359,16 +359,19 @@ export function FountainQRDataDisplay({
       }
 
       const id = requestIdRef.current++
+      // Adaptive timeout: start at 8s for first few chunks, lower after consecutive successes
+      const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
       const timeout = setTimeout(() => {
         pendingRequests.current.delete(id)
         reject(new Error('Worker timeout'))
-      }, 5000) // 5 second timeout
+      }, adaptiveTimeout)
 
       pendingRequests.current.set(id, {
         resolve: (qrUrl: string) => {
           clearTimeout(timeout)
-          // Success! Reset failure counter
+          // Success! Reset failure counter and increment success counter
           consecutiveWorkerFailuresRef.current = 0
+          consecutiveWorkerSuccessesRef.current++
           setWorkerFallbackHint('')
           resolve(qrUrl)
         },
@@ -391,8 +394,9 @@ export function FountainQRDataDisplay({
     return workerPromise.catch((err) => {
       console.warn('QR worker failed, falling back to main thread:', err)
 
-      // Track consecutive failures
+      // Track consecutive failures and reset success counter
       consecutiveWorkerFailuresRef.current++
+      consecutiveWorkerSuccessesRef.current = 0
       const failures = consecutiveWorkerFailuresRef.current
 
       // Apply exponential backoff after N consecutive failures
@@ -627,12 +631,13 @@ export function FountainQRDataDisplay({
     <div className="space-y-4">
       {/* QR Code Display (clean container without overlays) */}
       <div className="flex justify-center bg-white p-4 rounded-lg">
-        <canvas ref={canvasRef} style={{ display: 'none' }} />
         {qrCodeUrl ? (
           <img
             src={qrCodeUrl}
             alt={`Fountain coded chunk`}
             className="max-w-full h-auto"
+            width="400"
+            height="400"
           />
         ) : (
           <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">

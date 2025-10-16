@@ -15,7 +15,8 @@ self.onmessage = async (e: MessageEvent) => {
           else resolve(result)
         })
       })
-      const qrUrl = 'data:image/svg+xml;base64,' + btoa(svgString)
+      const base64 = btoa(String.fromCharCode(...new Uint8Array(new TextEncoder().encode(svgString))))
+      const qrUrl = 'data:image/svg+xml;base64,' + base64
       self.postMessage({ type: 'success', id, qrUrl })
     } catch (error) {
       self.postMessage({ type: 'error', id, error: (error as Error).message })

@@ -314,7 +314,7 @@ export function FountainQRFeedbackDisplay({
 
       switch (parsed.command) {
 
-        case 'acknowledge':
+        case 'acknowledge': {
             // Validate acknowledgedSequence using parent's latest feedbackSequence prop
             // The ACK should acknowledge the feedback we just sent (feedbackSequence - 1)
             // because we already incremented feedbackSequence after generating the feedback QR
@@ -345,6 +345,7 @@ export function FountainQRFeedbackDisplay({
             // stopScannerRef moved to subcomponent
             // restartScannerRef moved to subcomponent
            break
+        }
 
       }
     } catch (err) {
