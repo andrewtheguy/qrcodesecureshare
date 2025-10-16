@@ -26,7 +26,7 @@ interface DetectedMetadata {
   windowStart?: number
 }
 
-export function AnimatedQRReceiver() {
+export function OfflineQRReceiver() {
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
   const [isScanning, setIsScanning] = useState(false)
   const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)

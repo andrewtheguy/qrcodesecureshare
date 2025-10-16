@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { AnimatedQRCode } from './AnimatedQRCode'
-import { AnimatedQRReceiver } from './AnimatedQRReceiver'
+import { OfflineQRMode } from './OfflineQRMode'
+import { OfflineQRReceiver } from './OfflineQRReceiver'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
-import { MAX_FILE_SIZE_FOUNTAIN } from './AnimatedQRCode'
+import { MAX_FILE_SIZE_FOUNTAIN } from './OfflineQRMode'
 
 export default function OfflineTransfer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -111,7 +111,7 @@ export default function OfflineTransfer() {
             </AlertDescription>
           </Alert>
 
-          <AnimatedQRCode file={selectedFile} onReset={handleReset} />
+          <OfflineQRMode file={selectedFile} onReset={handleReset} />
         </div>
       )}
 
@@ -125,7 +125,7 @@ export default function OfflineTransfer() {
             </Button>
           </div>
 
-          <AnimatedQRReceiver />
+          <OfflineQRReceiver />
         </div>
       )}
 
