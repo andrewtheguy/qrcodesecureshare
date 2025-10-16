@@ -24,6 +24,8 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
   const peerRef = useRef<Peer | null>(null)
   const connectionRef = useRef<DataConnection | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const isInitializedRef = useRef<boolean>(false)
+  const isCleaningUpRef = useRef<boolean>(false)
 
   const sendFile = useCallback(async (conn: DataConnection) => {
         try {
@@ -77,30 +79,27 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
 
   useEffect(() => {
     // Prevent double initialization in React Strict Mode
-    if (peerRef.current) {
-      console.log('PeerJS already initialized, skipping...')
+    if (isInitializedRef.current) {
       return
     }
 
     // Initialize Peer.js with configuration
-    console.log('Initializing PeerJS haha...')
     const peer = new Peer({
       debug: 2, // Enable debug logging (0=none, 1=errors, 2=warnings, 3=all)
     })
 
     peerRef.current = peer
+    isInitializedRef.current = true
 
     // Add timeout to detect connection issues
     const connectionTimeout = setTimeout(() => {
       if (!peerId) {
-        console.error('PeerJS connection timeout - unable to connect to signaling server')
         setError('Connection timeout: Unable to connect to PeerJS server. This may be due to network restrictions or firewall blocking. Please check your internet connection or try a different network.')
         setConnectionStatus('error')
       }
     }, 15000) // 15 second timeout
 
     peer.on('open', (id) => {
-      console.log('✅ PeerJS connected successfully. Peer ID:', id)
       clearTimeout(connectionTimeout)
       setPeerId(id)
       setConnectionStatus('waiting')
@@ -114,29 +113,24 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
         fileSize: encryptedFile.size
       })
 
-      console.log('Generating QR code...')
       generateQRCode(qrData)
     })
 
     peer.on('connection', (conn) => {
-      console.log('✅ Receiver connected')
       setConnectionStatus('connected')
       connectionRef.current = conn
 
       conn.on('open', () => {
-        console.log('✅ Data connection opened, starting file transfer...')
         sendFile(conn)
       })
 
       conn.on('error', (err) => {
-        console.error('❌ Connection error:', err)
         setError('Connection failed: ' + err.message)
         setConnectionStatus('error')
       })
     })
 
     peer.on('error', (err) => {
-      console.error('❌ Peer error:', err)
       clearTimeout(connectionTimeout)
 
       let errorMessage = 'Peer connection failed: ' + err.message
@@ -157,19 +151,28 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
     })
 
     peer.on('disconnected', () => {
-      console.warn('⚠️ Peer disconnected from server')
+      // Ignore disconnection during cleanup
+      if (isCleaningUpRef.current) {
+        return
+      }
+
       setError('Disconnected from signaling server. Attempting to reconnect...')
       peer.reconnect()
     })
 
     return () => {
+      isCleaningUpRef.current = true
       clearTimeout(connectionTimeout)
       if (connectionRef.current) {
         connectionRef.current.close()
+        connectionRef.current = null
       }
       if (peerRef.current) {
         peerRef.current.destroy()
+        peerRef.current = null // Clear the ref to allow re-initialization
+        isInitializedRef.current = false // Allow re-initialization on next mount
       }
+      isCleaningUpRef.current = false
     }
   }, [encryptedFile, encryptionKey, originalFilename, sendFile])
 
@@ -204,9 +207,12 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
   const handleReset = () => {
     if (connectionRef.current) {
       connectionRef.current.close()
+      connectionRef.current = null
     }
     if (peerRef.current) {
       peerRef.current.destroy()
+      peerRef.current = null
+      isInitializedRef.current = false // Allow re-initialization on reset
     }
     if (onReset) onReset()
   }
