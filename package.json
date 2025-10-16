@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
+    "lint": "tsc --noEmit && eslint .",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
     "generate-keys": "node scripts/generate-keys.cjs"
