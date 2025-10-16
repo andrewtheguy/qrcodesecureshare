@@ -77,167 +77,156 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
   const handleFeedbackScan = useCallback(async (result: { data: string }) => {
     if (processingRef.current) return;
-    processingRef.current = true;
-
-    let valid = true;
-    try {
-      const data = JSON.parse(result.data) as FountainFeedback;
-      if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
-        valid = false;
-        onError('Invalid feedback QR code: wrong type, session, or sequence.');
-        setCurrentMode('idle');
-        return;
-      }
-
-      if (data.sequence <= lastProcessedSequence) {
-        console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
-        onError('Stale feedback QR code: sequence already processed.');
-        setCurrentMode('idle');
-        return;
-      }
-
-      const firstMissingBlock = data.firstMissingBlock || 0;
-
-      if (data.mode === 'statistics') {
-        console.log('Processing statistics feedback:', data.totalDecoded, '/', data.totalBlocks);
-        encoder?.setReceivedBlocks([]);
-        encoder?.setSkipBlocksBelow(firstMissingBlock);
-
-        const updatedWindowInfo = encoder?.getWindowInfo();
-        if (updatedWindowInfo) {
-          onUpdateWindowInfo(updatedWindowInfo);
-        }
-
-        const lastStats = {
-          totalDecoded: data.totalDecoded,
-          totalBlocks: data.totalBlocks,
-          windowStart: updatedWindowInfo?.windowStart,
-          windowEnd: updatedWindowInfo?.windowEnd,
-        };
-
-        // SENDER: Single authority for window expansion
-        // Sender processes receiver statistics and decides whether to expand window
-        // Window expansion is initiated ONLY by sender based on receiver's requestWindowExpansion flag
-        let windowExpanded = false;
-        if (data.requestWindowExpansion && windowInfo && !windowInfo.isWindowComplete) {
-          const now = Date.now();
-          if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-            encoder?.expandWindow();
-            windowExpanded = true;
-            const newWindowInfo = encoder?.getWindowInfo();
-            if (newWindowInfo) {
-              onUpdateWindowInfo(newWindowInfo);
-              console.log(`[FountainQRFeedbackScanner] Window expanded: new end=${newWindowInfo.windowEnd}`);
-            }
-            onUpdateLastWindowExpansion(now);
-          }
-        }
-
-        const ackFeedback: SenderFeedbackAcknowledge = {
-          type: 'SENDER_FEEDBACK',
-          sessionId,
-          sequence: senderFeedbackSequence,
-          command: 'acknowledge',
-          acknowledgedSequence: data.sequence,
-          message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
-          windowExpanded,
-        };
-
-        await generateSenderFeedbackQR(ackFeedback);
-        setCurrentMode('ack-display');
-
-        onFeedbackProcessed({
-          sequence: data.sequence,
-          mode: 'statistics',
-          lastStats,
-          windowExpanded,
-          message: ackFeedback.message,
-        });
-
-        onModeChange('ack-display');
-        scannerRef.current?.stop();
-        scannerRef.current?.destroy();
-        scannerRef.current = null;
-      } else if (data.mode === 'targeted') {
-        const missingBlocks = data.missingBlocks || [];
-        console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
-        encoder?.setMissingBlocks(missingBlocks);
-        encoder?.setSkipBlocksBelow(firstMissingBlock);
-
-        const updatedWindowInfo = encoder?.getWindowInfo();
-        if (updatedWindowInfo) {
-          onUpdateWindowInfo(updatedWindowInfo);
-        }
-
-        // SENDER: Single authority for window expansion in targeted mode
-        // Sender evaluates decoded blocks in current window and decides whether to expand
-        let windowExpanded = false;
-        if (windowInfo?.windowEnabled && !windowInfo.isWindowComplete && updatedWindowInfo) {
-          const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
-          const decodedInWindow = updatedWindowInfo.windowSize - missingInWindow.length;
-
-          if (decodedInWindow > lastDecodedInWindow) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-            const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
-            if (windowDecodePercent >= 0.5) {
-              const now = Date.now();
-              if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-                encoder?.expandWindow();
-                windowExpanded = true;
-                const newWindowInfo = encoder?.getWindowInfo();
-                if (newWindowInfo) {
-                  onUpdateWindowInfo(newWindowInfo);
-                  console.log(`[FountainQRFeedbackScanner] Window expanded in targeted mode: new end=${newWindowInfo.windowEnd}`);
-                }
-                onUpdateLastWindowExpansion(now);
-              }
-            }
-          }
-        }
-
-        const ackFeedback: SenderFeedbackAcknowledge = {
-          type: 'SENDER_FEEDBACK',
-          sessionId,
-          sequence: senderFeedbackSequence,
-          command: 'acknowledge',
-          acknowledgedSequence: data.sequence,
-          message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
-          windowExpanded,
-        };
-
-        await generateSenderFeedbackQR(ackFeedback);
-        setCurrentMode('ack-display');
-
-        onFeedbackProcessed({
-          sequence: data.sequence,
-          mode: 'targeted',
-          receivedBlocks: new Set(),
-          windowExpanded,
-          message: ackFeedback.message,
-        });
-
-        onModeChange('ack-display');
-        scannerRef.current?.stop();
-        scannerRef.current?.destroy();
-        scannerRef.current = null;
-      }
-
-      // setScanningFeedback(false);
-      scannerRef.current?.stop();
-    } catch (error) {
-      console.error('Error processing feedback scan:', error);
-      valid = false;
-      onError('Error processing feedback QR code.');
-    } finally {
-      if (!valid) {
-        // setScanningFeedback(false);
-        setCurrentMode('idle');
-        if (scannerRef.current) {
-          scannerRef.current.stop();
-        }
-      }
-      processingRef.current = false;
+    // guard against non-JSON data triggering false ack received breaking the whole flow
+    if (result.data[0] !== '{') {
+      console.log('Ignoring non-JSON QR code');
+      return;
     }
+
+    processingRef.current = true;
+    const data = JSON.parse(result.data) as FountainFeedback;
+    if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
+      onError('Invalid feedback QR code: wrong type, session, or sequence.');
+      setCurrentMode('idle');
+      return;
+    }
+
+    if (data.sequence <= lastProcessedSequence) {
+      console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
+      onError('Stale feedback QR code: sequence already processed.');
+      setCurrentMode('idle');
+      return;
+    }
+
+    const firstMissingBlock = data.firstMissingBlock || 0;
+
+    if (data.mode === 'statistics') {
+      console.log('Processing statistics feedback:', data.totalDecoded, '/', data.totalBlocks);
+      encoder?.setReceivedBlocks([]);
+      encoder?.setSkipBlocksBelow(firstMissingBlock);
+
+      const updatedWindowInfo = encoder?.getWindowInfo();
+      if (updatedWindowInfo) {
+        onUpdateWindowInfo(updatedWindowInfo);
+      }
+
+      const lastStats = {
+        totalDecoded: data.totalDecoded,
+        totalBlocks: data.totalBlocks,
+        windowStart: updatedWindowInfo?.windowStart,
+        windowEnd: updatedWindowInfo?.windowEnd,
+      };
+
+      // SENDER: Single authority for window expansion
+      // Sender processes receiver statistics and decides whether to expand window
+      // Window expansion is initiated ONLY by sender based on receiver's requestWindowExpansion flag
+      let windowExpanded = false;
+      if (data.requestWindowExpansion && windowInfo && !windowInfo.isWindowComplete) {
+        const now = Date.now();
+        if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+          encoder?.expandWindow();
+          windowExpanded = true;
+          const newWindowInfo = encoder?.getWindowInfo();
+          if (newWindowInfo) {
+            onUpdateWindowInfo(newWindowInfo);
+            console.log(`[FountainQRFeedbackScanner] Window expanded: new end=${newWindowInfo.windowEnd}`);
+          }
+          onUpdateLastWindowExpansion(now);
+        }
+      }
+
+      const ackFeedback: SenderFeedbackAcknowledge = {
+        type: 'SENDER_FEEDBACK',
+        sessionId,
+        sequence: senderFeedbackSequence,
+        command: 'acknowledge',
+        acknowledgedSequence: data.sequence,
+        message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
+        windowExpanded,
+      };
+
+      await generateSenderFeedbackQR(ackFeedback);
+      setCurrentMode('ack-display');
+
+      onFeedbackProcessed({
+        sequence: data.sequence,
+        mode: 'statistics',
+        lastStats,
+        windowExpanded,
+        message: ackFeedback.message,
+      });
+
+      onModeChange('ack-display');
+      scannerRef.current?.stop();
+      scannerRef.current?.destroy();
+      scannerRef.current = null;
+    } else if (data.mode === 'targeted') {
+      const missingBlocks = data.missingBlocks || [];
+      console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
+      encoder?.setMissingBlocks(missingBlocks);
+      encoder?.setSkipBlocksBelow(firstMissingBlock);
+
+      const updatedWindowInfo = encoder?.getWindowInfo();
+      if (updatedWindowInfo) {
+        onUpdateWindowInfo(updatedWindowInfo);
+      }
+
+      // SENDER: Single authority for window expansion in targeted mode
+      // Sender evaluates decoded blocks in current window and decides whether to expand
+      let windowExpanded = false;
+      if (windowInfo?.windowEnabled && !windowInfo.isWindowComplete && updatedWindowInfo) {
+        const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
+        const decodedInWindow = updatedWindowInfo.windowSize - missingInWindow.length;
+
+        if (decodedInWindow > lastDecodedInWindow) {
+          onUpdateLastDecodedInWindow(decodedInWindow);
+          const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
+          if (windowDecodePercent >= 0.5) {
+            const now = Date.now();
+            if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+              encoder?.expandWindow();
+              windowExpanded = true;
+              const newWindowInfo = encoder?.getWindowInfo();
+              if (newWindowInfo) {
+                onUpdateWindowInfo(newWindowInfo);
+                console.log(`[FountainQRFeedbackScanner] Window expanded in targeted mode: new end=${newWindowInfo.windowEnd}`);
+              }
+              onUpdateLastWindowExpansion(now);
+            }
+          }
+        }
+      }
+
+      const ackFeedback: SenderFeedbackAcknowledge = {
+        type: 'SENDER_FEEDBACK',
+        sessionId,
+        sequence: senderFeedbackSequence,
+        command: 'acknowledge',
+        acknowledgedSequence: data.sequence,
+        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
+        windowExpanded,
+      };
+
+      await generateSenderFeedbackQR(ackFeedback);
+      setCurrentMode('ack-display');
+
+      onFeedbackProcessed({
+        sequence: data.sequence,
+        mode: 'targeted',
+        receivedBlocks: new Set(),
+        windowExpanded,
+        message: ackFeedback.message,
+      });
+
+      onModeChange('ack-display');
+      scannerRef.current?.stop();
+      scannerRef.current?.destroy();
+      scannerRef.current = null;
+    }
+    processingRef.current = false;
+    // setScanningFeedback(false);
+    scannerRef.current?.stop();
+   
   }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onAckGenerated, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR]);
 
   useEffect(() => {
