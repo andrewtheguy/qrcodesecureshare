@@ -26,58 +26,64 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   const sendFile = useCallback(async (conn: DataConnection) => {
-    try {
-      setConnectionStatus('transferring')
-      setTransferProgress(0)
+        try {
+            setConnectionStatus('transferring')
+            setTransferProgress(0)
 
-      // Read file as ArrayBuffer
-      const arrayBuffer = await encryptedFile.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
+            // Read file as ArrayBuffer
+            const arrayBuffer = await encryptedFile.arrayBuffer()
+            const uint8Array = new Uint8Array(arrayBuffer)
 
-      // Send file metadata first
-      const metadata = {
-        type: 'file-metadata',
-        filename: encryptedFile.name,
-        size: encryptedFile.size,
-        mimeType: encryptedFile.type
-      }
-      conn.send(metadata)
+            // Send file metadata first
+            const metadata = {
+                type: 'file-metadata',
+                filename: encryptedFile.name,
+                size: encryptedFile.size,
+                mimeType: encryptedFile.type
+            }
+            conn.send(metadata)
 
-      // Send file data in chunks
-      const chunkSize = 16384 // 16KB chunks
-      let sent = 0
+            // Send file data in chunks
+            const chunkSize = 16384 // 16KB chunks
+            let sent = 0
 
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.slice(i, i + chunkSize)
-        conn.send({
-          type: 'file-chunk',
-          data: chunk,
-          offset: i,
-          total: uint8Array.length
-        })
-        sent = i + chunk.length
-        setTransferProgress((sent / uint8Array.length) * 100)
+            for (let i = 0; i < uint8Array.length; i += chunkSize) {
+                const chunk = uint8Array.slice(i, i + chunkSize)
+                conn.send({
+                    type: 'file-chunk',
+                    data: chunk,
+                    offset: i,
+                    total: uint8Array.length
+                })
+                sent = i + chunk.length
+                setTransferProgress((sent / uint8Array.length) * 100)
 
-        // Small delay to prevent overwhelming the connection
-        await new Promise(resolve => setTimeout(resolve, 10))
-      }
+                // Small delay to prevent overwhelming the connection
+                await new Promise(resolve => setTimeout(resolve, 10))
+            }
 
-      // Send end marker
-      conn.send({ type: 'file-end' })
+            // Send end marker
+            conn.send({ type: 'file-end' })
 
-      setConnectionStatus('completed')
-      setTransferProgress(100)
+            setConnectionStatus('completed')
+            setTransferProgress(100)
 
-    } catch (error) {
-      console.error('File transfer error:', error)
-      setError('File transfer failed: ' + (error as Error).message)
-      setConnectionStatus('error')
-    }
+        } catch (error) {
+            console.error('File transfer error:', error)
+            setError('File transfer failed: ' + (error as Error).message)
+            setConnectionStatus('error')
+        }
   }, [encryptedFile])
 
   useEffect(() => {
+    // Prevent double initialization in React Strict Mode
+    if (peerRef.current) {
+      console.log('PeerJS already initialized, skipping...')
+      return
+    }
+
     // Initialize Peer.js with configuration
-    console.log('Initializing PeerJS...')
+    console.log('Initializing PeerJS haha...')
     const peer = new Peer({
       debug: 2, // Enable debug logging (0=none, 1=errors, 2=warnings, 3=all)
     })
@@ -194,7 +200,6 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
       setError('Failed to generate QR code')
     }
   }
-
 
   const handleReset = () => {
     if (connectionRef.current) {
