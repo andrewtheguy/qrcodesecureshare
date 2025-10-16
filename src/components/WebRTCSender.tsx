@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Peer, { DataConnection } from 'peerjs'
+import Peer from 'peerjs'
+import type { DataConnection } from 'peerjs'
 import QRCode from 'qrcode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -75,13 +76,26 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
   }, [encryptedFile])
 
   useEffect(() => {
-    // Initialize Peer.js
-    const peer = new Peer()
+    // Initialize Peer.js with configuration
+    console.log('Initializing PeerJS...')
+    const peer = new Peer({
+      debug: 2, // Enable debug logging (0=none, 1=errors, 2=warnings, 3=all)
+    })
 
     peerRef.current = peer
 
+    // Add timeout to detect connection issues
+    const connectionTimeout = setTimeout(() => {
+      if (!peerId) {
+        console.error('PeerJS connection timeout - unable to connect to signaling server')
+        setError('Connection timeout: Unable to connect to PeerJS server. This may be due to network restrictions or firewall blocking. Please check your internet connection or try a different network.')
+        setConnectionStatus('error')
+      }
+    }, 15000) // 15 second timeout
+
     peer.on('open', (id) => {
-      console.log('Peer ID:', id)
+      console.log('✅ PeerJS connected successfully. Peer ID:', id)
+      clearTimeout(connectionTimeout)
       setPeerId(id)
       setConnectionStatus('waiting')
 
@@ -94,33 +108,56 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
         fileSize: encryptedFile.size
       })
 
+      console.log('Generating QR code...')
       generateQRCode(qrData)
     })
 
     peer.on('connection', (conn) => {
-      console.log('Receiver connected')
+      console.log('✅ Receiver connected')
       setConnectionStatus('connected')
       connectionRef.current = conn
 
       conn.on('open', () => {
-        console.log('Data connection opened')
+        console.log('✅ Data connection opened, starting file transfer...')
         sendFile(conn)
       })
 
       conn.on('error', (err) => {
-        console.error('Connection error:', err)
+        console.error('❌ Connection error:', err)
         setError('Connection failed: ' + err.message)
         setConnectionStatus('error')
       })
     })
 
     peer.on('error', (err) => {
-      console.error('Peer error:', err)
-      setError('Peer connection failed: ' + err.message)
+      console.error('❌ Peer error:', err)
+      clearTimeout(connectionTimeout)
+
+      let errorMessage = 'Peer connection failed: ' + err.message
+
+      // Provide more helpful error messages based on error type
+      if (err.type === 'network') {
+        errorMessage = 'Network error: Unable to connect to PeerJS server. Please check your internet connection.'
+      } else if (err.type === 'server-error') {
+        errorMessage = 'Server error: The PeerJS signaling server is unavailable. Please try again later.'
+      } else if (err.type === 'socket-error') {
+        errorMessage = 'Socket error: Unable to establish WebSocket connection. This may be blocked by your firewall or network.'
+      } else if (err.type === 'socket-closed') {
+        errorMessage = 'Connection closed: The connection to the signaling server was closed unexpectedly.'
+      }
+
+      setError(errorMessage)
       setConnectionStatus('error')
     })
 
+    peer.on('disconnected', () => {
+      console.warn('⚠️ Peer disconnected from server')
+      setError('Disconnected from signaling server. Attempting to reconnect...')
+      peer.reconnect()
+    })
+
     return () => {
+      clearTimeout(connectionTimeout)
       if (connectionRef.current) {
         connectionRef.current.close()
       }

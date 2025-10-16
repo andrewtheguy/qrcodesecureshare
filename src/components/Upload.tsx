@@ -182,7 +182,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
     })
   }
 
-  const uploadFile = async (file: File) => {
+  const uploadFile = useCallback(async (file: File) => {
     let encryptedFile: File
     let fileData: UploadedFile
 
@@ -278,14 +278,14 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         throw error
       }
     }
-  }
+  }, [encryptionType])
 
   const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
 
     const file = files[0]
 
-    if (transferMethod === 'webrtc') {
+    if (transferMethod === 'webrtc' && encryptionType === 'symmetric') {
       // For WebRTC, just encrypt the file and prepare for transfer
       try {
         setUploading(true)
@@ -300,7 +300,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         setUploading(false)
       }
     } else {
-      // Server upload
+      // Server upload (works for both symmetric and asymmetric encryption)
       setUploading(true)
       try {
         await uploadFile(file)
@@ -310,7 +310,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         setUploading(false)
       }
     }
-  }, [transferMethod])
+  }, [transferMethod, encryptionType, uploadFile])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()

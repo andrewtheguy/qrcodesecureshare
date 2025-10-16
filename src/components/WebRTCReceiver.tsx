@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Peer, { DataConnection } from 'peerjs'
+import Peer from 'peerjs'
+import type { DataConnection } from 'peerjs'
 
 type ReceivedData =
   | { type: 'file-metadata'; filename: string; size: number; mimeType: string }
