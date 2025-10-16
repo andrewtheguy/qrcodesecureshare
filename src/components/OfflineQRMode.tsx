@@ -6,7 +6,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './FountainQRSender'
-import { FountainQRSenderLegacy } from './FountainQRSenderLegacy'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
 import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES } from '@/utils/fountainConfig'
@@ -35,9 +34,8 @@ interface OfflineQRModeProps {
 
 export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
 export const MAX_FILE_SIZE_FOUNTAIN = 2 * 1024 * 1024
-export const MAX_FILE_SIZE_FOUNTAIN_LEGACY = 512 * 1024
 
-type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy'
+type TransferMode = 'sequential' | 'fountain'
 
 interface SequentialMetadata {
   type: 'METADATA'
@@ -76,23 +74,7 @@ interface FountainMetadata {
   feedbackEnabled: boolean
 }
 
-interface FountainLegacyMetadata {
-  type: 'METADATA'
-  mode: 'fountain-legacy'
-  version: 1
-  sessionId: number
-  fileName: string
-  fileType: string
-  fileSize: number
-  timestamp: number
-  totalSourceBlocks: number
-  blockSize: number
-  chunkSize: number
-  checksumAlg: 'crc32'
-  checksum: string
-}
-
-type MetadataJson = SequentialMetadata | FountainMetadata | FountainLegacyMetadata | null
+type MetadataJson = SequentialMetadata | FountainMetadata | null
 
 export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
    const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
@@ -208,41 +190,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             if (cancelled) return
             setMetadataJson(meta)
             setMetadataQR(qrUrl)
-        } else if (transferMode === 'fountain-legacy') {
-           // Fountain legacy metadata (no windowing)
-           const arrayBuffer = await file.arrayBuffer()
-           const size = arrayBuffer.byteLength
-           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
-           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
-           const sessionId = Math.floor(Math.random() * 65536)
-           setCurrentSessionId(sessionId)
-
-          const meta: FountainLegacyMetadata = {
-            type: 'METADATA',
-            mode: 'fountain-legacy',
-            version: 1,
-            sessionId: sessionId,
-            fileName: file.name,
-            fileType: file.type || 'application/octet-stream',
-            fileSize: size,
-            timestamp: Date.now(),
-            totalSourceBlocks,
-            blockSize: DEFAULT_BLOCK_SIZE,
-            chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
-            checksumAlg: 'crc32',
-            checksum
-          }
-          if (cancelled) return
-            const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
-            const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
-              width: 400,
-              margin: 2,
-              errorCorrectionLevel: 'M',
-              color: { dark: '#000000', light: '#FFFFFF' }
-            })
-            if (cancelled) return
-            setMetadataJson(meta)
-            setMetadataQR(qrUrl)
         }
       } catch (e) {
         if (!cancelled) {
@@ -258,43 +205,40 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   }, [file, transferMode, step, feedbackEnabled])
 
   const handleSelectMode = async (mode: TransferMode) => {
-    if (!file) return
+     if (!file) return
 
-    let maxSize: number
-    let modeName: string
+     let maxSize: number
+     let modeName: string
 
-    if (mode === 'sequential') {
-      maxSize = MAX_FILE_SIZE_SEQUENTIAL
-      modeName = 'Sequential'
-    } else if (mode === 'fountain') {
-      maxSize = MAX_FILE_SIZE_FOUNTAIN
-      modeName = 'Fountain (Windowed)'
-    } else {
-      maxSize = MAX_FILE_SIZE_FOUNTAIN_LEGACY
-      modeName = 'Fountain (Simple)'
-    }
+     if (mode === 'sequential') {
+       maxSize = MAX_FILE_SIZE_SEQUENTIAL
+       modeName = 'Sequential'
+     } else {
+       maxSize = MAX_FILE_SIZE_FOUNTAIN
+       modeName = 'Fountain (Windowed)'
+     }
 
-    if (file.size > maxSize) {
-      setModeSizeError(`${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`)
-      return
-    }
+     if (file.size > maxSize) {
+       setModeSizeError(`${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`)
+       return
+     }
 
-    setModeSizeError('')
+     setModeSizeError('')
 
-    if (mode === 'fountain') {
-      // For fountain mode, check camera availability first
-      const cameraAvailable = await checkCameraAvailability()
-      setCameraAutoDetected(cameraAvailable)
-      setCameraDetectionDialog(true)
-      setTransferMode(mode)
-    } else {
-      // For other modes, proceed directly
-      setTransferMode(mode)
-      setStep('metadata')
-      setMetadataQR('')
-      setMetadataJson(null)
-    }
-  }
+     if (mode === 'fountain') {
+       // For fountain mode, check camera availability first
+       const cameraAvailable = await checkCameraAvailability()
+       setCameraAutoDetected(cameraAvailable)
+       setCameraDetectionDialog(true)
+       setTransferMode(mode)
+     } else {
+       // For other modes, proceed directly
+       setTransferMode(mode)
+       setStep('metadata')
+       setMetadataQR('')
+       setMetadataJson(null)
+     }
+   }
 
   const handleStartTransfer = () => {
     setStep('transfer')
@@ -365,21 +309,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             </div>
           </Button>
 
-          {/* Fountain Legacy Mode - Simple/No Camera */}
-          <Button
-            onClick={() => handleSelectMode('fountain-legacy')}
-            variant="outline"
-            className="w-full h-auto py-6 flex flex-col items-start gap-2"
-          >
-            <div className="font-bold text-lg">🔁 Fountain Code (Simple) - No Camera Needed</div>
-            <div className="text-sm text-left text-muted-foreground">
-              • Generates random coded chunks (no windowing)<br/>
-              • No feedback scanning required - works without camera<br/>
-              • Receiver needs ~110% of source blocks<br/>
-              • Ideal for senders without camera access<br/>
-              • Maximum file size: {kb(MAX_FILE_SIZE_FOUNTAIN_LEGACY)}
-            </div>
-          </Button>
 
           {/* Sequential Mode - Legacy/Backup
               Not recommended for large files. May become backup-only or code-frozen. */}
@@ -470,7 +399,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : transferMode === 'fountain-legacy' ? '🔁 Fountain Transfer Metadata (Simple Mode)' : '🔁 Fountain Transfer Metadata'}
+            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : '🔁 Fountain Transfer Metadata'}
           </CardTitle>
           <div className="text-sm text-muted-foreground text-center space-y-1">
             <p className="font-medium">{file.name}</p>
@@ -528,7 +457,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                         <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
                       </>
                     )}
-                    {(transferMode === 'fountain' || transferMode === 'fountain-legacy') && (metadataJson.mode === 'fountain' || metadataJson.mode === 'fountain-legacy') && (
+                    {transferMode === 'fountain' && metadataJson.mode === 'fountain' && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
                         <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>
@@ -602,7 +531,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Transfer' : transferMode === 'fountain-legacy' ? '🔁 Fountain Code Transfer (Simple)' : '🔁 Fountain Code Transfer'}
+          {transferMode === 'sequential' ? '📋 Sequential Transfer' : '🔁 Fountain Code Transfer'}
         </CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
@@ -638,10 +567,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         {/* Render appropriate sender component */}
          {transferMode === 'sequential' ? (
            <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
-         ) : transferMode === 'fountain' ? (
-           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
          ) : (
-           <FountainQRSenderLegacy key={`fount-legacy-${senderRemountKey}`} file={file} />
+           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
          )}
       </CardContent>
     </Card>
