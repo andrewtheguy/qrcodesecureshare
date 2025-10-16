@@ -197,11 +197,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
+    console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)
     setReceiverMode(mode)
     if (mode === 'data-scanning') {
       triggeredFeedbackRef.current = false
       setIsAwaitingFeedback(false)
       setIsScanning(true)
+      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
     } else if (mode === 'feedback-display') {
       setIsAwaitingFeedback(true)
       setIsScanning(false)
@@ -209,7 +211,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setIsAwaitingFeedback(true)
       setIsScanning(false)
     }
-  }, [])
+  }, [receiverMode])
 
   // Window expansion callback - kept for backwards compatibility but unused
   // Receiver now relies solely on ACK windowExpanded flag from sender

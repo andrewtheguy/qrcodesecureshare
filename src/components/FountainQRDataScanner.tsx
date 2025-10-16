@@ -53,6 +53,7 @@ export function FountainQRDataScanner({
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
 
   const addDebugLog = useCallback((message: string) => {
+    console.log(`[FountainQRDataScanner] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
 
@@ -101,7 +102,11 @@ export function FountainQRDataScanner({
     try {
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
+      // DIAGNOSTIC: Log current mode and data type
+      console.log(`[DIAGNOSTIC] receiverMode=${receiverMode}, dataType=${data.startsWith('{') ? 'JSON' : 'BINARY'}, dataPreview=${data.substring(0, 20)}`)
+
       if (receiverMode === 'ack-scanning') {
+        console.log('[DIAGNOSTIC] Early return: already in ack-scanning mode')
         return
       }
 
@@ -112,11 +117,11 @@ export function FountainQRDataScanner({
           const json = JSON.parse(data)
           if (json.type === 'FOUNTAIN_FEEDBACK') {
             addDebugLog('📥 Detected FOUNTAIN_FEEDBACK QR, switching to feedback-display mode')
+            console.log('[DIAGNOSTIC] Switching to feedback-display mode')
             onModeChange('feedback-display')
             return
           } else if (json.type === 'SENDER_FEEDBACK') {
-            addDebugLog('📥 Detected SENDER_FEEDBACK QR, switching to ack-scanning mode')
-            onModeChange('ack-scanning')
+            addDebugLog('📥 Detected SENDER_FEEDBACK QR, skipping since we are not in feedback mode')
             return
           }
         } catch {

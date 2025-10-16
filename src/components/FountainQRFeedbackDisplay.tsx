@@ -293,7 +293,7 @@ export function FountainQRFeedbackDisplay({
     try {
       const parsed = JSON.parse(data) as SenderFeedback
       if (parsed.type !== 'SENDER_FEEDBACK') {
-        // Debug logging moved to subcomponent
+        console.warn('[FountainQRFeedbackDisplay] Invalid QR type - expecting ACK')
         showAckError('Invalid QR type - expecting ACK')
         return
       }
@@ -305,8 +305,8 @@ export function FountainQRFeedbackDisplay({
       }
 
       if (parsed.sequence <= lastSenderFeedbackSequence) {
-        // Debug logging moved to subcomponent
-        showAckError('Duplicate ACK - already processed')
+        console.warn('[FountainQRFeedbackDisplay] Duplicate ACK - already processed, sequence:', parsed.sequence, 'last:', lastSenderFeedbackSequence)
+        // Replace loud alert with graceful logging
         return
       }
 
@@ -319,6 +319,7 @@ export function FountainQRFeedbackDisplay({
             // The ACK should acknowledge the feedback we just sent (feedbackSequence - 1)
             // because we already incremented feedbackSequence after generating the feedback QR
             const expectedAcknowledgedSequence = feedbackSequence - 1
+            console.log('[FountainQRFeedbackDisplay] Validating ACK sequence: expected', expectedAcknowledgedSequence, 'got', parsed.acknowledgedSequence)
 
             if (parsed.acknowledgedSequence !== expectedAcknowledgedSequence) {
               // Invalid or duplicate ACK - reject and log
@@ -330,7 +331,7 @@ export function FountainQRFeedbackDisplay({
             }
 
             // Valid ACK - resume data scanning
-            // Debug logging moved to subcomponent
+            console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
             setFeedbackQRUrl('')
             onModeChange('data-scanning')
             setIsGenerating(false)
@@ -349,9 +350,7 @@ export function FountainQRFeedbackDisplay({
 
       }
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-      // Debug logging moved to subcomponent
-      console.error('Sender feedback parse error:', err)
+      console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
     }
   }, [sessionId, lastSenderFeedbackSequence, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, onSenderSequenceUpdate, onModeChange, onWindowExpansion, onAckReceived])
 
