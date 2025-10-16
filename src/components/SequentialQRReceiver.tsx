@@ -57,6 +57,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [error, setError] = useState<string>('')
 
   const addDebugLog = (message: string) => {
+    console.log(`[SequentialQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 

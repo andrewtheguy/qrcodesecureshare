@@ -45,6 +45,7 @@ export function FountainQRReceiverLegacy({ initialMetadata }: FountainQRReceiver
   const fountainDecoderRef = useRef<FountainDecoder>(new FountainDecoder(initialMeta))
 
   const addDebugLog = (message: string) => {
+    console.log(`[FountainQRReceiverLegacy] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 

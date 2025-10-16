@@ -37,6 +37,7 @@ export function AnimatedQRReceiver() {
   const [error, setError] = useState<string>('')
 
   const addDebugLog = (message: string) => {
+    console.log(`[AnimatedQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
