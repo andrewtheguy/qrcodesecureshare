@@ -83,7 +83,7 @@ WINDOW_HALF_THRESHOLD: 256 * 1024   // Unchanged
 
 ## Backward Compatibility
 
-The optimized components use a new format incompatible with legacy components. The `FountainQRSenderLegacy` and `FountainQRReceiverLegacy` components remain unchanged and use the old 600-byte block size. This is intentional per the requirements - only data QR codes are optimized for easier scanning, while feedback QR codes remain at their original size.
+The optimized components use a new format incompatible with legacy components. Legacy components have been removed. Only data QR codes are optimized for easier scanning, while feedback QR codes remain at their original size.
 - **QR Generation**: `qrGenerator.worker.ts` handles background QR generation
 - **Configuration**: `fountainConfig.ts` contains block size parameters
 - **Related Files**: `FountainQRSender.tsx`, `FountainQRReceiver.tsx`, `fountainCode.ts`

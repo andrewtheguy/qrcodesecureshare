@@ -14,17 +14,20 @@ interface FountainQRReceiverProps {
     type: string
     sessionId: number
     totalSourceBlocks: number
-    blockSize?: number
-    checksum?: string
-    checksumAlg?: string
-    windowEnabled?: boolean
-    initialWindowBlocks?: number
-    windowTriggerThreshold?: number
-    windowStart?: number
+    blockSize?: number // for windowed fountain
+    checksum: string
+    checksumAlg: string
+    windowEnabled: boolean
+    initialWindowBlocks?: number // for windowed fountain
+    windowTriggerThreshold?: number // for windowed fountain
+    windowStart?: number // for windowed fountain
+    feedbackEnabled: boolean
   }
 }
 
 export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps) {
+  const feedbackEnabled = initialMetadata.feedbackEnabled ?? true
+
   // Initialize metadata and decoder immediately (always provided by parent)
   const initialMeta: FountainMetadata = {
     name: initialMetadata.name,
@@ -32,7 +35,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     type: initialMetadata.type,
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
-    blockSize: initialMetadata.blockSize || 600
+    blockSize: initialMetadata.blockSize || 600,
+    checksum: initialMetadata.checksum,
+    checksumAlg: initialMetadata.checksumAlg,
   }
 
   // Metadata is immutable for this mount (component remounted per file)
@@ -40,6 +45,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
+  const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
@@ -106,7 +112,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Window saturation check
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
-          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback) {
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
             const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
@@ -126,20 +132,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }
 
         case 'complete': {
-          const { data: reconstructedData, integrityOk } = data
+          const { data: reconstructedData, integrityOk, calculatedChecksum } = data
           const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           setDownloadUrl(url)
           setSuccess(true)
           setIsScanning(false)
-
-          if (integrityOk !== undefined) {
-            setIntegrityOk(integrityOk)
-            // Debug logging moved to subcomponent
-          } else {
-            setIntegrityOk(null)
-          }
+          setIntegrityOk(integrityOk)
+          setActualChecksum(calculatedChecksum)
 
           // Debug logging moved to subcomponent
           break
@@ -312,10 +313,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Skip all checks if already showing feedback, transfer complete, or awaiting feedback
     if (success || isAwaitingFeedback) return
 
+    // Skip all feedback logic if feedback is disabled
+    if (!feedbackEnabled) return
+
     // Priority 0: Skip ALL feedback for very small files
     // Files smaller than 5x the targeted mode threshold don't benefit from feedback
     const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
+    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize) && feedbackEnabled
     if (!isFileLargeEnoughForFeedback) {
       // No feedback QR needed for very small files - they decode quickly without it
       return
@@ -389,29 +393,41 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   return (
     <div className="space-y-4">
+      {/* No-feedback mode alert */}
+      {!feedbackEnabled && (
+        <Alert>
+          <AlertDescription>
+            <p className="font-medium">📱 No-feedback mode: Continue scanning until transfer completes</p>
+            <p className="text-sm">Sender cannot scan QR codes. Transfer will complete using random chunk generation only. No feedback QR codes will be generated.</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Add the subcomponent */}
-      <FountainQRFeedbackDisplay
-        fountainMetadata={fountainMetadata}
-        sessionId={sessionId}
-        decodedBlocks={decodedBlocks}
-        decodedBlockIndices={decodedBlockIndicesRef.current}
-        currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
-        currentWindowStart={currentWindowStart}
-        currentWindowEnd={currentWindowEnd}
-        isWindowEnabled={isWindowEnabled}
-        windowTriggerThreshold={windowTriggerThreshold}
-        feedbackSequence={feedbackSequence}
-        lastSenderFeedbackSequence={lastSenderFeedbackSequence}
-        receiverMode={receiverMode}
-        isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
-        onFeedbackGenerated={handleFeedbackGenerated}
-        onAckReceived={handleAckReceived}
-        onModeChange={handleFeedbackModeChange}
-        onWindowExpansion={handleWindowExpansion}
-        onError={handleFeedbackError}
-        onSequenceIncrement={handleSequenceIncrement}
-        onSenderSequenceUpdate={handleSenderSequenceUpdate}
-      />
+      {feedbackEnabled && (
+        <FountainQRFeedbackDisplay
+          fountainMetadata={fountainMetadata}
+          sessionId={sessionId}
+          decodedBlocks={decodedBlocks}
+          decodedBlockIndices={decodedBlockIndicesRef.current}
+          currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
+          currentWindowStart={currentWindowStart}
+          currentWindowEnd={currentWindowEnd}
+          isWindowEnabled={isWindowEnabled}
+          windowTriggerThreshold={windowTriggerThreshold}
+          feedbackSequence={feedbackSequence}
+          lastSenderFeedbackSequence={lastSenderFeedbackSequence}
+          receiverMode={receiverMode}
+          isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
+          onFeedbackGenerated={handleFeedbackGenerated}
+          onAckReceived={handleAckReceived}
+          onModeChange={handleFeedbackModeChange}
+          onWindowExpansion={handleWindowExpansion}
+          onError={handleFeedbackError}
+          onSequenceIncrement={handleSequenceIncrement}
+          onSenderSequenceUpdate={handleSenderSequenceUpdate}
+        />
+      )}
 
       {/* Progress moved to subcomponent */}
 
@@ -436,11 +452,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes
                 </span>
               </p>
-              {integrityOk !== null && (
-                <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
-                  {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
-                </p>
-              )}
+              <p className={`text-sm font-medium ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+                {integrityOk ? `🔐 Integrity verified (checksum matches ${initialMetadata.checksum})` : `❌ Integrity check failed, expected ${initialMetadata.checksum}, but got ${actualChecksum}`}
+              </p>
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {fountainMetadata.name}

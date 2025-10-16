@@ -4,32 +4,40 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './FountainQRReceiver'
-import { FountainQRReceiverLegacy } from './FountainQRReceiverLegacy'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
-type TransferMode = 'sequential' | 'fountain' | 'fountain-legacy' | null
+type TransferMode = 'sequential' | 'fountain' | null
 
 interface DetectedMetadata {
-  mode: 'sequential' | 'fountain' | 'fountain-legacy'
+  mode: 'sequential' | 'fountain'
   name: string
   size: number
   type: string
   sessionId: number
-  totalChunks?: number // for sequential
-  totalSourceBlocks?: number // for fountain
-  blockSize?: number // for fountain
-  checksum?: string
-  checksumAlg?: string
-  windowEnabled?: boolean
+  checksum: string
+  checksumAlg: string
+}
+
+interface SequentialDetectedMetadata extends DetectedMetadata {
+  mode: 'sequential'
+  totalChunks: number
+}
+
+interface FountainDetectedMetadata extends DetectedMetadata {
+  mode: 'fountain'
+  totalSourceBlocks: number
+  blockSize: number
+  windowEnabled: boolean
   initialWindowBlocks?: number
   windowTriggerThreshold?: number
   windowStart?: number
+  feedbackEnabled: boolean
 }
 
 export function OfflineQRReceiver() {
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
   const [isScanning, setIsScanning] = useState(false)
-  const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)
+  const [detectedMetadata, setDetectedMetadata] = useState<SequentialDetectedMetadata | FountainDetectedMetadata | null>(null)
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
@@ -53,7 +61,7 @@ export function OfflineQRReceiver() {
       if (parsed.type !== 'METADATA') {
         throw new Error('Missing METADATA type field')
       }
-      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain' && parsed.mode !== 'fountain-legacy') {
+      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain') {
         throw new Error('Unknown transfer mode')
       }
 
@@ -88,23 +96,10 @@ export function OfflineQRReceiver() {
           windowEnabled: parsed.windowEnabled,
           initialWindowBlocks: parsed.initialWindowBlocks,
           windowTriggerThreshold: parsed.windowTriggerThreshold,
-          windowStart: parsed.windowStart
+          windowStart: parsed.windowStart,
+          feedbackEnabled: parsed.feedbackEnabled
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
-      } else if (parsed.mode === 'fountain-legacy') {
-        setDetectedMetadata({
-          mode: 'fountain-legacy',
-          name: parsed.fileName,
-          size: parsed.fileSize,
-          type: parsed.fileType,
-          sessionId: parsed.sessionId,
-          totalSourceBlocks: parsed.totalSourceBlocks,
-          blockSize: parsed.blockSize,
-          checksum: parsed.checksum,
-          checksumAlg: parsed.checksumAlg
-          // Window fields will be undefined for legacy mode
-        })
-        addDebugLog(`✓ Fountain legacy metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
 
       setIsScanning(false)
@@ -247,15 +242,15 @@ export function OfflineQRReceiver() {
 
   // Metadata detected - show confirmation screen
   if (detectedMetadata && !transferMode) {
-    const estimatedChunks = (detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy') && detectedMetadata.totalSourceBlocks
+    const estimatedChunks = detectedMetadata.mode === 'fountain' && detectedMetadata.totalSourceBlocks
       ? Math.ceil(detectedMetadata.totalSourceBlocks * 1.1)
-      : detectedMetadata.totalChunks || 0
+      : (detectedMetadata.mode === 'fountain' ? null : (detectedMetadata.totalChunks || 0))
 
     return (
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : detectedMetadata.mode === 'fountain-legacy' ? '🔁 Fountain Code Transfer (Simple)' : '📋 Sequential Transfer'}
+            {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : '📋 Sequential Transfer'}
           </CardTitle>
           <p className="text-sm text-muted-foreground text-center">
             Transfer mode detected automatically
@@ -269,10 +264,10 @@ export function OfflineQRReceiver() {
                 <p className="font-medium text-lg">{detectedMetadata.name}</p>
                 <div className="text-sm text-muted-foreground space-y-1">
                   <p>📦 Size: {(detectedMetadata.size / 1024).toFixed(2)}KB</p>
-                  {detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy' ? (
+                  {detectedMetadata.mode === 'fountain' ? (
                     <>
                       <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
-                      <p>📊 Est. Chunks Needed: ~{estimatedChunks}</p>
+                      <p>📊 Est. Chunks Needed: ~{estimatedChunks || "unavailable"}</p>
                     </>
                   ) : (
                     <p>🔢 Total Chunks: {detectedMetadata.totalChunks}</p>
@@ -286,17 +281,14 @@ export function OfflineQRReceiver() {
           <Alert>
             <AlertDescription>
               <p className="font-medium mb-2">
-                {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : detectedMetadata.mode === 'fountain-legacy' ? '🔁 Fountain Code (Simple) Mode' : '📋 Sequential Mode'}
+                {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : '📋 Sequential Mode'}
               </p>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                {detectedMetadata.mode === 'fountain' || detectedMetadata.mode === 'fountain-legacy' ? (
+                {detectedMetadata.mode === 'fountain' ? (
                   <>
                     <li>Receives random coded chunks</li>
                     <li>Only needs ~110% of chunks to decode</li>
                     <li>Can skip/miss chunks and still succeed</li>
-                    {detectedMetadata.mode === 'fountain-legacy' && (
-                      <li>No camera needed for feedback scanning</li>
-                    )}
                   </>
                 ) : (
                   <>
@@ -328,7 +320,7 @@ export function OfflineQRReceiver() {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Receiver' : transferMode === 'fountain-legacy' ? '🔁 Fountain Code Receiver (Simple)' : '🔁 Fountain Code Receiver'}
+          {transferMode === 'sequential' ? '📋 Sequential Receiver' : '🔁 Fountain Code Receiver'}
         </CardTitle>
         {detectedMetadata && (
           <p className="text-sm text-muted-foreground text-center">
@@ -347,53 +339,51 @@ export function OfflineQRReceiver() {
           ↺ Reset & Scan New File
         </Button>
 
+
         {/* Render appropriate receiver component */}
-        {transferMode === 'sequential' && detectedMetadata ? (
-          <SequentialQRReceiver
-            key={receiverKey}
-            initialMetadata={{
-              name: detectedMetadata.name,
-              size: detectedMetadata.size,
-              type: detectedMetadata.type,
-              sessionId: detectedMetadata.sessionId,
-              totalChunks: detectedMetadata.totalChunks || 0,
-              checksum: detectedMetadata.checksum,
-              checksumAlg: detectedMetadata.checksumAlg
-            }}
-          />
-        ) : transferMode === 'fountain-legacy' && detectedMetadata ? (
-          <FountainQRReceiverLegacy
-            key={receiverKey}
-            initialMetadata={{
-              name: detectedMetadata.name,
-              size: detectedMetadata.size,
-              type: detectedMetadata.type,
-              sessionId: detectedMetadata.sessionId,
-              totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
-              blockSize: detectedMetadata.blockSize,
-              checksum: detectedMetadata.checksum,
-              checksumAlg: detectedMetadata.checksumAlg
-            }}
-          />
-        ) : transferMode === 'fountain' && detectedMetadata ? (
-          <FountainQRReceiver
-            key={receiverKey}
-            initialMetadata={{
-              name: detectedMetadata.name,
-              size: detectedMetadata.size,
-              type: detectedMetadata.type,
-              sessionId: detectedMetadata.sessionId,
-              totalSourceBlocks: detectedMetadata.totalSourceBlocks || 0,
-              blockSize: detectedMetadata.blockSize,
-              checksum: detectedMetadata.checksum,
-              checksumAlg: detectedMetadata.checksumAlg,
-              windowEnabled: detectedMetadata.windowEnabled,
-              initialWindowBlocks: detectedMetadata.initialWindowBlocks,
-              windowTriggerThreshold: detectedMetadata.windowTriggerThreshold,
-              windowStart: detectedMetadata.windowStart
-            }}
-          />
-        ) : null}
+        { detectedMetadata && (transferMode === 'sequential'  ? (
+          (() => {
+            const seqMeta = detectedMetadata as SequentialDetectedMetadata;
+            return (
+              <SequentialQRReceiver
+                key={receiverKey}
+                initialMetadata={{
+                  name: seqMeta.name,
+                  size: seqMeta.size,
+                  type: seqMeta.type,
+                  sessionId: seqMeta.sessionId,
+                  totalChunks: seqMeta.totalChunks,
+                  checksum: seqMeta.checksum,
+                  checksumAlg: seqMeta.checksumAlg
+                }}
+              />
+            );
+          })()
+        ) : transferMode === 'fountain' ? (
+          (() => {
+            const fountainMeta = detectedMetadata as FountainDetectedMetadata;
+            return (
+              <FountainQRReceiver
+                key={receiverKey}
+                initialMetadata={{
+                  name: fountainMeta.name,
+                  size: fountainMeta.size,
+                  type: fountainMeta.type,
+                  sessionId: fountainMeta.sessionId,
+                  totalSourceBlocks: fountainMeta.totalSourceBlocks,
+                  blockSize: fountainMeta.blockSize,
+                  checksum: fountainMeta.checksum,
+                  checksumAlg: fountainMeta.checksumAlg,
+                  windowEnabled: fountainMeta.windowEnabled,
+                  initialWindowBlocks: fountainMeta.initialWindowBlocks,
+                  windowTriggerThreshold: fountainMeta.windowTriggerThreshold,
+                  windowStart: fountainMeta.windowStart,
+                  feedbackEnabled: fountainMeta.feedbackEnabled
+                }}
+              />
+            );
+          })()
+        ) : null)}
       </CardContent>
     </Card>
   )

@@ -17,7 +17,7 @@ function ensureDecoder(): void {
 let decoder: FountainDecoder | null = null;
 let receivedSeeds: Set<number> = new Set();
 const processedSeeds: Set<number> = new Set();
-let metadata: FountainMetadata | null = null;
+let metadata: FountainMetadata;
 
 /**
  * Parses binary chunk data into a FountainChunk object
@@ -149,7 +149,7 @@ self.onmessage = async (event: MessageEvent) => {
                 if (isComplete) {
                     const reconstructedData = decoder!.getDecodedData();
                     if (reconstructedData) {
-                        if (metadata?.checksum) {
+                        
                             const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
                             const integrityOk = computed === metadata.checksum;
                             self.postMessage({
@@ -157,41 +157,11 @@ self.onmessage = async (event: MessageEvent) => {
                                 id,
                                 data: reconstructedData,
                                 integrityOk,
-                                checksum: metadata.checksum
+                                expectedChecksum: metadata.checksum,
+                                calculatedChecksum: computed
                             }, [reconstructedData.buffer]);
-                        } else {
-                            self.postMessage({ type: 'complete', id, data: reconstructedData }, [reconstructedData.buffer]);
-                        }
+
                     }
-                }
-                break;
-            }
-
-            case 'reconstructFile': {
-                ensureDecoder();
-                const { expectedChecksum: expectedChecksumStr, checksumAlg } = data as { expectedChecksum?: string; checksumAlg?: string };
-                const reconstructedData = decoder!.getDecodedData();
-                if (!reconstructedData) {
-                    self.postMessage({ type: 'error', id, error: 'No decoded data available' });
-                    break;
-                }
-
-                if (expectedChecksumStr) {
-                    const computed = await computeChecksum(reconstructedData, checksumAlg as ChecksumAlgorithm || 'crc32');
-                    const integrityOk = computed === expectedChecksumStr;
-                    self.postMessage({
-                        type: 'complete',
-                        id,
-                        data: reconstructedData,
-                        integrityOk,
-                        checksum: expectedChecksumStr
-                    }, [reconstructedData.buffer]);
-                } else {
-                    self.postMessage({
-                        type: 'complete',
-                        id,
-                        data: reconstructedData
-                    }, [reconstructedData.buffer]);
                 }
                 break;
             }

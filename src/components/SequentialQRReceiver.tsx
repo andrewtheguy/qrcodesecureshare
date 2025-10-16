@@ -25,8 +25,8 @@ interface SequentialQRReceiverProps {
      size: number
      type: string
      totalChunks: number
-     checksum?: string
-     checksumAlg?: string
+     checksum: string
+     checksumAlg: string
      sessionId: number
    }
  }
@@ -47,6 +47,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const totalChunks = initialMetadata.totalChunks
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
+  const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
   const [showFeedbackQr, setShowFeedbackQr] = useState(false)
@@ -153,20 +154,17 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
 
       // Integrity verification using initialMetadata checksum (if present)
-      let checksumMatch: boolean | null = null
-      if (initialMetadata.checksum && initialMetadata.checksumAlg === 'crc32') {
-        const calc = await computeChecksum(bytes, 'crc32')
-        checksumMatch = calc === initialMetadata.checksum
-        addDebugLog(checksumMatch
-          ? `🔐 Integrity OK (crc32 ${calc})`
-          : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
-        setIntegrityOk(checksumMatch)
-      } else {
-        setIntegrityOk(null)
-      }
+      const calc = await computeChecksum(bytes, 'crc32')
+      const checksumMatch = calc === initialMetadata.checksum
+      addDebugLog(checksumMatch
+        ? `🔐 Integrity OK (crc32 ${calc})`
+        : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
+      setIntegrityOk(checksumMatch)
+      setActualChecksum(calc)
+
 
       // Create blob and download URL
-  const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
+      const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
       const url = URL.createObjectURL(blob)
 
       setDownloadUrl(url)
@@ -394,7 +392,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
               <p className="font-medium text-green-600">✅ File received successfully!</p>
               {integrityOk !== null && (
                 <p className={`text-sm font-medium ${integrityOk ? 'text-green-600' : 'text-red-600'}`}>
-                  {integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
+                  {integrityOk ? `🔐 Integrity verified (checksum matches ${initialMetadata.checksum})` : `❌ Integrity check failed, expected ${initialMetadata.checksum}, but got ${actualChecksum}`}
                 </p>
               )}
               <div className="flex gap-2">

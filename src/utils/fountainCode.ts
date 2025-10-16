@@ -117,8 +117,8 @@ export interface FountainMetadata {
   timestamp: number
   totalSourceBlocks: number
   blockSize: number
-  checksum?: string
-  checksumAlg?: string
+  checksum: string
+  checksumAlg: string
 }
 
 export interface FountainEncoderOptions {
@@ -128,6 +128,7 @@ export interface FountainEncoderOptions {
   maxDegree?: number  // hard ceiling (auto chosen if omitted)
   degree1Rate?: number
   lowDegreeRate?: number
+  windowEnabled?: boolean  // force disable windowing (default: auto based on file size)
 }
 
 export interface FountainEncoderStats {
@@ -182,7 +183,11 @@ export class FountainEncoder {
 
     // Initialize window state
     this.windowStart = 0
-    if (data.length < WINDOW_ENABLE_THRESHOLD) {
+    if (opts.windowEnabled === false) {
+      // Force disable windowing
+      this.windowEnabled = false
+      this.windowEnd = numBlocks
+    } else if (data.length < WINDOW_ENABLE_THRESHOLD) {
       this.windowEnabled = false
       this.windowEnd = numBlocks
     } else if (data.length >= WINDOW_ENABLE_THRESHOLD && data.length <= WINDOW_HALF_THRESHOLD) {
