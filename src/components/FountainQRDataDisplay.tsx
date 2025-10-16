@@ -650,17 +650,19 @@ export function FountainQRDataDisplay({
 
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
-        {isPlaying && (
-          <span className="px-2 py-0.5 rounded bg-red-500 text-white flex items-center gap-1 font-semibold">
-            <span className="w-2 h-2 bg-white rounded-full animate-pulse" /> LIVE
-          </span>
-        )}
-        {skippedChunks > 0 && (
-          <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Skipped {skippedChunks}</span>
-        )}
-        {bufferLength > 0 && (
-          <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Buffer: {bufferLength}</span>
-        )}
+        <span className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold min-w-[60px] justify-center ${
+          isPlaying ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+        }`}>
+          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse' : 'bg-gray-500'}`} /> LIVE
+        </span>
+        <span className={`px-2 py-0.5 rounded font-semibold min-w-[80px] justify-center ${
+          skippedChunks > 0 ? 'bg-amber-500 text-white' : 'bg-gray-300 text-gray-600'
+        }`}>
+          Skipped {skippedChunks}
+        </span>
+        <span className={`hidden`}>
+          Buffer: {bufferLength || 0}
+        </span>
       </div>
 
       {/* Worker fallback hint */}
