@@ -106,7 +106,7 @@ export function FountainQRDataScanner({
 
     // Invoke callback with parsed seed
     onChunkScanned(seed)
-  }, [addDebugLog, onChunkScanned])
+  }, [addDebugLog, onChunkScanned, isTargetedModeActive, workerRef, messageIdCounterRef])
 
   const handleScan = useCallback((data: string) => {
     try {

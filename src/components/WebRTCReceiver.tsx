@@ -1,5 +1,10 @@
-import { useState, useEffect, useRef } from 'react'
-import Peer from 'peerjs'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Peer, { DataConnection } from 'peerjs'
+
+type ReceivedData =
+  | { type: 'file-metadata'; filename: string; size: number; mimeType: string }
+  | { type: 'file-chunk'; data: ArrayBuffer | Uint8Array; offset: number; total: number }
+  | { type: 'file-end' }
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -21,7 +26,7 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
   const [receivedFile, setReceivedFile] = useState<File | null>(null)
 
   const peerRef = useRef<Peer | null>(null)
-  const connectionRef = useRef<any>(null)
+  const connectionRef = useRef<DataConnection | null>(null)
   const receivedChunksRef = useRef<Uint8Array[]>([])
   const totalReceivedRef = useRef(0)
 
@@ -43,8 +48,8 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
         setConnectionStatus('connected')
       })
 
-      conn.on('data', (data: any) => {
-        handleReceivedData(data)
+      conn.on('data', (data: unknown) => {
+        handleReceivedData(data as ReceivedData)
       })
 
       conn.on('error', (err) => {
@@ -70,7 +75,7 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
     }
   }, [peerId])
 
-  const handleReceivedData = (data: any) => {
+  const handleReceivedData = useCallback((data: ReceivedData) => {
     if (data.type === 'file-metadata') {
       console.log('Received file metadata:', data)
       setConnectionStatus('receiving')
@@ -80,15 +85,15 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
     } else if (data.type === 'file-chunk') {
       // Accumulate chunks
       receivedChunksRef.current.push(new Uint8Array(data.data))
-      totalReceivedRef.current += data.data.length
+      totalReceivedRef.current += data.data.byteLength
       setTransferProgress((totalReceivedRef.current / fileSize) * 100)
     } else if (data.type === 'file-end') {
       console.log('File transfer complete')
       assembleFile()
     }
-  }
+  }, [fileSize])
 
-  const assembleFile = () => {
+  const assembleFile = useCallback(() => {
     try {
       // Combine all chunks
       const totalSize = receivedChunksRef.current.reduce((sum, chunk) => sum + chunk.length, 0)
@@ -116,7 +121,7 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
       setError('Failed to assemble received file')
       setConnectionStatus('error')
     }
-  }
+  }, [filename, onComplete])
 
   const decryptAndDownload = async () => {
     if (!receivedFile) return

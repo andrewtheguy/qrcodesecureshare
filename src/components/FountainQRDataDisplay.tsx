@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -74,20 +74,19 @@ const deriveQRCapacity = (eccLevel: 'L' | 'M' | 'Q' | 'H', canvasWidth: number =
   return safeCapacity
 }
 
-export function FountainQRDataDisplay({
-  encoder,
-  sessionId,
-  qrOptions,
-  windowInfo: _windowInfo,
-  receivedBlocks,
-  lastStats: _lastStats,
-  isActive,
-  activationToken,
-  onChunkGenerated,
-  onSkippedChunk,
-  onBufferUpdate,
-  onError
-}: FountainQRDataDisplayProps) {
+export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
+  const {
+    encoder,
+    sessionId,
+    qrOptions,
+    receivedBlocks,
+    isActive,
+    activationToken,
+    onChunkGenerated,
+    onSkippedChunk,
+    onBufferUpdate,
+    onError
+  } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [fps, setFps] = useState(4)
@@ -106,6 +105,22 @@ export function FountainQRDataDisplay({
   const pendingRequests = useRef<Map<number, {resolve: (url: string) => void, reject: (err: Error) => void}>>(new Map())
   const requestIdRef = useRef(0)
   const chunkBufferRef = useRef<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
+  const chunkCountRef = useRef(chunkCount)
+  const bufferLengthRef = useRef(bufferLength)
+  const fpsRef = useRef(fps)
+
+  // Update refs when state changes
+  useEffect(() => {
+    chunkCountRef.current = chunkCount
+  }, [chunkCount])
+
+  useEffect(() => {
+    bufferLengthRef.current = bufferLength
+  }, [bufferLength])
+
+  useEffect(() => {
+    fpsRef.current = fps
+  }, [fps])
 
   // Worker failure tracking
   const consecutiveWorkerFailuresRef = useRef(0)
@@ -115,26 +130,26 @@ export function FountainQRDataDisplay({
   const originalBufferTargetRef = useRef(5)
 
   // Helper functions for atomic buffer mutations
-  const pushToBuffer = (items: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>) => {
+  const pushToBuffer = useCallback((items: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>) => {
     chunkBufferRef.current.push(...items)
     const newLength = chunkBufferRef.current.length
     setBufferLength(newLength)
     onBufferUpdate(newLength)
-  }
+  }, [onBufferUpdate])
 
-  const consumeFromBuffer = (): {chunk: FountainChunk, qrUrl: string, chunkNum: number} | undefined => {
+  const consumeFromBuffer = useCallback((): {chunk: FountainChunk, qrUrl: string, chunkNum: number} | undefined => {
     const item = chunkBufferRef.current.shift()
     const newLength = chunkBufferRef.current.length
     setBufferLength(newLength)
     onBufferUpdate(newLength)
     return item
-  }
+  }, [onBufferUpdate])
 
-  const clearBuffer = () => {
+  const clearBuffer = useCallback(() => {
     chunkBufferRef.current = []
     setBufferLength(0)
     onBufferUpdate(0)
-  }
+  }, [onBufferUpdate])
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
@@ -173,7 +188,7 @@ export function FountainQRDataDisplay({
     setChunkCount(0)
     setSkippedChunks(0)
     clearBuffer()
-  }, [sessionId])
+  }, [sessionId, clearBuffer])
 
   // Initialize QR generation worker
   useEffect(() => {
@@ -338,12 +353,12 @@ export function FountainQRDataDisplay({
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef])
 
   // Generate QR in worker (for data chunks only)
-  const generateQRInWorker = (binaryString: string, options: object): Promise<string> => {
+  const generateQRInWorker = useCallback((binaryString: string, options: object): Promise<string> => {
     // Check if we should skip worker due to recent failures (exponential backoff)
-    const currentChunkNum = chunkCount + bufferLength
+    const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
     const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
 
     if (shouldSkipWorker) {
@@ -410,10 +425,10 @@ export function FountainQRDataDisplay({
 
         // Reduce FPS temporarily on persistent failures
         if (failures >= 5) {
-          originalFpsRef.current = fps
-          const reducedFps = Math.max(Math.floor(fps * 0.7), 2)
+          originalFpsRef.current = fpsRef.current
+          const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
           setFps(reducedFps)
-          console.warn(`Reducing FPS from ${fps} to ${reducedFps} due to worker failures`)
+          console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
         }
 
         // Increase buffer size target temporarily
@@ -433,7 +448,7 @@ export function FountainQRDataDisplay({
 
       return QRCode.toDataURL(binaryString, options)
     })
-  }
+  }, [chunkCountRef, bufferLengthRef, fpsRef])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {

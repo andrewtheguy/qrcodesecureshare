@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -69,7 +69,7 @@ export function FountainQRSenderLegacy({ file }: FountainQRSenderLegacyProps) {
   }, [file])
 
   // Generate and show next chunk
-  const generateAndShowNextChunk = async () => {
+  const generateAndShowNextChunk = useCallback(async () => {
     if (!encoder) return
 
     try {
@@ -134,7 +134,7 @@ export function FountainQRSenderLegacy({ file }: FountainQRSenderLegacyProps) {
       console.error('Chunk generation error:', e)
       setError('Failed to generate chunk')
     }
-  }
+  }, [encoder])
 
   // Animation loop
   useEffect(() => {
@@ -157,7 +157,7 @@ export function FountainQRSenderLegacy({ file }: FountainQRSenderLegacyProps) {
         intervalRef.current = null
       }
     }
-  }, [isPlaying, fps, encoder])
+  }, [isPlaying, fps, encoder, generateAndShowNextChunk])
 
   const handlePlayPause = () => {
     if (!isPlaying) {

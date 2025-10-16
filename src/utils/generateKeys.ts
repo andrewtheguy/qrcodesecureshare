@@ -39,5 +39,5 @@ export async function generateRSAKeyPair() {
 
 // Make it available in window for easy access in browser console
 if (typeof window !== 'undefined') {
-  (window as any).generateRSAKeyPair = generateRSAKeyPair
+  (window as unknown as { generateRSAKeyPair: typeof generateRSAKeyPair }).generateRSAKeyPair = generateRSAKeyPair
 }

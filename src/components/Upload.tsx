@@ -280,7 +280,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
     }
   }
 
-  const handleFiles = async (files: FileList | null) => {
+  const handleFiles = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0) return
 
     const file = files[0]
@@ -310,7 +310,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
         setUploading(false)
       }
     }
-  }
+  }, [transferMethod])
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -328,7 +328,7 @@ const Upload = forwardRef<UploadRef, UploadProps>(({ mode: initialMode = 'text' 
     e.preventDefault()
     setIsDragging(false)
     handleFiles(e.dataTransfer.files)
-  }, [])
+  }, [handleFiles])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     handleFiles(e.target.files)

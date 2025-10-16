@@ -10,8 +10,15 @@ function bytesToBase64NoPad(bytes: Uint8Array): string {
 }
 
 
+interface RsaPublicJwk {
+  kty: string;
+  n?: string;
+  e?: string;
+  [key: string]: unknown;
+}
+
 // Helper to canonicalize supported JWKs (currently RSA only)
-function canonicalizePublicJwk(parsed: any): string {
+function canonicalizePublicJwk(parsed: RsaPublicJwk): string {
   if (parsed.kty === 'RSA' && parsed.n && parsed.e) {
     return JSON.stringify({ kty: parsed.kty, n: parsed.n, e: parsed.e })
   }
@@ -38,7 +45,7 @@ export async function getJwkSshFingerprint(jwkString: string): Promise<string> {
 }
 
 export async function computeJwkFingerprint(jwkString: string): Promise<JwkFingerprint> {
-  let parsed: any
+  let parsed: RsaPublicJwk
   try {
     parsed = JSON.parse(jwkString)
   } catch {

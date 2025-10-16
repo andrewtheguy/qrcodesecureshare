@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -108,14 +108,14 @@ export function OfflineQRReceiver() {
       }
 
       setIsScanning(false)
-      stopScanner()
+      stopScannerRef.current?.()
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Metadata parse error: ${errorMsg}`)
       console.error('Metadata scan error:', err)
       setError('Failed to parse metadata QR code (expecting JSON).')
     }
-  }, [addDebugLog])
+  }, [])
 
   const handleScanError = useCallback((errorMessage: string) => {
     setError(errorMessage)
@@ -126,6 +126,12 @@ export function OfflineQRReceiver() {
     isScanning,
     onError: handleScanError
   })
+
+  const stopScannerRef = useRef(stopScanner)
+
+  useEffect(() => {
+    stopScannerRef.current = stopScanner
+  }, [stopScanner])
 
   const handleStartScan = () => {
     setIsScanning(true)

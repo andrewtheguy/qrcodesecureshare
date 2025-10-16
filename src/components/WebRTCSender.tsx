@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import Peer from 'peerjs'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import Peer, { DataConnection } from 'peerjs'
 import QRCode from 'qrcode'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -21,8 +21,58 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
   const [error, setError] = useState<string>('')
 
   const peerRef = useRef<Peer | null>(null)
-  const connectionRef = useRef<any>(null)
+  const connectionRef = useRef<DataConnection | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  const sendFile = useCallback(async (conn: DataConnection) => {
+    try {
+      setConnectionStatus('transferring')
+      setTransferProgress(0)
+
+      // Read file as ArrayBuffer
+      const arrayBuffer = await encryptedFile.arrayBuffer()
+      const uint8Array = new Uint8Array(arrayBuffer)
+
+      // Send file metadata first
+      const metadata = {
+        type: 'file-metadata',
+        filename: encryptedFile.name,
+        size: encryptedFile.size,
+        mimeType: encryptedFile.type
+      }
+      conn.send(metadata)
+
+      // Send file data in chunks
+      const chunkSize = 16384 // 16KB chunks
+      let sent = 0
+
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.slice(i, i + chunkSize)
+        conn.send({
+          type: 'file-chunk',
+          data: chunk,
+          offset: i,
+          total: uint8Array.length
+        })
+        sent = i + chunk.length
+        setTransferProgress((sent / uint8Array.length) * 100)
+
+        // Small delay to prevent overwhelming the connection
+        await new Promise(resolve => setTimeout(resolve, 10))
+      }
+
+      // Send end marker
+      conn.send({ type: 'file-end' })
+
+      setConnectionStatus('completed')
+      setTransferProgress(100)
+
+    } catch (error) {
+      console.error('File transfer error:', error)
+      setError('File transfer failed: ' + (error as Error).message)
+      setConnectionStatus('error')
+    }
+  }, [encryptedFile])
 
   useEffect(() => {
     // Initialize Peer.js
@@ -78,7 +128,7 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
         peerRef.current.destroy()
       }
     }
-  }, [encryptedFile, encryptionKey])
+  }, [encryptedFile, encryptionKey, originalFilename, sendFile])
 
   const generateQRCode = async (data: string) => {
     try {
@@ -108,55 +158,6 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
     }
   }
 
-  const sendFile = async (conn: any) => {
-    try {
-      setConnectionStatus('transferring')
-      setTransferProgress(0)
-
-      // Read file as ArrayBuffer
-      const arrayBuffer = await encryptedFile.arrayBuffer()
-      const uint8Array = new Uint8Array(arrayBuffer)
-
-      // Send file metadata first
-      const metadata = {
-        type: 'file-metadata',
-        filename: encryptedFile.name,
-        size: encryptedFile.size,
-        mimeType: encryptedFile.type
-      }
-      conn.send(metadata)
-
-      // Send file data in chunks
-      const chunkSize = 16384 // 16KB chunks
-      let sent = 0
-
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.slice(i, i + chunkSize)
-        conn.send({
-          type: 'file-chunk',
-          data: chunk,
-          offset: i,
-          total: uint8Array.length
-        })
-        sent = i + chunk.length
-        setTransferProgress((sent / uint8Array.length) * 100)
-
-        // Small delay to prevent overwhelming the connection
-        await new Promise(resolve => setTimeout(resolve, 10))
-      }
-
-      // Send end marker
-      conn.send({ type: 'file-end' })
-
-      setConnectionStatus('completed')
-      setTransferProgress(100)
-
-    } catch (error) {
-      console.error('File transfer error:', error)
-      setError('File transfer failed: ' + (error as Error).message)
-      setConnectionStatus('error')
-    }
-  }
 
   const handleReset = () => {
     if (connectionRef.current) {

@@ -56,10 +56,10 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [error, setError] = useState<string>('')
 
-  const addDebugLog = (message: string) => {
+  const addDebugLog = useCallback((message: string) => {
     console.log(`[SequentialQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
-  }
+  }, [])
 
   const handleScan = useCallback((data: string) => {
     try {
@@ -145,9 +145,9 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     if (receivedChunks.size === totalChunks) {
       reconstructFile()
     }
-  }, [receivedChunks, totalChunks])
+  }, [receivedChunks, totalChunks, reconstructFile])
 
-  const reconstructFile = async () => {
+  const reconstructFile = useCallback(async () => {
     try {
       // Sort chunks by index
       const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
@@ -187,7 +187,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       console.error('Reconstruction error:', err)
       setError('Failed to reconstruct file from chunks')
     }
-  }
+  }, [addDebugLog, initialMetadata.checksum, initialMetadata.checksumAlg, metadata.type, metadata.name])
 
   const handleStartScan = () => {
     setIsScanning(true)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
@@ -148,7 +148,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue])
+  }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue, handleFeedbackScan])
 
   const handlePlayPause = () => {
     if (!hasStarted) {
@@ -222,7 +222,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     }
   }, [scanningFeedback])
 
-  const handleFeedbackScan = (data: string) => {
+  const handleFeedbackScan = useCallback((data: string) => {
     try {
       const feedback = JSON.parse(data)
 
@@ -249,7 +249,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     } catch (err) {
       console.error('Failed to parse feedback QR:', err)
     }
-  }
+  }, [sessionId])
 
   const handleStartFeedbackScan = () => {
     setScanningFeedback(true)

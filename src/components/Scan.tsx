@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import QrScanner from 'qr-scanner'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { Button } from '@/components/ui/button'
@@ -496,25 +496,25 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       } else if (document.visibilityState === 'visible') {
         if (pageHiddenAtRef.current) {
           const hiddenFor = Date.now() - pageHiddenAtRef.current
-            if (hiddenFor > VISIBILITY_CLEAR_THRESHOLD_MS && vaultGetPrivateKey()) {
-              vaultClearPrivateKey()
-              setPrivateKeyStatus('empty')
-              setPrivateKeyInput('')
-              setPrivateKeyFingerprint(null)
-              if (privateKeyClearTimeoutRef.current) {
-                clearTimeout(privateKeyClearTimeoutRef.current)
-                privateKeyClearTimeoutRef.current = null
-              }
+          if (hiddenFor > VISIBILITY_CLEAR_THRESHOLD_MS && vaultGetPrivateKey()) {
+            vaultClearPrivateKey()
+            setPrivateKeyStatus('empty')
+            setPrivateKeyInput('')
+            setPrivateKeyFingerprint(null)
+            if (privateKeyClearTimeoutRef.current) {
+              clearTimeout(privateKeyClearTimeoutRef.current)
+              privateKeyClearTimeoutRef.current = null
             }
+          }
+          pageHiddenAtRef.current = null
         }
-        pageHiddenAtRef.current = null
       }
     }
     document.addEventListener('visibilitychange', handleVisibility)
     return () => document.removeEventListener('visibilitychange', handleVisibility)
   }, [])
 
-  const handleImportPrivateKey = async (raw?: string) => {
+  const handleImportPrivateKey = useCallback(async (raw?: string) => {
     const candidate = (raw !== undefined ? raw : privateKeyInput).trim()
     if (!candidate) return
     setPrivateKeyStatus('importing')
@@ -522,7 +522,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     try {
       // Compute Base58 fingerprint (public portion) before import
       try {
-   const fp = await getJwkSshFingerprint(candidate)
+        const fp = await getJwkSshFingerprint(candidate)
         setPrivateKeyFingerprint(fp)
       } catch (err) {
         console.warn('Failed to compute fingerprint:', err)
@@ -539,7 +539,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
       setPrivateKeyError(errorMessage)
       setPrivateKeyFingerprint(null)
     }
-  }
+  }, [privateKeyInput, setPrivateKeyStatus, setPrivateKeyError, setPrivateKeyFingerprint, setPrivateKeyInput])
 
   // Attempt auto-import (debounced) when user types a likely complete JWK
   useEffect(() => {
@@ -556,7 +556,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         handleImportPrivateKey()
       }, 500) // 500ms debounce
     }
-  }, [privateKeyInput, privateKeyStatus])
+  }, [privateKeyInput, privateKeyStatus, handleImportPrivateKey])
 
   // Paste-detect immediate import
   const handlePrivateKeyPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {

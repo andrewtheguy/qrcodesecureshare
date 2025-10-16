@@ -345,7 +345,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
 
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, success, isAwaitingFeedback])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, success, isAwaitingFeedback, fountainMetadata.type, initialMeta])
 
   // handleStartScan, handleStopScan moved to subcomponent
 

@@ -6,8 +6,16 @@
 
 let _privateKey: CryptoKey | null = null
 
+interface RsaPrivateJwk {
+  kty: string;
+  n?: string;
+  e?: string;
+  d?: string;
+  [key: string]: unknown;
+}
+
 /** Validate that the parsed JWK at least superficially looks like an RSA private key */
-function validateRsaPrivateJwk(jwk: any) {
+function validateRsaPrivateJwk(jwk: RsaPrivateJwk) {
   if (!jwk || typeof jwk !== 'object') throw new Error('Invalid JWK: not an object')
   if (jwk.kty !== 'RSA') throw new Error('Invalid JWK: kty must be RSA')
   // Minimal required props for private RSA key used for RSA-OAEP decrypt
@@ -22,7 +30,7 @@ function validateRsaPrivateJwk(jwk: any) {
  * The original JWK string should be cleared by the caller after this resolves.
  */
 export async function importAndSetPrivateKey(jwkString: string): Promise<CryptoKey> {
-  let parsed: any
+  let parsed: RsaPrivateJwk
   try {
     parsed = JSON.parse(jwkString)
   } catch {

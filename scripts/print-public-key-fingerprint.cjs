@@ -43,7 +43,7 @@ function loadFromPublicKeyTs() {
   if (!match) throw new Error('Could not locate PUBLIC_KEY_JWK object in publicKey.ts')
   let jwk
   try {
-    // eslint-disable-next-line no-eval -- controlled extraction of static object literal
+    // Controlled extraction of static object literal
     jwk = eval('(' + match[1] + ')')
   } catch (e) {
     throw new Error('Failed to evaluate PUBLIC_KEY_JWK object: ' + e.message)

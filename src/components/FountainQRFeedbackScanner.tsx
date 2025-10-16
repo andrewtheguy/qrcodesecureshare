@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { FountainEncoder } from '@/utils/fountainCode';
@@ -113,7 +113,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         scannerRef.current = null;
       }
     };
-  }, [isActive, currentMode, onModeChange, onError]);
+  }, [isActive, currentMode, onModeChange, onError, handleFeedbackScan]);
 
   const generateSenderFeedbackQR = async (feedback: SenderFeedback) => {
     try {
@@ -128,7 +128,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
   };
 
-  const handleFeedbackScan = async (result: { data: string }) => {
+  const handleFeedbackScan = useCallback(async (result: { data: string }) => {
     if (processingRef.current) return;
     processingRef.current = true;
 
@@ -291,7 +291,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       }
       processingRef.current = false;
     }
-  };
+  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onAckGenerated, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR]);
 
   const handleStartScan = () => {
     // setScanningFeedback(true);

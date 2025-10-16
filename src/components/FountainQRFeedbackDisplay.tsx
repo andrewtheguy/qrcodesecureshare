@@ -46,7 +46,6 @@ export function FountainQRFeedbackDisplay({
   onFeedbackGenerated,
   onAckReceived,
   onModeChange,
-  onWindowExpansion,
   onError,
   onSequenceIncrement,
   onSenderSequenceUpdate
@@ -344,7 +343,7 @@ export function FountainQRFeedbackDisplay({
     } catch (err) {
       console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
     }
-  }, [sessionId, lastSenderFeedbackSequence, currentWindowStart, currentWindowEnd, feedbackSequence, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, onSenderSequenceUpdate, onModeChange, onWindowExpansion, onAckReceived])
+  }, [sessionId, lastSenderFeedbackSequence, feedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
   const { videoRef: ackVideoRefFromHook } = useQRScanner({
