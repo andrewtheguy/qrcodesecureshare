@@ -45,6 +45,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [decodedBlocks, setDecodedBlocks] = useState(0)
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
+  const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
@@ -131,20 +132,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }
 
         case 'complete': {
-          const { data: reconstructedData, integrityOk } = data
+          const { data: reconstructedData, integrityOk, calculatedChecksum } = data
           const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           setDownloadUrl(url)
           setSuccess(true)
           setIsScanning(false)
-
-          if (integrityOk !== undefined) {
-            setIntegrityOk(integrityOk)
-            // Debug logging moved to subcomponent
-          } else {
-            setIntegrityOk(null)
-          }
+          setIntegrityOk(integrityOk)
+          setActualChecksum(calculatedChecksum)
 
           // Debug logging moved to subcomponent
           break
@@ -457,7 +453,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                 </span>
               </p>
               <p className={`text-sm font-medium ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
-                {integrityOk === null ? '🔍 Integrity check: Not performed' : integrityOk ? '🔐 Integrity verified (checksum match)' : '❌ Integrity check failed'}
+                {integrityOk ? `🔐 Integrity verified (checksum matches ${initialMetadata.checksum})` : `❌ Integrity check failed, expected ${initialMetadata.checksum}, but got ${actualChecksum}`}
               </p>
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
