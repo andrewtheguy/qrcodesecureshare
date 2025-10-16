@@ -119,6 +119,35 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     generateQR()
   }, [dataChunks, currentChunk, hasStarted])
 
+  const handleFeedbackScan = useCallback((data: string) => {
+    try {
+      const feedback = JSON.parse(data)
+
+      if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
+        // Validate session ID
+        const feedbackSessionId = feedback.sessionId
+        if (feedbackSessionId !== sessionId) {
+          console.warn(`Ignoring feedback from different session: expected ${sessionId}, got ${feedbackSessionId}`)
+          return
+        }
+        // Receiver already uses 0-based data chunk indices, so use them directly
+        setMissingChunksQueue(feedback.missingChunks)
+        setPlayingMissingOnly(true)
+        setCurrentChunk(feedback.missingChunks[0] || 0)
+        setScanningFeedback(false)
+        setIsPlaying(false)
+        setLoopCount(0)
+
+        // Stop the scanner
+        if (feedbackScannerRef.current) {
+          feedbackScannerRef.current.stop()
+        }
+      }
+    } catch (err) {
+      console.error('Failed to parse feedback QR:', err)
+    }
+  }, [sessionId])
+
   // Animation loop
   useEffect(() => {
     if (!isPlaying || dataChunks.length === 0) return
@@ -220,36 +249,8 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
       scanner.stop()
       scanner.destroy()
     }
-  }, [scanningFeedback])
+  }, [scanningFeedback, handleFeedbackScan])
 
-  const handleFeedbackScan = useCallback((data: string) => {
-    try {
-      const feedback = JSON.parse(data)
-
-      if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
-        // Validate session ID
-        const feedbackSessionId = feedback.sessionId
-        if (feedbackSessionId !== sessionId) {
-          console.warn(`Ignoring feedback from different session: expected ${sessionId}, got ${feedbackSessionId}`)
-          return
-        }
-        // Receiver already uses 0-based data chunk indices, so use them directly
-        setMissingChunksQueue(feedback.missingChunks)
-        setPlayingMissingOnly(true)
-        setCurrentChunk(feedback.missingChunks[0] || 0)
-        setScanningFeedback(false)
-        setIsPlaying(false)
-        setLoopCount(0)
-
-        // Stop the scanner
-        if (feedbackScannerRef.current) {
-          feedbackScannerRef.current.stop()
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse feedback QR:', err)
-    }
-  }, [sessionId])
 
   const handleStartFeedbackScan = () => {
     setScanningFeedback(true)

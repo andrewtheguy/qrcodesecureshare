@@ -226,7 +226,102 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
   }, [fps])
 
-  // Background chunk generation effect for buffering with FPS-aware throttling
+  // Generate QR in worker (for data chunks only)
+  const generateQRInWorker = useCallback((binaryString: string, options: object): Promise<string> => {
+    // Check if we should skip worker due to recent failures (exponential backoff)
+    const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
+    const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
+
+    if (shouldSkipWorker) {
+      // Direct fallback during backoff period
+      return QRCode.toDataURL(binaryString, options)
+    }
+
+    const workerPromise = new Promise<string>((resolve, reject) => {
+      if (!workerRef.current) {
+        // Fallback to direct QRCode.toDataURL if worker is unavailable
+        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+        return
+      }
+
+      const id = requestIdRef.current++
+      // Adaptive timeout: start at 8s for first few chunks, lower after consecutive successes
+      const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
+      const timeout = setTimeout(() => {
+        pendingRequests.current.delete(id)
+        reject(new Error('Worker timeout'))
+      }, adaptiveTimeout)
+
+      pendingRequests.current.set(id, {
+        resolve: (qrUrl: string) => {
+          clearTimeout(timeout)
+          // Success! Reset failure counter and increment success counter
+          consecutiveWorkerFailuresRef.current = 0
+          consecutiveWorkerSuccessesRef.current++
+          setWorkerFallbackHint('')
+          resolve(qrUrl)
+        },
+        reject: (err: Error) => {
+          clearTimeout(timeout)
+          reject(err)
+        }
+      })
+
+      try {
+        workerRef.current.postMessage({ type: 'generate', id, binaryString, options })
+      } catch (err) {
+        console.warn('Worker postMessage failed; falling back:', err)
+        clearTimeout(timeout)
+        pendingRequests.current.delete(id)
+        // Fallback to direct QRCode.toDataURL on worker error
+        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+      }
+    })
+
+    return workerPromise.catch((err) => {
+      console.warn('QR worker failed, falling back to main thread:', err)
+
+      // Track consecutive failures and reset success counter
+      consecutiveWorkerFailuresRef.current++
+      consecutiveWorkerSuccessesRef.current = 0
+      const failures = consecutiveWorkerFailuresRef.current
+
+      // Apply exponential backoff after N consecutive failures
+      if (failures >= 3) {
+        // Skip worker for next M chunks (exponential: 2^failures)
+        const skipChunks = Math.min(Math.pow(2, failures - 2), 64) // Cap at 64 chunks
+        workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
+
+        console.warn(`${failures} consecutive worker failures. Skipping worker for next ${skipChunks} chunks.`)
+
+        // Reduce FPS temporarily on persistent failures
+        if (failures >= 5) {
+          originalFpsRef.current = fpsRef.current
+          const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
+          setFps(reducedFps)
+          console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
+        }
+
+        // Increase buffer size target temporarily
+        if (failures >= 4) {
+          originalBufferTargetRef.current = bufferTargetSizeRef.current
+          bufferTargetSizeRef.current = Math.min(bufferTargetSizeRef.current + 2, 10)
+          console.warn(`Increasing buffer target to ${bufferTargetSizeRef.current}`)
+        }
+
+        // Set user-visible hint
+        if (failures >= 5) {
+          setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
+        } else if (failures >= 3) {
+          setWorkerFallbackHint('Using SVG-based QR generation method.')
+        }
+      }
+
+      return QRCode.toDataURL(binaryString, options)
+    })
+  }, [chunkCountRef, bufferLengthRef, fpsRef])
+
+  // Generate and display fountain-coded chunk in binary format
   useEffect(() => {
     const bufferTargetSize = bufferTargetSizeRef.current
     if (!isActive) return
@@ -354,101 +449,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
     generateBufferChunk()
   }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef])
-
-  // Generate QR in worker (for data chunks only)
-  const generateQRInWorker = useCallback((binaryString: string, options: object): Promise<string> => {
-    // Check if we should skip worker due to recent failures (exponential backoff)
-    const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
-    const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
-
-    if (shouldSkipWorker) {
-      // Direct fallback during backoff period
-      return QRCode.toDataURL(binaryString, options)
-    }
-
-    const workerPromise = new Promise<string>((resolve, reject) => {
-      if (!workerRef.current) {
-        // Fallback to direct QRCode.toDataURL if worker is unavailable
-        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
-        return
-      }
-
-      const id = requestIdRef.current++
-      // Adaptive timeout: start at 8s for first few chunks, lower after consecutive successes
-      const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
-      const timeout = setTimeout(() => {
-        pendingRequests.current.delete(id)
-        reject(new Error('Worker timeout'))
-      }, adaptiveTimeout)
-
-      pendingRequests.current.set(id, {
-        resolve: (qrUrl: string) => {
-          clearTimeout(timeout)
-          // Success! Reset failure counter and increment success counter
-          consecutiveWorkerFailuresRef.current = 0
-          consecutiveWorkerSuccessesRef.current++
-          setWorkerFallbackHint('')
-          resolve(qrUrl)
-        },
-        reject: (err: Error) => {
-          clearTimeout(timeout)
-          reject(err)
-        }
-      })
-
-      try {
-        workerRef.current.postMessage({ type: 'generate', id, binaryString, options })
-      } catch (err) {
-        console.warn('Worker postMessage failed; falling back:', err)
-        clearTimeout(timeout)
-        pendingRequests.current.delete(id)
-        // Fallback to direct QRCode.toDataURL on worker error
-        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
-      }
-    })
-
-    return workerPromise.catch((err) => {
-      console.warn('QR worker failed, falling back to main thread:', err)
-
-      // Track consecutive failures and reset success counter
-      consecutiveWorkerFailuresRef.current++
-      consecutiveWorkerSuccessesRef.current = 0
-      const failures = consecutiveWorkerFailuresRef.current
-
-      // Apply exponential backoff after N consecutive failures
-      if (failures >= 3) {
-        // Skip worker for next M chunks (exponential: 2^failures)
-        const skipChunks = Math.min(Math.pow(2, failures - 2), 64) // Cap at 64 chunks
-        workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
-
-        console.warn(`${failures} consecutive worker failures. Skipping worker for next ${skipChunks} chunks.`)
-
-        // Reduce FPS temporarily on persistent failures
-        if (failures >= 5) {
-          originalFpsRef.current = fpsRef.current
-          const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
-          setFps(reducedFps)
-          console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
-        }
-
-        // Increase buffer size target temporarily
-        if (failures >= 4) {
-          originalBufferTargetRef.current = bufferTargetSizeRef.current
-          bufferTargetSizeRef.current = Math.min(bufferTargetSizeRef.current + 2, 10)
-          console.warn(`Increasing buffer target to ${bufferTargetSizeRef.current}`)
-        }
-
-        // Set user-visible hint
-        if (failures >= 5) {
-          setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
-        } else if (failures >= 3) {
-          setWorkerFallbackHint('Using SVG-based QR generation method.')
-        }
-      }
-
-      return QRCode.toDataURL(binaryString, options)
-    })
-  }, [chunkCountRef, bufferLengthRef, fpsRef])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {

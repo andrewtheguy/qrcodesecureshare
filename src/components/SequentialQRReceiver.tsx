@@ -137,20 +137,10 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setIsScanning(true)
   }, [])
 
-  // Check if all chunks received and reconstruct file
-  useEffect(() => {
-  if (totalChunks === 0 || receivedChunks.size === 0) return
-
-    // totalChunks is the number of data chunks (metadata chunk is separate)
-    if (receivedChunks.size === totalChunks) {
-      reconstructFile()
-    }
-  }, [receivedChunks, totalChunks, reconstructFile])
-
-  const reconstructFile = useCallback(async () => {
+  const reconstructFile = useCallback(async (chunks: Map<number, ChunkData>, stopScan: () => void) => {
     try {
       // Sort chunks by index
-      const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
+      const sortedChunks = Array.from(chunks.values()).sort((a, b) => a.index - b.index)
 
       // Decode base64 data
       const base64Data = sortedChunks.map(chunk => chunk.data).join('')
@@ -182,12 +172,23 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
       setDownloadUrl(url)
       setSuccess(true)
       setIsScanning(false)
-      stopScanner()
+      stopScan()
     } catch (err) {
       console.error('Reconstruction error:', err)
       setError('Failed to reconstruct file from chunks')
     }
   }, [addDebugLog, initialMetadata.checksum, initialMetadata.checksumAlg, metadata.type, metadata.name])
+
+  // Check if all chunks received and reconstruct file
+  useEffect(() => {
+  if (totalChunks === 0 || receivedChunks.size === 0) return
+
+    // totalChunks is the number of data chunks (metadata chunk is separate)
+    if (receivedChunks.size === totalChunks) {
+      reconstructFile(receivedChunks, stopScanner)
+    }
+  }, [receivedChunks, totalChunks, reconstructFile, stopScanner])
+
 
   const handleStartScan = () => {
     setIsScanning(true)

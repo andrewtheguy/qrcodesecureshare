@@ -75,59 +75,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     setSenderFeedbackSequence(0);
   }, [sessionId]);
 
-  useEffect(() => {
-    if (isActive && currentMode === 'scanning') {
-      const initScanner = async () => {
-        try {
-          const { default: QrScanner } = await import('qr-scanner');
-          if (!scannerRef.current && videoRef.current) {
-            scannerRef.current = new QrScanner(videoRef.current, handleFeedbackScan, {
-              returnDetailedScanResult: true,
-              highlightScanRegion: true,
-              highlightCodeOutline: true,
-            });
-            await scannerRef.current.start();
-            // setScanningFeedback(true);
-          }
-        } catch (error) {
-          console.error('Failed to initialize feedback scanner:', error);
-          onError('Failed to access camera for feedback scanning');
-          // setScanningFeedback(false);
-        }
-      };
-
-      initScanner();
-    } else if (!isActive || currentMode !== 'scanning') {
-      if (scannerRef.current) {
-        scannerRef.current.stop();
-        scannerRef.current.destroy();
-        scannerRef.current = null;
-      }
-      // setScanningFeedback(false);
-    }
-
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop();
-        scannerRef.current.destroy();
-        scannerRef.current = null;
-      }
-    };
-  }, [isActive, currentMode, onModeChange, onError, handleFeedbackScan]);
-
-  const generateSenderFeedbackQR = async (feedback: SenderFeedback) => {
-    try {
-      const dataUrl = await generateNonDataQR(feedback);
-      setAckQRUrl(dataUrl);
-      // Increment sequence only after successfully generating ACK
-      setSenderFeedbackSequence(prev => prev + 1);
-      onAckGenerated(dataUrl, feedback.sequence);
-    } catch (error) {
-      console.error('Failed to generate ACK QR:', error);
-      onError('Failed to generate acknowledgment QR code');
-    }
-  };
-
   const handleFeedbackScan = useCallback(async (result: { data: string }) => {
     if (processingRef.current) return;
     processingRef.current = true;
@@ -292,6 +239,59 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       processingRef.current = false;
     }
   }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onAckGenerated, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR]);
+
+  useEffect(() => {
+    if (isActive && currentMode === 'scanning') {
+      const initScanner = async () => {
+        try {
+          const { default: QrScanner } = await import('qr-scanner');
+          if (!scannerRef.current && videoRef.current) {
+            scannerRef.current = new QrScanner(videoRef.current, handleFeedbackScan, {
+              returnDetailedScanResult: true,
+              highlightScanRegion: true,
+              highlightCodeOutline: true,
+            });
+            await scannerRef.current.start();
+            // setScanningFeedback(true);
+          }
+        } catch (error) {
+          console.error('Failed to initialize feedback scanner:', error);
+          onError('Failed to access camera for feedback scanning');
+          // setScanningFeedback(false);
+        }
+      };
+
+      initScanner();
+    } else if (!isActive || currentMode !== 'scanning') {
+      if (scannerRef.current) {
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
+        scannerRef.current = null;
+      }
+      // setScanningFeedback(false);
+    }
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.stop();
+        scannerRef.current.destroy();
+        scannerRef.current = null;
+      }
+    };
+  }, [isActive, currentMode, onModeChange, onError, handleFeedbackScan]);
+
+  async function generateSenderFeedbackQR(feedback: SenderFeedback) {
+    try {
+      const dataUrl = await generateNonDataQR(feedback);
+      setAckQRUrl(dataUrl);
+      // Increment sequence only after successfully generating ACK
+      setSenderFeedbackSequence(prev => prev + 1);
+      onAckGenerated(dataUrl, feedback.sequence);
+    } catch (error) {
+      console.error('Failed to generate ACK QR:', error);
+      onError('Failed to generate acknowledgment QR code');
+    }
+  }
 
   const handleStartScan = () => {
     // setScanningFeedback(true);

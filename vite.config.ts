@@ -6,6 +6,9 @@ import { resolve } from 'path'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
 
+// @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
+import eslint from 'vite-plugin-eslint'
+
 // Custom plugin to copy QR scanner worker
 const copyQrWorkerPlugin = () => {
   return {
@@ -111,6 +114,12 @@ export default defineConfig({
     verifyWorkerBuildPlugin(),
     react(),
     tailwindcss(),
+    eslint({
+      // Optional: Configure eslint plugin behavior
+      // failOnWarning: false, // Don't fail the build on warnings
+      failOnError: true,   // Fail the build on errors
+      // cache: false,        // Disable cache for faster linting during development
+    }),
     VitePWA({
       registerType: 'autoUpdate',
       workbox: {
