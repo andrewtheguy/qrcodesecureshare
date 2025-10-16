@@ -149,12 +149,18 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            // Calculate window configuration
            let windowEnabled = false
            let initialWindowBlocks = totalSourceBlocks
-           if (size >= WINDOW_ENABLE_THRESHOLD) {
-             windowEnabled = true
-             if (size <= WINDOW_HALF_THRESHOLD) {
-               initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
-             } else {
-               initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
+           if (!feedbackEnabled) {
+             // No-feedback mode: disable windowing and cover entire file
+             windowEnabled = false
+             initialWindowBlocks = totalSourceBlocks
+           } else {
+             if (size >= WINDOW_ENABLE_THRESHOLD) {
+               windowEnabled = true
+               if (size <= WINDOW_HALF_THRESHOLD) {
+                 initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
+               } else {
+                 initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
+               }
              }
            }
 
@@ -568,7 +574,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
          {transferMode === 'sequential' ? (
            <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
          ) : (
-           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
+           <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} feedbackEnabled={feedbackEnabled} />
          )}
       </CardContent>
     </Card>

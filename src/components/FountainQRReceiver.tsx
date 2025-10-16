@@ -21,10 +21,13 @@ interface FountainQRReceiverProps {
     initialWindowBlocks?: number
     windowTriggerThreshold?: number
     windowStart?: number
+    feedbackEnabled?: boolean
   }
 }
 
 export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps) {
+  const feedbackEnabled = initialMetadata.feedbackEnabled ?? true
+
   // Initialize metadata and decoder immediately (always provided by parent)
   const initialMeta: FountainMetadata = {
     name: initialMetadata.name,
@@ -106,7 +109,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Window saturation check
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
-          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback) {
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
             const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
@@ -312,10 +315,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Skip all checks if already showing feedback, transfer complete, or awaiting feedback
     if (success || isAwaitingFeedback) return
 
+    // Skip all feedback logic if feedback is disabled
+    if (!feedbackEnabled) return
+
     // Priority 0: Skip ALL feedback for very small files
     // Files smaller than 5x the targeted mode threshold don't benefit from feedback
     const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
+    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize) && feedbackEnabled
     if (!isFileLargeEnoughForFeedback) {
       // No feedback QR needed for very small files - they decode quickly without it
       return
@@ -389,29 +395,41 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   return (
     <div className="space-y-4">
+      {/* No-feedback mode alert */}
+      {!feedbackEnabled && (
+        <Alert>
+          <AlertDescription>
+            <p className="font-medium">📱 No-feedback mode: Continue scanning until transfer completes</p>
+            <p className="text-sm">Sender cannot scan QR codes. Transfer will complete using random chunk generation only. No feedback QR codes will be generated.</p>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Add the subcomponent */}
-      <FountainQRFeedbackDisplay
-        fountainMetadata={fountainMetadata}
-        sessionId={sessionId}
-        decodedBlocks={decodedBlocks}
-        decodedBlockIndices={decodedBlockIndicesRef.current}
-        currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
-        currentWindowStart={currentWindowStart}
-        currentWindowEnd={currentWindowEnd}
-        isWindowEnabled={isWindowEnabled}
-        windowTriggerThreshold={windowTriggerThreshold}
-        feedbackSequence={feedbackSequence}
-        lastSenderFeedbackSequence={lastSenderFeedbackSequence}
-        receiverMode={receiverMode}
-        isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
-        onFeedbackGenerated={handleFeedbackGenerated}
-        onAckReceived={handleAckReceived}
-        onModeChange={handleFeedbackModeChange}
-        onWindowExpansion={handleWindowExpansion}
-        onError={handleFeedbackError}
-        onSequenceIncrement={handleSequenceIncrement}
-        onSenderSequenceUpdate={handleSenderSequenceUpdate}
-      />
+      {feedbackEnabled && (
+        <FountainQRFeedbackDisplay
+          fountainMetadata={fountainMetadata}
+          sessionId={sessionId}
+          decodedBlocks={decodedBlocks}
+          decodedBlockIndices={decodedBlockIndicesRef.current}
+          currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
+          currentWindowStart={currentWindowStart}
+          currentWindowEnd={currentWindowEnd}
+          isWindowEnabled={isWindowEnabled}
+          windowTriggerThreshold={windowTriggerThreshold}
+          feedbackSequence={feedbackSequence}
+          lastSenderFeedbackSequence={lastSenderFeedbackSequence}
+          receiverMode={receiverMode}
+          isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
+          onFeedbackGenerated={handleFeedbackGenerated}
+          onAckReceived={handleAckReceived}
+          onModeChange={handleFeedbackModeChange}
+          onWindowExpansion={handleWindowExpansion}
+          onError={handleFeedbackError}
+          onSequenceIncrement={handleSequenceIncrement}
+          onSenderSequenceUpdate={handleSenderSequenceUpdate}
+        />
+      )}
 
       {/* Progress moved to subcomponent */}
 

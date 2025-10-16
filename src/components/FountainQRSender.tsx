@@ -8,6 +8,7 @@ import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'
 interface FountainQRSenderProps {
   file: File
   sessionId: number
+  feedbackEnabled?: boolean
   qrOptions?: {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
@@ -15,7 +16,7 @@ interface FountainQRSenderProps {
 }
 
 
-export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, feedbackEnabled = true, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
@@ -64,10 +65,11 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
            blockSize: DEFAULT_BLOCK_SIZE,
            c: 0.2,
-               delta: 0.01,
-            // Optional: override doping rates here if experimenting
-            degree1Rate: 0.08
-         })
+           delta: 0.01,
+           // Optional: override doping rates here if experimenting
+           degree1Rate: 0.08,
+           windowEnabled: feedbackEnabled ? undefined : false
+          })
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
          const encoderBlockSize = fountainEncoder.getMetadata().blockSize
@@ -280,6 +282,15 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         </Alert>
       )}
 
+      {/* No-feedback mode alert */}
+      {!feedbackEnabled && (
+        <Alert>
+          <AlertDescription>
+            <p className="font-medium">📱 No-feedback mode: Receiver will not generate feedback QR codes</p>
+            <p className="text-sm">Transfer will complete using random chunk generation only. The receiver should continue scanning until 100% complete.</p>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* QR Code Display (clean container without overlays) */}
       {senderMode === 'data-display' ? (
@@ -308,22 +319,24 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
       )}
 
       {/* Feedback Scanner Component */}
-      <FountainQRFeedbackScanner
-        encoder={encoder}
-        sessionId={sessionId}
-        isActive={senderMode === 'feedback-scanning'}
-        lastProcessedSequence={lastProcessedSequence}
-        windowInfo={windowInfo}
-        lastDecodedInWindow={lastDecodedInWindow}
-        lastWindowExpansion={lastWindowExpansion}
-        onFeedbackProcessed={handleFeedbackProcessed}
-        onAckGenerated={handleAckGenerated}
-        onModeChange={handleFeedbackModeChange}
-        onError={handleFeedbackError}
-        onUpdateWindowInfo={handleUpdateWindowInfo}
-        onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
-        onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
-      />
+      {feedbackEnabled && (
+        <FountainQRFeedbackScanner
+          encoder={encoder}
+          sessionId={sessionId}
+          isActive={senderMode === 'feedback-scanning'}
+          lastProcessedSequence={lastProcessedSequence}
+          windowInfo={windowInfo}
+          lastDecodedInWindow={lastDecodedInWindow}
+          lastWindowExpansion={lastWindowExpansion}
+          onFeedbackProcessed={handleFeedbackProcessed}
+          onAckGenerated={handleAckGenerated}
+          onModeChange={handleFeedbackModeChange}
+          onError={handleFeedbackError}
+          onUpdateWindowInfo={handleUpdateWindowInfo}
+          onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
+          onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
+        />
+      )}
 
       {/* Status indicators for non-data-display modes */}
       {senderMode !== 'data-display' && (
@@ -343,24 +356,36 @@ export function FountainQRSender({ file, sessionId, qrOptions = { errorCorrectio
         <AlertDescription>
           <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
           <ol className="list-decimal list-inside space-y-1 text-sm">
-            <li>Each chunk combines multiple source blocks via XOR</li>
-            <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
-            <li>Can skip/miss chunks and still decode successfully</li>
-            <li>Keep playing until receiver shows 100% decoded</li>
-            <li>More robust than sequential chunk transfer</li>
-            <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
-            <li>After scanning feedback, sender will display ACK QR automatically</li>
-            <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
-            <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
-            <li>Receiver must scan ACK before resuming data scanning</li>
-            {windowInfo && windowInfo.windowEnabled && (
-              <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
-              )}
-              <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
-              <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
-              <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
+            {feedbackEnabled ? (
+              <>
+                <li>Each chunk combines multiple source blocks via XOR</li>
+                <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
+                <li>Can skip/miss chunks and still decode successfully</li>
+                <li>Keep playing until receiver shows 100% decoded</li>
+                <li>More robust than sequential chunk transfer</li>
+                <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
+                <li>After scanning feedback, sender will display ACK QR automatically</li>
+                <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
+                <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
+                <li>Receiver must scan ACK before resuming data scanning</li>
+                {windowInfo && windowInfo.windowEnabled && (
+                  <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
+                  )}
+                  <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+                  <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
+                  <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
+              </>
+            ) : (
+              <>
+                <li>Each chunk combines multiple source blocks via XOR</li>
+                <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
+                <li>Can skip/miss chunks and still decode successfully</li>
+                <li>Keep scanning until receiver shows 100% decoded</li>
+                <li>No feedback scanning needed</li>
+              </>
+            )}
           </ol>
-          {windowInfo && windowInfo.windowEnabled && (
+          {windowInfo && windowInfo.windowEnabled && feedbackEnabled && (
             <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 pt-3 border-t">
               <span className="font-medium">🪟 Tip:</span> Scan feedback QR periodically to enable automatic window expansion for large files.
             </p>
