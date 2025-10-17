@@ -49,7 +49,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
-   const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
+    const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
+   const [skipTargetedModeForSession, setSkipTargetedModeForSession] = useState(false)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -82,6 +83,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
   const isTargetedModeActiveRef = useRef(isTargetedModeActive)
   const triggeredFeedbackRef = useRef(false)
+  const skipTargetedModeForSessionRef = useRef<boolean>(skipTargetedModeForSession)
   const lastTriggeredWindowPercentageRef = useRef<number>(0)
   const lastObservedWindowPercentageRef = useRef<number>(0)
 
@@ -254,6 +256,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastSenderFeedbackSequence(sequence)
   }, [])
 
+  const handleSkipTargetedMode = useCallback(() => {
+    console.log('[FountainQRReceiver] User requested to skip targeted mode for session')
+    setSkipTargetedModeForSession(true)
+    setIsTargetedModeActive(false)
+    // Transition back to data-scanning mode
+    setReceiverMode('data-scanning')
+    setIsScanning(true)
+    setIsAwaitingFeedback(false)
+    triggeredFeedbackRef.current = false
+  }, [])
+
 
 
 
@@ -297,6 +310,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     isTargetedModeActiveRef.current = isTargetedModeActive
   }, [isTargetedModeActive])
+
+  useEffect(() => {
+    skipTargetedModeForSessionRef.current = skipTargetedModeForSession
+  }, [skipTargetedModeForSession])
 
   // Auto-start scanning moved to subcomponent
 
@@ -357,7 +374,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
 
     // Priority 2: Check for targeted mode threshold
-    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
+    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold && !skipTargetedModeForSession
     if (crossedToTargeted) {
       // Debug logging moved to subcomponent
       setReceiverMode('feedback-display')
@@ -401,6 +418,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setLastTriggeredWindowPercentage(0)
     lastObservedWindowPercentageRef.current = 0
+    setSkipTargetedModeForSession(false)
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -454,6 +472,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onError={handleFeedbackError}
           onSequenceIncrement={handleSequenceIncrement}
           onSenderSequenceUpdate={handleSenderSequenceUpdate}
+          skipTargetedModeForSession={skipTargetedModeForSession}
+          onSkipTargetedMode={handleSkipTargetedMode}
         />
       )}
 

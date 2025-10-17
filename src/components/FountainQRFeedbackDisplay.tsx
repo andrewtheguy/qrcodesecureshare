@@ -57,6 +57,8 @@ interface FountainQRFeedbackDisplayProps {
   onError: (error: string) => void
   onSequenceIncrement: () => void
   onSenderSequenceUpdate: (sequence: number) => void
+  skipTargetedModeForSession: boolean
+  onSkipTargetedMode: () => void
 }
 
 export function FountainQRFeedbackDisplay({
@@ -77,7 +79,9 @@ export function FountainQRFeedbackDisplay({
   onModeChange,
   onError,
   onSequenceIncrement,
-  onSenderSequenceUpdate
+  onSenderSequenceUpdate,
+  skipTargetedModeForSession,
+  onSkipTargetedMode
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
@@ -164,7 +168,7 @@ export function FountainQRFeedbackDisplay({
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
       let feedback: FountainFeedback
-      if (missingBlocksCount > targetedModeThreshold) {
+      if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession) {
         // Statistics-only feedback - compact format
         feedback = {
           type: 'FOUNTAIN_FEEDBACK',
@@ -445,7 +449,9 @@ export function FountainQRFeedbackDisplay({
                 Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%)
               </p>
               <p className="text-xs text-muted-foreground text-center">
-                {(fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
+                {skipTargetedModeForSession
+                  ? 'Statistics mode (targeted mode disabled for session)'
+                  : (fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR to sender, then click the button below to scan for ACK
@@ -460,6 +466,31 @@ export function FountainQRFeedbackDisplay({
               >
                 Start Scanning for ACK
               </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+        {skipTargetedModeForSession && (
+          <Alert>
+            <AlertDescription>
+              <p className="font-medium">ℹ️ Targeted Mode Disabled for Session</p>
+              <p className="text-sm text-muted-foreground">
+                Using statistics mode for all feedback. This prevents large QR codes but may require more scans.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              {feedbackMode === 'targeted' && !skipTargetedModeForSession && (
+                <Button
+                  onClick={onSkipTargetedMode}
+                  variant="outline"
+                  className="w-full"
+                >
+                  Skip Targeted Mode for Session
+                </Button>
+              )}
             </div>
           </AlertDescription>
         </Alert>
