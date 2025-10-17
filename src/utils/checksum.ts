@@ -66,6 +66,7 @@ export function generateFeedbackConfirmationCode(feedback: FountainFeedback): st
     { sequence: feedback.sequence.toString() },
     { firstMissingBlock: feedback.firstMissingBlock.toString() },
     { progress: feedback.progress.toString() },
+    { decodedInWindow: feedback.decodedInWindow.toString() },
   ]
 
   // Add mode-specific fields

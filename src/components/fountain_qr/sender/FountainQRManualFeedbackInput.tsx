@@ -88,6 +88,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputMode, setInputMode] = useState<'statistics' | 'targeted'>('statistics');
   const [inputFirstMissingBlock, setInputFirstMissingBlock] = useState('0');
   const [inputProgress, setInputProgress] = useState('');
+  const [inputDecodedInWindow, setInputDecodedInWindow] = useState('');
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
@@ -129,6 +130,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setInputMode('statistics');
     setInputFirstMissingBlock('0');
     setInputProgress('');
+    setInputDecodedInWindow('');
     setInputMissingBlocks('');
     setInputConfirmationCode('');
   }, [lastProcessedSequence]);
@@ -158,6 +160,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       return { valid: false, error: `Invalid progress: Must be an integer between 0 and 100. Current value: ${inputProgress}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
 
+    // Parse and validate decodedInWindow
+    const parsedDecodedInWindow = parseInt(inputDecodedInWindow);
+    if (isNaN(parsedDecodedInWindow) || parsedDecodedInWindow < 0) {
+      return { valid: false, error: `Invalid decoded in window: Must be a non-negative integer. Current value: ${inputDecodedInWindow}. Please verify this field from receiver's feedback display.`, feedback: null };
+    }
+
     // Validate confirmation code
     if (!inputConfirmationCode.trim()) {
       return { valid: false, error: 'Confirmation code required: Please enter the confirmation code shown in receiver\'s Feedback Details card to verify input accuracy.', feedback: null };
@@ -173,6 +181,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sequence: parsedSequence,
         firstMissingBlock: parsedFirstMissingBlock,
         progress: parsedProgress,
+        decodedInWindow: parsedDecodedInWindow,
       };
     } else {
       // Targeted mode
@@ -190,6 +199,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sequence: parsedSequence,
         firstMissingBlock: parsedFirstMissingBlock,
         progress: parsedProgress,
+        decodedInWindow: parsedDecodedInWindow,
         missingBlocks,
       };
     }
@@ -202,13 +212,13 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     if (normalizedInput !== normalizedExpected) {
       return {
         valid: false,
-        error: `Confirmation code mismatch: The code you entered doesn't match the expected value for this feedback. This indicates a typo in one or more fields. Please double-check all fields (Session ID, Sequence, First Missing Block, Mode, and mode-specific fields) and try again. Expected: ${expectedCode}, Got: ${inputConfirmationCode}`,
+        error: `Confirmation code mismatch: The code you entered doesn't match the expected value for this feedback. This indicates a typo in one or more fields. Please double-check all fields (Session ID, Sequence, First Missing Block, Progress, Decoded in Window, and mode-specific fields) and try again. Expected: ${expectedCode}, Got: ${inputConfirmationCode}`,
         feedback: null
       };
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputMode, inputFirstMissingBlock, inputProgress, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [inputSessionId, inputSequence, inputMode, inputFirstMissingBlock, inputProgress, inputDecodedInWindow, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const parseMissingBlocks = (input: string): number[] => {
     const trimmedInput = input.trim();
@@ -280,15 +290,14 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       let windowExpanded = false;
       if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
         const { windowStart, windowEnd, windowSize } = effectiveWindowInfo;
-        const boundedFirstMissing = Math.min(firstMissingBlock, windowEnd);
-        const contiguousDecoded = Math.max(0, boundedFirstMissing - windowStart);
-        const hasProgressed = contiguousDecoded > lastDecodedInWindow;
+        const decodedInWindow = feedback.decodedInWindow;
+        const hasProgressed = decodedInWindow > lastDecodedInWindow;
 
         if (hasProgressed) {
-          onUpdateLastDecodedInWindow(contiguousDecoded);
+          onUpdateLastDecodedInWindow(decodedInWindow);
         }
 
-        if (hasProgressed && contiguousDecoded >= windowSize * WINDOW_BASELINE_THRESHOLD) {
+        if (hasProgressed && decodedInWindow >= windowSize * WINDOW_BASELINE_THRESHOLD) {
           const now = Date.now();
           if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
             const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
@@ -302,10 +311,11 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
               effectiveWindowInfo.totalBlocks
             );
             console.log(
-              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): contiguous=${expansionCalc.contiguousDecoded}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
+              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, windowSize=${windowSize}, threshold=${Math.round(windowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
             );
             encoder?.expandWindow(expansionCalc.expansionBlocks);
             windowExpanded = true;
+            onUpdateLastDecodedInWindow(decodedInWindow);
             const newWindowInfo = encoder?.getWindowInfo();
             if (newWindowInfo) {
               onUpdateWindowInfo(newWindowInfo);
@@ -355,46 +365,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         onUpdateWindowInfo(updatedWindowInfo);
       }
 
-      let windowExpanded = false;
-      if (updatedWindowInfo?.windowEnabled && !updatedWindowInfo?.isWindowComplete) {
-        const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
-        const decodedInWindow = updatedWindowInfo.windowSize - missingInWindow.length;
-
-        if (decodedInWindow > lastDecodedInWindow) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
-          const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
-          if (windowDecodePercent >= WINDOW_BASELINE_THRESHOLD) {
-            const now = Date.now();
-            if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-              const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
-              const expansionCalc = calculateWindowExpansionSize(
-                firstMissingBlock,
-                updatedWindowInfo.windowStart,
-                updatedWindowInfo.windowEnd,
-                updatedWindowInfo.windowSize,
-                feedback.progress,
-                blockSize,
-                updatedWindowInfo.totalBlocks
-              );
-              console.log(
-                `[FountainQRManualFeedbackInput] Expansion calculation (targeted): decoded=${decodedInWindow}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
-              );
-              encoder?.expandWindow(expansionCalc.expansionBlocks);
-              windowExpanded = true;
-              const newWindowInfo = encoder?.getWindowInfo();
-              if (newWindowInfo) {
-                onUpdateWindowInfo(newWindowInfo);
-                console.log(
-                  `[FountainQRManualFeedbackInput] Window expanded (targeted mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-                );
-              }
-              onUpdateLastWindowExpansion(now);
-            }
-          }
-        }
-      }
-
-      // Get the current (possibly expanded) window info to send to receiver
+      // Generate ACK without expansion (targeted mode is final cleanup)
       const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
@@ -402,8 +373,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sequence: senderFeedbackSequence,
         command: 'acknowledge',
         acknowledgedSequence: feedback.sequence,
-        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
-        windowExpanded,
+        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
+        windowExpanded: false,
         windowStart: finalWindowInfo?.windowStart ?? 0,
         windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
@@ -416,7 +387,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sequence: feedback.sequence,
         mode: 'targeted',
         receivedBlocks: new Set(),
-        windowExpanded,
+        windowExpanded: false,
         message: ackFeedback.message,
       });
 
@@ -557,6 +528,19 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             Overall file decode progress (0-100)
           </p>
         </div>
+        <div>
+          <Label htmlFor="decodedInWindow" className="text-xs">Decoded in Window *</Label>
+          <Input
+            id="decodedInWindow"
+            type="number"
+            min="0"
+            value={inputDecodedInWindow}
+            onChange={(e) => setInputDecodedInWindow(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Number of blocks decoded within the current window range
+          </p>
+        </div>
         {inputMode === 'targeted' && (
           <div>
             <Label htmlFor="missingBlocks" className="text-xs">Missing Blocks</Label>
@@ -612,7 +596,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. All required fields (Session ID, Sequence, First Missing Block, Progress, and mode-specific fields) must be entered. Double-check each field before processing. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. All required fields (Session ID, Sequence, First Missing Block, Progress, Decoded in Window, and mode-specific fields) must be entered. Double-check each field before processing. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 

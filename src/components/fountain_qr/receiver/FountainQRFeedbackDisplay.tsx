@@ -165,9 +165,13 @@ export function FountainQRFeedbackDisplay({
       }
 
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+      // Calculate decoded blocks within current window bounds
+      const windowStart = currentWindowStartRef.current
+      const windowEnd = currentWindowEndRef.current
+      const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= windowStart && idx < windowEnd).length
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
-      const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
+      const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
       let feedback: FountainFeedback
       if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession) {
         // Statistics-only feedback - compact format
@@ -177,7 +181,8 @@ export function FountainQRFeedbackDisplay({
           sessionId: sessionId,
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
-          progress: overallProgress
+          progress: overallProgress,
+          decodedInWindow: decodedInWindow
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -224,8 +229,7 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
           progress: overallProgress,
-          totalDecoded: decodedBlockIndices.length,
-          totalBlocks: fountainMetadata.totalSourceBlocks,
+          decodedInWindow: decodedInWindow
         }
 
         const targetedFeedback = { ...feedbackBase, missingBlocks }
@@ -437,7 +441,7 @@ export function FountainQRFeedbackDisplay({
               <p className="text-xs text-muted-foreground text-center">
                 {skipTargetedModeForSession
                   ? 'Statistics mode (targeted mode disabled for session)'
-                  : (fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
+                  : (fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks() ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
               </p>
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR to sender, then click the button below to scan for ACK
@@ -503,6 +507,14 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">Progress:</span>
                 <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
+                <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {feedbackData.decodedInWindow} / {currentWindowEnd - currentWindowStart} (
+                  {currentWindowEnd - currentWindowStart > 0
+                    ? Math.round((feedbackData.decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100)
+                    : 0
+                  }%)
+                </span>
 
                 {feedbackData.mode === 'targeted' && (
                   <>

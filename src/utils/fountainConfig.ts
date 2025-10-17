@@ -11,14 +11,12 @@ const SEGMENT_SIZE_BYTES = 200 * 1024
 // Determines when windowing activates (files > 200KB)
 export const WINDOW_ENABLE_THRESHOLD = SEGMENT_SIZE_BYTES
 
-// Targeted mode activation threshold (byte-based, converted to blocks at runtime)
-// When missing blocks <= this threshold, receiver switches to targeted mode
-// Fountain code handles 50-100 missing blocks efficiently without targeting
-// Targeted mode is most effective for the "tail problem" (few scattered blocks)
-const TARGETED_MODE_MAX_MISSING_BYTES = 10 * DEFAULT_BLOCK_SIZE // 4000 bytes
+// Targeted mode activation threshold - triggers when ≤10 blocks remain missing.
+// Used only for the final cleanup phase; targeted mode never performs window expansion.
+const TARGETED_MODE_MAX_MISSING_BLOCKS = 10
 
-export function getTargetedModeMaxMissingBlocks(blockSize: number): number {
-  return Math.ceil(TARGETED_MODE_MAX_MISSING_BYTES / blockSize)
+export function getTargetedModeMaxMissingBlocks(): number {
+  return TARGETED_MODE_MAX_MISSING_BLOCKS
 }
 
 export function getSegmentSizeBlocks(blockSize: number): number {
@@ -102,7 +100,10 @@ export function calculateWindowExpansionSize(
   const effectivePercent = windowSize > 0 ? (effectiveBlocks / windowSize) : 0;
 
   // Calculate extra percentage to compensate for work already done
-  const extraPercent = Math.max(0, WINDOW_BASELINE_THRESHOLD - effectivePercent);
+  const extraPercent = Math.min(
+    Math.abs(WINDOW_BASELINE_THRESHOLD - effectivePercent),
+    0.6
+  );
 
   // Get segment size in blocks (200KB converted to blocks)
   const segmentSizeBlocks = getSegmentSizeBlocks(blockSize);

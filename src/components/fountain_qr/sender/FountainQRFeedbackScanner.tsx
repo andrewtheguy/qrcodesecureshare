@@ -144,15 +144,15 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? null;
       if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
         const { windowStart, windowEnd, windowSize } = effectiveWindowInfo;
-        const boundedFirstMissing = Math.min(firstMissingBlock, windowEnd);
-        const contiguousDecoded = Math.max(0, boundedFirstMissing - windowStart);
-        const hasProgressed = contiguousDecoded > lastDecodedInWindow;
+        // Use decodedInWindow from feedback (required field)
+        const decodedInWindow = data.decodedInWindow;
+        const hasProgressed = decodedInWindow > lastDecodedInWindow;
 
         if (hasProgressed) {
-          onUpdateLastDecodedInWindow(contiguousDecoded);
+          onUpdateLastDecodedInWindow(decodedInWindow);
         }
 
-        if (hasProgressed && contiguousDecoded >= windowSize * WINDOW_BASELINE_THRESHOLD) {
+        if (hasProgressed && decodedInWindow >= windowSize * WINDOW_BASELINE_THRESHOLD) {
           const now = Date.now();
           if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
             const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
@@ -166,10 +166,11 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
               effectiveWindowInfo.totalBlocks
             );
             console.log(
-              `[FountainQRFeedbackScanner] Expansion calculation (statistics): contiguous=${expansionCalc.contiguousDecoded}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
+              `[FountainQRFeedbackScanner] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, windowSize=${windowSize}, threshold=${Math.round(windowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
             );
             encoder?.expandWindow(expansionCalc.expansionBlocks);
             windowExpanded = true;
+            onUpdateLastDecodedInWindow(decodedInWindow);
             const newWindowInfo = encoder?.getWindowInfo();
             if (newWindowInfo) {
               onUpdateWindowInfo(newWindowInfo);
@@ -229,48 +230,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         onUpdateWindowInfo(updatedWindowInfo);
       }
 
-      // SENDER: Single authority for window expansion in targeted mode
-      // Sender evaluates decoded blocks in current window and decides whether to expand
-      let windowExpanded = false;
-      if (updatedWindowInfo?.windowEnabled && !updatedWindowInfo?.isWindowComplete) {
-        const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
-        const decodedInWindow = updatedWindowInfo.windowSize - missingInWindow.length;
-
-        if (decodedInWindow > lastDecodedInWindow) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
-          const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
-          if (windowDecodePercent >= WINDOW_BASELINE_THRESHOLD) {
-            const now = Date.now();
-            if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-              const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
-              const expansionCalc = calculateWindowExpansionSize(
-                firstMissingBlock,
-                updatedWindowInfo.windowStart,
-                updatedWindowInfo.windowEnd,
-                updatedWindowInfo.windowSize,
-                data.progress,
-                blockSize,
-                updatedWindowInfo.totalBlocks
-              );
-              console.log(
-                `[FountainQRFeedbackScanner] Expansion calculation (targeted): decoded=${decodedInWindow}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
-              );
-              encoder?.expandWindow(expansionCalc.expansionBlocks);
-              windowExpanded = true;
-              const newWindowInfo = encoder?.getWindowInfo();
-              if (newWindowInfo) {
-                onUpdateWindowInfo(newWindowInfo);
-                console.log(
-                  `[FountainQRFeedbackScanner] Window expanded (targeted mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-                );
-              }
-              onUpdateLastWindowExpansion(now);
-            }
-          }
-        }
-      }
-
-      // Get the current (possibly expanded) window info to send to receiver
+      // Generate ACK without expansion (targeted mode is final cleanup)
       const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
@@ -278,8 +238,8 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         sequence: senderFeedbackSequence,
         command: 'acknowledge',
         acknowledgedSequence: data.sequence,
-        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
-        windowExpanded,
+        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
+        windowExpanded: false,
         windowStart: finalWindowInfo?.windowStart ?? 0,
         windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
@@ -291,7 +251,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         sequence: data.sequence,
         mode: 'targeted',
         receivedBlocks: new Set(),
-        windowExpanded,
+        windowExpanded: false,
         message: ackFeedback.message,
       });
 

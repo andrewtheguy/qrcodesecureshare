@@ -373,7 +373,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Priority 0: Skip ALL feedback for very small files
     // Files smaller than 5x the targeted mode threshold don't benefit from feedback
-    const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
+    const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
     const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getSegmentSizeBlocks(fountainMetadata.blockSize) && feedbackEnabled
     if (!isFileLargeEnoughForFeedback) {
       // No feedback QR needed for very small files - they decode quickly without it
