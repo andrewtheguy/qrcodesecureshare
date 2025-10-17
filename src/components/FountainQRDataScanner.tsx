@@ -19,13 +19,15 @@ interface FountainQRDataScannerProps {
   decodedBlocks: number
   invalidChecksumCount: number
   isTargetedModeActive: boolean
+  senderFeedbackMessage: string
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
   onScanStop: () => void
   onReset: () => void
   onToggleMetadataInfo: (show: boolean) => void
-  onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
+  onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void;
+  onAckTransitionStatus: (successful: boolean) => void;
 }
 
 export function FountainQRDataScanner({
@@ -39,13 +41,15 @@ export function FountainQRDataScanner({
   decodedBlocks,
   invalidChecksumCount,
   isTargetedModeActive,
+  senderFeedbackMessage,
   onChunkScanned,
   onScanError,
   onScanStart,
   onScanStop,
   onReset,
   onToggleMetadataInfo,
-  onModeChange
+  onModeChange,
+  onAckTransitionStatus
 }: FountainQRDataScannerProps) {
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
@@ -168,7 +172,12 @@ export function FountainQRDataScanner({
   const { videoRef, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
-    onError: handleScanError
+    onError: handleScanError,
+    onStart: () => {
+        addDebugLog('✅ Data scanner started');
+        onAckTransitionStatus(true);
+    },
+    onStop: () => addDebugLog('🛑 Data scanner stopped')
   })
 
   // Sync scanner refs
@@ -183,6 +192,7 @@ export function FountainQRDataScanner({
   // Stop camera when receiverMode changes away from 'data-scanning' or when success becomes true
   useEffect(() => {
     if (receiverMode !== 'data-scanning' || success) {
+      addDebugLog(`🛑 Stopping camera due to mode change (mode=${receiverMode}) or success (success=${success})`)
       stopScannerRef.current?.()
     }
   }, [receiverMode, success])
@@ -236,6 +246,14 @@ export function FountainQRDataScanner({
               <p className="text-sm text-center">
                 Awaiting feedback processing. Scanning will resume automatically.
               </p>
+            </div>
+          )}
+          {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
+            <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
+                <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+              </div>
             </div>
           )}
         </div>

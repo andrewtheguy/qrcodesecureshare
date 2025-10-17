@@ -57,26 +57,27 @@ export function normalizeConfirmationCode(code: string): string {
  * all feedback fields are validated when using manual input mode.
  */
 export function generateFeedbackConfirmationCode(feedback: FountainFeedback): string {
-  // Extract essential fields in a deterministic order
-  const fields: string[] = [
-    feedback.type,
-    feedback.mode,
-    feedback.sessionId.toString(),
-    feedback.sequence.toString(),
-    feedback.firstMissingBlock.toString(),
-    feedback.progress.toString(),
+  // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
+  const fields: Array<Record<string, string>> = [
+    { version: "1" },
+    { type: feedback.type },
+    { mode: feedback.mode },
+    { sessionId: feedback.sessionId.toString() },
+    { sequence: feedback.sequence.toString() },
+    { firstMissingBlock: feedback.firstMissingBlock.toString() },
+    { progress: feedback.progress.toString() },
   ]
 
   // Add mode-specific fields
   if (feedback.mode === 'statistics') {
-    fields.push(feedback.requestWindowExpansion ? '1' : '0')
+    fields.push({ requestWindowExpansion: feedback.requestWindowExpansion ? '1' : '0' })
   } else if (feedback.mode === 'targeted') {
     const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
-    fields.push(sortedMissingBlocks.join(','))
+    fields.push({ missingBlocks: sortedMissingBlocks.join(',') })
   }
 
   // Create canonical string representation
-  const canonicalString = fields.join('|')
+  const canonicalString = JSON.stringify(fields)
 
   // Convert to Uint8Array using TextEncoder
   const encoder = new TextEncoder()

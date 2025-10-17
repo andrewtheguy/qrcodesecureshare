@@ -85,6 +85,10 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   message: string;
   /** Whether the window was expanded */
   windowExpanded: boolean;
+  /** Sender's current window start (source of truth for receiver) */
+  windowStart: number;
+  /** Sender's current window end (source of truth for receiver) */
+  windowEnd: number;
 }
 
 

@@ -52,7 +52,3 @@ export function getWindowExpansionSizeBlocks(blockSize: number): number {
 // Example: If last feedback was triggered at 95%, next trigger should be at 95% (50% + 45% compensation)
 export const WINDOW_BASELINE_THRESHOLD = 0.5 // 50% - baseline trigger point
 
-// Minimum progress delta (5%) required to trigger feedback again
-// Prevents feedback spam when progress changes are minimal
-export const WINDOW_MIN_PROGRESS_DELTA = 0.05 // 5% minimum change
-

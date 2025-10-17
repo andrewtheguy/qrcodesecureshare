@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD, WINDOW_MIN_PROGRESS_DELTA } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './FountainQRFeedbackDisplay'
@@ -35,7 +35,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     type: initialMetadata.type,
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
-    blockSize: initialMetadata.blockSize || 600,
+    blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
     checksum: initialMetadata.checksum,
     checksumAlg: initialMetadata.checksumAlg,
   }
@@ -49,7 +49,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
-   const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
+    const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
+   const [skipTargetedModeForSession, setSkipTargetedModeForSession] = useState(false)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
@@ -63,6 +64,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
+  const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
+  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
 
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
@@ -82,6 +85,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
   const isTargetedModeActiveRef = useRef(isTargetedModeActive)
   const triggeredFeedbackRef = useRef(false)
+  const skipTargetedModeForSessionRef = useRef<boolean>(skipTargetedModeForSession)
   const lastTriggeredWindowPercentageRef = useRef<number>(0)
   const lastObservedWindowPercentageRef = useRef<number>(0)
 
@@ -129,7 +133,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
             console.log(`[FountainQRReceiver] Adaptive threshold check: current=${(windowDecodePercentage * 100).toFixed(1)}%, adaptive threshold=${(adaptiveThreshold * 100).toFixed(1)}%, progress delta=${(progressDelta * 100).toFixed(1)}%`)
 
-            if (windowDecodePercentage >= adaptiveThreshold && progressDelta >= WINDOW_MIN_PROGRESS_DELTA) {
+            if (windowDecodePercentage >= adaptiveThreshold) {
               // Guard: Prevent rapid mode switching by ensuring transition occurs only once per feedback cycle
               if (triggeredFeedbackRef.current) {
                 return
@@ -200,19 +204,25 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean) => {
-    // RECEIVER: Rely on sender's ACK windowExpanded flag to update window state
-    // Sender is the single authority for window expansion - receiver only reflects it
-    if (windowExpanded) {
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => {
+    // RECEIVER: Adopt sender's window range as the absolute source of truth
+    // Sender is the single authority for window state - receiver must sync to sender's range
+    if (windowStart !== undefined && windowEnd !== undefined) {
+      // Sender provided explicit window range - adopt it directly
+      setCurrentWindowStart(windowStart)
+      setCurrentWindowEnd(windowEnd)
+      console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd} (expanded=${windowExpanded})`)
+    } else if (windowExpanded) {
+      // Fallback for old ACK format without explicit window range (backward compatibility)
       const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
       const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
       setCurrentWindowEnd(newWindowEnd)
-      console.log(`[FountainQRReceiver] Window expanded by sender: new end=${newWindowEnd}`)
+      console.log(`[FountainQRReceiver] Window expanded by sender (legacy): new end=${newWindowEnd}`)
     }
-    setIsTargetedModeActive(true)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
+    setSenderFeedbackMessage(message)
     // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
     lastObservedWindowPercentageRef.current = 0
   }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
@@ -224,6 +234,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       triggeredFeedbackRef.current = false
       setIsAwaitingFeedback(false)
       setIsScanning(true)
+      // setLastAckTransitionSuccessful(true) // Optimistically marking success is deprecated
       console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
     } else if (mode === 'feedback-display') {
       setIsAwaitingFeedback(true)
@@ -231,6 +242,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     } else if (mode === 'ack-scanning') {
       setIsAwaitingFeedback(true)
       setIsScanning(false)
+      setLastAckTransitionSuccessful(false) // Mark as not successful when entering ack-scanning
+      console.log('[FountainQRReceiver] Transitioned to ack-scanning mode, lastAckTransitionSuccessful set to false')
     }
   }, [receiverMode])
 
@@ -252,6 +265,22 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleSenderSequenceUpdate = useCallback((sequence: number) => {
     setLastSenderFeedbackSequence(sequence)
+  }, [])
+
+  const handleAckTransitionStatus = useCallback((successful: boolean) => {
+    console.log(`[FountainQRReceiver] ACK transition status reported: ${successful}`)
+    setLastAckTransitionSuccessful(successful)
+  }, [])
+
+  const handleSkipTargetedMode = useCallback(() => {
+    console.log('[FountainQRReceiver] User requested to skip targeted mode for session')
+    setSkipTargetedModeForSession(true)
+    setIsTargetedModeActive(false)
+    // Transition back to data-scanning mode
+    setReceiverMode('data-scanning')
+    setIsScanning(true)
+    setIsAwaitingFeedback(false)
+    triggeredFeedbackRef.current = false
   }, [])
 
 
@@ -297,6 +326,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     isTargetedModeActiveRef.current = isTargetedModeActive
   }, [isTargetedModeActive])
+
+  useEffect(() => {
+    skipTargetedModeForSessionRef.current = skipTargetedModeForSession
+  }, [skipTargetedModeForSession])
 
   // Auto-start scanning moved to subcomponent
 
@@ -357,7 +390,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
 
     // Priority 2: Check for targeted mode threshold
-    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold
+    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold && !skipTargetedModeForSession
     if (crossedToTargeted) {
       // Debug logging moved to subcomponent
       setReceiverMode('feedback-display')
@@ -401,6 +434,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setLastTriggeredWindowPercentage(0)
     lastObservedWindowPercentageRef.current = 0
+    setSkipTargetedModeForSession(false)
+    setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
+    setSenderFeedbackMessage('') // Clear sender feedback message on reset
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -454,6 +490,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onError={handleFeedbackError}
           onSequenceIncrement={handleSequenceIncrement}
           onSenderSequenceUpdate={handleSenderSequenceUpdate}
+          skipTargetedModeForSession={skipTargetedModeForSession}
+          onSkipTargetedMode={handleSkipTargetedMode}
+          lastAckTransitionSuccessful={lastAckTransitionSuccessful}
+          onAckTransitionStatus={handleAckTransitionStatus}
         />
       )}
 
@@ -508,6 +548,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
         isTargetedModeActive={isTargetedModeActive}
+        senderFeedbackMessage={senderFeedbackMessage}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
@@ -527,6 +568,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Optional: handle metadata info toggle if needed
         }}
         onModeChange={handleFeedbackModeChange}
+        onAckTransitionStatus={handleAckTransitionStatus}
       />
 
     </div>

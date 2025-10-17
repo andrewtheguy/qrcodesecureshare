@@ -49,6 +49,7 @@ interface FountainQRManualFeedbackInputProps {
   onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
   onUpdateLastDecodedInWindow: (count: number) => void;
   onUpdateLastWindowExpansion: (timestamp: number) => void;
+  skipTargetedModeForSession: boolean;
 }
 
 export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInputProps> = ({
@@ -65,14 +66,15 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   onUpdateWindowInfo,
   onUpdateLastDecodedInWindow,
   onUpdateLastWindowExpansion,
+  skipTargetedModeForSession,
 }) => {
   const [currentMode, setCurrentMode] = useState<'idle' | 'ack-display'>('idle');
   const [ackQRUrl, setAckQRUrl] = useState('');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
 
   // Form field states
-  const [inputSessionId, setInputSessionId] = useState(sessionId.toString());
-  const [inputSequence, setInputSequence] = useState('');
+  const [inputSessionId] = useState(sessionId.toString());
+  const [inputSequence, setInputSequence] = useState((lastProcessedSequence + 1).toString());
   const [inputMode, setInputMode] = useState<'statistics' | 'targeted'>('statistics');
   const [inputFirstMissingBlock, setInputFirstMissingBlock] = useState('0');
   const [inputProgress, setInputProgress] = useState('');
@@ -85,7 +87,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   // Reset sequence on session change
   useEffect(() => {
     setSenderFeedbackSequence(0);
-  }, [sessionId]);
+    setInputSequence((lastProcessedSequence + 1).toString());
+  }, [sessionId, lastProcessedSequence]);
 
   // Clean up timeout on unmount
   useEffect(() => {
@@ -111,6 +114,16 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       validationErrorTimeoutRef.current = null;
     }, 5000);
   };
+
+  const resetInputFields = useCallback(() => {
+    setInputSequence((lastProcessedSequence + 1).toString());
+    setInputMode('statistics');
+    setInputFirstMissingBlock('0');
+    setInputProgress('');
+    setInputRequestExpansion(false);
+    setInputMissingBlocks('');
+    setInputConfirmationCode('');
+  }, [lastProcessedSequence]);
 
   const validateInputs = useCallback((): { valid: boolean; error: string; feedback: FountainFeedback | null } => {
     // Parse and validate sessionId
@@ -267,6 +280,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         }
       }
 
+      // Get the current (possibly expanded) window info to send to receiver
+      const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -275,9 +290,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
         windowExpanded,
+        windowStart: finalWindowInfo?.windowStart ?? 0,
+        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
 
       await generateSenderFeedbackQR(ackFeedback);
+      resetInputFields(); // Add this line
       setCurrentMode('ack-display');
 
       onFeedbackProcessed({
@@ -322,6 +340,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         }
       }
 
+      // Get the current (possibly expanded) window info to send to receiver
+      const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -330,9 +350,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
         windowExpanded,
+        windowStart: finalWindowInfo?.windowStart ?? 0,
+        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
 
       await generateSenderFeedbackQR(ackFeedback);
+      resetInputFields(); // Add this line
       setCurrentMode('ack-display');
 
       onFeedbackProcessed({
@@ -345,7 +368,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onAckGenerated, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onAckGenerated, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
     try {
@@ -358,6 +381,32 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       onError('Failed to generate acknowledgment QR code');
     }
   }, [onAckGenerated, onError]);
+
+  const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawValue = e.target.value;
+
+    // 1. Get raw input value
+    // 2. Remove all non-hex characters and dashes using regex
+    let cleaned = rawValue.replace(/[^0-9A-Fa-f-]/g, '');
+
+    // 3. Remove existing dashes
+    cleaned = cleaned.replace(/-/g, '');
+
+    // 4. Convert to uppercase
+    cleaned = cleaned.toUpperCase();
+
+    // 5. Limit to 8 characters
+    cleaned = cleaned.slice(0, 8);
+
+    // 6. Auto-insert dash after 4th character if length > 4
+    let formatted = cleaned;
+    if (cleaned.length > 4) {
+      formatted = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+    }
+
+    // 7. Set the formatted value to state
+    setInputConfirmationCode(formatted);
+  }, []);
 
   const handleResumeDataDisplay = useCallback(() => {
     setCurrentMode('idle');
@@ -385,24 +434,33 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         <CardTitle>Manual Feedback Input</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {skipTargetedModeForSession && (
+          <Alert>
+            <AlertDescription>
+              <p className="font-medium">ℹ️ Targeted Mode Disabled</p>
+              <p className="text-sm">Statistics mode will be used for all feedback this session.</p>
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="sessionId" className="text-xs">Session ID</Label>
+            <Label htmlFor="sessionId" className="text-xs">Session ID (Auto)</Label>
             <Input
               id="sessionId"
               type="number"
               value={inputSessionId}
-              onChange={(e) => setInputSessionId(e.target.value)}
+              readOnly
+              className="bg-gray-100"
             />
           </div>
           <div>
-            <Label htmlFor="sequence" className="text-xs">Feedback Sequence</Label>
+            <Label htmlFor="sequence" className="text-xs">Feedback Sequence (Auto)</Label>
             <Input
               id="sequence"
               type="number"
               value={inputSequence}
-              onChange={(e) => setInputSequence(e.target.value)}
-              placeholder="Must be > last processed"
+              readOnly
+              className="bg-gray-100"
             />
           </div>
         </div>
@@ -446,21 +504,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </p>
         </div>
 
-        <div>
-          <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
-          <Input
-            id="confirmationCode"
-            type="text"
-            value={inputConfirmationCode}
-            onChange={(e) => setInputConfirmationCode(e.target.value)}
-            placeholder="e.g., ABCD-1234"
-            className="font-mono"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Copy this code from the receiver's Feedback Details card
-          </p>
-        </div>
-
          {inputMode === 'statistics' && (
            <div className="flex items-center space-x-2">
              <Checkbox
@@ -487,6 +530,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             </p>
           </div>
         )}
+
+        <div>
+          <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
+          <Input
+            id="confirmationCode"
+            type="text"
+            value={inputConfirmationCode}
+            onChange={handleConfirmationCodeChange}
+            placeholder="e.g., ABCD-1234"
+            className="font-mono"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Copy this code from the receiver's Feedback Details card
+          </p>
+        </div>
 
         {validationError && (
           <Alert variant="destructive">
