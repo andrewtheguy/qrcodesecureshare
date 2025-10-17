@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './FountainQRFeedbackDisplay'
@@ -35,7 +35,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     type: initialMetadata.type,
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
-    blockSize: initialMetadata.blockSize || 600,
+    blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
     checksum: initialMetadata.checksum,
     checksumAlg: initialMetadata.checksumAlg,
   }
