@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import type { FountainFeedback, FountainFeedbackStatistics, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
@@ -51,11 +51,8 @@ interface FountainQRFeedbackDisplayProps {
   sessionId: number
   decodedBlocks: number
   decodedBlockIndices: number[]
-  currentWindow?: { start: number; end: number }
   currentWindowStart: number
   currentWindowEnd: number
-  isWindowEnabled: boolean
-  windowTriggerThreshold: number
   feedbackSequence: number
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
@@ -63,7 +60,6 @@ interface FountainQRFeedbackDisplayProps {
   onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
   onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
-  onWindowExpansion: (newWindowEnd: number) => void
   onError: (error: string) => void
   onSequenceIncrement: () => void
   onSenderSequenceUpdate: (sequence: number) => void
@@ -80,8 +76,6 @@ export function FountainQRFeedbackDisplay({
   decodedBlockIndices,
   currentWindowStart,
   currentWindowEnd,
-  isWindowEnabled,
-  windowTriggerThreshold,
   feedbackSequence,
   lastSenderFeedbackSequence,
   receiverMode,
@@ -112,8 +106,6 @@ export function FountainQRFeedbackDisplay({
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
   const currentWindowStartRef = useRef<number>(currentWindowStart)
   const currentWindowEndRef = useRef<number>(currentWindowEnd)
-  const isWindowEnabledRef = useRef<boolean>(isWindowEnabled)
-  const windowTriggerThresholdRef = useRef<number>(windowTriggerThreshold)
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
   const lastGeneratedSequenceRef = useRef<number>(-1)
@@ -123,11 +115,9 @@ export function FountainQRFeedbackDisplay({
     decodedBlockIndicesRef.current = decodedBlockIndices
     currentWindowStartRef.current = currentWindowStart
     currentWindowEndRef.current = currentWindowEnd
-    isWindowEnabledRef.current = isWindowEnabled
-    windowTriggerThresholdRef.current = windowTriggerThreshold
     fountainMetadataRef.current = fountainMetadata
     sessionIdRef.current = sessionId
-  }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, isWindowEnabled, windowTriggerThreshold, fountainMetadata, sessionId])
+  }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, fountainMetadata, sessionId])
 
   /**
    * Calculate the first missing block index in a sequence.
@@ -160,10 +150,6 @@ export function FountainQRFeedbackDisplay({
 
       // Read from refs for stable values
       const decodedBlockIndices = decodedBlockIndicesRef.current
-      const currentWindowStart = currentWindowStartRef.current
-      const currentWindowEnd = currentWindowEndRef.current
-      const isWindowEnabled = isWindowEnabledRef.current
-      const windowTriggerThreshold = windowTriggerThresholdRef.current
       const fountainMetadata = fountainMetadataRef.current
       const sessionId = sessionIdRef.current
       // Use prop directly - parent owns this value
@@ -179,9 +165,6 @@ export function FountainQRFeedbackDisplay({
       }
 
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-      const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
-      const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
-      const windowDecodePercent = decodedInWindow / windowSize
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
@@ -193,12 +176,8 @@ export function FountainQRFeedbackDisplay({
           mode: 'statistics',
           sessionId: sessionId,
           sequence: seq,
-          requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
           firstMissingBlock: firstMissingBlock,
-          progress: overallProgress,
-          totalDecoded: decodedBlockIndices.length,
-          totalBlocks: fountainMetadata.totalSourceBlocks,
-          decodedInWindow: decodedInWindow,
+          progress: overallProgress
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -525,13 +504,6 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
 
-                {feedbackData.mode === 'statistics' && (
-                  <>
-                    <span className="text-muted-foreground font-medium text-sm">Request Expansion:</span>
-                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).requestWindowExpansion ? 'Yes' : 'No'}</span>
-                  </>
-                )}
-
                 {feedbackData.mode === 'targeted' && (
                   <>
                     <span className="text-muted-foreground font-medium text-sm">Missing Blocks:</span>
@@ -555,13 +527,6 @@ export function FountainQRFeedbackDisplay({
 
                 <span className="text-muted-foreground font-medium text-sm">Window End:</span>
                 <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
-
-                {feedbackData.mode === 'statistics' && (
-                  <>
-                    <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
-                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow ?? 'N/A'}</span>
-                  </>
-                )}
 
                 <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
                 <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>

@@ -36,12 +36,6 @@ interface FountainFeedbackBase {
  */
 export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   mode: 'statistics';
-  /** Number of blocks decoded in current window */
-  decodedInWindow?: number;
-  /** Total number of blocks decoded so far */
-  totalDecoded?: number;
-  /** Whether sender should expand the transfer window */
-  requestWindowExpansion: boolean;
 }
 
 /**

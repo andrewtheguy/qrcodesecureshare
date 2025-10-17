@@ -254,12 +254,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [receiverMode])
 
-  // Window expansion callback - kept for backwards compatibility but unused
-  // Receiver now relies solely on ACK windowExpanded flag from sender
-  const handleWindowExpansion = useCallback(() => {
-    // This callback is deprecated - window expansion handled in handleAckReceived
-    console.warn('[FountainQRReceiver] handleWindowExpansion called but is deprecated - use handleAckReceived instead')
-  }, [])
 
   const handleFeedbackError = useCallback((error: string) => {
     setError(error)
@@ -481,11 +475,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           sessionId={sessionId}
           decodedBlocks={decodedBlocks}
           decodedBlockIndices={decodedBlockIndicesRef.current}
-          currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
           currentWindowStart={currentWindowStart}
           currentWindowEnd={currentWindowEnd}
-          isWindowEnabled={isWindowEnabled}
-          windowTriggerThreshold={windowTriggerThreshold}
           feedbackSequence={feedbackSequence}
           lastSenderFeedbackSequence={lastSenderFeedbackSequence}
           receiverMode={receiverMode}
@@ -493,7 +484,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onFeedbackGenerated={handleFeedbackGenerated}
           onAckReceived={handleAckReceived}
           onModeChange={handleFeedbackModeChange}
-          onWindowExpansion={handleWindowExpansion}
           onError={handleFeedbackError}
           onSequenceIncrement={handleSequenceIncrement}
           onSenderSequenceUpdate={handleSenderSequenceUpdate}

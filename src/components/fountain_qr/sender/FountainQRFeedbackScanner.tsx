@@ -120,7 +120,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     const firstMissingBlock = data.firstMissingBlock || 0;
 
     if (data.mode === 'statistics') {
-      console.log('Processing statistics feedback:', data.totalDecoded ?? 'N/A', '/', data.totalBlocks ?? 'N/A');
+      console.log('Processing statistics feedback:', 'N/A', '/', 'N/A');
       console.log('Receiver progress:', data.progress, '%');
       encoder?.setReceivedBlocks([]);
       encoder?.setSkipBlocksBelow(firstMissingBlock);
@@ -131,28 +131,43 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       }
 
       const lastStats = {
-        totalDecoded: data.totalDecoded ?? 0,
-        totalBlocks: data.totalBlocks ?? updatedWindowInfo?.totalBlocks ?? 0,
+        totalDecoded: 0,
+        totalBlocks: updatedWindowInfo?.totalBlocks ?? 0,
         windowStart: updatedWindowInfo?.windowStart,
         windowEnd: updatedWindowInfo?.windowEnd,
         progress: data.progress,
       };
 
       // SENDER: Single authority for window expansion
-      // Sender processes receiver statistics and decides whether to expand window
-      // Window expansion is initiated ONLY by sender based on receiver's requestWindowExpansion flag
+      // Sender derives expansion decisions from receiver progress metrics instead of explicit flags
       let windowExpanded = false;
-      if (data.requestWindowExpansion && windowInfo && !windowInfo.isWindowComplete) {
-        const now = Date.now();
-        if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-          encoder?.expandWindow();
-          windowExpanded = true;
-          const newWindowInfo = encoder?.getWindowInfo();
-          if (newWindowInfo) {
-            onUpdateWindowInfo(newWindowInfo);
-            console.log(`[FountainQRFeedbackScanner] Window expanded: new end=${newWindowInfo.windowEnd}`);
+      const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? null;
+      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
+        const { windowStart, windowEnd, windowSize } = effectiveWindowInfo;
+        const boundedFirstMissing = Math.min(firstMissingBlock, windowEnd);
+        const contiguousDecoded = Math.max(0, boundedFirstMissing - windowStart);
+        const hasProgressed = contiguousDecoded > lastDecodedInWindow;
+        const windowDecodePercent = windowSize > 0 ? contiguousDecoded / windowSize : 0;
+        const overallProgress = data.progress / 100;
+        const effectiveProgress = (windowDecodePercent + overallProgress) / 2;
+        const reachedWindowEdge = firstMissingBlock >= windowEnd;
+
+        if (hasProgressed) {
+          onUpdateLastDecodedInWindow(contiguousDecoded);
+        }
+
+        if (hasProgressed && (reachedWindowEdge || effectiveProgress >= WINDOW_BASELINE_THRESHOLD)) {
+          const now = Date.now();
+          if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+            encoder?.expandWindow();
+            windowExpanded = true;
+            const newWindowInfo = encoder?.getWindowInfo();
+            if (newWindowInfo) {
+              onUpdateWindowInfo(newWindowInfo);
+              console.log(`[FountainQRFeedbackScanner] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}`);
+            }
+            onUpdateLastWindowExpansion(now);
           }
-          onUpdateLastWindowExpansion(now);
         }
       }
 
