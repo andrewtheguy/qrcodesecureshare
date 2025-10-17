@@ -10,11 +10,11 @@ export const WINDOW_MAX_BYTES = 100 * 1024
 
 // Segment-based windowing strategy: treats large files as multiple small file segments
 // Uses fixed increments instead of percentage-based expansion for QR code transfers
-// where manual camera scanning makes time-based metrics irrelevant
-// Initial window size: 100KB ≈ 250 blocks at 400 bytes/block
-// Feedback trigger: 50% of window must be decoded (125 blocks) before feedback
+// with the sender acting as the single source of truth for the window parameters
+// Initial window size: 200KB ≈ 500 blocks at 400 bytes/block
+// Feedback trigger: 40% of window must be decoded (200 blocks) before feedback
 // Prevents too-frequent early feedback and excessive window expansion for larger files
-export const SEGMENT_SIZE_BYTES = 100 * 1024
+export const SEGMENT_SIZE_BYTES = 200 * 1024
 
 // Fixed increment for window expansion: 50KB ≈ 125 blocks at 400 bytes/block
 // Maintains consistent expansion rate regardless of current window size
@@ -51,4 +51,3 @@ export function getWindowExpansionSizeBlocks(blockSize: number): number {
 // Formula: adaptiveThreshold = BASELINE + (lastTriggeredPercentage - BASELINE)
 // Example: If last feedback was triggered at 95%, next trigger should be at 95% (40% + 55% compensation)
 export const WINDOW_BASELINE_THRESHOLD = 0.4 // 40% - baseline trigger point
-
