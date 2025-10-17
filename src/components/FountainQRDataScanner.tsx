@@ -168,7 +168,9 @@ export function FountainQRDataScanner({
   const { videoRef, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
-    onError: handleScanError
+    onError: handleScanError,
+    onStart: () => addDebugLog('✅ Data scanner started'),
+    onStop: () => addDebugLog('🛑 Data scanner stopped')
   })
 
   // Sync scanner refs
@@ -183,6 +185,7 @@ export function FountainQRDataScanner({
   // Stop camera when receiverMode changes away from 'data-scanning' or when success becomes true
   useEffect(() => {
     if (receiverMode !== 'data-scanning' || success) {
+      addDebugLog(`🛑 Stopping camera due to mode change (mode=${receiverMode}) or success (success=${success})`)
       stopScannerRef.current?.()
     }
   }, [receiverMode, success])

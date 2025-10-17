@@ -280,6 +280,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         }
       }
 
+      // Get the current (possibly expanded) window info to send to receiver
+      const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -288,6 +290,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
         windowExpanded,
+        windowStart: finalWindowInfo?.windowStart ?? 0,
+        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -336,6 +340,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         }
       }
 
+      // Get the current (possibly expanded) window info to send to receiver
+      const finalWindowInfo = encoder?.getWindowInfo();
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -344,6 +350,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
         windowExpanded,
+        windowStart: finalWindowInfo?.windowStart ?? 0,
+        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
       };
 
       await generateSenderFeedbackQR(ackFeedback);

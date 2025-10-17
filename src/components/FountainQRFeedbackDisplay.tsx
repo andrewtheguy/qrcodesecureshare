@@ -51,7 +51,7 @@ interface FountainQRFeedbackDisplayProps {
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
   onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
-  onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string) => void
+  onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onWindowExpansion: (newWindowEnd: number) => void
   onError: (error: string) => void
@@ -59,6 +59,8 @@ interface FountainQRFeedbackDisplayProps {
   onSenderSequenceUpdate: (sequence: number) => void
   skipTargetedModeForSession: boolean
   onSkipTargetedMode: () => void
+  lastAckTransitionSuccessful: boolean
+  onAckTransitionStatus: (successful: boolean) => void
 }
 
 export function FountainQRFeedbackDisplay({
@@ -81,7 +83,9 @@ export function FountainQRFeedbackDisplay({
   onSequenceIncrement,
   onSenderSequenceUpdate,
   skipTargetedModeForSession,
-  onSkipTargetedMode
+  onSkipTargetedMode,
+  lastAckTransitionSuccessful,
+  onAckTransitionStatus
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
@@ -93,6 +97,7 @@ export function FountainQRFeedbackDisplay({
 
   const generatingRef = useRef<boolean>(false)
   const ackErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Refs for stable inputs to prevent mid-cycle re-generation
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
@@ -140,6 +145,10 @@ export function FountainQRFeedbackDisplay({
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
     try {
+      // Clear stale sender feedback message from previous cycle
+      setSenderFeedbackMessage('')
+      console.log('[FountainQRFeedbackDisplay] Cleared stale sender feedback message for new feedback cycle')
+
       // Read from refs for stable values
       const decodedBlockIndices = decodedBlockIndicesRef.current
       const currentWindowStart = currentWindowStartRef.current
@@ -295,6 +304,14 @@ export function FountainQRFeedbackDisplay({
 
     try {
       const parsed = JSON.parse(data) as SenderFeedback
+
+      if (parsed.sequence < lastSenderFeedbackSequence || (parsed.sequence === lastSenderFeedbackSequence && lastAckTransitionSuccessful)) {
+        console.warn(`[FountainQRFeedbackDisplay] Duplicate ACK rejected: sequence=${parsed.sequence}, lastSenderFeedbackSequence=${lastSenderFeedbackSequence}, lastAckTransitionSuccessful=${lastAckTransitionSuccessful}`)
+        return
+      } else if (parsed.sequence === lastSenderFeedbackSequence && !lastAckTransitionSuccessful) {
+        console.log(`[FountainQRFeedbackDisplay] Allowing duplicate ACK re-scan: sequence=${parsed.sequence}, lastAckTransitionSuccessful=${lastAckTransitionSuccessful}`)
+      }
+
       if (parsed.type !== 'SENDER_FEEDBACK') {
         console.warn('[FountainQRFeedbackDisplay] Invalid QR type - expecting ACK')
         showAckError('Invalid QR code scanned. Expected an ACK QR from sender. Please scan the correct ACK QR code.')
@@ -312,12 +329,6 @@ export function FountainQRFeedbackDisplay({
         // Note: Window validation is defensive since sender should generate valid ACKs
         // This protects against corrupted data
         // No specific window range data in ACK, so we skip detailed validation here
-      }
-
-      if (parsed.sequence <= lastSenderFeedbackSequence) {
-        console.warn('[FountainQRFeedbackDisplay] Duplicate ACK - already processed, sequence:', parsed.sequence, 'last:', lastSenderFeedbackSequence)
-        // Replace loud alert with graceful logging
-        return
       }
 
       switch (parsed.command) {
@@ -342,17 +353,19 @@ export function FountainQRFeedbackDisplay({
             console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
             setFeedbackQRUrl('')
             onSenderSequenceUpdate(parsed.sequence)
-            onModeChange('data-scanning')
             setSenderFeedbackMessage(parsed.message)
 
-            // RECEIVER: Only rely on sender's ACK windowExpanded flag to update UI
-            // Window expansion size calculation is delegated to parent via onAckReceived callback
-            // Receiver does NOT compute expansion size itself - sender is the single authority
-            onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message)
+            // Add a 150ms delay before transitioning to data-scanning mode
+            // This gives the ACK scanner time to release the camera
+            console.log('[FountainQRFeedbackDisplay] Delaying transition to data-scanning mode by 150ms...')
+            transitionTimeoutRef.current = setTimeout(() => {
+              console.log('[FountainQRFeedbackDisplay] Executing delayed transition to data-scanning mode')
+              onModeChange('data-scanning')
 
-            // Stop the ACK scanner before restarting data scanner
-            // stopScannerRef moved to subcomponent
-            // restartScannerRef moved to subcomponent
+              // RECEIVER: Adopt sender's window range as the absolute source of truth
+              // Sender is the single authority for window state - receiver must sync to sender's range
+              onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
+            }, 150)
            break
         }
 
@@ -361,7 +374,7 @@ export function FountainQRFeedbackDisplay({
       console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
       showAckError('Failed to read ACK QR code. The QR may be damaged or malformed. Please ask sender to regenerate the ACK QR and try scanning again.')
     }
-  }, [sessionId, lastSenderFeedbackSequence, feedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived])
+  }, [sessionId, lastSenderFeedbackSequence, feedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
   const { videoRef: ackVideoRefFromHook } = useQRScanner({
@@ -386,10 +399,18 @@ export function FountainQRFeedbackDisplay({
         clearTimeout(ackErrorTimeoutRef.current)
         ackErrorTimeoutRef.current = null
       }
+      if (transitionTimeoutRef.current) {
+        clearTimeout(transitionTimeoutRef.current)
+        transitionTimeoutRef.current = null
+      }
     }
   }, [])
 
   const handleStartAckScan = () => {
+    // Clear previous sender feedback message as defensive measure when starting new ACK scan
+    setSenderFeedbackMessage('')
+    console.log('[FountainQRFeedbackDisplay] Entering ack-scanning mode, cleared previous sender feedback message')
+    onAckTransitionStatus(false) // Report that we are in a potential retry scenario
     onModeChange('ack-scanning')
     setError('')
     setAckError('')

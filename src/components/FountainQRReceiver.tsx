@@ -64,6 +64,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
+  const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
 
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
@@ -202,14 +203,20 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean) => {
-    // RECEIVER: Rely on sender's ACK windowExpanded flag to update window state
-    // Sender is the single authority for window expansion - receiver only reflects it
-    if (windowExpanded) {
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean, _message: string, windowStart?: number, windowEnd?: number) => {
+    // RECEIVER: Adopt sender's window range as the absolute source of truth
+    // Sender is the single authority for window state - receiver must sync to sender's range
+    if (windowStart !== undefined && windowEnd !== undefined) {
+      // Sender provided explicit window range - adopt it directly
+      setCurrentWindowStart(windowStart)
+      setCurrentWindowEnd(windowEnd)
+      console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd} (expanded=${windowExpanded})`)
+    } else if (windowExpanded) {
+      // Fallback for old ACK format without explicit window range (backward compatibility)
       const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
       const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
       setCurrentWindowEnd(newWindowEnd)
-      console.log(`[FountainQRReceiver] Window expanded by sender: new end=${newWindowEnd}`)
+      console.log(`[FountainQRReceiver] Window expanded by sender (legacy): new end=${newWindowEnd}`)
     }
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
@@ -225,13 +232,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       triggeredFeedbackRef.current = false
       setIsAwaitingFeedback(false)
       setIsScanning(true)
-      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
+      setLastAckTransitionSuccessful(true) // Mark transition as successful
+      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true, lastAckTransitionSuccessful set to true')
     } else if (mode === 'feedback-display') {
       setIsAwaitingFeedback(true)
       setIsScanning(false)
     } else if (mode === 'ack-scanning') {
       setIsAwaitingFeedback(true)
       setIsScanning(false)
+      setLastAckTransitionSuccessful(false) // Mark as not successful when entering ack-scanning
+      console.log('[FountainQRReceiver] Transitioned to ack-scanning mode, lastAckTransitionSuccessful set to false')
     }
   }, [receiverMode])
 
@@ -253,6 +263,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleSenderSequenceUpdate = useCallback((sequence: number) => {
     setLastSenderFeedbackSequence(sequence)
+  }, [])
+
+  const handleAckTransitionStatus = useCallback((successful: boolean) => {
+    console.log(`[FountainQRReceiver] ACK transition status reported: ${successful}`)
+    setLastAckTransitionSuccessful(successful)
   }, [])
 
   const handleSkipTargetedMode = useCallback(() => {
@@ -473,6 +488,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onSenderSequenceUpdate={handleSenderSequenceUpdate}
           skipTargetedModeForSession={skipTargetedModeForSession}
           onSkipTargetedMode={handleSkipTargetedMode}
+          lastAckTransitionSuccessful={lastAckTransitionSuccessful}
+          onAckTransitionStatus={handleAckTransitionStatus}
         />
       )}
 
