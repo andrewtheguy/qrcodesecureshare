@@ -211,7 +211,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       setCurrentWindowEnd(newWindowEnd)
       console.log(`[FountainQRReceiver] Window expanded by sender: new end=${newWindowEnd}`)
     }
-    setIsTargetedModeActive(true)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
