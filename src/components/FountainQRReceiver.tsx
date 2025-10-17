@@ -127,9 +127,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
             console.log(`[FountainQRReceiver] Adaptive threshold check: current=${(windowDecodePercentage * 100).toFixed(1)}%, adaptive threshold=${(adaptiveThreshold * 100).toFixed(1)}%, progress delta=${(progressDelta * 100).toFixed(1)}%`)
 
-            // Update lastObservedWindowPercentageRef on each chunkProcessed to track sampled progress
-            lastObservedWindowPercentageRef.current = windowDecodePercentage
-
             if (windowDecodePercentage >= adaptiveThreshold && progressDelta >= WINDOW_MIN_PROGRESS_DELTA) {
               // Guard: Prevent rapid mode switching by ensuring transition occurs only once per feedback cycle
               if (triggeredFeedbackRef.current) {
@@ -138,6 +135,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               // Debug logging moved to subcomponent
               triggeredFeedbackRef.current = true
               setLastTriggeredWindowPercentage(windowDecodePercentage)
+              // Update lastObservedWindowPercentageRef when feedback is triggered, so progressDelta measures progress since last feedback
+              lastObservedWindowPercentageRef.current = windowDecodePercentage
               setReceiverMode('feedback-display')
               setIsScanning(false)
               setIsAwaitingFeedback(true)
@@ -212,6 +211,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
+    // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
+    lastObservedWindowPercentageRef.current = 0
   }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
