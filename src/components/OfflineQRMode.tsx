@@ -142,7 +142,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            } else {
              if (size >= WINDOW_ENABLE_THRESHOLD) {
                windowEnabled = true
-               // Files >= 200KB: Use segment-based windowing with fixed 100KB segments
+               // Files >= 200KB: Use segment-based windowing with fixed 200KB segments
                initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
              }
            }

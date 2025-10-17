@@ -192,7 +192,7 @@ export class FountainEncoder {
       this.windowEnabled = false
       this.windowEnd = numBlocks
     } else {
-      // Files >= 200KB: Use segment-based windowing with fixed 100KB segments
+      // Files >= 200KB: Use segment-based windowing with fixed 200KB segments
       this.windowEnabled = true
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }
