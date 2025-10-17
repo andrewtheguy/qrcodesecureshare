@@ -507,6 +507,7 @@ export function FountainQRFeedbackDisplay({
               <CardTitle>Feedback Details</CardTitle>
             </CardHeader>
             <CardContent>
+              {/* align with sender feedback display */}
               <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
                 <span className="text-muted-foreground font-medium text-sm">Session ID:</span>
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.sessionId}</span>
@@ -523,26 +524,9 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">Progress:</span>
                 <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
-                <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
-                <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
-                <span className="font-mono text-sm cursor-text select-all">{currentWindowStart}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window End:</span>
-                <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
-                <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Total Blocks:</span>
-                <span className="font-mono text-sm cursor-text select-all">{fountainMetadata.totalSourceBlocks}</span>
 
                 {feedbackData.mode === 'statistics' && (
                   <>
-                    <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
-                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow ?? 'N/A'}</span>
-
                     <span className="text-muted-foreground font-medium text-sm">Request Expansion:</span>
                     <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).requestWindowExpansion ? 'Yes' : 'No'}</span>
                   </>
@@ -562,6 +546,29 @@ export function FountainQRFeedbackDisplay({
                     </span>
                   </>
                 )}
+
+                <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
+                <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
+                <span className="font-mono text-sm cursor-text select-all">{currentWindowStart}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Window End:</span>
+                <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
+
+                {feedbackData.mode === 'statistics' && (
+                  <>
+                    <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
+                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow ?? 'N/A'}</span>
+                  </>
+                )}
+
+                <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
+                <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Total Blocks:</span>
+                <span className="font-mono text-sm cursor-text select-all">{fountainMetadata.totalSourceBlocks}</span>
+
               </div>
             </CardContent>
           </Card>

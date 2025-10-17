@@ -131,6 +131,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            setCurrentSessionId(sessionId)
 
            // Calculate window configuration
+           // Note: Actual window padding is applied by FountainEncoder (sender is source of truth)
+           // This metadata just stores the "natural" initial window size
            let windowEnabled = false
            let initialWindowBlocks = totalSourceBlocks
            if (!feedbackEnabled) {

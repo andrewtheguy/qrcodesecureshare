@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -182,6 +182,7 @@ export class FountainEncoder {
     this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }
 
     // Initialize window state
+    // SENDER IS THE SINGLE SOURCE OF TRUTH FOR WINDOWING
     this.windowStart = 0
     if (opts.windowEnabled === false) {
       // Force disable windowing
@@ -197,6 +198,13 @@ export class FountainEncoder {
       // Large files (>256KB): Use segment-based windowing with fixed 100KB segments
       this.windowEnabled = true
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
+    }
+
+    // Apply padding to initial window for faster first feedback
+    // This compensates for the WINDOW_BASELINE_THRESHOLD (40%) feedback trigger
+    // Example: 250 blocks * 0.6 = 150 blocks, feedback at 60 blocks (40% of 150)
+    if (this.windowEnabled) {
+      this.windowEnd = Math.ceil(this.windowEnd * (1 - WINDOW_BASELINE_THRESHOLD))
     }
   }
 
