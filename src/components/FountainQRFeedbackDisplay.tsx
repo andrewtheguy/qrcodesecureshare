@@ -392,6 +392,15 @@ export function FountainQRFeedbackDisplay({
     }
   }, [isActive, receiverMode, feedbackQRUrl, handleGenerateFeedbackQR])
 
+  // Cleanup for pending delayed transition on mode change
+  useEffect(() => {
+    if (receiverMode !== 'ack-scanning' && transitionTimeoutRef.current) {
+      console.log('[FountainQRFeedbackDisplay] Mode changed, canceling pending transition to data-scanning')
+      clearTimeout(transitionTimeoutRef.current)
+      transitionTimeoutRef.current = null
+    }
+  }, [receiverMode])
+
   // Cleanup ACK error timeout on unmount to prevent setState on unmounted component
   useEffect(() => {
     return () => {

@@ -25,7 +25,8 @@ interface FountainQRDataScannerProps {
   onScanStop: () => void
   onReset: () => void
   onToggleMetadataInfo: (show: boolean) => void
-  onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
+  onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void;
+  onAckTransitionStatus: (successful: boolean) => void;
 }
 
 export function FountainQRDataScanner({
@@ -45,7 +46,8 @@ export function FountainQRDataScanner({
   onScanStop,
   onReset,
   onToggleMetadataInfo,
-  onModeChange
+  onModeChange,
+  onAckTransitionStatus
 }: FountainQRDataScannerProps) {
   const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
   const [showDebugLog, setShowDebugLog] = useState(false)
@@ -169,7 +171,10 @@ export function FountainQRDataScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
     onError: handleScanError,
-    onStart: () => addDebugLog('✅ Data scanner started'),
+    onStart: () => {
+        addDebugLog('✅ Data scanner started');
+        onAckTransitionStatus(true);
+    },
     onStop: () => addDebugLog('🛑 Data scanner stopped')
   })
 

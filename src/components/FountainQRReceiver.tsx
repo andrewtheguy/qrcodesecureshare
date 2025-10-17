@@ -232,8 +232,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       triggeredFeedbackRef.current = false
       setIsAwaitingFeedback(false)
       setIsScanning(true)
-      setLastAckTransitionSuccessful(true) // Mark transition as successful
-      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true, lastAckTransitionSuccessful set to true')
+      // setLastAckTransitionSuccessful(true) // Optimistically marking success is deprecated
+      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
     } else if (mode === 'feedback-display') {
       setIsAwaitingFeedback(true)
       setIsScanning(false)
@@ -433,6 +433,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastTriggeredWindowPercentage(0)
     lastObservedWindowPercentageRef.current = 0
     setSkipTargetedModeForSession(false)
+    setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -563,6 +564,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Optional: handle metadata info toggle if needed
         }}
         onModeChange={handleFeedbackModeChange}
+        onAckTransitionStatus={handleAckTransitionStatus}
       />
 
     </div>
