@@ -247,44 +247,12 @@ export function FountainQRFeedbackDisplay({
 
       let dataUrl: string
       try {
-        // Feedback QR generation intentionally uses main thread (not worker) for reliability
-        // These are small JSON payloads generated infrequently, so main thread is reliable and performant
+        //TODO: need to limit targeted mode maximum block earlier to avoid data too large errors
         dataUrl = await generateNonDataQR(feedback)
-      } catch {
-        // Debug logging moved to subcomponent
-
-        // Recovery action: if targeted mode failed due to payload size, auto-switch to statistics mode
-        if (feedback.mode === 'targeted') {
-          // Debug logging moved to subcomponent
-          // Create statistics feedback as fallback
-          const statisticsFeedback: FountainFeedbackStatistics = {
-            type: 'FOUNTAIN_FEEDBACK',
-            mode: 'statistics',
-            sessionId: sessionId,
-            sequence: seq,
-            requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
-            firstMissingBlock: firstMissingBlock,
-            progress: overallProgress,
-            totalDecoded: decodedBlockIndices.length,
-            totalBlocks: fountainMetadata.totalSourceBlocks,
-            decodedInWindow: decodedInWindow,
-          }
-
-          try {
-            dataUrl = await generateNonDataQR(statisticsFeedback)
-            feedback = statisticsFeedback // Update feedback reference for later use
-            setError('') // Clear any previous error
-            // Debug logging moved to subcomponent
-          } catch {
-            // Debug logging moved to subcomponent
-            setError('Failed to generate feedback QR code - both targeted and statistics modes exceeded payload capacity. Try again later.')
-            return
-          }
-        } else {
-          // Statistics mode failed - no recovery possible
-          setError('Failed to generate feedback QR code - payload too large. Try again later.')
-          return
-        }
+      } catch(err) {
+        console.error('[FountainQRFeedbackDisplay] Feedback QR generation error:', err)
+        setError('Failed to generate feedback QR code - please try again, error:' + (err as Error).message)
+        return
       }
       setFeedbackQRUrl(dataUrl)
       setFeedbackMode(feedback.mode)
