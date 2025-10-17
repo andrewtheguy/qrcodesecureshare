@@ -236,18 +236,9 @@ export function FountainQRDataScanner({
   const dopingOverhead = 1.05 // Account for forced low-degree chunks
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
-  // Calculate compressed rectangle grid layout
-  function calculateGridLayout(totalBlocks: number, maxWidth: number = 342, maxRows: number = 6) {
-    // Calculate optimal columns to fit within maxWidth and maxRows
-    const maxRectangles = maxRows * Math.floor(maxWidth / 20) // Assuming min 20px per rect
-    const blocksPerRect = Math.ceil(totalBlocks / maxRectangles)
-    const totalRectangles = Math.ceil(totalBlocks / blocksPerRect)
-    const cols = Math.ceil(totalRectangles / maxRows)
-
-    return { cols, blocksPerRect, totalRectangles }
-  }
-
-  const { cols, blocksPerRect, totalRectangles } = calculateGridLayout(fountainMetadata.totalSourceBlocks)
+  // Calculate compressed rectangle grid layout (fixed 10 columns like SequentialQRReceiver)
+  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, 60) // Max 60 rectangles (6 rows x 10 cols)
+  const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
 
   // Get color for rectangle based on decoded blocks in range
   function getRectangleColor(decodedInRange: number, totalInRange: number) {
@@ -312,13 +303,7 @@ export function FountainQRDataScanner({
       {!success && fountainMetadata.totalSourceBlocks > 0 && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Block Progress</div>
-          <div
-            className="grid gap-1"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, 1fr)`,
-              maxWidth: '342px'
-            }}
-          >
+          <div className="grid grid-cols-10 gap-1">
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
