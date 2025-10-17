@@ -301,6 +301,12 @@ export function FountainQRFeedbackDisplay({
   }
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
+    // it is necessary to prevent processing binary data by accident
+    if (data[0] !== '{') {
+      console.warn('[FountainQRFeedbackDisplay] Ignoring non-JSON data')
+      return
+    }
+
     try {
       const parsed = JSON.parse(data) as SenderFeedback
       if (parsed.type !== 'SENDER_FEEDBACK') {
