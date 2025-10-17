@@ -13,8 +13,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
-// Optional: Extract ignored block list to a top-level constant or env for easier test control.
-const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
@@ -83,7 +81,9 @@ export function FountainQRDataScanner({
     // ════════════════════════════════════════════════════════════════════════════
     // ════════════════════════════════════════════════════════════════════════════
 
-    const ENABLE_TARGETED_MODE_TEST = false
+    const TARGETED_TEST_IGNORE_BLOCKS: number[] = Array.from({ length: 101 }, (_, i) => i + 100);
+
+    const ENABLE_TARGETED_MODE_TEST = true
 
     const isTargetedModeTestActive = ENABLE_TARGETED_MODE_TEST && !isTargetedModeActive
 
@@ -243,7 +243,7 @@ export function FountainQRDataScanner({
   // Get color for rectangle based on decoded blocks in range
   function getRectangleColor(decodedInRange: number, totalInRange: number) {
     if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
-    if (decodedInRange >= totalInRange) return 'bg-green-500' // Allow for cases where range spans might overlap
+    if (decodedInRange === totalInRange) return 'bg-green-500' // Allow for cases where range spans might overlap
     return 'bg-yellow-500'
   }
 
