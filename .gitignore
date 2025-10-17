@@ -27,3 +27,4 @@ dist-ssr
 PRIVATE_KEY.md
 *.private.json
 *.pem
+tmp/

@@ -160,6 +160,13 @@ npm run build
 # Deploy the dist/ folder to your web server
 ```
 
+### Testing with Local Server
+For reliable testing of the built application, use the provided test deployment script:
+```bash
+./scripts/test-deploy.sh
+```
+This script builds the project, serves it locally on port 6943 with caching disabled, and creates a Cloudflare tunnel for external access.
+
 ### As a PWA
 The app includes PWA configuration and can be installed on mobile devices for offline use.
 

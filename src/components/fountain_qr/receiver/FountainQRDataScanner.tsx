@@ -16,6 +16,11 @@ import { useQRScanner } from '@/hooks/useQRScanner'
 // Optional: Extract ignored block list to a top-level constant or env for easier test control.
 const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 
+// Grid layout constants
+const GRID_COLUMNS = 20
+const GRID_MAX_ROWS = 12
+const GRID_MAX_RECTANGLES = GRID_COLUMNS * GRID_MAX_ROWS
+
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
   workerRef: React.RefObject<Worker | null>
@@ -28,6 +33,7 @@ interface FountainQRDataScannerProps {
   invalidChecksumCount: number
   isTargetedModeActive: boolean
   senderFeedbackMessage: string
+  decodedBlockIndices?: number[]
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
@@ -50,6 +56,7 @@ export function FountainQRDataScanner({
   invalidChecksumCount,
   isTargetedModeActive,
   senderFeedbackMessage,
+  decodedBlockIndices = [],
   onChunkScanned,
   onScanError,
   onScanStart,
@@ -234,6 +241,17 @@ export function FountainQRDataScanner({
   const dopingOverhead = 1.05 // Account for forced low-degree chunks
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
+  // Calculate compressed rectangle grid layout
+  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, GRID_MAX_RECTANGLES)
+  const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
+
+  // Get color for rectangle based on decoded blocks in range
+  function getRectangleColor(decodedInRange: number, totalInRange: number) {
+    if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
+    if (decodedInRange === totalInRange) return 'bg-green-500'
+    return 'bg-yellow-500'
+  }
+
   return (
     <div className="space-y-4">
       {/* Video Preview */}
@@ -282,6 +300,41 @@ export function FountainQRDataScanner({
                 Invalid checksums: {invalidChecksumCount} chunks skipped
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Block Progress Grid */}
+      {!success && fountainMetadata.totalSourceBlocks > 0 && (
+        <div className="space-y-2">
+          <div className="text-sm font-medium">Block Progress</div>
+          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
+            {Array.from({ length: totalRectangles }, (_, i) => {
+              const startBlock = i * blocksPerRect
+              const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
+
+              // Hide rectangles that don't contain any blocks
+              if (startBlock >= fountainMetadata.totalSourceBlocks) {
+                return (
+                  <div
+                    key={i}
+                    className="aspect-square hidden"
+                  />
+                )
+              }
+
+              const rangeBlocks = Array.from({ length: endBlock - startBlock }, (_, j) => startBlock + j)
+              const decodedInRange = rangeBlocks.filter(block => decodedBlockIndices.includes(block)).length
+              const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
+
+              return (
+                <div
+                  key={i}
+                  className={`aspect-square rounded ${colorClass}`}
+                  title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded`}
+                />
+              )
+            })}
           </div>
         </div>
       )}
