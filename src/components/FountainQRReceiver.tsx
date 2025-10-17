@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD, WINDOW_MIN_PROGRESS_DELTA } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './FountainQRFeedbackDisplay'
@@ -64,6 +64,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
 
+  // Adaptive window threshold state
+  const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
+
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
 
@@ -77,7 +80,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const currentWindowEndRef = useRef(currentWindowEnd)
   const windowTriggerThresholdRef = useRef(windowTriggerThreshold)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
+  const isTargetedModeActiveRef = useRef(isTargetedModeActive)
   const triggeredFeedbackRef = useRef(false)
+  const lastTriggeredWindowPercentageRef = useRef<number>(0)
+  const lastObservedWindowPercentageRef = useRef<number>(0)
 
   // Worker initialization and cleanup
   useEffect(() => {
@@ -110,19 +116,29 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           decodedBlockIndicesRef.current = decodedBlockIndices
           // Debug logging moved to subcomponent
 
-          // Window saturation check
+          // Window saturation check with adaptive threshold
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
-          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
+          // Disable window saturation feedback when targeted mode is active
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
             const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
-            if (windowDecodePercentage >= windowTriggerThresholdRef.current) {
+            // Adaptive threshold calculation
+            const adaptiveThreshold = WINDOW_BASELINE_THRESHOLD + Math.max(0, lastTriggeredWindowPercentageRef.current - WINDOW_BASELINE_THRESHOLD)
+            const progressDelta = windowDecodePercentage - lastObservedWindowPercentageRef.current
+
+            console.log(`[FountainQRReceiver] Adaptive threshold check: current=${(windowDecodePercentage * 100).toFixed(1)}%, adaptive threshold=${(adaptiveThreshold * 100).toFixed(1)}%, progress delta=${(progressDelta * 100).toFixed(1)}%`)
+
+            if (windowDecodePercentage >= adaptiveThreshold && progressDelta >= WINDOW_MIN_PROGRESS_DELTA) {
               // Guard: Prevent rapid mode switching by ensuring transition occurs only once per feedback cycle
               if (triggeredFeedbackRef.current) {
                 return
               }
               // Debug logging moved to subcomponent
               triggeredFeedbackRef.current = true
+              setLastTriggeredWindowPercentage(windowDecodePercentage)
+              // Update lastObservedWindowPercentageRef when feedback is triggered, so progressDelta measures progress since last feedback
+              lastObservedWindowPercentageRef.current = windowDecodePercentage
               setReceiverMode('feedback-display')
               setIsScanning(false)
               setIsAwaitingFeedback(true)
@@ -197,6 +213,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
+    // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
+    lastObservedWindowPercentageRef.current = 0
   }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
@@ -271,6 +289,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     isAwaitingFeedbackRef.current = isAwaitingFeedback
   }, [isAwaitingFeedback])
+
+  useEffect(() => {
+    lastTriggeredWindowPercentageRef.current = lastTriggeredWindowPercentage
+  }, [lastTriggeredWindowPercentage])
+
+  useEffect(() => {
+    isTargetedModeActiveRef.current = isTargetedModeActive
+  }, [isTargetedModeActive])
 
   // Auto-start scanning moved to subcomponent
 
@@ -373,6 +399,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setInvalidChecksumCount(0)
     setIsTargetedModeActive(false)
     triggeredFeedbackRef.current = false
+    setLastTriggeredWindowPercentage(0)
+    lastObservedWindowPercentageRef.current = 0
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
