@@ -51,6 +51,11 @@ export function normalizeConfirmationCode(code: string): string {
   return code.replace(/[-\s]/g, '').toUpperCase()
 }
 
+/**
+ * Generates a confirmation code for feedback payloads.
+ * The confirmation code includes the progress field in its calculation to ensure
+ * all feedback fields are validated when using manual input mode.
+ */
 export function generateFeedbackConfirmationCode(feedback: FountainFeedback): string {
   // Extract essential fields in a deterministic order
   const fields: string[] = [
@@ -59,6 +64,7 @@ export function generateFeedbackConfirmationCode(feedback: FountainFeedback): st
     feedback.sessionId.toString(),
     feedback.sequence.toString(),
     feedback.firstMissingBlock.toString(),
+    feedback.progress.toString(),
   ]
 
   // Add mode-specific fields

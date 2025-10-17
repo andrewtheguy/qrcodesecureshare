@@ -21,8 +21,12 @@ interface FountainFeedbackBase {
   windowStart?: number;
   /** Current window end block index */
   windowEnd?: number;
-  /** Overall progress percentage (0-100) */
-  progress?: number;
+  /**
+   * Overall file decode progress as a rounded integer from 0 to 100.
+   * This field is always included in feedback payloads and is used by the adaptive
+   * threshold algorithm to prevent premature feedback requests.
+   */
+  progress: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
 }

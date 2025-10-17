@@ -29,7 +29,7 @@ interface ProcessedFeedbackData {
   sequence: number;
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number };
+  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
   windowExpanded: boolean;
   message: string;
 }
@@ -75,6 +75,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputSequence, setInputSequence] = useState('');
   const [inputMode, setInputMode] = useState<'statistics' | 'targeted'>('statistics');
   const [inputFirstMissingBlock, setInputFirstMissingBlock] = useState('0');
+  const [inputProgress, setInputProgress] = useState('');
   const [inputRequestExpansion, setInputRequestExpansion] = useState(false);
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
@@ -130,6 +131,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       return { valid: false, error: `Invalid first missing block: Must be a non-negative integer. Current value: ${inputFirstMissingBlock}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
 
+    // Parse and validate progress
+    const parsedProgress = parseInt(inputProgress);
+    if (isNaN(parsedProgress) || parsedProgress < 0 || parsedProgress > 100) {
+      return { valid: false, error: `Invalid progress: Must be an integer between 0 and 100. Current value: ${inputProgress}. Please verify this field from receiver's feedback display.`, feedback: null };
+    }
+
     // Validate confirmation code
     if (!inputConfirmationCode.trim()) {
       return { valid: false, error: 'Confirmation code required: Please enter the confirmation code shown in receiver\'s Feedback Details card to verify input accuracy.', feedback: null };
@@ -144,6 +151,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sessionId: parsedSessionId,
         sequence: parsedSequence,
         firstMissingBlock: parsedFirstMissingBlock,
+        progress: parsedProgress,
         requestWindowExpansion: inputRequestExpansion,
       };
     } else {
@@ -161,6 +169,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         sessionId: parsedSessionId,
         sequence: parsedSequence,
         firstMissingBlock: parsedFirstMissingBlock,
+        progress: parsedProgress,
         missingBlocks,
       };
     }
@@ -179,7 +188,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputMode, inputFirstMissingBlock, inputRequestExpansion, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [inputSessionId, inputSequence, inputMode, inputFirstMissingBlock, inputProgress, inputRequestExpansion, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const parseMissingBlocks = (input: string): number[] => {
     const trimmedInput = input.trim();
@@ -241,6 +250,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         totalBlocks: feedback.totalBlocks ?? updatedWindowInfo?.totalBlocks ?? 0,
         windowStart: updatedWindowInfo?.windowStart,
         windowEnd: updatedWindowInfo?.windowEnd,
+        progress: feedback.progress,
       };
 
       let windowExpanded = false;
@@ -422,6 +432,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         </div>
 
         <div>
+          <Label htmlFor="progress" className="text-xs">Progress (%)</Label>
+          <Input
+            id="progress"
+            type="number"
+            min="0"
+            max="100"
+            value={inputProgress}
+            onChange={(e) => setInputProgress(e.target.value)}
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Overall file decode progress (0-100)
+          </p>
+        </div>
+
+        <div>
           <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
           <Input
             id="confirmationCode"
@@ -487,7 +512,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Only the required fields (Session ID, Sequence, First Missing Block, and mode-specific fields) need to be entered. Double-check each field before processing. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. All required fields (Session ID, Sequence, First Missing Block, Progress, and mode-specific fields) must be entered. Double-check each field before processing. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 

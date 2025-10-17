@@ -147,6 +147,9 @@ export function FountainQRFeedbackDisplay({
       // Use prop directly - parent owns this value
       const seq = feedbackSequence
 
+      // Calculate overall file progress as rounded integer (0-100)
+      const overallProgress = Math.round((decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100)
+
       // Gate re-generation: only generate if we haven't already generated for this sequence
       if (seq === lastGeneratedSequenceRef.current) {
         generatingRef.current = false
@@ -170,6 +173,10 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
           firstMissingBlock: firstMissingBlock,
+          progress: overallProgress,
+          totalDecoded: decodedBlockIndices.length,
+          totalBlocks: fountainMetadata.totalSourceBlocks,
+          decodedInWindow: decodedInWindow,
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -215,6 +222,9 @@ export function FountainQRFeedbackDisplay({
           sessionId: sessionId,
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
+          progress: overallProgress,
+          totalDecoded: decodedBlockIndices.length,
+          totalBlocks: fountainMetadata.totalSourceBlocks,
         }
 
         const targetedFeedback = { ...feedbackBase, missingBlocks }
@@ -250,6 +260,10 @@ export function FountainQRFeedbackDisplay({
             sequence: seq,
             requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
             firstMissingBlock: firstMissingBlock,
+            progress: overallProgress,
+            totalDecoded: decodedBlockIndices.length,
+            totalBlocks: fountainMetadata.totalSourceBlocks,
+            decodedInWindow: decodedInWindow,
           }
 
           try {

@@ -46,6 +46,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     totalBlocks: number
     windowStart?: number
     windowEnd?: number
+    progress?: number
   } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
   const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
@@ -117,7 +118,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     sequence: number;
     mode: 'statistics' | 'targeted';
     receivedBlocks?: Set<number>;
-    lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number };
+    lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
     windowExpanded: boolean;
     message: string;
   }) => {
@@ -248,6 +249,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 {receivedBlocksCount === 0 && lastStats ? (
                   <>
                     <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
+                    <p>Receiver reports: {lastStats.progress ?? 'N/A'}% complete</p>
                           {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
                             <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
                           )}

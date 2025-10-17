@@ -24,7 +24,7 @@ interface ProcessedFeedbackData {
   sequence: number;
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number | undefined; windowEnd?: number | undefined };
+  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number | undefined; windowEnd?: number | undefined; progress?: number };
   windowExpanded: boolean;
   message: string;
 }
@@ -91,6 +91,14 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       return;
     }
 
+    // Validate progress field
+    if (typeof data.progress !== 'number' || data.progress < 0 || data.progress > 100) {
+      onError('Invalid feedback QR: progress field missing or out of range (0-100)');
+      setCurrentMode('idle');
+      processingRef.current = false;
+      return;
+    }
+
     if (data.sequence <= lastProcessedSequence) {
       console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
       onError('Stale feedback QR code: sequence already processed.');
@@ -102,6 +110,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
     if (data.mode === 'statistics') {
       console.log('Processing statistics feedback:', data.totalDecoded ?? 'N/A', '/', data.totalBlocks ?? 'N/A');
+      console.log('Receiver progress:', data.progress, '%');
       encoder?.setReceivedBlocks([]);
       encoder?.setSkipBlocksBelow(firstMissingBlock);
 
@@ -115,6 +124,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         totalBlocks: data.totalBlocks ?? updatedWindowInfo?.totalBlocks ?? 0,
         windowStart: updatedWindowInfo?.windowStart,
         windowEnd: updatedWindowInfo?.windowEnd,
+        progress: data.progress,
       };
 
       // SENDER: Single authority for window expansion
@@ -169,6 +179,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       }
       const missingBlocks = data.missingBlocks;
       console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
+      console.log('Receiver progress:', data.progress, '%');
       encoder?.setMissingBlocks(missingBlocks);
       encoder?.setSkipBlocksBelow(firstMissingBlock);
 
