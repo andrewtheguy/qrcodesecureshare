@@ -16,13 +16,13 @@ interface FountainFeedbackBase {
   /** Sequence number to prevent duplicate processing */
   sequence: number;
   /** Total number of source blocks */
-  totalBlocks: number;
+  totalBlocks?: number;
   /** Current window start block index */
-  windowStart: number;
+  windowStart?: number;
   /** Current window end block index */
-  windowEnd: number;
+  windowEnd?: number;
   /** Overall progress percentage (0-100) */
-  progress: number;
+  progress?: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
 }
@@ -33,9 +33,9 @@ interface FountainFeedbackBase {
 export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   mode: 'statistics';
   /** Number of blocks decoded in current window */
-  decodedInWindow: number;
+  decodedInWindow?: number;
   /** Total number of blocks decoded so far */
-  totalDecoded: number;
+  totalDecoded?: number;
   /** Whether sender should expand the transfer window */
   requestWindowExpansion: boolean;
 }

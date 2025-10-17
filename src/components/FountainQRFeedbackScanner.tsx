@@ -24,7 +24,7 @@ interface ProcessedFeedbackData {
   sequence: number;
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number };
+  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number | undefined; windowEnd?: number | undefined };
   windowExpanded: boolean;
   message: string;
 }
@@ -101,7 +101,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     const firstMissingBlock = data.firstMissingBlock || 0;
 
     if (data.mode === 'statistics') {
-      console.log('Processing statistics feedback:', data.totalDecoded, '/', data.totalBlocks);
+      console.log('Processing statistics feedback:', data.totalDecoded ?? 'N/A', '/', data.totalBlocks ?? 'N/A');
       encoder?.setReceivedBlocks([]);
       encoder?.setSkipBlocksBelow(firstMissingBlock);
 
@@ -111,8 +111,8 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       }
 
       const lastStats = {
-        totalDecoded: data.totalDecoded,
-        totalBlocks: data.totalBlocks,
+        totalDecoded: data.totalDecoded ?? 0,
+        totalBlocks: data.totalBlocks ?? updatedWindowInfo?.totalBlocks ?? 0,
         windowStart: updatedWindowInfo?.windowStart,
         windowEnd: updatedWindowInfo?.windowEnd,
       };
@@ -161,7 +161,13 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       scannerRef.current?.destroy();
       scannerRef.current = null;
     } else if (data.mode === 'targeted') {
-      const missingBlocks = data.missingBlocks || [];
+      if (!data.missingBlocks || !Array.isArray(data.missingBlocks)) {
+        onError('Invalid targeted feedback: missingBlocks must be an array.');
+        setCurrentMode('idle');
+        processingRef.current = false;
+        return;
+      }
+      const missingBlocks = data.missingBlocks;
       console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
       encoder?.setMissingBlocks(missingBlocks);
       encoder?.setSkipBlocksBelow(firstMissingBlock);

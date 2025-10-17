@@ -7,6 +7,7 @@ import type { FountainFeedback, FountainFeedbackStatistics, FountainFeedbackTarg
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
+import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 
 /**
  * Formats an array of missing block indices into a human-readable range string.
@@ -81,6 +82,7 @@ export function FountainQRFeedbackDisplay({
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
   const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
+  const [confirmationCode, setConfirmationCode] = useState<string>('')
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [ackError, setAckError] = useState<string>('')
@@ -155,7 +157,6 @@ export function FountainQRFeedbackDisplay({
       const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStart && idx < currentWindowEnd).length
       const windowSize = Math.max(1, currentWindowEnd - currentWindowStart)
       const windowDecodePercent = decodedInWindow / windowSize
-      const overallProgress = decodedBlockIndices.length / fountainMetadata.totalSourceBlocks
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
@@ -167,12 +168,6 @@ export function FountainQRFeedbackDisplay({
           mode: 'statistics',
           sessionId: sessionId,
           sequence: seq,
-          decodedInWindow: decodedInWindow,
-          totalDecoded: decodedBlockIndices.length,
-          totalBlocks: fountainMetadata.totalSourceBlocks,
-          windowStart: currentWindowStart,
-          windowEnd: currentWindowEnd,
-          progress: overallProgress * 100,
           requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
           firstMissingBlock: firstMissingBlock,
         }
@@ -219,10 +214,6 @@ export function FountainQRFeedbackDisplay({
           mode: 'targeted' as const,
           sessionId: sessionId,
           sequence: seq,
-          totalBlocks: fountainMetadata.totalSourceBlocks,
-          windowStart: currentWindowStart,
-          windowEnd: currentWindowEnd,
-          progress: overallProgress * 100,
           firstMissingBlock: firstMissingBlock,
         }
 
@@ -257,12 +248,6 @@ export function FountainQRFeedbackDisplay({
             mode: 'statistics',
             sessionId: sessionId,
             sequence: seq,
-            decodedInWindow: decodedInWindow,
-            totalDecoded: decodedBlockIndices.length,
-            totalBlocks: fountainMetadata.totalSourceBlocks,
-            windowStart: currentWindowStart,
-            windowEnd: currentWindowEnd,
-            progress: overallProgress * 100,
             requestWindowExpansion: isWindowEnabled && windowSize > 0 && windowDecodePercent >= windowTriggerThreshold,
             firstMissingBlock: firstMissingBlock,
           }
@@ -286,6 +271,10 @@ export function FountainQRFeedbackDisplay({
       setFeedbackQRUrl(dataUrl)
       setFeedbackMode(feedback.mode)
       setFeedbackData(feedback)
+
+      // Generate confirmation code
+      const code = generateFeedbackConfirmationCode(feedback)
+      setConfirmationCode(code)
 
       // Mark this sequence as generated atomically
       lastGeneratedSequenceRef.current = seq
@@ -441,6 +430,9 @@ export function FountainQRFeedbackDisplay({
               <p className="text-xs text-muted-foreground text-center">
                 Show this QR to sender, then click the button below to scan for ACK
               </p>
+              <p className="text-xs text-muted-foreground text-center">
+                The confirmation code acts as a checksum to verify all fields are entered correctly when manually inputting feedback
+              </p>
               <Button
                 onClick={handleStartAckScan}
                 variant="default"
@@ -470,29 +462,28 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">First Missing Block:</span>
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
 
+                <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
+                <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
+
                 <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.windowStart}</span>
+                <span className="font-mono text-sm cursor-text select-all">{currentWindowStart}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Window End:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.windowEnd}</span>
+                <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
-                <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.mode === 'statistics'
-                    ? (feedbackData as FountainFeedbackStatistics).totalDecoded
-                    : feedbackData.totalBlocks - (feedbackData as FountainFeedbackTargeted).missingBlocks.length}
-                </span>
+                <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Total Blocks:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.totalBlocks}</span>
+                <span className="font-mono text-sm cursor-text select-all">{fountainMetadata.totalSourceBlocks}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Progress:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.progress.toFixed(1)}%</span>
+                <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
                 {feedbackData.mode === 'statistics' && (
                   <>
                     <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
-                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow}</span>
+                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow ?? 'N/A'}</span>
 
                     <span className="text-muted-foreground font-medium text-sm">Request Expansion:</span>
                     <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).requestWindowExpansion ? 'Yes' : 'No'}</span>

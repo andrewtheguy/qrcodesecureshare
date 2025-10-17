@@ -1,3 +1,5 @@
+import type { FountainFeedback } from '@/types/fountainFeedback'
+
 // SHA-256 checksum utility (browser WebCrypto)
 // Returns lowercase hex string.
 
@@ -43,4 +45,41 @@ export async function computeChecksum(
   let hex = ''
   for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
   return hex
+}
+
+export function normalizeConfirmationCode(code: string): string {
+  return code.replace(/[-\s]/g, '').toUpperCase()
+}
+
+export function generateFeedbackConfirmationCode(feedback: FountainFeedback): string {
+  // Extract essential fields in a deterministic order
+  const fields: string[] = [
+    feedback.type,
+    feedback.mode,
+    feedback.sessionId.toString(),
+    feedback.sequence.toString(),
+    feedback.firstMissingBlock.toString(),
+  ]
+
+  // Add mode-specific fields
+  if (feedback.mode === 'statistics') {
+    fields.push(feedback.requestWindowExpansion ? '1' : '0')
+  } else if (feedback.mode === 'targeted') {
+    const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
+    fields.push(sortedMissingBlocks.join(','))
+  }
+
+  // Create canonical string representation
+  const canonicalString = fields.join('|')
+
+  // Convert to Uint8Array using TextEncoder
+  const encoder = new TextEncoder()
+  const data = encoder.encode(canonicalString)
+
+  // Compute CRC32 checksum
+  const checksum = crc32(data)
+
+  // Format as user-friendly code: uppercase hex with hyphen
+  const upperChecksum = checksum.toUpperCase()
+  return upperChecksum.slice(0, 4) + '-' + upperChecksum.slice(4)
 }
