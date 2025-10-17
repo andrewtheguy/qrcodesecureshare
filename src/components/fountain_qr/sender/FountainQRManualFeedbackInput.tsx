@@ -20,6 +20,7 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
+import { WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig';
 
 interface WindowInfo {
   windowEnabled: boolean;
@@ -335,7 +336,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         if (decodedInWindow > lastDecodedInWindow) {
           onUpdateLastDecodedInWindow(decodedInWindow);
           const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
-          if (windowDecodePercent >= 0.5) {
+          if (windowDecodePercent >= WINDOW_BASELINE_THRESHOLD) {
             const now = Date.now();
             if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
               encoder?.expandWindow();

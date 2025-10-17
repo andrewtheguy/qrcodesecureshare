@@ -7,7 +7,7 @@ import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './Seque
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, SEGMENT_SIZE_BYTES, WINDOW_EXPANSION_SIZE_BYTES } from '@/utils/fountainConfig'
 
 const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
@@ -142,11 +142,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            } else {
              if (size >= WINDOW_ENABLE_THRESHOLD) {
                windowEnabled = true
-               if (size <= WINDOW_HALF_THRESHOLD) {
-                 initialWindowBlocks = Math.ceil(totalSourceBlocks * 0.5)
-               } else {
-                 initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
-               }
+               // Files >= 200KB: Use segment-based windowing with fixed 100KB segments
+               initialWindowBlocks = Math.min(Math.ceil(SEGMENT_SIZE_BYTES / DEFAULT_BLOCK_SIZE), totalSourceBlocks)
              }
            }
 

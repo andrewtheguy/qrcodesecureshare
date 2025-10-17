@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -191,11 +191,8 @@ export class FountainEncoder {
     } else if (data.length < WINDOW_ENABLE_THRESHOLD) {
       this.windowEnabled = false
       this.windowEnd = numBlocks
-    } else if (data.length >= WINDOW_ENABLE_THRESHOLD && data.length <= WINDOW_HALF_THRESHOLD) {
-      this.windowEnabled = true
-      this.windowEnd = Math.ceil(numBlocks * 0.5)
     } else {
-      // Large files (>256KB): Use segment-based windowing with fixed 100KB segments
+      // Files >= 200KB: Use segment-based windowing with fixed 100KB segments
       this.windowEnabled = true
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }

@@ -15,6 +15,7 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import type QrScanner from 'qr-scanner';
+import { WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig';
 
 interface WindowInfo {
   windowEnabled: boolean;
@@ -212,7 +213,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         if (decodedInWindow > lastDecodedInWindow) {
           onUpdateLastDecodedInWindow(decodedInWindow);
           const windowDecodePercent = decodedInWindow / updatedWindowInfo.windowSize;
-          if (windowDecodePercent >= 0.5) {
+          if (windowDecodePercent >= WINDOW_BASELINE_THRESHOLD) {
             const now = Date.now();
             if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
               encoder?.expandWindow();
