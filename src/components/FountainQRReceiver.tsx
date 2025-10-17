@@ -80,6 +80,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const currentWindowEndRef = useRef(currentWindowEnd)
   const windowTriggerThresholdRef = useRef(windowTriggerThreshold)
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
+  const isTargetedModeActiveRef = useRef(isTargetedModeActive)
   const triggeredFeedbackRef = useRef(false)
   const lastTriggeredWindowPercentageRef = useRef<number>(0)
   const lastObservedWindowPercentageRef = useRef<number>(0)
@@ -117,7 +118,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Window saturation check with adaptive threshold
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
-          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
+          // Disable window saturation feedback when targeted mode is active
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
             const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
             const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
 
@@ -291,6 +293,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     lastTriggeredWindowPercentageRef.current = lastTriggeredWindowPercentage
   }, [lastTriggeredWindowPercentage])
+
+  useEffect(() => {
+    isTargetedModeActiveRef.current = isTargetedModeActive
+  }, [isTargetedModeActive])
 
   // Auto-start scanning moved to subcomponent
 
