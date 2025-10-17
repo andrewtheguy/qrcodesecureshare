@@ -2,6 +2,9 @@
 
 # Configuration
 PORT=6943
+# should be absolute path from script file location like $0
+TMP_PATH="$(cd "$(dirname "$0")/.." && pwd)/tmp/testoutput"
+OUTPUT_DIR="$TMP_PATH/generated"
 
 # Check if port is in use
 if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
@@ -10,74 +13,20 @@ if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
 fi
 
 # Ensure tmp directory exists
-mkdir -p tmp
+mkdir -p $TMP_PATH
 
 # Remove existing test output directory
-rm -f tmp/qr-code.png
-rm -rf tmp/testoutput
+rm -rf $TMP_PATH
 
-# Build the project and output to tmp/testoutput
-npm run build -- --outDir tmp/testoutput
+# Build the project and output to $OUTPUT_DIR
+npm run build -- --outDir $OUTPUT_DIR
 
-# Start http-server in background
-npx http-server tmp/testoutput -p $PORT -c-1 &
-SERVER_PID=$!
+echo "Built project to $OUTPUT_DIR"
+export CLOUDFLARE_LOG="$TMP_PATH/cloudflare.log"
+export TMP_PATH
 
-# Start cloudflared tunnel in background, output to log file and stdout
-npx cloudflared tunnel --url http://localhost:$PORT | tee tmp/cloudflare.log 2>&1 &
-CLOUDFLARE_PID=$!
-
-# Wait for the Cloudflare URL to appear in the log with timeout 30 seconds
-TIMEOUT=30
-SECONDS=0
-while ! grep -q "https://.*trycloudflare.com" tmp/cloudflare.log; do
-    sleep 1
-    if [ $SECONDS -ge $TIMEOUT ]; then
-        echo "Error: Timed out waiting for Cloudflare URL"
-        kill $SERVER_PID $CLOUDFLARE_PID 2>/dev/null
-        exit 1
-    fi
-done
-
-# Extract the URL
-URL=$(grep "https://.*trycloudflare.com" tmp/cloudflare.log | head -1 | sed 's/.*https:\/\//https:\/\//' | sed 's/|$//' | tr -d ' ')
-
-if [ -z "$URL" ]; then
-    echo "Error: Failed to extract Cloudflare URL"
-    kill $SERVER_PID $CLOUDFLARE_PID 2>/dev/null
-    exit 1
-fi
-
-# Extract subdomain
-SUBDOMAIN=$(echo "$URL" | sed 's|https://||' | sed 's|\.trycloudflare\.com||')
-
-echo "Cloudflare URL: $URL"
-echo "Subdomain: $SUBDOMAIN"
-echo "$SUBDOMAIN"
-
-# Generate QR code
-node -e "
-const QRCode = require('qrcode');
-QRCode.toFile('tmp/qr-code.png', '$URL', { width: 300 }, function (err) {
-    if (err) {
-        console.error('Failed to generate QR code:', err);
-        process.exit(1);
-    }
-    console.log('QR code generated');
-});
-"
-
-# Add subdomain text under the QR code using ImageMagick
-if command -v magick >/dev/null 2>&1; then
-    magick tmp/qr-code.png -background white -fill black -gravity center -pointsize 20 label:\"$SUBDOMAIN\" -append tmp/qr-code.png
-    echo "QR code with subdomain text saved to tmp/qr-code.png"
-elif command -v convert >/dev/null 2>&1; then
-    convert tmp/qr-code.png -background white -fill black -gravity center -pointsize 20 label:\"$SUBDOMAIN\" -append tmp/qr-code.png
-    echo "QR code with subdomain text saved to tmp/qr-code.png"
-else
-    echo "ImageMagick not found. QR code saved without text to tmp/qr-code.png"
-    echo "Subdomain: $SUBDOMAIN"
-fi
-
-# Wait for both processes
-wait $SERVER_PID $CLOUDFLARE_PID
+# Start http-server, cloudflared tunnel, and QR generation concurrently
+npx concurrently \
+  "npx http-server $OUTPUT_DIR -p $PORT -c-1" \
+  "(cloudflared tunnel --url http://localhost:$PORT 2>&1 | tee $CLOUDFLARE_LOG)" \
+  "./scripts/generate-qr.sh"
