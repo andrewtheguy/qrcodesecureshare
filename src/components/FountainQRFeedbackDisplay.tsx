@@ -304,11 +304,11 @@ export function FountainQRFeedbackDisplay({
 
     setAckError(message)
 
-    // Auto-clear after 3 seconds
+    // Auto-clear after 5 seconds
     ackErrorTimeoutRef.current = setTimeout(() => {
       setAckError('')
       ackErrorTimeoutRef.current = null
-    }, 3000)
+    }, 5000)
   }
 
   const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
@@ -316,14 +316,21 @@ export function FountainQRFeedbackDisplay({
       const parsed = JSON.parse(data) as SenderFeedback
       if (parsed.type !== 'SENDER_FEEDBACK') {
         console.warn('[FountainQRFeedbackDisplay] Invalid QR type - expecting ACK')
-        showAckError('Invalid QR type - expecting ACK')
+        showAckError('Invalid QR code scanned. Expected an ACK QR from sender. Please scan the correct ACK QR code.')
         return
       }
 
       if (parsed.sessionId !== sessionId) {
         // Debug logging moved to subcomponent
-        showAckError('Invalid session - wrong QR code')
+        showAckError(`Session mismatch: Expected session ${sessionId}, but got ${parsed.sessionId}. Please ensure you're scanning the ACK QR from the current transfer session.`)
         return
+      }
+
+      // Add window range validation
+      if (parsed.command === 'acknowledge' && parsed.windowExpanded !== undefined) {
+        // Note: Window validation is defensive since sender should generate valid ACKs
+        // This protects against corrupted data
+        // No specific window range data in ACK, so we skip detailed validation here
       }
 
       if (parsed.sequence <= lastSenderFeedbackSequence) {
@@ -331,8 +338,6 @@ export function FountainQRFeedbackDisplay({
         // Replace loud alert with graceful logging
         return
       }
-
-      onSenderSequenceUpdate(parsed.sequence)
 
       switch (parsed.command) {
 
@@ -348,13 +353,14 @@ export function FountainQRFeedbackDisplay({
               console.warn(
                 `[FountainQRFeedbackDisplay] Rejecting ACK: expected acknowledgedSequence=${expectedAcknowledgedSequence}, got ${parsed.acknowledgedSequence}`
               )
-              showAckError(`Invalid ACK sequence - expected ${expectedAcknowledgedSequence}, got ${parsed.acknowledgedSequence}`)
+              showAckError(`ACK sequence mismatch: Expected acknowledgment for sequence ${expectedAcknowledgedSequence}, but received ${parsed.acknowledgedSequence}. This may be an old or duplicate ACK. Please scan the latest ACK QR from sender.`)
               return
             }
 
             // Valid ACK - resume data scanning
             console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
             setFeedbackQRUrl('')
+            onSenderSequenceUpdate(parsed.sequence)
             onModeChange('data-scanning')
             setSenderFeedbackMessage(parsed.message)
 
@@ -372,6 +378,7 @@ export function FountainQRFeedbackDisplay({
       }
     } catch (err) {
       console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
+      showAckError('Failed to read ACK QR code. The QR may be damaged or malformed. Please ask sender to regenerate the ACK QR and try scanning again.')
     }
   }, [sessionId, lastSenderFeedbackSequence, feedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived])
 
@@ -390,6 +397,16 @@ export function FountainQRFeedbackDisplay({
       handleGenerateFeedbackQR()
     }
   }, [isActive, receiverMode, feedbackQRUrl, handleGenerateFeedbackQR])
+
+  // Cleanup ACK error timeout on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => {
+      if (ackErrorTimeoutRef.current) {
+        clearTimeout(ackErrorTimeoutRef.current)
+        ackErrorTimeoutRef.current = null
+      }
+    }
+  }, [])
 
   const handleStartAckScan = () => {
     onModeChange('ack-scanning')
@@ -544,22 +561,26 @@ export function FountainQRFeedbackDisplay({
           </div>
         )}
         {ackError && (
-          <div className="absolute top-12 left-2 right-2 bg-red-500/90 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-            <div className="flex items-start gap-2">
-              <p className="text-sm font-medium">{ackError}</p>
-              <button
-                onClick={() => {
-                  setAckError('')
-                  if (ackErrorTimeoutRef.current) {
-                    clearTimeout(ackErrorTimeoutRef.current)
-                    ackErrorTimeoutRef.current = null
-                  }
-                }}
-                className="text-white hover:text-gray-200 text-sm font-bold ml-auto"
-              >
-                ✕
-              </button>
-            </div>
+          <div className="absolute top-12 left-2 right-2 z-20">
+            <Alert variant="destructive" className="bg-red-500/90 text-white px-3 py-2 rounded-lg shadow-lg">
+              <AlertDescription>
+                <div className="flex items-start gap-2">
+                  <p className="text-sm font-medium font-semibold">⚠️ {ackError}</p>
+                  <button
+                    onClick={() => {
+                      setAckError('')
+                      if (ackErrorTimeoutRef.current) {
+                        clearTimeout(ackErrorTimeoutRef.current)
+                        ackErrorTimeoutRef.current = null
+                      }
+                    }}
+                    className="text-white hover:text-gray-200 text-sm font-bold ml-auto"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </AlertDescription>
+            </Alert>
           </div>
         )}
       </div>

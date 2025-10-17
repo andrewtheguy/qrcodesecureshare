@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -82,12 +82,22 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputDecodedInWindow, setInputDecodedInWindow] = useState('');
   const [inputRequestExpansion, setInputRequestExpansion] = useState(false);
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
-  const [validationError, setValidationError] = useState('');
+  const [validationError, setValidationError] = useState('')
+  const validationErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Reset sequence on session change
   useEffect(() => {
     setSenderFeedbackSequence(0);
   }, [sessionId]);
+
+  // Clean up timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (validationErrorTimeoutRef.current) {
+        clearTimeout(validationErrorTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Pre-fill form fields when windowInfo changes
   useEffect(() => {
@@ -98,43 +108,73 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
   }, [windowInfo]);
 
+  const showValidationError = (message: string) => {
+    // Clear any existing timeout
+    if (validationErrorTimeoutRef.current) {
+      clearTimeout(validationErrorTimeoutRef.current);
+    }
+
+    setValidationError(message);
+
+    // Auto-clear after 5 seconds
+    validationErrorTimeoutRef.current = setTimeout(() => {
+      setValidationError('');
+      validationErrorTimeoutRef.current = null;
+    }, 5000);
+  };
+
   const validateInputs = useCallback((): { valid: boolean; error: string; feedback: FountainFeedback | null } => {
     // Parse and validate sessionId
     const parsedSessionId = parseInt(inputSessionId);
     if (isNaN(parsedSessionId) || parsedSessionId !== sessionId) {
-      return { valid: false, error: 'Session ID must match current session', feedback: null };
+      return { valid: false, error: `Session ID mismatch: Expected ${sessionId}, but got ${parsedSessionId}. Please verify you copied the correct Session ID from the receiver's feedback display.`, feedback: null };
     }
 
     // Parse and validate sequence
     const parsedSequence = parseInt(inputSequence);
     if (isNaN(parsedSequence) || parsedSequence <= lastProcessedSequence) {
-      return { valid: false, error: 'Sequence must be a positive integer greater than last processed sequence', feedback: null };
+      return { valid: false, error: `Invalid sequence: Must be greater than ${lastProcessedSequence} (last processed). Current value: ${parsedSequence}. Please check the Sequence field from receiver's feedback display.`, feedback: null };
     }
 
     // Parse and validate firstMissingBlock
     const parsedFirstMissingBlock = parseInt(inputFirstMissingBlock);
     if (isNaN(parsedFirstMissingBlock) || parsedFirstMissingBlock < 0) {
-      return { valid: false, error: 'First missing block must be a non-negative integer', feedback: null };
+      return { valid: false, error: `Invalid first missing block: Must be a non-negative integer. Current value: ${inputFirstMissingBlock}. Please verify this field from receiver's feedback display.`, feedback: null };
+    }
+
+    // Parse and validate totals first (needed for bounds checking)
+    const parsedTotalDecoded = parseInt(inputTotalDecoded);
+    const parsedTotalBlocks = parseInt(inputTotalBlocks);
+    if (isNaN(parsedTotalDecoded) || isNaN(parsedTotalBlocks) || parsedTotalDecoded < 0 || parsedTotalBlocks <= 0) {
+      return { valid: false, error: `Invalid totals: Total decoded (${parsedTotalDecoded}) and total blocks (${parsedTotalBlocks}) must be positive integers. Please verify these values from receiver's feedback display.`, feedback: null };
+    }
+
+    // Validate firstMissingBlock bounds
+    if (parsedFirstMissingBlock > parsedTotalBlocks) {
+      return { valid: false, error: `Invalid first missing block: Must be within range [0, ${parsedTotalBlocks}]. Current value: ${parsedFirstMissingBlock}. Please verify this field from receiver's feedback display.`, feedback: null };
+    }
+
+    // Validate that totalDecoded does not exceed totalBlocks
+    if (parsedTotalDecoded > parsedTotalBlocks) {
+      return { valid: false, error: `Total decoded (${parsedTotalDecoded}) cannot exceed total blocks (${parsedTotalBlocks}). Please verify these values from receiver's feedback display.`, feedback: null };
     }
 
     // Parse and validate window bounds
     const parsedWindowStart = parseInt(inputWindowStart);
     const parsedWindowEnd = parseInt(inputWindowEnd);
     if (isNaN(parsedWindowStart) || isNaN(parsedWindowEnd) || parsedWindowStart >= parsedWindowEnd) {
-      return { valid: false, error: 'Window start must be less than window end', feedback: null };
+      return { valid: false, error: `Invalid window range: Window start (${parsedWindowStart}) must be less than window end (${parsedWindowEnd}). Please verify these values from receiver's feedback display and try again.`, feedback: null };
     }
 
-    // Parse and validate totals
-    const parsedTotalDecoded = parseInt(inputTotalDecoded);
-    const parsedTotalBlocks = parseInt(inputTotalBlocks);
-    if (isNaN(parsedTotalDecoded) || isNaN(parsedTotalBlocks) || parsedTotalDecoded < 0 || parsedTotalBlocks <= 0) {
-      return { valid: false, error: 'Total decoded and total blocks must be positive integers', feedback: null };
+    // Add bounds checking
+    if (parsedWindowStart < 0 || parsedWindowEnd > parsedTotalBlocks) {
+      return { valid: false, error: `Window bounds invalid: Window start must be >= 0 and window end must be <= total blocks (${parsedTotalBlocks}). Current range: ${parsedWindowStart} to ${parsedWindowEnd}. Please verify these values.`, feedback: null };
     }
 
     // Parse and validate progress
     const parsedProgress = parseFloat(inputProgress);
     if (isNaN(parsedProgress) || parsedProgress < 0 || parsedProgress > 100) {
-      return { valid: false, error: 'Progress must be a number between 0 and 100', feedback: null };
+      return { valid: false, error: `Invalid progress: Must be between 0 and 100. Current value: ${parsedProgress}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
 
     let feedback: FountainFeedback;
@@ -142,7 +182,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     if (inputMode === 'statistics') {
       const parsedDecodedInWindow = parseInt(inputDecodedInWindow);
       if (isNaN(parsedDecodedInWindow) || parsedDecodedInWindow < 0) {
-        return { valid: false, error: 'Decoded in window must be a non-negative integer', feedback: null };
+        return { valid: false, error: `Invalid decoded in window: Must be a non-negative integer. Current value: ${inputDecodedInWindow}. Please verify this field from receiver's feedback display.`, feedback: null };
       }
 
       feedback = {
@@ -162,16 +202,22 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     } else {
       // Targeted mode
       if (inputMissingBlocks.trim() === '') {
-        return { valid: false, error: 'Missing blocks input cannot be empty in targeted mode', feedback: null };
+        return { valid: false, error: 'Missing blocks required: In targeted mode, you must enter the missing blocks from receiver\'s feedback display. Please copy the missing blocks value and try again.', feedback: null };
       }
       let missingBlocks: number[];
       try {
         missingBlocks = parseMissingBlocks(inputMissingBlocks);
       } catch (error) {
-        return { valid: false, error: (error as Error).message || 'Invalid missing blocks format', feedback: null };
+        return { valid: false, error: `Invalid missing blocks format: ${(error as Error).message}. Expected format: comma-separated numbers or ranges (e.g., "1-5, 8, 10-12"). Please verify and correct the input.`, feedback: null };
       }
       if (missingBlocks.some(block => block < 0 || block >= parsedTotalBlocks)) {
-        return { valid: false, error: 'Missing blocks must be within valid range (0 to totalBlocks-1)', feedback: null };
+        return { valid: false, error: `Invalid missing blocks: All block indices must be between 0 and ${parsedTotalBlocks - 1}. Found invalid blocks: ${missingBlocks.filter(b => b < 0 || b >= parsedTotalBlocks).join(', ')}. Please verify the missing blocks from receiver's feedback display.`, feedback: null };
+      }
+
+      // Add consistency check
+      const expectedTotalDecoded = parsedTotalBlocks - missingBlocks.length;
+      if (expectedTotalDecoded !== parsedTotalDecoded) {
+        return { valid: false, error: `Warning: Total decoded (${parsedTotalDecoded}) doesn't match calculated value (${expectedTotalDecoded}) based on missing blocks. This may indicate a data entry error. Please verify all fields.`, feedback: null };
       }
 
       feedback = {
@@ -213,16 +259,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       }
     }
 
-    return [...new Set(blocks)].sort((a, b) => a - b);
+    const deduplicated = [...new Set(blocks)].sort((a, b) => a - b);
+    if (deduplicated.length < blocks.length) {
+      throw new Error('Duplicate block indices detected. Please remove duplicates from the input.');
+    }
+    return deduplicated;
   };
 
   const handleProcessFeedback = useCallback(async () => {
     const { valid, error, feedback } = validateInputs();
     if (!valid || !feedback) {
-      setValidationError(error);
+      showValidationError(error);
       return;
     }
 
+    // Clear any existing validation error
     setValidationError('');
     const firstMissingBlock = feedback.firstMissingBlock || 0;
 
@@ -513,13 +564,29 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         {validationError && (
           <Alert variant="destructive">
-            <AlertDescription>{validationError}</AlertDescription>
+            <AlertDescription>
+              <div className="flex items-start gap-2">
+                <span className="font-semibold">⚠️ {validationError}</span>
+                <button
+                  onClick={() => {
+                    setValidationError('');
+                    if (validationErrorTimeoutRef.current) {
+                      clearTimeout(validationErrorTimeoutRef.current);
+                      validationErrorTimeoutRef.current = null;
+                    }
+                  }}
+                  className="text-red-600 hover:text-red-800 text-sm font-bold ml-auto"
+                >
+                  ✕
+                </button>
+              </div>
+            </AlertDescription>
           </Alert>
         )}
 
         <Alert>
           <AlertDescription>
-            Enter feedback details from the receiver's feedback QR display. All fields must match the receiver's feedback exactly.
+            📋 Instructions: Copy all feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Double-check each field before processing. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 
