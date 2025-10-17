@@ -1,8 +1,5 @@
 export const DEFAULT_BLOCK_SIZE = 400
 
-// Determines when windowing activates (files > 200KB)
-export const WINDOW_ENABLE_THRESHOLD = 200 * 1024
-
 // Segment-based windowing strategy: treats large files as multiple small file segments
 // Uses fixed increments instead of percentage-based expansion for QR code transfers
 // with the sender acting as the single source of truth for the window parameters
@@ -10,6 +7,9 @@ export const WINDOW_ENABLE_THRESHOLD = 200 * 1024
 // Feedback trigger: 40% of window must be decoded (200 blocks) before feedback
 // Prevents too-frequent early feedback and excessive window expansion for larger files
 export const SEGMENT_SIZE_BYTES = 200 * 1024
+
+// Determines when windowing activates (files > 200KB)
+export const WINDOW_ENABLE_THRESHOLD = SEGMENT_SIZE_BYTES
 
 // Fixed increment for window expansion: 50KB ≈ 125 blocks at 400 bytes/block
 // Maintains consistent expansion rate regardless of current window size
