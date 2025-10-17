@@ -19,7 +19,7 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
-import { WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig';
+import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
 
 interface WindowInfo {
   windowEnabled: boolean;
@@ -283,24 +283,35 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         const boundedFirstMissing = Math.min(firstMissingBlock, windowEnd);
         const contiguousDecoded = Math.max(0, boundedFirstMissing - windowStart);
         const hasProgressed = contiguousDecoded > lastDecodedInWindow;
-        const windowDecodePercent = windowSize > 0 ? contiguousDecoded / windowSize : 0;
-        const overallProgress = feedback.progress / 100;
-        const effectiveProgress = (windowDecodePercent + overallProgress) / 2;
-        const reachedWindowEdge = firstMissingBlock >= windowEnd;
 
         if (hasProgressed) {
           onUpdateLastDecodedInWindow(contiguousDecoded);
         }
 
-        if (hasProgressed && (reachedWindowEdge || effectiveProgress >= WINDOW_BASELINE_THRESHOLD)) {
+        if (hasProgressed && contiguousDecoded >= windowSize * WINDOW_BASELINE_THRESHOLD) {
           const now = Date.now();
           if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+            const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
+            const expansionCalc = calculateWindowExpansionSize(
+              firstMissingBlock,
+              windowStart,
+              windowEnd,
+              windowSize,
+              feedback.progress,
+              blockSize,
+              effectiveWindowInfo.totalBlocks
+            );
+            console.log(
+              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): contiguous=${expansionCalc.contiguousDecoded}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
+            );
             encoder?.expandWindow();
             windowExpanded = true;
             const newWindowInfo = encoder?.getWindowInfo();
             if (newWindowInfo) {
               onUpdateWindowInfo(newWindowInfo);
-              console.log(`[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}`);
+              console.log(
+                `[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
+              );
             }
             onUpdateLastWindowExpansion(now);
           }
@@ -345,7 +356,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       }
 
       let windowExpanded = false;
-      if (windowInfo?.windowEnabled && !windowInfo.isWindowComplete && updatedWindowInfo) {
+      if (updatedWindowInfo?.windowEnabled && !updatedWindowInfo?.isWindowComplete) {
         const missingInWindow = missingBlocks.filter(block => block >= updatedWindowInfo.windowStart && block <= updatedWindowInfo.windowEnd);
         const decodedInWindow = updatedWindowInfo.windowSize - missingInWindow.length;
 
@@ -355,11 +366,27 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           if (windowDecodePercent >= WINDOW_BASELINE_THRESHOLD) {
             const now = Date.now();
             if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
+              const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
+              const expansionCalc = calculateWindowExpansionSize(
+                firstMissingBlock,
+                updatedWindowInfo.windowStart,
+                updatedWindowInfo.windowEnd,
+                updatedWindowInfo.windowSize,
+                feedback.progress,
+                blockSize,
+                updatedWindowInfo.totalBlocks
+              );
+              console.log(
+                `[FountainQRManualFeedbackInput] Expansion calculation (targeted): decoded=${decodedInWindow}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
+              );
               encoder?.expandWindow();
               windowExpanded = true;
               const newWindowInfo = encoder?.getWindowInfo();
               if (newWindowInfo) {
                 onUpdateWindowInfo(newWindowInfo);
+                console.log(
+                  `[FountainQRManualFeedbackInput] Window expanded (targeted mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
+                );
               }
               onUpdateLastWindowExpansion(now);
             }
