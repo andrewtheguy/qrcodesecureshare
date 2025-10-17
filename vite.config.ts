@@ -87,7 +87,6 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['src/utils/fountainCode.legacy.ts'],
       // Configure chunk naming for predictable worker chunk names
       // Workers are automatically split into separate chunks by Vite
       output: {

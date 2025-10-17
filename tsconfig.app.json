@@ -27,6 +27,5 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src"],
-  "exclude": ["src/utils/fountainCode.legacy.ts"]
+  "include": ["src"]
 }

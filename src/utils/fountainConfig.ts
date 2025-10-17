@@ -46,9 +46,9 @@ export function getWindowExpansionSizeBlocks(blockSize: number): number {
 }
 
 // Adaptive window threshold algorithm constants
-// The baseline threshold (50%) is the default percentage at which feedback is first triggered
+// The baseline threshold (40%) is the default percentage at which feedback is first triggered
 // The adaptive algorithm adjusts this threshold based on the last triggered percentage to prevent premature feedback requests
 // Formula: adaptiveThreshold = BASELINE + (lastTriggeredPercentage - BASELINE)
-// Example: If last feedback was triggered at 95%, next trigger should be at 95% (50% + 45% compensation)
-export const WINDOW_BASELINE_THRESHOLD = 0.5 // 50% - baseline trigger point
+// Example: If last feedback was triggered at 95%, next trigger should be at 95% (40% + 55% compensation)
+export const WINDOW_BASELINE_THRESHOLD = 0.4 // 40% - baseline trigger point
 

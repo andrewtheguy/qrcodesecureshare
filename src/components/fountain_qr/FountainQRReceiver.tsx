@@ -61,7 +61,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Window state tracking
   const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
-  const [currentWindowEnd, setCurrentWindowEnd] = useState<number>(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+  const [currentWindowEnd, setCurrentWindowEnd] = useState<number>(Math.ceil((initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks) * (1 - WINDOW_BASELINE_THRESHOLD)))
   const [windowTriggerThreshold] = useState<number>(initialMetadata.windowTriggerThreshold ?? 0.5)
   const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
@@ -432,7 +432,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(false)
     setReceiverMode('data-scanning')
     setCurrentWindowStart(initialMetadata.windowStart ?? 0)
-    setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+    setCurrentWindowEnd(Math.ceil((initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks) * (1 - WINDOW_BASELINE_THRESHOLD)))
     feedbackSequenceRef.current = 0
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)
