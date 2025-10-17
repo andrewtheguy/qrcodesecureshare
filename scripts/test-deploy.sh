@@ -24,7 +24,7 @@ npx http-server tmp/testoutput -p $PORT -c-1 &
 SERVER_PID=$!
 
 # Start cloudflared tunnel in background, output to log file and stdout
-npx cloudflared tunnel --url http://localhost:$PORT > tmp/cloudflare.log 2>&1 &
+npx cloudflared tunnel --url http://localhost:$PORT | tee tmp/cloudflare.log 2>&1 &
 CLOUDFLARE_PID=$!
 
 # Wait for the Cloudflare URL to appear in the log
