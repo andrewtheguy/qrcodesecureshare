@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getBaselineWindowExpansionBlocks } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -10,9 +10,9 @@ import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBl
  *  - Renormalizes distribution when truncated by max degree
  *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
  *  - Simplified generateChunk(): no parameter – encoder owns all tuning
- *  - Segment-based windowing for files > 256KB: treats large files as multiple small file segments
- *    with fixed 50KB increments instead of percentage-based expansion, optimized for QR code transfers
- *    where manual camera scanning makes time-based metrics irrelevant
+ *  - Segment-based windowing for files > 200KB: treats large files as multiple small file segments.
+ *    Window expansion is derived from the segment size and adaptive threshold rather than a fixed byte cap,
+ *    allowing larger jumps when the receiver has already decoded substantial portions of the window.
  *
  * Recommended single-session max file size with default blockSize=400 bytes:
  *   Green zone: ≤ ~200 KB (k ≲ 500)
@@ -243,8 +243,8 @@ export class FountainEncoder {
   }
 
   /**
-   * Expand the window by the specified number of blocks or fixed WINDOW_EXPANSION_SIZE_BYTES (50KB ≈ 125 blocks) if not provided
-   * @param expansionBlocks - Optional number of blocks to expand by. If not provided, uses the default fixed expansion size
+   * Expand the window by the specified number of blocks or the adaptive baseline increment if not provided.
+   * @param expansionBlocks - Optional number of blocks to expand by. If not provided, uses the baseline (segment * threshold).
    * Returns true if expansion occurred, false if already at end
    */
   expandWindow(expansionBlocks?: number): boolean {
@@ -252,12 +252,13 @@ export class FountainEncoder {
       return false // Already at the end
     }
 
+    const defaultExpansion = getBaselineWindowExpansionBlocks(this.blockSize)
     let expansion: number
     if (expansionBlocks !== undefined) {
       const coerced = Math.ceil(expansionBlocks)
-      expansion = coerced > 0 ? coerced : getWindowExpansionSizeBlocks(this.blockSize)
+      expansion = coerced > 0 ? coerced : defaultExpansion
     } else {
-      expansion = getWindowExpansionSizeBlocks(this.blockSize)
+      expansion = defaultExpansion
     }
 
     this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)

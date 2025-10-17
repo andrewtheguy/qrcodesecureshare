@@ -11,33 +11,18 @@ export const SEGMENT_SIZE_BYTES = 200 * 1024
 // Determines when windowing activates (files > 200KB)
 export const WINDOW_ENABLE_THRESHOLD = SEGMENT_SIZE_BYTES
 
-// Fixed increment for window expansion: 50KB ≈ 125 blocks at 400 bytes/block
-// Maintains consistent expansion rate regardless of current window size
-export const WINDOW_EXPANSION_SIZE_BYTES = 50 * 1024
-
 // Targeted mode activation threshold (byte-based, converted to blocks at runtime)
 // When missing blocks <= this threshold, receiver switches to targeted mode
 // Fountain code handles 50-100 missing blocks efficiently without targeting
 // Targeted mode is most effective for the "tail problem" (few scattered blocks)
 const TARGETED_MODE_MAX_MISSING_BYTES = 10 * DEFAULT_BLOCK_SIZE // 4000 bytes
 
-// File size threshold for feedback (byte-based, converted to blocks at runtime)
-const FEEDBACK_FILE_SIZE_THRESHOLD_BYTES = 50 * DEFAULT_BLOCK_SIZE // 20000 bytes
-
 export function getTargetedModeMaxMissingBlocks(blockSize: number): number {
   return Math.ceil(TARGETED_MODE_MAX_MISSING_BYTES / blockSize)
 }
 
-export function getFeedbackFileSizeThresholdBlocks(blockSize: number): number {
-  return Math.ceil(FEEDBACK_FILE_SIZE_THRESHOLD_BYTES / blockSize)
-}
-
 export function getSegmentSizeBlocks(blockSize: number): number {
   return Math.ceil(SEGMENT_SIZE_BYTES / blockSize)
-}
-
-export function getWindowExpansionSizeBlocks(blockSize: number): number {
-  return Math.ceil(WINDOW_EXPANSION_SIZE_BYTES / blockSize)
 }
 
 // Adaptive window threshold algorithm constants
@@ -46,6 +31,15 @@ export function getWindowExpansionSizeBlocks(blockSize: number): number {
 // Formula: adaptiveThreshold = BASELINE + (lastTriggeredPercentage - BASELINE)
 // Example: If last feedback was triggered at 95%, next trigger should be at 95% (40% + 55% compensation)
 export const WINDOW_BASELINE_THRESHOLD = 0.4 // 40% - baseline trigger point
+
+/**
+ * Calculates the minimum expansion increment (in blocks) derived from the segment size and baseline threshold.
+ * This ensures any default expansion is expressed as a fraction of the segment size instead of a fixed byte limit.
+ */
+export function getBaselineWindowExpansionBlocks(blockSize: number): number {
+  const segmentSizeBlocks = getSegmentSizeBlocks(blockSize)
+  return Math.max(1, Math.ceil(segmentSizeBlocks * WINDOW_BASELINE_THRESHOLD))
+}
 
 /**
  * Calculates dynamic window expansion size based on receiver's progress and first missing block position.

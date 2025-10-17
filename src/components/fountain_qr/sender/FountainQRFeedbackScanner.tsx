@@ -168,7 +168,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
             console.log(
               `[FountainQRFeedbackScanner] Expansion calculation (statistics): contiguous=${expansionCalc.contiguousDecoded}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
             );
-            encoder?.expandWindow();
+            encoder?.expandWindow(expansionCalc.expansionBlocks);
             windowExpanded = true;
             const newWindowInfo = encoder?.getWindowInfo();
             if (newWindowInfo) {
@@ -255,7 +255,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
               console.log(
                 `[FountainQRFeedbackScanner] Expansion calculation (targeted): decoded=${decodedInWindow}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
               );
-              encoder?.expandWindow();
+              encoder?.expandWindow(expansionCalc.expansionBlocks);
               windowExpanded = true;
               const newWindowInfo = encoder?.getWindowInfo();
               if (newWindowInfo) {
