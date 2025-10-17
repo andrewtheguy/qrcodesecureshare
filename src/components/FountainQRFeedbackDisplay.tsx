@@ -1,11 +1,39 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import type { FountainFeedback, FountainFeedbackStatistics, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, FountainFeedbackStatistics, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
+
+/**
+ * Formats an array of missing block indices into a human-readable range string.
+ * Compresses consecutive blocks into ranges (e.g., "1-5, 8, 10-12").
+ * @param blocks - Sorted array of missing block indices
+ * @returns Formatted string or "None" if empty
+ */
+const formatMissingBlocksAsRanges = (blocks: number[]): string => {
+  if (blocks.length === 0) return 'None'
+
+  const ranges: string[] = []
+  let start = blocks[0]
+  let end = blocks[0]
+
+  for (let i = 1; i < blocks.length; i++) {
+    if (blocks[i] === end + 1) {
+      end = blocks[i]
+    } else {
+      ranges.push(start === end ? start.toString() : `${start}-${end}`)
+      start = blocks[i]
+      end = blocks[i]
+    }
+  }
+  ranges.push(start === end ? start.toString() : `${start}-${end}`)
+
+  return ranges.join(', ')
+}
 
 interface FountainQRFeedbackDisplayProps {
   fountainMetadata: FountainMetadata
@@ -52,6 +80,7 @@ export function FountainQRFeedbackDisplay({
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
+  const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [ackError, setAckError] = useState<string>('')
@@ -256,6 +285,7 @@ export function FountainQRFeedbackDisplay({
       }
       setFeedbackQRUrl(dataUrl)
       setFeedbackMode(feedback.mode)
+      setFeedbackData(feedback)
 
       // Mark this sequence as generated atomically
       lastGeneratedSequenceRef.current = seq
@@ -373,36 +403,104 @@ export function FountainQRFeedbackDisplay({
 
   if (receiverMode === 'feedback-display' && feedbackQRUrl) {
     return (
-      <Alert>
-        <AlertDescription>
-          <div className="space-y-3">
-            <p className="font-medium">📊 Feedback QR Code</p>
-            <div className="flex justify-center bg-white p-4 rounded-lg">
-              <img
-                src={feedbackQRUrl}
-                alt="Feedback QR Code"
-                className="max-w-full h-auto"
-              />
+      <div className="space-y-4">
+        <Alert>
+          <AlertDescription>
+            <div className="space-y-3">
+              <p className="font-medium">📊 Feedback QR Code</p>
+              <div className="flex justify-center bg-white p-4 rounded-lg">
+                <img
+                  src={feedbackQRUrl}
+                  alt="Feedback QR Code"
+                  className="max-w-full h-auto"
+                />
+              </div>
+              <p className="text-sm text-center">
+                Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%)
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                {(fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
+              </p>
+              <p className="text-xs text-muted-foreground text-center">
+                Show this QR to sender, then click the button below to scan for ACK
+              </p>
+              <Button
+                onClick={handleStartAckScan}
+                variant="default"
+                className="w-full"
+              >
+                Start Scanning for ACK
+              </Button>
             </div>
-            <p className="text-sm text-center">
-              Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%)
-            </p>
-            <p className="text-xs text-muted-foreground text-center">
-              {(fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize) ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
-            </p>
-            <p className="text-xs text-muted-foreground text-center">
-              Show this QR to sender, then click the button below to scan for ACK
-            </p>
-            <Button
-              onClick={handleStartAckScan}
-              variant="default"
-              className="w-full"
-            >
-              Start Scanning for ACK
-            </Button>
-          </div>
-        </AlertDescription>
-      </Alert>
+          </AlertDescription>
+        </Alert>
+        {feedbackData && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Feedback Details</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2">
+                <span className="text-muted-foreground font-medium text-sm">Session ID:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.sessionId}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Sequence:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.sequence}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Mode:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.mode.charAt(0).toUpperCase() + feedbackData.mode.slice(1)}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">First Missing Block:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.windowStart}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Window End:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.windowEnd}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {feedbackData.mode === 'statistics'
+                    ? (feedbackData as FountainFeedbackStatistics).totalDecoded
+                    : feedbackData.totalBlocks - (feedbackData as FountainFeedbackTargeted).missingBlocks.length}
+                </span>
+
+                <span className="text-muted-foreground font-medium text-sm">Total Blocks:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.totalBlocks}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Progress:</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.progress.toFixed(1)}%</span>
+
+                {feedbackData.mode === 'statistics' && (
+                  <>
+                    <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
+                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).decodedInWindow}</span>
+
+                    <span className="text-muted-foreground font-medium text-sm">Request Expansion:</span>
+                    <span className="font-mono text-sm cursor-text select-all">{(feedbackData as FountainFeedbackStatistics).requestWindowExpansion ? 'Yes' : 'No'}</span>
+                  </>
+                )}
+
+                {feedbackData.mode === 'targeted' && (
+                  <>
+                    <span className="text-muted-foreground font-medium text-sm">Missing Blocks:</span>
+                    <span className="font-mono text-sm cursor-text select-all break-all">
+                      {(() => {
+                        const formatted = formatMissingBlocksAsRanges((feedbackData as FountainFeedbackTargeted).missingBlocks)
+                        return formatted.length > 100 ? formatted.substring(0, 100) + '...' : formatted
+                      })()}
+                      {(feedbackData as FountainFeedbackTargeted).missingBlocks.length > 0 && formatMissingBlocksAsRanges((feedbackData as FountainFeedbackTargeted).missingBlocks).length > 100 && (
+                        <span className="text-xs text-muted-foreground block">(showing first blocks)</span>
+                      )}
+                    </span>
+                  </>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
     )
   }
 
