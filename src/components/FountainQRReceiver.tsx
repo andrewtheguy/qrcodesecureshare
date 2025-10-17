@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD, WINDOW_MIN_PROGRESS_DELTA } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './FountainQRFeedbackDisplay'
@@ -131,7 +131,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
             console.log(`[FountainQRReceiver] Adaptive threshold check: current=${(windowDecodePercentage * 100).toFixed(1)}%, adaptive threshold=${(adaptiveThreshold * 100).toFixed(1)}%, progress delta=${(progressDelta * 100).toFixed(1)}%`)
 
-            if (windowDecodePercentage >= adaptiveThreshold && progressDelta >= WINDOW_MIN_PROGRESS_DELTA) {
+            if (windowDecodePercentage >= adaptiveThreshold) {
               // Guard: Prevent rapid mode switching by ensuring transition occurs only once per feedback cycle
               if (triggeredFeedbackRef.current) {
                 return

@@ -3,7 +3,6 @@ import { computeChecksum } from '@/utils/checksum'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './FountainQRSender'
 import QRCode from 'qrcode'
@@ -13,19 +12,6 @@ import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, WINDOW_HALF_THRESHOLD, SEG
 const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
-// Camera detection utility function
-const checkCameraAvailability = async (): Promise<boolean> => {
-  try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
-      return false
-    }
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    return devices.some(device => device.kind === 'videoinput')
-  } catch (error) {
-    console.warn('Camera detection failed:', error)
-    return false
-  }
-}
 
 interface OfflineQRModeProps {
   file: File | null
@@ -35,7 +21,7 @@ interface OfflineQRModeProps {
 export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
 export const MAX_FILE_SIZE_FOUNTAIN = 2 * 1024 * 1024
 
-type TransferMode = 'sequential' | 'fountain'
+type TransferMode = 'sequential' | 'fountain-feedback' | 'fountain-simple'
 
 interface SequentialMetadata {
   type: 'METADATA'
@@ -86,8 +72,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
    const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
    const [currentSessionId, setCurrentSessionId] = useState<number>(0)
    const [modeSizeError, setModeSizeError] = useState<string>('')
-   const [cameraDetectionDialog, setCameraDetectionDialog] = useState(false)
-   const [cameraAutoDetected, setCameraAutoDetected] = useState<boolean | null>(null)
    const [feedbackEnabled, setFeedbackEnabled] = useState(true)
 
   // ------------------------------------------------------------------
@@ -137,7 +121,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           if (cancelled) return
           setMetadataJson(meta)
           setMetadataQR(qrUrl)
-        } else if (transferMode === 'fountain') {
+        } else if (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') {
            // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
            const arrayBuffer = await file.arrayBuffer()
            const size = arrayBuffer.byteLength
@@ -210,7 +194,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     return () => { cancelled = true }
   }, [file, transferMode, step, feedbackEnabled])
 
-  const handleSelectMode = async (mode: TransferMode) => {
+  const handleSelectMode = (mode: TransferMode) => {
      if (!file) return
 
      let maxSize: number
@@ -221,7 +205,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
        modeName = 'Sequential'
      } else {
        maxSize = MAX_FILE_SIZE_FOUNTAIN
-       modeName = 'Fountain (Windowed)'
+       modeName = 'Fountain'
      }
 
      if (file.size > maxSize) {
@@ -230,20 +214,17 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
      }
 
      setModeSizeError('')
+     setTransferMode(mode)
 
-     if (mode === 'fountain') {
-       // For fountain mode, check camera availability first
-       const cameraAvailable = await checkCameraAvailability()
-       setCameraAutoDetected(cameraAvailable)
-       setCameraDetectionDialog(true)
-       setTransferMode(mode)
-     } else {
-       // For other modes, proceed directly
-       setTransferMode(mode)
-       setStep('metadata')
-       setMetadataQR('')
-       setMetadataJson(null)
-     }
+    if (mode === 'fountain-feedback') {
+      setFeedbackEnabled(true)
+    } else if (mode === 'fountain-simple') {
+      setFeedbackEnabled(false)
+    }
+
+     setStep('metadata')
+     setMetadataQR('')
+     setMetadataJson(null)
    }
 
   const handleStartTransfer = () => {
@@ -262,8 +243,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setSenderRemountKey(id => id + 1)
     setCurrentSessionId(0)
     setModeSizeError('')
-    setCameraDetectionDialog(false)
-    setCameraAutoDetected(null)
     setFeedbackEnabled(true)
     if (onReset) onReset()
   }
@@ -296,28 +275,38 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               <AlertDescription>{modeSizeError}</AlertDescription>
             </Alert>
           )}
-          {/* Fountain Mode - RECOMMENDED (shown first)
-              Fountain coding is preferred for files large enough to need chunking.
-              Sequential mode may be deprecated or code-frozen in the future as a backup option only. */}
           <Button
-            onClick={() => handleSelectMode('fountain')}
+            onClick={() => handleSelectMode('fountain-feedback')}
             variant="outline"
             className="w-full h-auto py-6 flex flex-col items-start gap-2 border-2 border-primary"
           >
-            <div className="font-bold text-lg">🔁 Fountain Code Transfer (Recommended)</div>
+            <div className="font-bold text-lg">🔁 Fountain Code (Recommended)</div>
             <div className="text-sm text-left text-muted-foreground">
-              • Generates random coded chunks with segment-based windowing for large files<br/>
-              • Receiver needs ~105-115% of source blocks (varies by file size)<br/>
-              • Can skip/miss chunks and still decode<br/>
-              • Preferred for large files<br/>
-              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}<br/>
-              • Uses feedback QR codes for optimal performance
+              • Optimal performance with camera feedback QR codes<br/>
+              • Sender scans receiver's feedback for intelligent chunk generation<br/>
+              • Generates random coded chunks with windowing<br/>
+              • Receiver needs ~105-115% of source blocks<br/>
+              • Best for reliable two-way communication<br/>
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
+            </div>
+          </Button>
+          <Button
+            onClick={() => handleSelectMode('fountain-simple')}
+            variant="outline"
+            className="w-full h-auto py-6 flex flex-col items-start gap-2"
+          >
+            <div className="font-bold text-lg">🔁 Fountain Code (Simple)</div>
+            <div className="text-sm text-left text-muted-foreground">
+              • For environments without camera on sender side<br/>
+              • Uses pure random chunk generation (no feedback)<br/>
+              • Transfer completes without sender scanning<br/>
+              • May require more total chunks (~115%+)<br/>
+              • Ideal for one-way transfers or no-camera setups<br/>
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
             </div>
           </Button>
 
-
-          {/* Sequential Mode - Legacy/Backup
-              Not recommended for large files. May become backup-only or code-frozen. */}
+          {/* Sequential Mode - Legacy/Backup */}
           <Button
             onClick={() => handleSelectMode('sequential')}
             variant="outline"
@@ -332,62 +321,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               • Maximum file size: {kb(MAX_FILE_SIZE_SEQUENTIAL)}
             </div>
           </Button>
-
-          {/* Camera Detection Confirmation Dialog */}
-          <Dialog open={cameraDetectionDialog} onOpenChange={(open) => {
-            if (!open) {
-              // Reset transferMode and cameraAutoDetected so selection can be made cleanly again
-              setTransferMode(null)
-              setCameraAutoDetected(null)
-              setFeedbackEnabled(true)
-            }
-            setCameraDetectionDialog(open)
-          }}>
-            <DialogContent showCloseButton={false}>
-              <DialogHeader>
-                <DialogTitle>Camera Detection for Feedback Mode</DialogTitle>
-                <DialogDescription>
-                  {cameraAutoDetected === true && "Camera detected on your device!"}
-                  {cameraAutoDetected === false && "No camera detected on your device."}
-                  {cameraAutoDetected === null && "Checking camera availability..."}
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Can you scan QR codes with your camera? This enables feedback mode for optimal transfer performance.
-                </p>
-                <div className="text-xs text-muted-foreground space-y-1">
-                  <p><strong>Feedback Mode:</strong> Sender scans receiver's feedback QR codes to optimize chunk generation.</p>
-                  <p><strong>No-Feedback Mode:</strong> Transfer completes using random chunk generation only.</p>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setFeedbackEnabled(false)
-                    setCameraDetectionDialog(false)
-                    setStep('metadata')
-                    setMetadataQR('')
-                    setMetadataJson(null)
-                  }}
-                >
-                  No, I cannot scan
-                </Button>
-                <Button
-                  onClick={() => {
-                    setFeedbackEnabled(true)
-                    setCameraDetectionDialog(false)
-                    setStep('metadata')
-                    setMetadataQR('')
-                    setMetadataJson(null)
-                  }}
-                >
-                  Yes, I can scan
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
           {onReset && (
             <Button onClick={onReset} variant="outline" className="w-full">
@@ -405,7 +338,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
       <Card>
         <CardHeader>
           <CardTitle className="text-center">
-            {transferMode === 'sequential' ? '📋 Sequential Transfer Metadata' : '🔁 Fountain Transfer Metadata'}
+            {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple')
+              ? '🔁 Fountain Transfer Metadata'
+              : '📋 Sequential Transfer Metadata'}
           </CardTitle>
           <div className="text-sm text-muted-foreground text-center space-y-1">
             <p className="font-medium">{file.name}</p>
@@ -444,7 +379,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               </div>
 
               {/* Warning message for no-feedback mode */}
-              {transferMode === 'fountain' && !feedbackEnabled && (
+              {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && !feedbackEnabled && (
                 <Alert variant="default">
                   <AlertDescription className="text-sm">
                     ⚠️ Sender cannot scan QR codes - Receiver will operate in no-feedback mode. The receiver should not generate feedback QR codes during transfer. Transfer will complete using random chunk generation only.
@@ -463,7 +398,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                         <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
                       </>
                     )}
-                    {transferMode === 'fountain' && metadataJson.mode === 'fountain' && (
+                    {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson.mode === 'fountain' && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
                         <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>
@@ -487,8 +422,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <Button
               onClick={() => {
                 setStep('mode')
-                setCameraDetectionDialog(false)
-                setCameraAutoDetected(null)
                 setFeedbackEnabled(true)
               }}
               variant="outline"
@@ -537,7 +470,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     <Card>
       <CardHeader>
         <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Transfer' : '🔁 Fountain Code Transfer'}
+          {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple')
+            ? '🔁 Fountain Code Transfer'
+            : '📋 Sequential Transfer'}
         </CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
@@ -576,7 +511,16 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             {transferMode === 'sequential' ? (
               <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
             ) : (
-              <FountainQRSender key={`fount-${senderRemountKey}`} file={file} sessionId={currentSessionId} feedbackEnabled={feedbackEnabled} checksum={metadataJson.checksum} checksumAlg={metadataJson.checksumAlg} />
+              (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
+                <FountainQRSender
+                  key={`fount-${senderRemountKey}`}
+                  file={file}
+                  sessionId={currentSessionId}
+                  feedbackEnabled={feedbackEnabled}
+                  checksum={metadataJson.checksum}
+                  checksumAlg={metadataJson.checksumAlg}
+                />
+              )
             )}
           </>
         )}
