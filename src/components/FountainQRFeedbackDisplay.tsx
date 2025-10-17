@@ -510,6 +510,9 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">First Missing Block:</span>
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
 
+                <span className="text-muted-foreground font-medium text-sm">Progress:</span>
+                <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
+
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
 
@@ -524,9 +527,6 @@ export function FountainQRFeedbackDisplay({
 
                 <span className="text-muted-foreground font-medium text-sm">Total Blocks:</span>
                 <span className="font-mono text-sm cursor-text select-all">{fountainMetadata.totalSourceBlocks}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Progress:</span>
-                <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
                 {feedbackData.mode === 'statistics' && (
                   <>

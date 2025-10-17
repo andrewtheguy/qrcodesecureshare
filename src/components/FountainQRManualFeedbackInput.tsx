@@ -504,21 +504,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </p>
         </div>
 
-        <div>
-          <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
-          <Input
-            id="confirmationCode"
-            type="text"
-            value={inputConfirmationCode}
-            onChange={handleConfirmationCodeChange}
-            placeholder="e.g., ABCD-1234"
-            className="font-mono"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Copy this code from the receiver's Feedback Details card
-          </p>
-        </div>
-
          {inputMode === 'statistics' && (
            <div className="flex items-center space-x-2">
              <Checkbox
@@ -545,6 +530,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             </p>
           </div>
         )}
+
+        <div>
+          <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
+          <Input
+            id="confirmationCode"
+            type="text"
+            value={inputConfirmationCode}
+            onChange={handleConfirmationCodeChange}
+            placeholder="e.g., ABCD-1234"
+            className="font-mono"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Copy this code from the receiver's Feedback Details card
+          </p>
+        </div>
 
         {validationError && (
           <Alert variant="destructive">
