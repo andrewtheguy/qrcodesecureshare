@@ -1,11 +1,18 @@
+/**
+ * This is the main RECEIVER component that orchestrates the entire fountain code
+ * transfer process from the receiver's perspective. It coordinates between data
+ * scanning, feedback generation, and acknowledgment handling to successfully
+ * decode files sent via fountain-coded QR streams.
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
-import { FountainQRDataScanner } from './FountainQRDataScanner'
-import { FountainQRFeedbackDisplay } from './FountainQRFeedbackDisplay'
+import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
+import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
 
 interface FountainQRReceiverProps {
   initialMetadata: {

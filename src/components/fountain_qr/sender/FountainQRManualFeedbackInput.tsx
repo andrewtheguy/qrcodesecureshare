@@ -1,3 +1,13 @@
+/**
+ *
+ * This component provides an alternative manual input method for SENDER devices
+ * that cannot use camera-based QR scanning. Instead of scanning feedback QR codes
+ * from the receiver, the sender can manually enter the feedback details from the
+ * receiver's display. This enables fountain code transfers on devices without cameras
+ * or when camera scanning is not feasible.
+ *
+ */
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';

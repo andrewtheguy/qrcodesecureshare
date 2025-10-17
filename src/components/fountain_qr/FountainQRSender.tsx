@@ -1,3 +1,10 @@
+/**
+ * This is the main SENDER component that orchestrates the entire fountain code
+ * transfer process from the sender's perspective. It coordinates between data
+ * display, feedback scanning, and acknowledgment generation to efficiently
+ * transmit files via fountain-coded QR streams.
+ */
+
 import { useState, useEffect, useMemo } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -5,9 +12,9 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
-import { FountainQRDataDisplay } from './FountainQRDataDisplay'
-import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'
-import { FountainQRManualFeedbackInput } from './FountainQRManualFeedbackInput'
+import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
+import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
+import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput'
 
 interface FountainQRSenderProps {
   file: File

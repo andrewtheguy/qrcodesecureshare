@@ -1,3 +1,13 @@
+/**
+ * RECEIVER-SIDE COMPONENT
+ *
+ * This component handles the RECEIVER's feedback and acknowledgment phases of the Fountain Code transfer.
+ * It generates feedback QR codes containing decoding progress information and scans for acknowledgment
+ * QR codes from the sender. The component supports both statistics mode (compact progress info)
+ * and targeted mode (specific missing block indices) for efficient communication.
+ *
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'

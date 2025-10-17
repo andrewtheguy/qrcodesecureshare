@@ -1,3 +1,13 @@
+/**
+ *
+ * This component is responsible for the SENDER's side of the Fountain Code transfer.
+ * It takes an encoded file (FountainEncoder) and displays a continuous stream of QR codes
+ * that the receiver can scan. Each QR code contains a fountain-coded chunk that combines
+ * multiple source blocks via XOR operations, allowing the receiver to decode the file
+ * even if some chunks are missed or corrupted.
+ *
+ */
+
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
@@ -5,7 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import { computeChecksum } from '@/utils/checksum'
-import QRWorker from '../workers/qrGenerator.worker.ts?worker'
+import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 interface WindowInfo {
   windowEnabled: boolean

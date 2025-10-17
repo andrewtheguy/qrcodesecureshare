@@ -1,3 +1,13 @@
+/**
+ * SENDER-SIDE COMPONENT
+ *
+ * This component handles the SENDER's feedback scanning and acknowledgment generation phases
+ * of the Fountain Code transfer. It scans feedback QR codes from the receiver containing
+ * decoding progress information and generates acknowledgment QR codes to confirm receipt
+ * and potentially expand the transmission window.
+ *
+ */
+
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
-import { FountainQRReceiver } from './FountainQRReceiver'
+import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
 type TransferMode = 'sequential' | 'fountain' | null

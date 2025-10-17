@@ -1,3 +1,11 @@
+/**
+ * This component is responsible for the RECEIVER's side of the Fountain Code transfer.
+ * It uses the device's camera to scan QR codes containing fountain-coded chunks sent
+ * by the sender. The component processes these chunks in a web worker to decode the
+ * original file, even if some chunks are missed or arrive out of order.
+ *
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
