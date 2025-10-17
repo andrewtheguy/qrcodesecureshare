@@ -6,7 +6,7 @@ export const DEFAULT_BLOCK_SIZE = 400
 // Initial window size: 200KB ≈ 500 blocks at 400 bytes/block
 // Feedback trigger: 40% of window must be decoded (200 blocks) before feedback
 // Prevents too-frequent early feedback and excessive window expansion for larger files
-export const SEGMENT_SIZE_BYTES = 200 * 1024
+const SEGMENT_SIZE_BYTES = 200 * 1024
 
 // Determines when windowing activates (files > 200KB)
 export const WINDOW_ENABLE_THRESHOLD = SEGMENT_SIZE_BYTES
