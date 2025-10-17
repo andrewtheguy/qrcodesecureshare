@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -197,12 +197,6 @@ export class FountainEncoder {
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }
 
-    // Apply padding to initial window for faster first feedback
-    // This compensates for the WINDOW_BASELINE_THRESHOLD (40%) feedback trigger
-    // Example: 250 blocks * 0.6 = 150 blocks, feedback at 60 blocks (40% of 150)
-    if (this.windowEnabled) {
-      this.windowEnd = Math.ceil(this.windowEnd * (1 - WINDOW_BASELINE_THRESHOLD))
-    }
   }
 
   getMetadata(): FountainMetadata { return this.metadata }
@@ -249,16 +243,24 @@ export class FountainEncoder {
   }
 
   /**
-   * Expand the window by fixed WINDOW_EXPANSION_SIZE_BYTES (50KB ≈ 125 blocks)
+   * Expand the window by the specified number of blocks or fixed WINDOW_EXPANSION_SIZE_BYTES (50KB ≈ 125 blocks) if not provided
+   * @param expansionBlocks - Optional number of blocks to expand by. If not provided, uses the default fixed expansion size
    * Returns true if expansion occurred, false if already at end
    */
-  expandWindow(): boolean {
+  expandWindow(expansionBlocks?: number): boolean {
     if (this.windowEnd >= this.sourceBlocks.length) {
       return false // Already at the end
     }
 
-    const expansionBlocks = getWindowExpansionSizeBlocks(this.blockSize)
-    this.windowEnd = Math.min(this.windowEnd + expansionBlocks, this.sourceBlocks.length)
+    let expansion: number
+    if (expansionBlocks !== undefined) {
+      const coerced = Math.ceil(expansionBlocks)
+      expansion = coerced > 0 ? coerced : getWindowExpansionSizeBlocks(this.blockSize)
+    } else {
+      expansion = getWindowExpansionSizeBlocks(this.blockSize)
+    }
+
+    this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)
     return true
   }
 
