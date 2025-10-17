@@ -282,11 +282,11 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           >
             <div className="font-bold text-lg">🔁 Fountain Code (Recommended)</div>
             <div className="text-sm text-left text-muted-foreground">
-              • Optimal performance with camera feedback QR codes<br/>
-              • Sender scans receiver's feedback for intelligent chunk generation<br/>
+              • Works with or without camera on sender<br/>
+              • Sender can scan receiver's feedback for intelligent chunk generation or via manual input with intelligent confirmation code<br/>
               • Generates random coded chunks with windowing<br/>
               • Receiver needs ~105-115% of source blocks<br/>
-              • Best for reliable two-way communication<br/>
+              • Best for reliable communication<br/>
               • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
             </div>
           </Button>
@@ -295,14 +295,12 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             variant="outline"
             className="w-full h-auto py-6 flex flex-col items-start gap-2"
           >
-            <div className="font-bold text-lg">🔁 Fountain Code (Simple)</div>
+            <div className="font-bold text-lg">🔁 Fountain Code (Basic)</div>
             <div className="text-sm text-left text-muted-foreground">
-              • For environments without camera on sender side<br/>
+              • For senders without cameras and are difficult to type for manual input<br/>
               • Uses pure random chunk generation (no feedback)<br/>
-              • Transfer completes without sender scanning<br/>
-              • May require more total chunks (~115%+)<br/>
-              • Ideal for one-way transfers or no-camera setups<br/>
-              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
+              • Transfer completes by one-way communication without feedback from receiver to sender<br/>
+              • Might be slow for large files<br/>
             </div>
           </Button>
 
