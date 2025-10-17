@@ -27,9 +27,16 @@ SERVER_PID=$!
 npx cloudflared tunnel --url http://localhost:$PORT | tee tmp/cloudflare.log 2>&1 &
 CLOUDFLARE_PID=$!
 
-# Wait for the Cloudflare URL to appear in the log
+# Wait for the Cloudflare URL to appear in the log with timeout 30 seconds
+TIMEOUT=30
+SECONDS=0
 while ! grep -q "https://.*trycloudflare.com" tmp/cloudflare.log; do
     sleep 1
+    if [ $SECONDS -ge $TIMEOUT ]; then
+        echo "Error: Timed out waiting for Cloudflare URL"
+        kill $SERVER_PID $CLOUDFLARE_PID 2>/dev/null
+        exit 1
+    fi
 done
 
 # Extract the URL
