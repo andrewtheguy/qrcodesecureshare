@@ -13,6 +13,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import { useQRScanner } from '@/hooks/useQRScanner'
 
+// Optional: Extract variables for targeted mode testing to the top for easy toggling
+const ENABLE_TARGETED_MODE_TEST = false
+const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
@@ -81,9 +84,6 @@ export function FountainQRDataScanner({
     // ════════════════════════════════════════════════════════════════════════════
     // ════════════════════════════════════════════════════════════════════════════
 
-    const TARGETED_TEST_IGNORE_BLOCKS: number[] = Array.from({ length: 101 }, (_, i) => i + 100);
-
-    const ENABLE_TARGETED_MODE_TEST = true
 
     const isTargetedModeTestActive = ENABLE_TARGETED_MODE_TEST && !isTargetedModeActive
 
@@ -237,13 +237,15 @@ export function FountainQRDataScanner({
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
   // Calculate compressed rectangle grid layout (fixed 10 columns like SequentialQRReceiver)
-  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, 60) // Max 60 rectangles (6 rows x 10 cols)
+  // Use exactly the number of rectangles needed, up to max 60 (6 rows x 10 cols)
+  const maxRectangles = 60
+  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, maxRectangles)
   const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
 
   // Get color for rectangle based on decoded blocks in range
   function getRectangleColor(decodedInRange: number, totalInRange: number) {
     if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
-    if (decodedInRange === totalInRange) return 'bg-green-500' // Allow for cases where range spans might overlap
+    if (decodedInRange === totalInRange) return 'bg-green-500'
     return 'bg-yellow-500'
   }
 
