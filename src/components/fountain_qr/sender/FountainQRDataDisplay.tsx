@@ -52,6 +52,8 @@ interface FountainQRDataDisplayProps {
   onSkippedChunk: () => void
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
+  fps: number
+  onFpsChange: (fps: number) => void
 }
 
 // QR Code capacity mapping based on error correction level and canvas width
@@ -95,11 +97,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onChunkGenerated,
     onSkippedChunk,
     onBufferUpdate,
-    onError
+    onError,
+    fps,
+    onFpsChange
   } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState(4)
   const [chunkCount, setChunkCount] = useState(0)
   const [skippedChunks, setSkippedChunks] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
@@ -308,7 +311,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         if (failures >= 5) {
           originalFpsRef.current = fpsRef.current
           const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
-          setFps(reducedFps)
+          onFpsChange(reducedFps)
           console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
         }
 
@@ -329,7 +332,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       return QRCode.toDataURL(binaryString, options)
     })
-  }, [chunkCountRef, bufferLengthRef, fpsRef])
+  }, [chunkCountRef, bufferLengthRef, fpsRef, onFpsChange])
 
   // Generate and display fountain-coded chunk in binary format
   useEffect(() => {
@@ -643,9 +646,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     })
 
     if (Math.abs(closestSnap - newFps) <= threshold) {
-      setFps(closestSnap)
+      onFpsChange(closestSnap)
     } else {
-      setFps(newFps)
+      onFpsChange(newFps)
     }
   }
 
@@ -753,7 +756,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             max={60}
             step={1}
             className="w-full"
-            defaultValue={[4]}
           />
           <div className="flex justify-between text-xs text-muted-foreground px-2">
             <span>1 fps</span>
