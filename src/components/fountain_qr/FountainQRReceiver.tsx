@@ -556,6 +556,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         invalidChecksumCount={invalidChecksumCount}
         isTargetedModeActive={isTargetedModeActive}
         senderFeedbackMessage={senderFeedbackMessage}
+        decodedBlockIndices={decodedBlockIndicesRef.current}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
