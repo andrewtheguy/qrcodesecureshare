@@ -91,7 +91,6 @@ export function FountainQRFeedbackDisplay({
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
   const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
   const [confirmationCode, setConfirmationCode] = useState<string>('')
-  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
   const [error, setError] = useState<string>('')
   const [ackError, setAckError] = useState<string>('')
 
@@ -145,9 +144,9 @@ export function FountainQRFeedbackDisplay({
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
     try {
-      // Clear stale sender feedback message from previous cycle
-      setSenderFeedbackMessage('')
-      console.log('[FountainQRFeedbackDisplay] Cleared stale sender feedback message for new feedback cycle')
+      // Note: senderFeedbackMessage is now managed by parent component (FountainQRReceiver)
+      // and will be cleared when ACK is received and new feedback cycle begins
+      console.log('[FountainQRFeedbackDisplay] Starting new feedback generation cycle')
 
       // Read from refs for stable values
       const decodedBlockIndices = decodedBlockIndicesRef.current
@@ -353,7 +352,8 @@ export function FountainQRFeedbackDisplay({
             console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
             setFeedbackQRUrl('')
             onSenderSequenceUpdate(parsed.sequence)
-            setSenderFeedbackMessage(parsed.message)
+            // Note: senderFeedbackMessage is now managed by parent component (FountainQRReceiver)
+            // and will be set when handleAckReceived is called
 
             // Add a 150ms delay before transitioning to data-scanning mode
             // This gives the ACK scanner time to release the camera
@@ -416,9 +416,8 @@ export function FountainQRFeedbackDisplay({
   }, [])
 
   const handleStartAckScan = () => {
-    // Clear previous sender feedback message as defensive measure when starting new ACK scan
-    setSenderFeedbackMessage('')
-    console.log('[FountainQRFeedbackDisplay] Entering ack-scanning mode, cleared previous sender feedback message')
+    // Note: We no longer clear senderFeedbackMessage here since it should persist until new feedback is generated
+    console.log('[FountainQRFeedbackDisplay] Entering ack-scanning mode')
     onAckTransitionStatus(false) // Report that we are in a potential retry scenario
     onModeChange('ack-scanning')
     setError('')
@@ -587,19 +586,6 @@ export function FountainQRFeedbackDisplay({
             Scanning for ACK QR from sender. Point camera at sender's ACK QR code
           </p>
         </div>
-        {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
-          <div className={`absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20`}>
-            <div className="flex items-start gap-2">
-              <p className="text-sm font-medium">{senderFeedbackMessage}</p>
-              <button
-                onClick={() => setSenderFeedbackMessage('')}
-                className="text-white hover:text-gray-200 text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-        )}
         {ackError && (
           <div className="absolute top-12 left-2 right-2 z-20">
             <Alert variant="destructive" className="bg-red-500/90 text-white px-3 py-2 rounded-lg shadow-lg">

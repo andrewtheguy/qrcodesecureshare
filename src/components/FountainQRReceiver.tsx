@@ -65,6 +65,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
   const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
+  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
 
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
@@ -203,7 +204,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean, _message: string, windowStart?: number, windowEnd?: number) => {
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => {
     // RECEIVER: Adopt sender's window range as the absolute source of truth
     // Sender is the single authority for window state - receiver must sync to sender's range
     if (windowStart !== undefined && windowEnd !== undefined) {
@@ -221,6 +222,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
+    setSenderFeedbackMessage(message)
     // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
     lastObservedWindowPercentageRef.current = 0
   }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
@@ -434,6 +436,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     lastObservedWindowPercentageRef.current = 0
     setSkipTargetedModeForSession(false)
     setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
+    setSenderFeedbackMessage('') // Clear sender feedback message on reset
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
   }
@@ -545,6 +548,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
         isTargetedModeActive={isTargetedModeActive}
+        senderFeedbackMessage={senderFeedbackMessage}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
