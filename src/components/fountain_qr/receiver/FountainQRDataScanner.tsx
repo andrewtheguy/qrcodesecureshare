@@ -16,6 +16,11 @@ import { useQRScanner } from '@/hooks/useQRScanner'
 // Optional: Extract ignored block list to a top-level constant or env for easier test control.
 const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 
+// Grid layout constants
+const GRID_COLUMNS = 20
+const GRID_MAX_ROWS = 12
+const GRID_MAX_RECTANGLES = GRID_COLUMNS * GRID_MAX_ROWS
+
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
   workerRef: React.RefObject<Worker | null>
@@ -236,8 +241,8 @@ export function FountainQRDataScanner({
   const dopingOverhead = 1.05 // Account for forced low-degree chunks
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
-  // Calculate compressed rectangle grid layout (fixed 10 columns like SequentialQRReceiver)
-  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, 60) // Max 60 rectangles (6 rows x 10 cols)
+  // Calculate compressed rectangle grid layout
+  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, GRID_MAX_RECTANGLES)
   const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
 
   // Get color for rectangle based on decoded blocks in range
@@ -303,7 +308,7 @@ export function FountainQRDataScanner({
       {!success && fountainMetadata.totalSourceBlocks > 0 && (
         <div className="space-y-2">
           <div className="text-sm font-medium">Block Progress</div>
-          <div className="grid grid-cols-10 gap-1">
+          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
