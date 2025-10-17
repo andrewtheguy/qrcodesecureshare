@@ -243,7 +243,7 @@ export function FountainQRDataScanner({
   // Get color for rectangle based on decoded blocks in range
   function getRectangleColor(decodedInRange: number, totalInRange: number) {
     if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
-    if (decodedInRange === totalInRange) return 'bg-green-500'
+    if (decodedInRange >= totalInRange) return 'bg-green-500' // Allow for cases where range spans might overlap
     return 'bg-yellow-500'
   }
 
