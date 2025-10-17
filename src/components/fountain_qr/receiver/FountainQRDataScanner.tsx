@@ -307,6 +307,17 @@ export function FountainQRDataScanner({
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
+
+              // Hide rectangles that don't contain any blocks
+              if (startBlock >= fountainMetadata.totalSourceBlocks) {
+                return (
+                  <div
+                    key={i}
+                    className="aspect-square hidden"
+                  />
+                )
+              }
+
               const rangeBlocks = Array.from({ length: endBlock - startBlock }, (_, j) => startBlock + j)
               const decodedInRange = rangeBlocks.filter(block => decodedBlockIndices.includes(block)).length
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
