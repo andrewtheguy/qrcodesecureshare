@@ -1,12 +1,7 @@
 export const DEFAULT_BLOCK_SIZE = 400
+
 // Determines when windowing activates (files > 200KB)
 export const WINDOW_ENABLE_THRESHOLD = 200 * 1024
-
-// Determines when to use half-file vs segment-based windowing (files 200-256KB use 50% of file, files > 256KB use segment-based)
-export const WINDOW_HALF_THRESHOLD = 256 * 1024
-
-// Maintained for backward compatibility and currently aligns with SEGMENT_SIZE_BYTES
-export const WINDOW_MAX_BYTES = 100 * 1024
 
 // Segment-based windowing strategy: treats large files as multiple small file segments
 // Uses fixed increments instead of percentage-based expansion for QR code transfers

@@ -58,9 +58,7 @@ windowStart?: number            // Starting block index (default: 0)
 ### Fountain Code Configuration Updates
 ```typescript
 DEFAULT_BLOCK_SIZE: 400          // Reduced from 600 bytes for smaller data QR codes
-WINDOW_MAX_BYTES: 100 * 1024     // Adjusted from 128KB to maintain similar window behavior
 WINDOW_ENABLE_THRESHOLD: 200 * 1024 // Unchanged
-WINDOW_HALF_THRESHOLD: 256 * 1024   // Unchanged
 ```
 
 ## Usage Flow
