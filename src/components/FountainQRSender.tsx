@@ -1,9 +1,13 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { FountainQRDataDisplay } from './FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './FountainQRFeedbackScanner'
+import { FountainQRManualFeedbackInput } from './FountainQRManualFeedbackInput'
 
 interface FountainQRSenderProps {
   file: File
@@ -47,6 +51,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
+  const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Initialize fountain encoder when file is loaded
@@ -322,24 +327,75 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         </div>
       )}
 
-      {/* Feedback Scanner Component */}
+      {/* Feedback Mode Toggle */}
       {feedbackEnabled && (
-        <FountainQRFeedbackScanner
-          encoder={encoder}
-          sessionId={sessionId}
-          isActive={senderMode === 'feedback-scanning'}
-          lastProcessedSequence={lastProcessedSequence}
-          windowInfo={windowInfo}
-          lastDecodedInWindow={lastDecodedInWindow}
-          lastWindowExpansion={lastWindowExpansion}
-          onFeedbackProcessed={handleFeedbackProcessed}
-          onAckGenerated={handleAckGenerated}
-          onModeChange={handleFeedbackModeChange}
-          onError={handleFeedbackError}
-          onUpdateWindowInfo={handleUpdateWindowInfo}
-          onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
-          onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
-        />
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="text-lg">Feedback Input Method</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <RadioGroup value={feedbackInputMode} onValueChange={(value: 'camera' | 'manual') => setFeedbackInputMode(value)} className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="camera" id="camera-mode" />
+                <Label htmlFor="camera-mode" className="text-sm font-medium">Camera Scanning</Label>
+                <p className="text-xs text-muted-foreground">Scan receiver's feedback QR with camera</p>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="manual" id="manual-mode" />
+                <Label htmlFor="manual-mode" className="text-sm font-medium">Manual Input (No Camera)</Label>
+                <p className="text-xs text-muted-foreground">Type feedback details manually</p>
+              </div>
+            </RadioGroup>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Manual Mode Alert */}
+      {feedbackEnabled && feedbackInputMode === 'manual' && (
+        <Alert className="mb-4">
+          <AlertDescription>
+            Manual mode is designed for senders without cameras. Copy the feedback details from the receiver's feedback QR display. All fields must match exactly for successful processing. An ACK QR will be generated after processing.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Feedback Input Component */}
+      {feedbackEnabled && (
+        feedbackInputMode === 'camera' ? (
+          <FountainQRFeedbackScanner
+            encoder={encoder}
+            sessionId={sessionId}
+            isActive={senderMode === 'feedback-scanning'}
+            lastProcessedSequence={lastProcessedSequence}
+            windowInfo={windowInfo}
+            lastDecodedInWindow={lastDecodedInWindow}
+            lastWindowExpansion={lastWindowExpansion}
+            onFeedbackProcessed={handleFeedbackProcessed}
+            onAckGenerated={handleAckGenerated}
+            onModeChange={handleFeedbackModeChange}
+            onError={handleFeedbackError}
+            onUpdateWindowInfo={handleUpdateWindowInfo}
+            onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
+            onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
+          />
+        ) : (
+          <FountainQRManualFeedbackInput
+            encoder={encoder}
+            sessionId={sessionId}
+            isActive={true}
+            lastProcessedSequence={lastProcessedSequence}
+            windowInfo={windowInfo}
+            lastDecodedInWindow={lastDecodedInWindow}
+            lastWindowExpansion={lastWindowExpansion}
+            onFeedbackProcessed={handleFeedbackProcessed}
+            onAckGenerated={handleAckGenerated}
+            onModeChange={handleFeedbackModeChange}
+            onError={handleFeedbackError}
+            onUpdateWindowInfo={handleUpdateWindowInfo}
+            onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
+            onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
+          />
+        )
       )}
 
       {/* Status indicators for non-data-display modes */}
@@ -372,6 +428,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
                 <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
                 <li>Receiver must scan ACK before resuming data scanning</li>
+                <li>If you don't have a camera, use 'Manual Input' mode to type feedback details from the receiver's display</li>
                 {windowInfo && windowInfo.windowEnabled && (
                   <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
                   )}

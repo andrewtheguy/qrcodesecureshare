@@ -36,7 +36,7 @@ interface ProcessedFeedbackData {
 interface FountainQRManualFeedbackInputProps {
   encoder: FountainEncoder | null;
   sessionId: number;
-  isActive: boolean;
+  isActive?: boolean;
   lastProcessedSequence: number;
   windowInfo: WindowInfo | null;
   lastDecodedInWindow: number;
@@ -53,7 +53,6 @@ interface FountainQRManualFeedbackInputProps {
 export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInputProps> = ({
   encoder,
   sessionId,
-  isActive,
   lastProcessedSequence,
   windowInfo,
   lastDecodedInWindow,
@@ -534,7 +533,10 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         {ackQRUrl && (
           <Button
-            onClick={() => setCurrentMode('ack-display')}
+            onClick={() => {
+              setCurrentMode('ack-display');
+              onModeChange('ack-display');
+            }}
             variant="outline"
             className="w-full"
           >
