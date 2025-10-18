@@ -229,7 +229,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             <div className="space-y-2">
               <p className="font-medium">🪟 Window Progress</p>
               <div className="text-sm">
-                <p>Window: blocks {windowInfo.skipBlocksBelow}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({(((windowInfo.windowEnd - windowInfo.skipBlocksBelow) / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                <p>Window Range: {windowInfo.skipBlocksBelow}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} blocks</p>
+                <p>Window % of file: {((windowInfo.windowEnd / windowInfo.totalBlocks) * 100).toFixed(1)}%</p>
                 <p>Segment: {windowInfo.currentSegment} / {windowInfo.totalSegments}</p>
                 <p>Segment progress: {windowInfo.segmentProgress.toFixed(1)}%</p>
                 {windowInfo.skipBlocksBelow > 0 && (
