@@ -251,27 +251,11 @@ export function FountainQRDataScanner({
   const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, GRID_MAX_RECTANGLES)
   const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
 
-  // Get color for rectangle based on decoded blocks in range and window status
-  function getRectangleColor(decodedInRange: number, totalInRange: number, isInWindow: boolean, isWindowActive: boolean) {
-    // If window mode is disabled, use original colors
-    if (!isWindowActive) {
-      if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
-      if (decodedInRange === totalInRange) return 'bg-green-500'
-      return 'bg-yellow-500'
-    }
-
-    // Window mode is active
-    if (isInWindow) {
-      // Blocks within window: use muted slate color to indicate active window
-      if (decodedInRange === 0) return 'bg-slate-300 dark:bg-slate-600'
-      if (decodedInRange === totalInRange) return 'bg-green-500'
-      return 'bg-yellow-500'
-    } else {
-      // Blocks outside window: use dimmed colors
-      if (decodedInRange === 0) return 'bg-gray-300 dark:bg-gray-800 opacity-50'
-      if (decodedInRange === totalInRange) return 'bg-green-600 opacity-60'
-      return 'bg-yellow-600 opacity-60'
-    }
+  // Get color for rectangle based on decoded blocks in range
+  function getRectangleColor(decodedInRange: number, totalInRange: number) {
+    if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
+    if (decodedInRange === totalInRange) return 'bg-green-500'
+    return 'bg-yellow-500'
   }
 
   return (
@@ -346,7 +330,7 @@ export function FountainQRDataScanner({
               </div>
             )}
           </div>
-          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
@@ -367,14 +351,19 @@ export function FountainQRDataScanner({
               // Check if this rectangle is within the current window
               // A rectangle is considered "in window" if any of its blocks fall within [currentWindowStart, currentWindowEnd)
               const isInWindow = rangeBlocks.some(block => block >= currentWindowStart && block < currentWindowEnd)
-              const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length, isInWindow, isWindowEnabled)
+              const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
+
+              // Apply a different background color for blocks within window range when window mode is enabled
+              const windowBackground = isWindowEnabled && isInWindow ? 'bg-blue-100 dark:bg-blue-900' : 'bg-transparent'
 
               return (
                 <div
                   key={i}
-                  className={`aspect-square rounded ${colorClass}`}
+                  className={`aspect-square p-0.5 ${windowBackground}`}
                   title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded${isWindowEnabled ? (isInWindow ? ' (in window)' : ' (outside window)') : ''}`}
-                />
+                >
+                  <div className={`w-full h-full rounded-full ${colorClass}`} />
+                </div>
               )
             })}
           </div>
