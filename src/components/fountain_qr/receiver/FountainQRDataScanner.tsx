@@ -78,14 +78,9 @@ export function FountainQRDataScanner({
   const [error, setError] = useState<string>('')
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [hasAutoStarted, setHasAutoStarted] = useState(false)
-  const [scannerStartAttempts, setScannerStartAttempts] = useState(0)
-  const [showRestartButton, setShowRestartButton] = useState(false)
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
-  const scannerStartTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const scannerStartedRef = useRef(false)
-  const chunksAtStartRef = useRef(0)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -202,16 +197,9 @@ export function FountainQRDataScanner({
     onError: handleScanError,
     onStart: () => {
         addDebugLog('✅ Data scanner started');
-        scannerStartedRef.current = true;
-        chunksAtStartRef.current = receivedFountainChunks;
-        setScannerStartAttempts(0);
-        setShowRestartButton(false);
         onAckTransitionStatus(true);
     },
-    onStop: () => {
-        addDebugLog('🛑 Data scanner stopped');
-        scannerStartedRef.current = false;
-    }
+    onStop: () => addDebugLog('🛑 Data scanner stopped')
   })
 
   // Sync scanner refs
@@ -236,8 +224,6 @@ export function FountainQRDataScanner({
     setReceivedFountainChunks(0)
     setError('')
     setHasAutoStarted(true)
-    scannerStartedRef.current = false;
-    chunksAtStartRef.current = 0;
     onScanStart()
   }, [onScanStart])
 
@@ -252,57 +238,13 @@ export function FountainQRDataScanner({
       if (receiverMode !== 'data-scanning' || success) {
         setHasAutoStarted(false)
       }
-      // Clear recovery timeout when exiting data-scanning mode
-      if (scannerStartTimeoutRef.current) {
-        clearTimeout(scannerStartTimeoutRef.current)
-        scannerStartTimeoutRef.current = null
-      }
       return
     }
 
     if (!isScanning && !hasAutoStarted) {
       handleStartScan()
     }
-
-    // Recovery mechanism: detect stuck scanner and attempt restart
-    const MAX_START_ATTEMPTS = 3
-    if (receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback && hasAutoStarted) {
-      // Clear any existing timeout
-      if (scannerStartTimeoutRef.current) {
-        clearTimeout(scannerStartTimeoutRef.current)
-      }
-
-      // Set timeout to detect if scanner failed to start
-      scannerStartTimeoutRef.current = setTimeout(() => {
-        // Check if we should still be scanning but scanner hasn't started or no chunks received since start
-        if (receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback) {
-          const chunksSinceStart = receivedFountainChunks - chunksAtStartRef.current;
-          if (!scannerStartedRef.current || chunksSinceStart === 0) {
-            const newAttempts = scannerStartAttempts + 1
-            addDebugLog(`⚠️ Scanner may be stuck (attempt ${newAttempts}/${MAX_START_ATTEMPTS}), attempting restart...`)
-            setScannerStartAttempts(newAttempts)
-
-            if (newAttempts >= MAX_START_ATTEMPTS) {
-              addDebugLog(`❌ Scanner failed to start after ${MAX_START_ATTEMPTS} attempts`)
-              setShowRestartButton(true)
-            } else {
-              // Try to restart the scanner
-              restartScannerRef.current?.().catch((err) => {
-                addDebugLog(`❌ Scanner restart failed: ${err}`)
-              })
-            }
-          }
-        }
-      }, 500)
-    }
-
-    return () => {
-      if (scannerStartTimeoutRef.current) {
-        clearTimeout(scannerStartTimeoutRef.current)
-        scannerStartTimeoutRef.current = null
-      }
-    }
-  }, [receiverMode, success, isAwaitingFeedback, isScanning, hasAutoStarted, scannerStartAttempts, handleStartScan, addDebugLog, receivedFountainChunks])
+  }, [receiverMode, success, isAwaitingFeedback, isScanning, hasAutoStarted, handleStartScan])
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
@@ -375,22 +317,6 @@ export function FountainQRDataScanner({
                   <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
                     ⏹ Stop Scanning
                   </Button>
-                  {showRestartButton && (
-                    <Button
-                      onClick={() => {
-                        addDebugLog('🔄 Manual scanner restart requested')
-                        setScannerStartAttempts(0)
-                        setShowRestartButton(false)
-                        restartScannerRef.current?.().catch((err) => {
-                          addDebugLog(`❌ Manual scanner restart failed: ${err}`)
-                        })
-                      }}
-                      variant="outline"
-                      className="flex-1 sm:flex-none"
-                    >
-                      🔄 Restart Scanner
-                    </Button>
-                  )}
                 </>
               )}
             </div>
