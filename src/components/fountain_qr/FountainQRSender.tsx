@@ -124,6 +124,12 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
 
 
+  useEffect(() => {
+    if (encoder && senderMode === 'data-display' && activationToken === 0) {
+      setActivationToken(1);
+    }
+  }, [encoder, senderMode, activationToken]);
+
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
     mode: 'statistics' | 'targeted';

@@ -368,6 +368,11 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     onModeChange('data-display');
   };
 
+  const handleShowAckDisplay = () => {
+    setCurrentMode('ack-display');
+    onModeChange('ack-display');
+  };
+
   if (currentMode === 'scanning') {
     return (
       <div className="space-y-4">
@@ -421,7 +426,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       </Button>
       {ackQRUrl && (
         <Button
-          onClick={() => setCurrentMode('ack-display')}
+          onClick={handleShowAckDisplay}
           variant="outline"
           className="w-full"
         >
