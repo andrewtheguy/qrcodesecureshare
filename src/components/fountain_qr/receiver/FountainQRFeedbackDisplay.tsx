@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCode'
@@ -275,6 +276,7 @@ export function FountainQRFeedbackDisplay({
     // it is necessary to prevent processing binary data by accident
     if (data[0] !== '{') {
       console.warn('[FountainQRFeedbackDisplay] Ignoring non-JSON data')
+      showAckError('That QR is part of the data stream. Ask the sender for the ACK confirmation QR to continue.')
       return
     }
 
@@ -547,52 +549,80 @@ export function FountainQRFeedbackDisplay({
 
   if (receiverMode === 'ack-scanning') {
     return (
-      <div className="relative bg-black rounded-lg overflow-hidden">
-        <video
-          ref={ackVideoRefFromHook}
-          className="w-full h-auto"
-          style={{ maxHeight: '400px' }}
-        />
-        {ackScannerIsScanning && (
-          <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
-            ● SCANNING
-          </div>
-        )}
-        <Button
-          onClick={handleShowFeedbackQR}
-          variant="secondary"
-          size="sm"
-          className="absolute top-2 right-2 z-20"
-        >
-          Show Feedback QR
-        </Button>
-        <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-          <p className="text-sm text-center">
-            Scanning for ACK QR from sender. Point camera at sender's ACK QR code
-          </p>
-        </div>
-        {ackError && (
-          <div className="absolute top-12 left-2 right-2 z-20">
-            <Alert variant="destructive" className="bg-red-500/90 text-white px-3 py-2 rounded-lg shadow-lg">
-              <AlertDescription>
-                <div className="flex items-start gap-2">
-                  <p className="text-sm font-medium font-semibold">⚠️ {ackError}</p>
-                  <button
-                    onClick={() => {
-                      setAckError('')
-                      if (ackErrorTimeoutRef.current) {
-                        clearTimeout(ackErrorTimeoutRef.current)
-                        ackErrorTimeoutRef.current = null
-                      }
-                    }}
-                    className="text-white hover:text-gray-200 text-sm font-bold ml-auto"
-                  >
-                    ✕
-                  </button>
+      <div className="space-y-4">
+        <Card className="border border-blue-500/40 bg-slate-950 text-blue-100 shadow-xl">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Badge
+                  variant="outline"
+                  className="border-blue-400/50 bg-blue-500/10 text-blue-100 tracking-wide uppercase"
+                >
+                  ACK Scan Mode
+                </Badge>
+                <CardTitle className="text-xl font-semibold text-blue-100">Awaiting Sender Confirmation</CardTitle>
+                <p className="text-sm text-blue-200/70">
+                  Scan the acknowledgement QR that the sender shows after processing your feedback QR. This QR has a white background with bold borders.
+                </p>
+              </div>
+              <Button
+                onClick={handleShowFeedbackQR}
+                variant="secondary"
+                size="sm"
+                className="bg-blue-900 text-blue-100 hover:bg-blue-800 border border-blue-400/60"
+              >
+                Show Feedback QR
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative overflow-hidden rounded-2xl border border-blue-500/40 bg-black shadow-2xl">
+              <video
+                ref={ackVideoRefFromHook}
+                className="w-full max-h-[420px] object-cover"
+              />
+              <div className="pointer-events-none absolute inset-0">
+                <div className="absolute inset-5 rounded-xl border-2 border-blue-400/60 animate-pulse" />
+                {ackScannerIsScanning && (
+                  <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-blue-400/80 bg-blue-500/30 px-3 py-1 text-xs font-semibold text-blue-50 shadow-md">
+                    <span className="text-blue-200">●</span>
+                    Scanning for ACK
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 via-slate-950/10 to-transparent px-4 py-3 text-center text-sm text-blue-100">
+                  Align the sender&apos;s ACK QR inside the glowing frame to continue the transfer.
                 </div>
+              </div>
+            </div>
+            <Alert className="border border-blue-500/40 bg-blue-500/10 text-blue-100">
+              <AlertDescription>
+                <p className="text-sm font-medium">
+                  Ack QR codes always contain JSON. If you see a dense black QR, it&apos;s part of the data stream—ask the sender to show the confirmation ACK instead.
+                </p>
               </AlertDescription>
             </Alert>
-          </div>
+          </CardContent>
+        </Card>
+        {ackError && (
+          <Alert variant="destructive" className="border border-red-500/60 bg-red-600/90 text-white">
+            <AlertDescription>
+              <div className="flex items-start gap-2">
+                <p className="text-sm font-medium">⚠️ {ackError}</p>
+                <button
+                  onClick={() => {
+                    setAckError('')
+                    if (ackErrorTimeoutRef.current) {
+                      clearTimeout(ackErrorTimeoutRef.current)
+                      ackErrorTimeoutRef.current = null
+                    }
+                  }}
+                  className="ml-auto text-sm font-bold hover:text-gray-200"
+                >
+                  ✕
+                </button>
+              </div>
+            </AlertDescription>
+          </Alert>
         )}
       </div>
     )
