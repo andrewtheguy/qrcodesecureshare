@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
@@ -350,23 +351,60 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       )}
 
       {senderMode === 'ack-display' && ackPayload && (
-        <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg border border-muted">
-          <img src={ackPayload.qrUrl} alt="ACK QR Code" className="max-w-xs" />
-          <div className="text-center space-y-1">
-            <p className="font-medium">ACK QR Code - Show to receiver</p>
-            <p className="text-sm text-muted-foreground">
-              Receiver must scan this before resuming data scanning
-            </p>
-            {ackPayload.message && (
-              <p className="text-xs text-muted-foreground">{ackPayload.message}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2 w-full sm:flex-row">
-            <Button onClick={() => handleFeedbackModeChange('data-display')} className="flex-1">
-              Resume Data Display
-            </Button>
-          </div>
-        </div>
+        <Card className="border border-emerald-500/50 bg-emerald-950 text-emerald-100 shadow-2xl">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Badge
+                  variant="outline"
+                  className="border-emerald-400/60 bg-emerald-500/10 text-emerald-100 uppercase tracking-wider"
+                >
+                  Ack Confirmation
+                </Badge>
+                <CardTitle className="text-xl font-semibold text-emerald-50">Show This QR to the Receiver</CardTitle>
+                <p className="text-sm text-emerald-200/70">
+                  Hold the code steady while the receiver scans. This confirms their feedback and unlocks the next data window.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                className="bg-emerald-900 text-emerald-100 border border-emerald-400/60 hover:bg-emerald-800"
+                onClick={() => handleFeedbackModeChange('data-display')}
+              >
+                Resume Data
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-emerald-500/40 bg-black/80 p-6 shadow-inner">
+              <div className="absolute inset-3 rounded-2xl border border-emerald-400/50" />
+              <img
+                src={ackPayload.qrUrl}
+                alt="ACK QR Code"
+                className="relative z-10 w-full h-auto"
+              />
+            </div>
+            <div className="space-y-3 text-sm">
+              <p className="text-center font-medium text-emerald-100">
+                Receiver must scan this before you resume broadcasting data.
+              </p>
+              {ackPayload.message && (
+                <Alert className="border border-emerald-500/50 bg-emerald-500/10 text-emerald-100">
+                  <AlertDescription>
+                    <p className="text-sm font-medium">Message: {ackPayload.message}</p>
+                  </AlertDescription>
+                </Alert>
+              )}
+              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100/80 space-y-1">
+                <p>• Confirm the receiver sees their scanner banner before proceeding.</p>
+                <p>• Once they acknowledge the scan, tap <span className="font-semibold text-emerald-100">Resume Data</span> to restart the stream.</p>
+              </div>
+              <p className="text-center text-xs text-emerald-200/60">
+                Sequence #{ackPayload.sequence} • Session {sessionId}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {senderMode === 'feedback-scanning' && (
