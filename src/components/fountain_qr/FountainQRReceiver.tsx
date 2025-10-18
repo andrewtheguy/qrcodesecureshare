@@ -6,6 +6,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { flushSync } from 'react-dom'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
@@ -74,6 +75,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [error, setError] = useState<string>('')
   const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
+  const [isTransitioning, setIsTransitioning] = useState<boolean>(false)
 
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
@@ -235,6 +237,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       console.warn('[FountainQRReceiver] ACK missing window range; ignoring update')
       return
     }
+    console.log('[FountainQRReceiver] handleAckReceived: Processing ACK and syncing state')
     setCurrentWindowStart(windowStart)
     setCurrentWindowEnd(windowEnd)
     console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd}`)
@@ -247,24 +250,42 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   }, [])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
+    // Prevent overlapping transitions
+    if (isTransitioning) {
+      console.warn('[FountainQRReceiver] Transition already in progress, ignoring mode change request')
+      return
+    }
+
     console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)
-    setReceiverMode(mode)
+    setIsTransitioning(true)
+
     if (mode === 'data-scanning') {
+      // Ensure state updates happen in correct order
+      console.log('[FountainQRReceiver] Transitioning to data-scanning: setting receiverMode, then isAwaitingFeedback, then isScanning')
+      flushSync(() => {
+        setReceiverMode(mode)
+        setIsAwaitingFeedback(false)
+        setIsScanning(true)
+      })
       triggeredFeedbackRef.current = false
-      setIsAwaitingFeedback(false)
-      setIsScanning(true)
-      // setLastAckTransitionSuccessful(true) // Optimistically marking success is deprecated
       console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
+      // Clear transition flag after next tick for normal mode toggles
+      queueMicrotask(() => setIsTransitioning(false))
     } else if (mode === 'feedback-display') {
+      setReceiverMode(mode)
       setIsAwaitingFeedback(true)
       setIsScanning(false)
+      // Clear transition flag after next tick for normal mode toggles
+      queueMicrotask(() => setIsTransitioning(false))
     } else if (mode === 'ack-scanning') {
+      setReceiverMode(mode)
       setIsAwaitingFeedback(true)
       setIsScanning(false)
       setLastAckTransitionSuccessful(false) // Mark as not successful when entering ack-scanning
       console.log('[FountainQRReceiver] Transitioned to ack-scanning mode, lastAckTransitionSuccessful set to false')
+      // For ACK transitions, clear it in handleAckTransitionStatus(true) when transition completes
     }
-  }, [receiverMode])
+  }, [receiverMode, isTransitioning])
 
 
   const handleFeedbackError = useCallback((error: string) => {
@@ -283,6 +304,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const handleAckTransitionStatus = useCallback((successful: boolean) => {
     console.log(`[FountainQRReceiver] ACK transition status reported: ${successful}`)
     setLastAckTransitionSuccessful(successful)
+    // Clear transition flag when transition completes
+    if (successful) {
+      setIsTransitioning(false)
+    }
   }, [])
 
   const handleSkipTargetedMode = useCallback(() => {

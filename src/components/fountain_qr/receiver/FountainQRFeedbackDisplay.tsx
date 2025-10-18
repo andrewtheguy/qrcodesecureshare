@@ -104,6 +104,7 @@ export function FountainQRFeedbackDisplay({
   const generatingRef = useRef<boolean>(false)
   const ackErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const ackProcessingRef = useRef<boolean>(false)
 
   // Refs for stable inputs to prevent mid-cycle re-generation
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
@@ -330,26 +331,47 @@ export function FountainQRFeedbackDisplay({
               return
             }
 
-            // Valid ACK - resume data scanning
-            console.log('[FountainQRFeedbackDisplay] Valid ACK received, transitioning to data-scanning')
-            setFeedbackQRUrl('')
+            // Set ackProcessing to true immediately after validating a valid ACK
+            if (ackProcessingRef.current) {
+              console.warn('[FountainQRFeedbackDisplay] ACK already being processed, ignoring duplicate scan')
+              return
+            }
+            ackProcessingRef.current = true
+
+            // Move onSenderSequenceUpdate earlier (right after validation)
             onSenderSequenceUpdate(parsed.sequence)
+
+            // Valid ACK - resume data scanning with coordinated camera handoff
+            console.log('[FountainQRFeedbackDisplay] Valid ACK received, preparing coordinated transition to data-scanning')
+            setFeedbackQRUrl('')
             onAckTransitionStatus(true)
             pendingAckSequenceRef.current = null
-            // Note: senderFeedbackMessage is now managed by parent component (FountainQRReceiver)
-            // and will be set when handleAckReceived is called
 
-            // Add a 150ms delay before transitioning to data-scanning mode
-            // This gives the ACK scanner time to release the camera
-            console.log('[FountainQRFeedbackDisplay] Delaying transition to data-scanning mode by 150ms...')
-            transitionTimeoutRef.current = setTimeout(() => {
-              console.log('[FountainQRFeedbackDisplay] Executing delayed transition to data-scanning mode')
-              onModeChange('data-scanning')
+            // Coordinated camera handoff: stop ACK scanner and await cleanup before starting data scanner
+            const transitionStartTime = Date.now()
+            ;(async () => {
+              try {
+                console.log('[FountainQRFeedbackDisplay] Stopping ACK scanner and waiting for cleanup...')
+                await stopAckScanner()
+                await waitForAckCleanup()
+                const transitionDuration = Date.now() - transitionStartTime
+                console.log(`[FountainQRFeedbackDisplay] ACK scanner cleanup complete after ${transitionDuration}ms, transitioning to data-scanning`)
 
-              // RECEIVER: Adopt sender's window range as the absolute source of truth
-              // Sender is the single authority for window state - receiver must sync to sender's range
-              onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
-            }, 150)
+                // RECEIVER: Adopt sender's window range as the absolute source of truth
+                // Sender is the single authority for window state - receiver must sync to sender's range
+                onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
+
+                onModeChange('data-scanning')
+              } catch (err) {
+                console.error('[FountainQRFeedbackDisplay] Error during coordinated transition:', err)
+                // Fallback to delayed approach if coordinated handoff fails
+                console.log('[FountainQRFeedbackDisplay] Falling back to delayed transition approach')
+                transitionTimeoutRef.current = setTimeout(() => {
+                  onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
+                  onModeChange('data-scanning')
+                }, 150)
+              }
+            })()
            break
         }
 
@@ -361,7 +383,7 @@ export function FountainQRFeedbackDisplay({
   }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
-  const { videoRef: ackVideoRefFromHook } = useQRScanner({
+  const { videoRef: ackVideoRefFromHook, stopScanner: stopAckScanner, waitForCleanup: waitForAckCleanup } = useQRScanner({
     onScan: handleSenderFeedbackScan,
     isScanning: ackScannerIsScanning,
     onError: (errorMessage) => {
@@ -378,10 +400,12 @@ export function FountainQRFeedbackDisplay({
 
   // Cleanup for pending delayed transition on mode change
   useEffect(() => {
-    if (receiverMode !== 'ack-scanning' && transitionTimeoutRef.current) {
-      console.log('[FountainQRFeedbackDisplay] Mode changed, canceling pending transition to data-scanning')
-      clearTimeout(transitionTimeoutRef.current)
-      transitionTimeoutRef.current = null
+    return () => {
+      if (receiverMode !== 'ack-scanning' && transitionTimeoutRef.current) {
+        console.log('[FountainQRFeedbackDisplay] Mode changed, canceling pending transition to data-scanning')
+        clearTimeout(transitionTimeoutRef.current)
+        transitionTimeoutRef.current = null
+      }
     }
   }, [receiverMode])
 
@@ -398,6 +422,13 @@ export function FountainQRFeedbackDisplay({
       }
     }
   }, [])
+
+  // Reset ackProcessing when transition completes
+  useEffect(() => {
+    if (lastAckTransitionSuccessful) {
+      ackProcessingRef.current = false
+    }
+  }, [lastAckTransitionSuccessful])
 
   const handleStartAckScan = () => {
     // Note: We no longer clear senderFeedbackMessage here since it should persist until new feedback is generated
