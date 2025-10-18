@@ -408,13 +408,15 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       )}
 
       {senderMode === 'feedback-scanning' && (
-        <div className="flex justify-center bg-white p-4 rounded-lg border border-dashed">
-          <div className="w-[320px] flex flex-col items-center text-center space-y-2 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">Feedback scanning active</p>
-            <p>Use the controls below to scan the receiver feedback QR code.</p>
-            <p>The data QR stream pauses until scanning completes.</p>
-          </div>
-        </div>
+        <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-900">
+          <AlertDescription>
+            <div className="space-y-1 text-sm">
+              <p className="font-medium text-amber-900">Feedback scanning is active.</p>
+              <p>Point your camera at the receiver&apos;s amber feedback card to sync progress.</p>
+              <p>The data stream is paused until you finish scanning.</p>
+            </div>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Feedback Mode Toggle */}
@@ -503,7 +505,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       {senderMode !== 'data-display' && (
         <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
           {senderMode === 'feedback-scanning' && (
-            <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">MODE: Scanning Feedback</span>
+            <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">MODE: Scanning Feedback</span>
           )}
           {senderMode === 'ack-display' && (
             <span className="px-2 py-0.5 rounded bg-green-500 text-white font-semibold">MODE: ACK Display - Show to receiver</span>

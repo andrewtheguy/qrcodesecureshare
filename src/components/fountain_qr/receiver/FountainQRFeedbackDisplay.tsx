@@ -415,68 +415,86 @@ export function FountainQRFeedbackDisplay({
   }
 
   if (receiverMode === 'feedback-display' && feedbackQRUrl) {
+    const totalBlocks = fountainMetadata.totalSourceBlocks
+    const decodedPercent = totalBlocks > 0 ? Math.round((decodedBlocks / totalBlocks) * 100) : 0
+    const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlocks
+    const modeMessage = skipTargetedModeForSession
+      ? 'Statistics mode locked for this session to keep QR payloads compact.'
+      : missingBlocksCount > getTargetedModeMaxMissingBlocks()
+        ? 'Compact stats mode: sharing window progress and decode rate.'
+        : feedbackMode === 'targeted'
+          ? 'Targeted mode: sharing precise missing block ranges for cleanup.'
+          : 'Statistics fallback: payload trimmed to stay scan-friendly.'
+
     return (
       <div className="space-y-4">
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📊 Feedback QR Code</p>
-              <div className="flex justify-center bg-white p-4 rounded-lg">
-                <img
-                  src={feedbackQRUrl}
-                  alt="Feedback QR Code"
-                  className="max-w-full h-auto"
-                />
+        <Card className="border border-amber-500/60 bg-amber-950 text-amber-100 shadow-2xl">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="space-y-2">
+                <Badge
+                  variant="outline"
+                  className="border-amber-400/70 bg-amber-500/10 text-amber-100 uppercase tracking-wider"
+                >
+                  Feedback QR
+                </Badge>
+                <CardTitle className="text-xl font-semibold text-amber-50">Share This With The Sender</CardTitle>
+                <p className="text-sm text-amber-200/70">
+                  Hold this screen steady so the sender can scan your progress update. Once they respond, switch to ACK scan to continue.
+                </p>
               </div>
-              <p className="text-sm text-center">
-                Decoded {decodedBlocks}/{fountainMetadata.totalSourceBlocks} blocks ({Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%)
-              </p>
-              <p className="text-xs text-muted-foreground text-center">
-                {skipTargetedModeForSession
-                  ? 'Statistics mode (targeted mode disabled for session)'
-                  : (fountainMetadata.totalSourceBlocks - decodedBlocks) > getTargetedModeMaxMissingBlocks() ? 'Sharing window progress (compact format)' : feedbackMode === 'targeted' ? 'Sharing decoded blocks for targeted transfer' : 'Sharing progress summary (fallback mode due to payload size)'}
-              </p>
-              <p className="text-xs text-muted-foreground text-center">
-                Show this QR to sender, then click the button below to scan for ACK
-              </p>
-              <p className="text-xs text-muted-foreground text-center">
-                The confirmation code acts as a checksum to verify all fields are entered correctly when manually inputting feedback
-              </p>
               <Button
                 onClick={handleStartAckScan}
-                variant="default"
-                className="w-full"
+                variant="secondary"
+                className="bg-amber-900 text-amber-100 border border-amber-400/70 hover:bg-amber-800"
               >
-                Start Scanning for ACK
+                Scan ACK Next
               </Button>
             </div>
-          </AlertDescription>
-        </Alert>
-        {skipTargetedModeForSession && (
-          <Alert>
-            <AlertDescription>
-              <p className="font-medium">ℹ️ Targeted Mode Disabled for Session</p>
-              <p className="text-sm text-muted-foreground">
-                Using statistics mode for all feedback. This prevents large QR codes but may require more scans.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-amber-500/40 bg-black/85 p-6 shadow-inner">
+              <div className="absolute inset-3 rounded-2xl border border-amber-400/40" />
+              <img
+                src={feedbackQRUrl}
+                alt="Feedback QR Code"
+                className="relative z-10 w-full h-auto"
+              />
+            </div>
+            <div className="space-y-3 text-sm">
+              <div className="text-center">
+                <p className="font-medium text-amber-50">
+                  Decoded {decodedBlocks} / {totalBlocks} blocks ({decodedPercent}%)
+                </p>
+                <p className="text-xs text-amber-200/70 mt-1">{modeMessage}</p>
+              </div>
+              <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/80 space-y-1">
+                <p>• Ask the sender to scan this amber QR right away.</p>
+                <p>• After they process it, tap <span className="font-semibold text-amber-100">Scan ACK Next</span> to capture their confirmation.</p>
+                <p>• Confirmation code below helps them verify manual entry.</p>
+              </div>
               {feedbackMode === 'targeted' && !skipTargetedModeForSession && (
                 <Button
                   onClick={onSkipTargetedMode}
                   variant="outline"
-                  className="w-full"
+                  className="w-full border-amber-400/70 text-amber-100 hover:bg-amber-500/10"
                 >
-                  Skip Targeted Mode for Session
+                  Switch Back to Statistics-Only Feedback
                 </Button>
               )}
             </div>
-          </AlertDescription>
-        </Alert>
+          </CardContent>
+        </Card>
+        {skipTargetedModeForSession && (
+          <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-950">
+            <AlertDescription>
+              <p className="font-medium text-amber-900">ℹ️ Targeted Mode Disabled</p>
+              <p className="text-sm text-amber-900/80">
+                This session stays in statistics mode to keep QR codes smaller. It may take a few more feedback cycles near the end.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
         {feedbackData && (
           <Card>
             <CardHeader>
@@ -550,54 +568,54 @@ export function FountainQRFeedbackDisplay({
   if (receiverMode === 'ack-scanning') {
     return (
       <div className="space-y-4">
-        <Card className="border border-blue-500/40 bg-slate-950 text-blue-100 shadow-xl">
+        <Card className="border border-emerald-500/50 bg-emerald-950 text-emerald-100 shadow-2xl">
           <CardHeader className="pb-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-2">
                 <Badge
                   variant="outline"
-                  className="border-blue-400/50 bg-blue-500/10 text-blue-100 tracking-wide uppercase"
+                  className="border-emerald-400/60 bg-emerald-500/10 text-emerald-100 tracking-wide uppercase"
                 >
                   ACK Scan Mode
                 </Badge>
-                <CardTitle className="text-xl font-semibold text-blue-100">Awaiting Sender Confirmation</CardTitle>
-                <p className="text-sm text-blue-200/70">
-                  Scan the acknowledgement QR that the sender shows after processing your feedback QR. This QR has a white background with bold borders.
+                <CardTitle className="text-xl font-semibold text-emerald-50">Awaiting Sender Confirmation</CardTitle>
+                <p className="text-sm text-emerald-200/70">
+                  Scan the emerald confirmation QR the sender presents after they process your feedback update. This card completes the feedback loop so you can resume receiving data.
                 </p>
               </div>
               <Button
                 onClick={handleShowFeedbackQR}
                 variant="secondary"
                 size="sm"
-                className="bg-blue-900 text-blue-100 hover:bg-blue-800 border border-blue-400/60"
+                className="bg-emerald-900 text-emerald-100 hover:bg-emerald-800 border border-emerald-400/60"
               >
                 Show Feedback QR
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative overflow-hidden rounded-2xl border border-blue-500/40 bg-black shadow-2xl">
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-black shadow-2xl">
               <video
                 ref={ackVideoRefFromHook}
                 className="w-full max-h-[420px] object-cover"
               />
               <div className="pointer-events-none absolute inset-0">
-                <div className="absolute inset-5 rounded-xl border-2 border-blue-400/60 animate-pulse" />
+                <div className="absolute inset-5 rounded-xl border-2 border-emerald-400/60 animate-pulse" />
                 {ackScannerIsScanning && (
-                  <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-blue-400/80 bg-blue-500/30 px-3 py-1 text-xs font-semibold text-blue-50 shadow-md">
-                    <span className="text-blue-200">●</span>
+                  <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-emerald-400/80 bg-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-50 shadow-md">
+                    <span className="text-emerald-200">●</span>
                     Scanning for ACK
                   </div>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 via-slate-950/10 to-transparent px-4 py-3 text-center text-sm text-blue-100">
-                  Align the sender&apos;s ACK QR inside the glowing frame to continue the transfer.
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-emerald-950/90 via-emerald-950/10 to-transparent px-4 py-3 text-center text-sm text-emerald-50">
+                  Align the sender&apos;s emerald QR inside the glowing frame to continue the transfer.
                 </div>
               </div>
             </div>
-            <Alert className="border border-blue-500/40 bg-blue-500/10 text-blue-100">
+            <Alert className="border border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
               <AlertDescription>
                 <p className="text-sm font-medium">
-                  Ack QR codes always contain JSON. If you see a dense black QR, it&apos;s part of the data stream—ask the sender to show the confirmation ACK instead.
+                  Ack QR codes always contain JSON. If you see a dense black QR, it&apos;s part of the data stream—ask the sender to show the emerald confirmation QR instead.
                 </p>
               </AlertDescription>
             </Alert>
