@@ -138,9 +138,6 @@ export function FountainQRDataScanner({
     try {
       addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
 
-      // DIAGNOSTIC: Log current mode and data type
-      console.log(`[DIAGNOSTIC] receiverMode=${receiverMode}, dataType=${data.startsWith('{') ? 'JSON' : 'BINARY'}, dataPreview=${data.substring(0, 20)}`)
-
       if (receiverMode === 'ack-scanning') {
         console.log('[DIAGNOSTIC] Early return: already in ack-scanning mode')
         return
