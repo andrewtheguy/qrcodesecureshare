@@ -151,7 +151,7 @@ export function FountainQRFeedbackDisplay({
       // Calculate decoded blocks within current window bounds
       const windowStart = currentWindowStartRef.current
       const windowEnd = currentWindowEndRef.current
-      const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= windowStart && idx < windowEnd).length
+      const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= firstMissingBlock && idx < windowEnd).length
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
@@ -498,9 +498,9 @@ export function FountainQRFeedbackDisplay({
 
                 <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
                 <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.decodedInWindow} / {currentWindowEnd - currentWindowStart} (
-                  {currentWindowEnd - currentWindowStart > 0
-                    ? Math.round((feedbackData.decodedInWindow / (currentWindowEnd - currentWindowStart)) * 100)
+                  {feedbackData.decodedInWindow} / {currentWindowEnd - feedbackData.firstMissingBlock} (
+                  {currentWindowEnd - feedbackData.firstMissingBlock > 0
+                    ? Math.round((feedbackData.decodedInWindow / (currentWindowEnd - feedbackData.firstMissingBlock)) * 100)
                     : 0
                   }%)
                 </span>

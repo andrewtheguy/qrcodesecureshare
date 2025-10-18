@@ -308,7 +308,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       let windowExpanded = false;
       if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
-        const { windowStart, windowEnd, windowSize } = effectiveWindowInfo;
+        const { windowStart, windowEnd } = effectiveWindowInfo;
+        const effectiveWindowSize = windowEnd - firstMissingBlock;
+        const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
         const decodedInWindow = feedback.decodedInWindow;
         const hasProgressed = decodedInWindow > lastDecodedInWindow;
 
@@ -316,21 +318,24 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           onUpdateLastDecodedInWindow(decodedInWindow);
         }
 
-        if (hasProgressed && decodedInWindow >= windowSize * WINDOW_BASELINE_THRESHOLD) {
+        if (clampedEffectiveWindowSize === 0) {
+          // Skip expansion when clamped effective window size is 0
+          console.log('[FountainQRManualFeedbackInput] Skipping expansion: clampedEffectiveWindowSize is 0');
+        } else if (hasProgressed && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD) {
           const now = Date.now();
           if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
             const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
             const expansionCalc = calculateWindowExpansionSize(
               firstMissingBlock,
-              windowStart,
+              firstMissingBlock,
               windowEnd,
-              windowSize,
+              clampedEffectiveWindowSize,
               feedback.progress,
               blockSize,
               effectiveWindowInfo.totalBlocks
             );
             console.log(
-              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, windowSize=${windowSize}, threshold=${Math.round(windowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
+              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, effectiveWindowSize=${effectiveWindowSize}, clampedEffectiveWindowSize=${clampedEffectiveWindowSize}, threshold=${Math.round(clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
             );
             encoder?.expandWindow(expansionCalc.expansionBlocks);
             windowExpanded = true;

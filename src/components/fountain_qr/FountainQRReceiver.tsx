@@ -13,6 +13,7 @@ import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getSegmentSizeBloc
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
+import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -134,8 +135,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getSegmentSizeBlocks(fountainMetadata.blockSize)
           // Disable window saturation feedback when targeted mode is active
           if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
-            const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
-            const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
+            const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+            const effectiveWindowSize = currentWindowEndRef.current - firstMissingBlock
+
+            // Guard against division by zero when windowEnd equals firstMissingBlock
+            if (effectiveWindowSize <= 0) {
+              // Window is fully saturated or invalid - skip saturation check
+              break
+            }
+
+            const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= firstMissingBlock && idx < currentWindowEndRef.current).length
+            const windowDecodePercentage = decodedInWindow / effectiveWindowSize
 
             // Adaptive threshold calculation
             const adaptiveThreshold = WINDOW_BASELINE_THRESHOLD + Math.max(0, lastTriggeredWindowPercentageRef.current - WINDOW_BASELINE_THRESHOLD)
