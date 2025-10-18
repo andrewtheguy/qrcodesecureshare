@@ -53,7 +53,7 @@ interface FountainQRManualFeedbackInputProps {
   lastDecodedInWindow: number;
   lastWindowExpansion: number | null;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
-  onAckGenerated: (ackUrl: string, sequence: number) => void;
+  onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
   onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
@@ -78,8 +78,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   onUpdateLastWindowExpansion,
   skipTargetedModeForSession,
 }) => {
-  const [currentMode, setCurrentMode] = useState<'idle' | 'ack-display'>('idle');
-  const [ackQRUrl, setAckQRUrl] = useState('');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
 
   // Form field states
@@ -258,9 +256,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
     try {
       const dataUrl = await generateNonDataQR(feedback);
-      setAckQRUrl(dataUrl);
       setSenderFeedbackSequence(prev => prev + 1);
-      onAckGenerated(dataUrl, feedback.sequence);
+      onAckGenerated(dataUrl, feedback.sequence, feedback.message);
     } catch (error) {
       console.error('Failed to generate ACK QR:', error);
       onError('Failed to generate acknowledgment QR code');
@@ -376,7 +373,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       await generateSenderFeedbackQR(ackFeedback);
       resetInputFields(); // Add this line
-      setCurrentMode('ack-display');
 
       onFeedbackProcessed({
         sequence: feedback.sequence,
@@ -421,7 +417,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       await generateSenderFeedbackQR(ackFeedback);
       resetInputFields(); // Add this line
-      setCurrentMode('ack-display');
 
       onFeedbackProcessed({
         sequence: feedback.sequence,
@@ -460,26 +455,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     // 7. Set the formatted value to state
     setInputConfirmationCode(formatted);
   }, []);
-
-  const handleResumeDataDisplay = useCallback(() => {
-    setCurrentMode('idle');
-    onModeChange('data-display');
-  }, [onModeChange]);
-
-  if (currentMode === 'ack-display' && ackQRUrl) {
-    return (
-      <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg border">
-        <img src={ackQRUrl} alt="ACK QR Code" className="max-w-xs" />
-        <p className="text-center font-medium">ACK QR Code - Show to receiver</p>
-        <p className="text-center text-sm text-muted-foreground">
-          Receiver must scan this before resuming data scanning
-        </p>
-        <Button onClick={handleResumeDataDisplay} className="w-full">
-          Resume Data Display
-        </Button>
-      </div>
-    );
-  }
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -635,19 +610,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         >
           Process Feedback & Generate ACK
         </Button>
-
-        {ackQRUrl && (
-          <Button
-            onClick={() => {
-              setCurrentMode('ack-display');
-              onModeChange('ack-display');
-            }}
-            variant="outline"
-            className="w-full"
-          >
-            Show Last ACK QR
-          </Button>
-        )}
       </CardContent>
     </Card>
   );

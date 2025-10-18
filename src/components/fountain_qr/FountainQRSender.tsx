@@ -7,6 +7,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -63,6 +64,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
   const [senderFps, setSenderFps] = useState<number>(DEFAULT_FOUNTAIN_FPS)
+  const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Initialize fountain encoder when file is loaded
@@ -130,6 +132,11 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     }
   }, [encoder, senderMode, activationToken]);
 
+  useEffect(() => {
+    setAckPayload(null)
+    setSenderMode('data-display')
+  }, [file, sessionId])
+
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
     mode: 'statistics' | 'targeted';
@@ -150,10 +157,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     console.log('Feedback processed:', feedbackData);
   };
 
-  const handleAckGenerated = () => {
-    // Sequence management moved to FountainQRFeedbackScanner
-    // This callback now only logs for debugging if needed
-    console.log('ACK generated');
+  const handleAckGenerated = (ackUrl: string, sequence: number, message?: string) => {
+    setAckPayload({ qrUrl: ackUrl, sequence, message })
+    console.log('ACK generated', { sequence, message });
   };
 
   const handleFeedbackModeChange = (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => {
@@ -323,8 +329,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         </Alert>
       )}
 
-      {/* QR Code Display (clean container without overlays) */}
-      {senderMode === 'data-display' ? (
+      {/* Active Sender View */}
+      {senderMode === 'data-display' && (
         <FountainQRDataDisplay
           encoder={encoder}
           sessionId={sessionId}
@@ -341,12 +347,34 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           fps={senderFps}
           onFpsChange={setSenderFps}
         />
-      ) : (
-        <div className="flex justify-center bg-white p-4 rounded-lg">
-          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-            <p className="text-muted-foreground">
-              {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
+      )}
+
+      {senderMode === 'ack-display' && ackPayload && (
+        <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg border border-muted">
+          <img src={ackPayload.qrUrl} alt="ACK QR Code" className="max-w-xs" />
+          <div className="text-center space-y-1">
+            <p className="font-medium">ACK QR Code - Show to receiver</p>
+            <p className="text-sm text-muted-foreground">
+              Receiver must scan this before resuming data scanning
             </p>
+            {ackPayload.message && (
+              <p className="text-xs text-muted-foreground">{ackPayload.message}</p>
+            )}
+          </div>
+          <div className="flex flex-col gap-2 w-full sm:flex-row">
+            <Button onClick={() => handleFeedbackModeChange('data-display')} className="flex-1">
+              Resume Data Display
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {senderMode === 'feedback-scanning' && (
+        <div className="flex justify-center bg-white p-4 rounded-lg border border-dashed">
+          <div className="w-[320px] flex flex-col items-center text-center space-y-2 text-sm text-muted-foreground">
+            <p className="font-medium text-foreground">Feedback scanning active</p>
+            <p>Use the controls below to scan the receiver feedback QR code.</p>
+            <p>The data QR stream pauses until scanning completes.</p>
           </div>
         </div>
       )}
@@ -421,6 +449,16 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             skipTargetedModeForSession={false}
           />
         )
+      )}
+
+      {feedbackEnabled && ackPayload && senderMode !== 'ack-display' && (
+        <Button
+          variant="outline"
+          className="w-full sm:w-auto"
+          onClick={() => handleFeedbackModeChange('ack-display')}
+        >
+          Show Last ACK QR
+        </Button>
       )}
 
       {/* Status indicators for non-data-display modes */}

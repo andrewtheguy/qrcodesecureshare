@@ -49,7 +49,7 @@ interface FountainQRFeedbackScannerProps {
   lastDecodedInWindow: number;
   lastWindowExpansion: number | null;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
-  onAckGenerated: (ackUrl: string, sequence: number) => void;
+  onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
   onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
@@ -73,8 +73,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   onUpdateLastDecodedInWindow,
   onUpdateLastWindowExpansion,
 }) => {
-  const [ackQRUrl, setAckQRUrl] = useState('');
-  const [currentMode, setCurrentMode] = useState<'scanning' | 'ack-display' | 'idle'>('idle');
+  const [currentMode, setCurrentMode] = useState<'scanning' | 'idle'>('idle');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -89,10 +88,9 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedback) => {
     try {
       const dataUrl = await generateNonDataQR(feedback);
-      setAckQRUrl(dataUrl);
       // Increment sequence only after successfully generating ACK
       setSenderFeedbackSequence(prev => prev + 1);
-      onAckGenerated(dataUrl, feedback.sequence);
+      onAckGenerated(dataUrl, feedback.sequence, feedback.message);
     } catch (error) {
       console.error('Failed to generate ACK QR:', error);
       onError('Failed to generate acknowledgment QR code');
@@ -236,7 +234,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       };
 
       await generateSenderFeedbackQR(ackFeedback);
-      setCurrentMode('ack-display');
+      setCurrentMode('idle');
 
       onFeedbackProcessed({
         sequence: data.sequence,
@@ -294,7 +292,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       };
 
       await generateSenderFeedbackQR(ackFeedback);
-      setCurrentMode('ack-display');
+      setCurrentMode('idle');
 
       onFeedbackProcessed({
         sequence: data.sequence,
@@ -368,16 +366,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     onModeChange('data-display');
   };
 
-  const handleResumeDataDisplay = () => {
-    setCurrentMode('idle');
-    onModeChange('data-display');
-  };
-
-  const handleShowAckDisplay = () => {
-    setCurrentMode('ack-display');
-    onModeChange('ack-display');
-  };
-
   if (currentMode === 'scanning') {
     return (
       <div className="space-y-4">
@@ -405,21 +393,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     );
   }
 
-  if (currentMode === 'ack-display' && ackQRUrl) {
-    return (
-      <div className="flex flex-col items-center space-y-4 p-6 bg-white rounded-lg border">
-        <img src={ackQRUrl} alt="ACK QR Code" className="max-w-xs" />
-        <p className="text-center font-medium">ACK QR Code - Show to receiver</p>
-        <p className="text-center text-sm text-muted-foreground">
-          Receiver must scan this before resuming data scanning
-        </p>
-        <Button onClick={handleResumeDataDisplay} className="w-full">
-          Resume Data Display
-        </Button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4">
       <Button
@@ -429,15 +402,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       >
         Scan Feedback QR
       </Button>
-      {ackQRUrl && (
-        <Button
-          onClick={handleShowAckDisplay}
-          variant="outline"
-          className="w-full"
-        >
-          Show Last ACK QR
-        </Button>
-      )}
     </div>
   );
 };
