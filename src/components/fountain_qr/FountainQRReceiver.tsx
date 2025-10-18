@@ -303,10 +303,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   const handleAckTransitionStatus = useCallback((successful: boolean) => {
     console.log(`[FountainQRReceiver] ACK transition status reported: ${successful}`)
-    setLastAckTransitionSuccessful(successful)
-    // Clear transition flag when transition completes
     if (successful) {
-      setIsTransitioning(false)
+      flushSync(() => {
+        setLastAckTransitionSuccessful(true)
+        setIsTransitioning(false)
+      })
+    } else {
+      setLastAckTransitionSuccessful(false)
     }
   }, [])
 
