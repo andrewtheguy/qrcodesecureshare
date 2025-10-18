@@ -400,7 +400,7 @@ export function FountainQRDataScanner({
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
 
               // Apply a different background color for blocks within window range when window mode is enabled
-              const windowBackground = isWindowEnabled && isInWindow ? 'bg-slate-100 dark:bg-slate-900' : 'bg-transparent'
+              const windowBackground = isWindowEnabled && isInWindow ? 'bg-purple-100 dark:bg-purple-900' : 'bg-transparent'
 
               return (
                 <div
