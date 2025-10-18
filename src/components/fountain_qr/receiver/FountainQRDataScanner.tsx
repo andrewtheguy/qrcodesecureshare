@@ -37,6 +37,7 @@ interface FountainQRDataScannerProps {
   isWindowEnabled: boolean
   currentWindowStart: number
   currentWindowEnd: number
+  firstMissingBlock: number
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
@@ -63,6 +64,7 @@ export function FountainQRDataScanner({
   isWindowEnabled,
   currentWindowStart,
   currentWindowEnd,
+  firstMissingBlock,
   onChunkScanned,
   onScanError,
   onScanStart,
@@ -318,10 +320,10 @@ export function FountainQRDataScanner({
             {isWindowEnabled ? (
               <div className="text-xs text-muted-foreground">
                 {(() => {
-                  const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-                  const windowSize = currentWindowEnd - currentWindowStart
+                  const windowSize = currentWindowEnd - firstMissingBlock
+                  const decodedInWindow = decodedBlockIndices.filter(idx => idx >= firstMissingBlock && idx < currentWindowEnd).length
                   const windowPercent = windowSize > 0 ? Math.round((decodedInWindow / windowSize) * 100) : 0
-                  return `Window Mode: Active (${windowPercent}% full, blocks ${currentWindowStart}-${currentWindowEnd} of ${fountainMetadata.totalSourceBlocks})`
+                  return `Window Mode: Active (${windowPercent}% full, blocks ${firstMissingBlock}-${currentWindowEnd} of ${fountainMetadata.totalSourceBlocks})`
                 })()}
               </div>
             ) : (

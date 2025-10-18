@@ -229,9 +229,12 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             <div className="space-y-2">
               <p className="font-medium">🪟 Window Progress</p>
               <div className="text-sm">
-                <p>Window: blocks {windowInfo.windowStart}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({((windowInfo.windowSize / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
+                <p>Window: blocks {windowInfo.skipBlocksBelow}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} ({(((windowInfo.windowEnd - windowInfo.skipBlocksBelow) / windowInfo.totalBlocks) * 100).toFixed(1)}% of file)</p>
                 <p>Segment: {windowInfo.currentSegment} / {windowInfo.totalSegments}</p>
                 <p>Segment progress: {windowInfo.segmentProgress.toFixed(1)}%</p>
+                {windowInfo.skipBlocksBelow > 0 && (
+                  <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                )}
                 <p className="text-xs text-muted-foreground">Session ID: {sessionId}</p>
                 {windowInfo.isWindowComplete ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
@@ -261,10 +264,10 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                     <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
                     <p>Receiver reports: {lastStats.progress ?? 'N/A'}% complete</p>
                           {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
-                            <p>Current window: blocks {lastStats.windowStart}-{lastStats.windowEnd}</p>
+                            <p>Current window: blocks {windowInfo.skipBlocksBelow}-{lastStats.windowEnd}</p>
                           )}
                           {windowInfo && windowInfo.skipBlocksBelow > 0 && (
-                            <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                            <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
                           )}
                           {lastProcessedSequence >= 0 && (
                             <p>Last feedback: sequence {lastProcessedSequence}</p>
@@ -277,10 +280,10 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                       <>
                         <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
                         <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
-                          blockIdx >= windowInfo.windowStart && blockIdx < windowInfo.windowEnd
-                        ).length} / {windowInfo.windowSize} blocks</p>
+                          blockIdx >= windowInfo.skipBlocksBelow && blockIdx < windowInfo.windowEnd
+                        ).length} / {windowInfo.windowEnd - windowInfo.skipBlocksBelow} blocks</p>
                         {windowInfo && windowInfo.skipBlocksBelow > 0 && (
-                          <p>Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
+                          <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
                         )}
                       </>
                     ) : (

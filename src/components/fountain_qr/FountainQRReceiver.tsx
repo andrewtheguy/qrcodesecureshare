@@ -77,6 +77,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
 
+  // First missing block tracking (updates only when feedback is generated)
+  const [firstMissingBlock, setFirstMissingBlock] = useState<number>(0)
+
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
 
@@ -209,6 +212,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const handleFeedbackGenerated = useCallback(() => {
     setReceiverMode('feedback-display')
     setIsAwaitingFeedback(true)
+  }, [])
+
+  const handleFirstMissingBlockUpdate = useCallback((value: number) => {
+    setFirstMissingBlock(value)
   }, [])
 
   const handleAckReceived = useCallback((_acknowledgedSequence: number, _windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => {
@@ -477,6 +484,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           receiverMode={receiverMode}
           isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
           onFeedbackGenerated={handleFeedbackGenerated}
+          onFirstMissingBlockUpdate={handleFirstMissingBlockUpdate}
           onAckReceived={handleAckReceived}
           onModeChange={handleFeedbackModeChange}
           onError={handleFeedbackError}
@@ -545,6 +553,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         isWindowEnabled={isWindowEnabled}
         currentWindowStart={currentWindowStart}
         currentWindowEnd={currentWindowEnd}
+        firstMissingBlock={firstMissingBlock}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}

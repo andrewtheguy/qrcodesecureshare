@@ -18,6 +18,7 @@ import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
 import { useQRScanner } from '@/hooks/useQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
+import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
 /**
  * Formats an array of missing block indices into a human-readable range string.
@@ -58,6 +59,7 @@ interface FountainQRFeedbackDisplayProps {
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
   onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
+  onFirstMissingBlockUpdate: (value: number) => void
   onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
@@ -81,6 +83,7 @@ export function FountainQRFeedbackDisplay({
   receiverMode,
   isActive,
   onFeedbackGenerated,
+  onFirstMissingBlockUpdate,
   onAckReceived,
   onModeChange,
   onError,
@@ -119,28 +122,6 @@ export function FountainQRFeedbackDisplay({
     sessionIdRef.current = sessionId
   }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, fountainMetadata, sessionId])
 
-  /**
-   * Calculate the first missing block index in a sequence.
-   *
-   * PRECONDITION: decodedBlockIndices MUST be sorted in ascending order.
-   * This is guaranteed by FountainDecoder.getDecodedBlockIndices() in fountainCode.ts:547,
-   * which sorts the array before returning it.
-   *
-   * @param decodedBlockIndices - Sorted array of decoded block indices
-   * @returns The index of the first missing block in the sequence
-   */
-  const calculateFirstMissingBlock = (decodedBlockIndices: number[]): number => {
-    // Find the first index where the sequence breaks
-    for (let i = 0; i < decodedBlockIndices.length; i++) {
-      if (decodedBlockIndices[i] !== i) {
-        return i
-      }
-    }
-
-    // If all blocks from 0 to length-1 are contiguous, return the length
-    return decodedBlockIndices.length
-  }
-
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
     try {
@@ -165,6 +146,8 @@ export function FountainQRFeedbackDisplay({
       }
 
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+      // Notify parent of the firstMissingBlock value that will be sent in feedback
+      onFirstMissingBlockUpdate(firstMissingBlock)
       // Calculate decoded blocks within current window bounds
       const windowStart = currentWindowStartRef.current
       const windowEnd = currentWindowEndRef.current
@@ -270,7 +253,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+  }, [feedbackSequence, onFeedbackGenerated, onFirstMissingBlockUpdate, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
