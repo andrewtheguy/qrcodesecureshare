@@ -566,9 +566,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         onScanStop={() => {
           setIsScanning(false)
         }}
-        onReset={() => {
-          handleReset()
-        }}
         onToggleMetadataInfo={() => {
           // Optional: handle metadata info toggle if needed
         }}

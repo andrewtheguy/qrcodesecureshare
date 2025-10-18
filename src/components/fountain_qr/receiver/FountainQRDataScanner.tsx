@@ -42,7 +42,6 @@ interface FountainQRDataScannerProps {
   onScanError: (error: string) => void
   onScanStart: () => void
   onScanStop: () => void
-  onReset: () => void
   onToggleMetadataInfo: (show: boolean) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void;
   onAckTransitionStatus: (successful: boolean) => void;
@@ -69,7 +68,6 @@ export function FountainQRDataScanner({
   onScanError,
   onScanStart,
   onScanStop,
-  onReset,
   onToggleMetadataInfo,
   onModeChange,
   onAckTransitionStatus
@@ -234,14 +232,6 @@ export function FountainQRDataScanner({
     onScanStop()
   }
 
-  const handleReset = () => {
-    setReceivedFountainChunks(0)
-    setError('')
-    setShowMetadataInfo(false)
-    setDebugLog([`[${new Date().toLocaleTimeString()}] 📦 Reset - Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
-    setHasAutoStarted(false)
-    onReset()
-  }
 
   useEffect(() => {
     if (receiverMode !== 'data-scanning' || success || isAwaitingFeedback) {
@@ -326,9 +316,6 @@ export function FountainQRDataScanner({
                 <>
                   <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
                     ⏹ Stop Scanning
-                  </Button>
-                  <Button onClick={handleReset} variant="outline">
-                    Reset
                   </Button>
                 </>
               )}
