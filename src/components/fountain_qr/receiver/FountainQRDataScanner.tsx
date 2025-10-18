@@ -79,6 +79,7 @@ export function FountainQRDataScanner({
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
+  const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
@@ -217,14 +218,16 @@ export function FountainQRDataScanner({
     if (receiverMode !== 'data-scanning' || success) {
       addDebugLog(`🛑 Stopping camera due to mode change (mode=${receiverMode}) or success (success=${success})`)
       stopScannerRef.current?.()
+      setHasAutoStarted(false)
     }
-  }, [receiverMode, success])
+  }, [receiverMode, success, addDebugLog])
 
-  const handleStartScan = () => {
+  const handleStartScan = useCallback(() => {
     setReceivedFountainChunks(0)
     setError('')
+    setHasAutoStarted(true)
     onScanStart()
-  }
+  }, [onScanStart])
 
   const handleStopScan = () => {
     stopScannerRef.current?.()
@@ -236,8 +239,22 @@ export function FountainQRDataScanner({
     setError('')
     setShowMetadataInfo(false)
     setDebugLog([`[${new Date().toLocaleTimeString()}] 📦 Reset - Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
+    setHasAutoStarted(false)
     onReset()
   }
+
+  useEffect(() => {
+    if (receiverMode !== 'data-scanning' || success || isAwaitingFeedback) {
+      if (receiverMode !== 'data-scanning' || success) {
+        setHasAutoStarted(false)
+      }
+      return
+    }
+
+    if (!isScanning && !hasAutoStarted) {
+      handleStartScan()
+    }
+  }, [receiverMode, success, isAwaitingFeedback, isScanning, hasAutoStarted, handleStartScan])
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
@@ -264,30 +281,57 @@ export function FountainQRDataScanner({
     <div className="space-y-4">
       {/* Video Preview */}
       {receiverMode === 'data-scanning' && (
-        <div className="relative bg-black rounded-lg overflow-hidden">
-          <video
-            ref={videoRef}
-            className="w-full h-auto"
-            style={{ maxHeight: '400px' }}
-          />
-          {isScanning && !isAwaitingFeedback && (
-            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
-              ● SCANNING
-            </div>
-          )}
-          {isAwaitingFeedback && (
-            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-              <p className="text-sm text-center">
-                Awaiting feedback processing. Scanning will resume automatically.
-              </p>
-            </div>
-          )}
-          {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
-            <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
-                <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+        <div className="space-y-3">
+          <div className="relative bg-black rounded-lg overflow-hidden">
+            <video
+              ref={videoRef}
+              className="w-full h-auto"
+              style={{ maxHeight: '400px' }}
+            />
+            {isScanning && !isAwaitingFeedback && (
+              <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
+                ● SCANNING
               </div>
+            )}
+            {isAwaitingFeedback && (
+              <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+                <p className="text-sm text-center">
+                  Awaiting feedback processing. Scanning will resume automatically.
+                </p>
+              </div>
+            )}
+            {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
+              <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
+                  <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!success && (
+            <div className="flex flex-wrap gap-2">
+              {receiverMode === 'data-scanning' && !isScanning && !isAwaitingFeedback && (
+                <Button onClick={handleStartScan} className="flex-1 sm:flex-none">
+                  📷 Start Scanning
+                </Button>
+              )}
+              {receiverMode === 'data-scanning' && !isScanning && !success && isAwaitingFeedback && (
+                <Button disabled className="flex-1 sm:flex-none" variant="secondary">
+                  ⏸️ Provide Feedback to Resume
+                </Button>
+              )}
+              {receiverMode === 'data-scanning' && isScanning && !success && (
+                <>
+                  <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
+                    ⏹ Stop Scanning
+                  </Button>
+                  <Button onClick={handleReset} variant="outline">
+                    Reset
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -332,7 +376,7 @@ export function FountainQRDataScanner({
               </div>
             )}
           </div>
-          <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
@@ -356,7 +400,7 @@ export function FountainQRDataScanner({
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
 
               // Apply a different background color for blocks within window range when window mode is enabled
-              const windowBackground = isWindowEnabled && isInWindow ? 'bg-blue-100 dark:bg-blue-900' : 'bg-transparent'
+              const windowBackground = isWindowEnabled && isInWindow ? 'bg-slate-50 dark:bg-slate-950' : 'bg-transparent'
 
               return (
                 <div
@@ -411,7 +455,7 @@ export function FountainQRDataScanner({
           <AlertDescription>
             <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Click "Start Scanning" to activate camera</li>
+              <li>Scanning starts automatically; use "Start Scanning" if you pause it</li>
               <li>Scan the metadata QR code first</li>
               <li>Then scan fountain-coded chunks</li>
               <li>You only need ~110% of chunks (can miss some)</li>
@@ -452,27 +496,7 @@ export function FountainQRDataScanner({
       </div>
 
       {/* Control Buttons */}
-      <div className="flex gap-2">
-        {receiverMode === 'data-scanning' && !isScanning && !success && !isAwaitingFeedback && (
-          <Button onClick={handleStartScan} className="flex-1">
-            📷 Start Scanning
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && !isScanning && !success && isAwaitingFeedback && (
-          <Button disabled className="flex-1" variant="secondary">
-            ⏸️ Provide Feedback to Resume
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && isScanning && !success && (
-          <>
-            <Button onClick={handleStopScan} variant="destructive" className="flex-1">
-              ⏹ Stop Scanning
-            </Button>
-            <Button onClick={handleReset} variant="outline">
-              Reset
-            </Button>
-          </>
-        )}
+      <div className="flex justify-end">
         {!success && (
           <Button
             onClick={() => {
