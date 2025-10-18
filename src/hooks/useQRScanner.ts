@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type RefObject } from 'react'
 import QrScanner from 'qr-scanner'
 import { isMobileDevice } from '@/lib/utils'
 
@@ -27,6 +27,11 @@ interface UseQRScannerOptions {
    * Preferred camera to use. Defaults to 'environment' (rear camera).
    */
   preferredCamera?: 'environment' | 'user'
+  /**
+   * Optional overlay element that will be synced to the scanner's active scan region.
+   * Useful for rendering custom guidance without enabling the built-in highlights.
+   */
+  scanRegionOverlayRef?: RefObject<HTMLDivElement | null>
 }
 
 QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
@@ -49,7 +54,8 @@ export function useQRScanner({
   onStop,
   maxScansPerSecond,
   enableVisualHighlights,
-  preferredCamera = 'environment'
+  preferredCamera = 'environment',
+  scanRegionOverlayRef
 }: UseQRScannerOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
@@ -111,6 +117,10 @@ export function useQRScanner({
 
     console.log(`[useQRScanner] Mobile: ${isMobile}, Scan rate: ${scanRate} fps, Visual highlights: ${showHighlights}`)
 
+    const overlayElement = scanRegionOverlayRef?.current ?? undefined
+    const highlightScanRegion = overlayElement ? true : showHighlights
+    const highlightCodeOutline = overlayElement ? false : showHighlights
+
     const scanner = new QrScanner(
       videoRef.current,
       (result) => {
@@ -127,8 +137,9 @@ export function useQRScanner({
       {
         returnDetailedScanResult: true,
         maxScansPerSecond: scanRate,
-        highlightScanRegion: showHighlights,
-        highlightCodeOutline: showHighlights,
+        highlightScanRegion,
+        highlightCodeOutline,
+        overlay: overlayElement,
         preferredCamera: preferredCamera,
       }
     )

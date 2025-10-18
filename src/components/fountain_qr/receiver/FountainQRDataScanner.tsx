@@ -84,6 +84,7 @@ export function FountainQRDataScanner({
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
+  const scanRegionOverlayRef = useRef<HTMLDivElement | null>(null)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -203,7 +204,8 @@ export function FountainQRDataScanner({
     },
     onStop: () => addDebugLog('🛑 Data scanner stopped'),
     maxScansPerSecond: 8,
-    enableVisualHighlights: false
+    enableVisualHighlights: false,
+    scanRegionOverlayRef
   })
 
   // Sync scanner refs
@@ -283,6 +285,14 @@ export function FountainQRDataScanner({
               style={{ maxHeight: '400px' }}
               playsInline
               muted
+            />
+            <div
+              ref={scanRegionOverlayRef}
+              className="pointer-events-none absolute z-10 rounded-2xl border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.4)]"
+              style={{
+                backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px)',
+                backgroundSize: '20% 100%, 100% 20%'
+              }}
             />
             {isScanning && !isAwaitingFeedback && (
               <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
