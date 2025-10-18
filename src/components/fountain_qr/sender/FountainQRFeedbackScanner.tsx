@@ -18,6 +18,15 @@ import type { default as QrScannerType } from 'qr-scanner';
 import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
 import { isMobileDevice } from '@/lib/utils';
 
+const startQrScanner = async (scanner: QrScannerType, constraints?: MediaTrackConstraints) => {
+  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>;
+  if (constraints && Object.keys(constraints).length > 0) {
+    await startFn.call(scanner, constraints);
+  } else {
+    await startFn.call(scanner);
+  }
+};
+
 interface WindowInfo {
   windowEnabled: boolean;
   windowStart: number;
@@ -361,13 +370,13 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
             // Start scanner with video constraints for mobile optimization
             if (isMobile) {
-              await scannerRef.current.start({
+              await startQrScanner(scannerRef.current, {
                 facingMode: 'environment',
                 width: { ideal: 1280 },
                 height: { ideal: 720 }
               });
             } else {
-              await scannerRef.current.start();
+              await startQrScanner(scannerRef.current);
             }
             // setScanningFeedback(true);
           }

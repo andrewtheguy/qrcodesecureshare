@@ -43,6 +43,15 @@ interface WebRTCReceiveState {
   data: WebRTCScanData | null
 }
 
+const startQrScanner = async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
+  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
+  if (constraints && Object.keys(constraints).length > 0) {
+    await startFn.call(scanner, constraints)
+  } else {
+    await startFn.call(scanner)
+  }
+}
+
 const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
@@ -341,13 +350,13 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
 
       // Start scanner with video constraints for mobile optimization
       if (isMobile) {
-        await scanner.start({
+        await startQrScanner(scanner, {
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         })
       } else {
-        await scanner.start()
+        await startQrScanner(scanner)
       }
       console.log('QR scanner started successfully')
 

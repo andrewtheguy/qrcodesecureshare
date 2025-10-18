@@ -31,6 +31,15 @@ interface UseQRScannerOptions {
 
 QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
 
+const startQrScanner = async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
+  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
+  if (constraints && Object.keys(constraints).length > 0) {
+    await startFn.call(scanner, constraints)
+  } else {
+    await startFn.call(scanner)
+  }
+}
+
 export function useQRScanner({
   onScan,
   isScanning,
@@ -137,15 +146,9 @@ export function useQRScanner({
           }
         : {})
     }
-    lastConstraintsRef.current = {
-      ...baseConstraints,
-      width: baseConstraints.width ? { ...baseConstraints.width } : undefined,
-      height: baseConstraints.height ? { ...baseConstraints.height } : undefined
-    }
+    lastConstraintsRef.current = Object.keys(baseConstraints).length > 0 ? { ...baseConstraints } : null
 
-    const startPromise = Object.keys(baseConstraints).length > 0
-      ? scanner.start(baseConstraints)
-      : scanner.start()
+    const startPromise = startQrScanner(scanner, lastConstraintsRef.current ?? undefined)
 
     startPromise.then(() => {
       console.log('[useQRScanner] Scanner started successfully')
@@ -184,17 +187,8 @@ export function useQRScanner({
     if (scannerRef.current && videoRef.current) {
       try {
         startInProgressRef.current = true
-        const constraints = lastConstraintsRef.current
-        if (constraints) {
-          const clonedConstraints: MediaTrackConstraints = {
-            ...constraints,
-            width: constraints.width ? { ...constraints.width } : undefined,
-            height: constraints.height ? { ...constraints.height } : undefined
-          }
-          await scannerRef.current.start(clonedConstraints)
-        } else {
-          await scannerRef.current.start()
-        }
+        const constraints = lastConstraintsRef.current ? { ...lastConstraintsRef.current } : undefined
+        await startQrScanner(scannerRef.current, constraints)
         onStartRef.current?.()
       } catch (err) {
         console.error('Scanner restart error:', err)

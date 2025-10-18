@@ -36,6 +36,15 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
 
+  const startQrScanner = useCallback(async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
+    const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
+    if (constraints && Object.keys(constraints).length > 0) {
+      await startFn.call(scanner, constraints)
+    } else {
+      await startFn.call(scanner)
+    }
+  }, [])
+
   // Process file into chunks
   useEffect(() => {
     const reader = new FileReader()
@@ -250,12 +259,12 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
 
     // Start scanner with video constraints for mobile optimization
     const startPromise = isMobile
-      ? scanner.start({
+      ? startQrScanner(scanner, {
           facingMode: 'environment',
           width: { ideal: 1280 },
           height: { ideal: 720 }
         })
-      : scanner.start()
+      : startQrScanner(scanner)
 
     startPromise.catch((err) => {
       console.error('Feedback scanner start error:', err)
@@ -267,7 +276,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
       scanner.stop()
       scanner.destroy()
     }
-  }, [scanningFeedback, handleFeedbackScan])
+  }, [scanningFeedback, handleFeedbackScan, startQrScanner])
 
 
   const handleStartFeedbackScan = () => {
