@@ -112,6 +112,7 @@ export function FountainQRFeedbackDisplay({
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
   const lastGeneratedSequenceRef = useRef<number>(-1)
+  const pendingAckSequenceRef = useRef<number | null>(null)
 
   // Update refs when props change
   useEffect(() => {
@@ -240,6 +241,7 @@ export function FountainQRFeedbackDisplay({
       setFeedbackQRUrl(dataUrl)
       setFeedbackMode(feedback.mode)
       setFeedbackData(feedback)
+      pendingAckSequenceRef.current = feedback.sequence
 
       // Generate confirmation code
       const code = generateFeedbackConfirmationCode(feedback)
@@ -309,7 +311,7 @@ export function FountainQRFeedbackDisplay({
 
         case 'acknowledge': {
             // Validate acknowledgedSequence against the most recently generated feedback QR
-            const expectedAcknowledgedSequence = lastGeneratedSequenceRef.current
+            const expectedAcknowledgedSequence = pendingAckSequenceRef.current ?? lastGeneratedSequenceRef.current
 
             if (expectedAcknowledgedSequence < 0) {
               console.warn('[FountainQRFeedbackDisplay] ACK received before any feedback was generated')
@@ -333,6 +335,7 @@ export function FountainQRFeedbackDisplay({
             setFeedbackQRUrl('')
             onSenderSequenceUpdate(parsed.sequence)
             onAckTransitionStatus(true)
+            pendingAckSequenceRef.current = null
             // Note: senderFeedbackMessage is now managed by parent component (FountainQRReceiver)
             // and will be set when handleAckReceived is called
 
@@ -355,7 +358,7 @@ export function FountainQRFeedbackDisplay({
       console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
       showAckError('Failed to read ACK QR code. The QR may be damaged or malformed. Please ask sender to regenerate the ACK QR and try scanning again.')
     }
-  }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful])
+  }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
   const { videoRef: ackVideoRefFromHook } = useQRScanner({
