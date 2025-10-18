@@ -164,7 +164,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       let windowExpanded = false;
       const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? null;
       if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
-        const { windowStart, windowEnd } = effectiveWindowInfo;
+        const { windowEnd } = effectiveWindowInfo;
         const effectiveWindowSize = windowEnd - firstMissingBlock;
         const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
         // Use decodedInWindow from feedback (required field)

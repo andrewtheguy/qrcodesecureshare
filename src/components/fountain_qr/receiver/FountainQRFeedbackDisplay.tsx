@@ -149,7 +149,6 @@ export function FountainQRFeedbackDisplay({
       // Notify parent of the firstMissingBlock value that will be sent in feedback
       onFirstMissingBlockUpdate(firstMissingBlock)
       // Calculate decoded blocks within current window bounds
-      const windowStart = currentWindowStartRef.current
       const windowEnd = currentWindowEndRef.current
       const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= firstMissingBlock && idx < windowEnd).length
 

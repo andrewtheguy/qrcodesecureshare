@@ -308,7 +308,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       let windowExpanded = false;
       if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
-        const { windowStart, windowEnd } = effectiveWindowInfo;
+        const { windowEnd } = effectiveWindowInfo;
         const effectiveWindowSize = windowEnd - firstMissingBlock;
         const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
         const decodedInWindow = feedback.decodedInWindow;
@@ -433,7 +433,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onAckGenerated, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields, generateSenderFeedbackQR]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields, generateSenderFeedbackQR]);
 
   const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
