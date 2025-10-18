@@ -454,7 +454,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       {feedbackEnabled && ackPayload && senderMode !== 'ack-display' && (
         <Button
           variant="outline"
-          className="w-full sm:w-auto"
+          className="w-full"
           onClick={() => handleFeedbackModeChange('ack-display')}
         >
           Show Last ACK QR
