@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -20,6 +21,8 @@ const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 const GRID_COLUMNS = 20
 const GRID_MAX_ROWS = 12
 const GRID_MAX_RECTANGLES = GRID_COLUMNS * GRID_MAX_ROWS
+
+QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
 
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
@@ -188,6 +191,8 @@ export function FountainQRDataScanner({
     onScanError(errorMessage)
   }, [onScanError])
 
+  // Continuous data scanning is the most battery-critical operation
+  // Use 8 fps on mobile and disable visual highlights to minimize power consumption
   const { videoRef, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
@@ -196,7 +201,9 @@ export function FountainQRDataScanner({
         addDebugLog('✅ Data scanner started');
         onAckTransitionStatus(true);
     },
-    onStop: () => addDebugLog('🛑 Data scanner stopped')
+    onStop: () => addDebugLog('🛑 Data scanner stopped'),
+    maxScansPerSecond: 8,
+    enableVisualHighlights: false
   })
 
   // Sync scanner refs
@@ -274,6 +281,8 @@ export function FountainQRDataScanner({
               ref={videoRef}
               className="w-full h-auto"
               style={{ maxHeight: '400px' }}
+              playsInline
+              muted
             />
             {isScanning && !isAwaitingFeedback && (
               <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">

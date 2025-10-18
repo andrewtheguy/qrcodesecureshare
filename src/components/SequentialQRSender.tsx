@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
+import { isMobileDevice } from '@/lib/utils'
 
 interface SequentialQRSenderProps {
   file: File
@@ -34,6 +35,15 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const feedbackVideoRef = useRef<HTMLVideoElement>(null)
   const feedbackScannerRef = useRef<QrScanner | null>(null)
+
+  const startQrScanner = useCallback(async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
+    const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
+    if (constraints && Object.keys(constraints).length > 0) {
+      await startFn.call(scanner, constraints)
+    } else {
+      await startFn.call(scanner)
+    }
+  }, [])
 
   // Process file into chunks
   useEffect(() => {
@@ -226,6 +236,11 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
       return
     }
 
+    // Mobile optimization: feedback scanning is brief, use 10 fps with conditional highlights
+    const isMobile = isMobileDevice()
+    const scanRate = isMobile ? 10 : 15
+    const showHighlights = !isMobile
+
     const scanner = new QrScanner(
       feedbackVideoRef.current,
       (result) => {
@@ -233,13 +248,25 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
       },
       {
         returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
+        maxScansPerSecond: scanRate,
+        highlightScanRegion: showHighlights,
+        highlightCodeOutline: showHighlights,
+        preferredCamera: 'environment',
       }
     )
 
     feedbackScannerRef.current = scanner
-    scanner.start().catch((err) => {
+
+    // Start scanner with video constraints for mobile optimization
+    const startPromise = isMobile
+      ? startQrScanner(scanner, {
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        })
+      : startQrScanner(scanner)
+
+    startPromise.catch((err) => {
       console.error('Feedback scanner start error:', err)
       setError('Failed to start camera for feedback scanning')
       setScanningFeedback(false)
@@ -249,7 +276,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
       scanner.stop()
       scanner.destroy()
     }
-  }, [scanningFeedback, handleFeedbackScan])
+  }, [scanningFeedback, handleFeedbackScan, startQrScanner])
 
 
   const handleStartFeedbackScan = () => {

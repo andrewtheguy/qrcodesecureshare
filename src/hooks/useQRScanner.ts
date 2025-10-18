@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import QrScanner from 'qr-scanner'
+import { isMobileDevice } from '@/lib/utils'
 
 interface UseQRScannerOptions {
   onScan: (data: string) => void
@@ -12,14 +13,50 @@ interface UseQRScannerOptions {
   onError?: (errorMessage: string) => void
   onStart?: () => void
   onStop?: () => void
+  /**
+   * Maximum scans per second. Defaults to 8 for mobile, 15 for desktop.
+   * Lower values reduce battery consumption on mobile devices.
+   */
+  maxScansPerSecond?: number
+  /**
+   * Enable visual highlights (scan region and code outline).
+   * Defaults to false on mobile to reduce rendering overhead, true on desktop.
+   */
+  enableVisualHighlights?: boolean
+  /**
+   * Preferred camera to use. Defaults to 'environment' (rear camera).
+   */
+  preferredCamera?: 'environment' | 'user'
 }
 
-export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError, onStart, onStop }: UseQRScannerOptions) {
+QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
+
+const startQrScanner = async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
+  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
+  if (constraints && Object.keys(constraints).length > 0) {
+    await startFn.call(scanner, constraints)
+  } else {
+    await startFn.call(scanner)
+  }
+}
+
+export function useQRScanner({
+  onScan,
+  isScanning,
+  debounceMs = 500,
+  onError,
+  onStart,
+  onStop,
+  maxScansPerSecond,
+  enableVisualHighlights,
+  preferredCamera = 'environment'
+}: UseQRScannerOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const scannerRef = useRef<QrScanner | null>(null)
   const startInProgressRef = useRef<boolean>(false)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
+  const lastConstraintsRef = useRef<MediaTrackConstraints | null>(null)
   const onScanRef = useRef(onScan)
   const onErrorRef = useRef(onError)
   const onStartRef = useRef(onStart)
@@ -63,6 +100,17 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError, on
 
     console.log('[useQRScanner] Creating new QrScanner instance')
     startInProgressRef.current = true
+
+    // Mobile optimization strategy:
+    // - Reduce scan rate from 25 fps to 8 fps on mobile to save battery
+    // - Disable visual highlights on mobile to reduce rendering overhead
+    // - Constrain video resolution to prevent unnecessary high-res processing
+    const isMobile = isMobileDevice()
+    const scanRate = maxScansPerSecond ?? (isMobile ? 8 : 15)
+    const showHighlights = enableVisualHighlights ?? !isMobile
+
+    console.log(`[useQRScanner] Mobile: ${isMobile}, Scan rate: ${scanRate} fps, Visual highlights: ${showHighlights}`)
+
     const scanner = new QrScanner(
       videoRef.current,
       (result) => {
@@ -78,13 +126,31 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError, on
       },
       {
         returnDetailedScanResult: true,
-        highlightScanRegion: true,
-        highlightCodeOutline: true,
+        maxScansPerSecond: scanRate,
+        highlightScanRegion: showHighlights,
+        highlightCodeOutline: showHighlights,
+        preferredCamera: preferredCamera,
       }
     )
 
     scannerRef.current = scanner
-    scanner.start().then(() => {
+
+    const baseConstraints: MediaTrackConstraints = {
+      ...(preferredCamera
+        ? { facingMode: { ideal: preferredCamera } }
+        : {}),
+      ...(isMobile
+        ? {
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        : {})
+    }
+    lastConstraintsRef.current = Object.keys(baseConstraints).length > 0 ? { ...baseConstraints } : null
+
+    const startPromise = startQrScanner(scanner, lastConstraintsRef.current ?? undefined)
+
+    startPromise.then(() => {
       console.log('[useQRScanner] Scanner started successfully')
       onStartRef.current?.()
       startInProgressRef.current = false
@@ -106,9 +172,10 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError, on
           onStopRef.current?.()
         }, 50)
         scannerRef.current = null
+        startInProgressRef.current = false
       }
     }
-  }, [isScanning, debounceMs])
+  }, [isScanning, debounceMs, maxScansPerSecond, enableVisualHighlights, preferredCamera])
 
   const stopScanner = () => {
     if (scannerRef.current) {
@@ -119,10 +186,15 @@ export function useQRScanner({ onScan, isScanning, debounceMs = 500, onError, on
   const restartScanner = async () => {
     if (scannerRef.current && videoRef.current) {
       try {
-        await scannerRef.current.start()
+        startInProgressRef.current = true
+        const constraints = lastConstraintsRef.current ? { ...lastConstraintsRef.current } : undefined
+        await startQrScanner(scannerRef.current, constraints)
+        onStartRef.current?.()
       } catch (err) {
         console.error('Scanner restart error:', err)
         onErrorRef.current?.('Failed to restart camera')
+      } finally {
+        startInProgressRef.current = false
       }
     }
   }
