@@ -9,10 +9,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getFeedbackFileSizeThresholdBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getSegmentSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
+import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
 interface FountainQRReceiverProps {
   initialMetadata: {
@@ -77,6 +78,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Adaptive window threshold state
   const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
 
+  // First missing block tracking (updates only when feedback is generated)
+  const [firstMissingBlock, setFirstMissingBlock] = useState<number>(0)
+
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
 
@@ -128,11 +132,20 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Debug logging moved to subcomponent
 
           // Window saturation check with adaptive threshold
-          const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize)
+          const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getSegmentSizeBlocks(fountainMetadata.blockSize)
           // Disable window saturation feedback when targeted mode is active
           if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
-            const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= currentWindowStartRef.current && idx < currentWindowEndRef.current).length
-            const windowDecodePercentage = decodedInWindow / (currentWindowEndRef.current - currentWindowStartRef.current)
+            const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+            const effectiveWindowSize = currentWindowEndRef.current - firstMissingBlock
+
+            // Guard against division by zero when windowEnd equals firstMissingBlock
+            if (effectiveWindowSize <= 0) {
+              // Window is fully saturated or invalid - skip saturation check
+              break
+            }
+
+            const decodedInWindow = decodedBlockIndices.filter((idx: number) => idx >= firstMissingBlock && idx < currentWindowEndRef.current).length
+            const windowDecodePercentage = decodedInWindow / effectiveWindowSize
 
             // Adaptive threshold calculation
             const adaptiveThreshold = WINDOW_BASELINE_THRESHOLD + Math.max(0, lastTriggeredWindowPercentageRef.current - WINDOW_BASELINE_THRESHOLD)
@@ -211,28 +224,27 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => {
+  const handleFirstMissingBlockUpdate = useCallback((value: number) => {
+    setFirstMissingBlock(value)
+  }, [])
+
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, _windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => {
     // RECEIVER: Adopt sender's window range as the absolute source of truth
     // Sender is the single authority for window state - receiver must sync to sender's range
-    if (windowStart !== undefined && windowEnd !== undefined) {
-      // Sender provided explicit window range - adopt it directly
-      setCurrentWindowStart(windowStart)
-      setCurrentWindowEnd(windowEnd)
-      console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd} (expanded=${windowExpanded})`)
-    } else if (windowExpanded) {
-      // Fallback for old ACK format without explicit window range (backward compatibility)
-      const expansion = getWindowExpansionSizeBlocks(fountainMetadata.blockSize)
-      const newWindowEnd = Math.min(currentWindowEnd + expansion, fountainMetadata.totalSourceBlocks)
-      setCurrentWindowEnd(newWindowEnd)
-      console.log(`[FountainQRReceiver] Window expanded by sender (legacy): new end=${newWindowEnd}`)
+    if (windowStart === undefined || windowEnd === undefined) {
+      console.warn('[FountainQRReceiver] ACK missing window range; ignoring update')
+      return
     }
+    setCurrentWindowStart(windowStart)
+    setCurrentWindowEnd(windowEnd)
+    console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd}`)
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
     setSenderFeedbackMessage(message)
     // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
     lastObservedWindowPercentageRef.current = 0
-  }, [fountainMetadata.blockSize, fountainMetadata.totalSourceBlocks, currentWindowEnd])
+  }, [])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
     console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)
@@ -254,12 +266,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, [receiverMode])
 
-  // Window expansion callback - kept for backwards compatibility but unused
-  // Receiver now relies solely on ACK windowExpanded flag from sender
-  const handleWindowExpansion = useCallback(() => {
-    // This callback is deprecated - window expansion handled in handleAckReceived
-    console.warn('[FountainQRReceiver] handleWindowExpansion called but is deprecated - use handleAckReceived instead')
-  }, [])
 
   const handleFeedbackError = useCallback((error: string) => {
     setError(error)
@@ -384,8 +390,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
     // Priority 0: Skip ALL feedback for very small files
     // Files smaller than 5x the targeted mode threshold don't benefit from feedback
-    const targetedModeThreshold = getTargetedModeMaxMissingBlocks(fountainMetadata.blockSize)
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getFeedbackFileSizeThresholdBlocks(fountainMetadata.blockSize) && feedbackEnabled
+    const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
+    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getSegmentSizeBlocks(fountainMetadata.blockSize) && feedbackEnabled
     if (!isFileLargeEnoughForFeedback) {
       // No feedback QR needed for very small files - they decode quickly without it
       return
@@ -481,19 +487,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           sessionId={sessionId}
           decodedBlocks={decodedBlocks}
           decodedBlockIndices={decodedBlockIndicesRef.current}
-          currentWindow={{ start: currentWindowStart, end: currentWindowEnd }}
           currentWindowStart={currentWindowStart}
           currentWindowEnd={currentWindowEnd}
-          isWindowEnabled={isWindowEnabled}
-          windowTriggerThreshold={windowTriggerThreshold}
           feedbackSequence={feedbackSequence}
           lastSenderFeedbackSequence={lastSenderFeedbackSequence}
           receiverMode={receiverMode}
           isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
           onFeedbackGenerated={handleFeedbackGenerated}
+          onFirstMissingBlockUpdate={handleFirstMissingBlockUpdate}
           onAckReceived={handleAckReceived}
           onModeChange={handleFeedbackModeChange}
-          onWindowExpansion={handleWindowExpansion}
           onError={handleFeedbackError}
           onSequenceIncrement={handleSequenceIncrement}
           onSenderSequenceUpdate={handleSenderSequenceUpdate}
@@ -560,6 +563,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         isWindowEnabled={isWindowEnabled}
         currentWindowStart={currentWindowStart}
         currentWindowEnd={currentWindowEnd}
+        firstMissingBlock={firstMissingBlock}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}
@@ -571,9 +575,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }}
         onScanStop={() => {
           setIsScanning(false)
-        }}
-        onReset={() => {
-          handleReset()
         }}
         onToggleMetadataInfo={() => {
           // Optional: handle metadata info toggle if needed

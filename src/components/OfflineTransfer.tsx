@@ -4,12 +4,22 @@ import { OfflineQRReceiver } from './OfflineQRReceiver'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 import { MAX_FILE_SIZE_FOUNTAIN } from './OfflineQRMode'
 
 export default function OfflineTransfer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>('select')
+  const [backDialogOpen, setBackDialogOpen] = useState(false)
+  const [pendingBackContext, setPendingBackContext] = useState<'send' | 'receive' | null>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -28,6 +38,34 @@ export default function OfflineTransfer() {
     setSelectedFile(null)
     setMode('select')
   }
+
+  const requestBackNavigation = (context: 'send' | 'receive') => {
+    setPendingBackContext(context)
+    setBackDialogOpen(true)
+  }
+
+  const handleConfirmBackNavigation = () => {
+    setBackDialogOpen(false)
+    handleReset()
+  }
+
+  const handleCancelBackNavigation = () => {
+    setBackDialogOpen(false)
+    setPendingBackContext(null)
+  }
+
+  const backDialogCopy = {
+    send: {
+      title: 'Leave Sender?',
+      description: 'Leaving this screen will stop the current transfer and clear the selected file.',
+      confirmLabel: 'Yes, Leave Sender'
+    },
+    receive: {
+      title: 'Leave Receiver?',
+      description: 'Leaving will stop the receiver and clear the current scan progress.',
+      confirmLabel: 'Yes, Leave Receiver'
+    }
+  } as const
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto p-4">
@@ -94,7 +132,7 @@ export default function OfflineTransfer() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-semibold">Send File</h2>
-            <Button onClick={handleReset} variant="outline">
+            <Button onClick={() => requestBackNavigation('send')} variant="outline">
               ← Back
             </Button>
           </div>
@@ -120,7 +158,7 @@ export default function OfflineTransfer() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-semibold">Receive File</h2>
-            <Button onClick={handleReset} variant="outline">
+            <Button onClick={() => requestBackNavigation('receive')} variant="outline">
               ← Back
             </Button>
           </div>
@@ -170,6 +208,33 @@ export default function OfflineTransfer() {
           </CardContent>
         </Card>
       )}
+      <Dialog
+        open={backDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCancelBackNavigation()
+          }
+        }}
+      >
+        {pendingBackContext && (
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{backDialogCopy[pendingBackContext].title}</DialogTitle>
+              <DialogDescription>
+                {backDialogCopy[pendingBackContext].description}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCancelBackNavigation}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmBackNavigation}>
+                {backDialogCopy[pendingBackContext].confirmLabel}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </div>
   )
 }

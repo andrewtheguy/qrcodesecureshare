@@ -1,4 +1,4 @@
-import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBlocks, WINDOW_BASELINE_THRESHOLD } from './fountainConfig'
+import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getBaselineWindowExpansionBlocks } from './fountainConfig'
 
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
@@ -10,9 +10,9 @@ import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getWindowExpansionSizeBl
  *  - Renormalizes distribution when truncated by max degree
  *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
  *  - Simplified generateChunk(): no parameter – encoder owns all tuning
- *  - Segment-based windowing for files > 256KB: treats large files as multiple small file segments
- *    with fixed 50KB increments instead of percentage-based expansion, optimized for QR code transfers
- *    where manual camera scanning makes time-based metrics irrelevant
+ *  - Segment-based windowing for files > 200KB: treats large files as multiple small file segments.
+ *    Window expansion is derived from the segment size and adaptive threshold rather than a fixed byte cap,
+ *    allowing larger jumps when the receiver has already decoded substantial portions of the window.
  *
  * Recommended single-session max file size with default blockSize=400 bytes:
  *   Green zone: ≤ ~200 KB (k ≲ 500)
@@ -192,17 +192,11 @@ export class FountainEncoder {
       this.windowEnabled = false
       this.windowEnd = numBlocks
     } else {
-      // Files >= 200KB: Use segment-based windowing with fixed 100KB segments
+      // Files >= 200KB: Use segment-based windowing with fixed 200KB segments
       this.windowEnabled = true
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }
 
-    // Apply padding to initial window for faster first feedback
-    // This compensates for the WINDOW_BASELINE_THRESHOLD (40%) feedback trigger
-    // Example: 250 blocks * 0.6 = 150 blocks, feedback at 60 blocks (40% of 150)
-    if (this.windowEnabled) {
-      this.windowEnd = Math.ceil(this.windowEnd * (1 - WINDOW_BASELINE_THRESHOLD))
-    }
   }
 
   getMetadata(): FountainMetadata { return this.metadata }
@@ -249,16 +243,25 @@ export class FountainEncoder {
   }
 
   /**
-   * Expand the window by fixed WINDOW_EXPANSION_SIZE_BYTES (50KB ≈ 125 blocks)
+   * Expand the window by the specified number of blocks or the adaptive baseline increment if not provided.
+   * @param expansionBlocks - Optional number of blocks to expand by. If not provided, uses the baseline (segment * threshold).
    * Returns true if expansion occurred, false if already at end
    */
-  expandWindow(): boolean {
+  expandWindow(expansionBlocks?: number): boolean {
     if (this.windowEnd >= this.sourceBlocks.length) {
       return false // Already at the end
     }
 
-    const expansionBlocks = getWindowExpansionSizeBlocks(this.blockSize)
-    this.windowEnd = Math.min(this.windowEnd + expansionBlocks, this.sourceBlocks.length)
+    const defaultExpansion = getBaselineWindowExpansionBlocks(this.blockSize)
+    let expansion: number
+    if (expansionBlocks !== undefined) {
+      const coerced = Math.ceil(expansionBlocks)
+      expansion = coerced > 0 ? coerced : defaultExpansion
+    } else {
+      expansion = defaultExpansion
+    }
+
+    this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)
     return true
   }
 

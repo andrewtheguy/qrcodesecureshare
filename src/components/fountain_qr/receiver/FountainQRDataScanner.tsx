@@ -37,11 +37,11 @@ interface FountainQRDataScannerProps {
   isWindowEnabled: boolean
   currentWindowStart: number
   currentWindowEnd: number
+  firstMissingBlock: number
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
   onScanStop: () => void
-  onReset: () => void
   onToggleMetadataInfo: (show: boolean) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void;
   onAckTransitionStatus: (successful: boolean) => void;
@@ -63,11 +63,11 @@ export function FountainQRDataScanner({
   isWindowEnabled,
   currentWindowStart,
   currentWindowEnd,
+  firstMissingBlock,
   onChunkScanned,
   onScanError,
   onScanStart,
   onScanStop,
-  onReset,
   onToggleMetadataInfo,
   onModeChange,
   onAckTransitionStatus
@@ -77,6 +77,7 @@ export function FountainQRDataScanner({
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
+  const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
@@ -215,27 +216,35 @@ export function FountainQRDataScanner({
     if (receiverMode !== 'data-scanning' || success) {
       addDebugLog(`🛑 Stopping camera due to mode change (mode=${receiverMode}) or success (success=${success})`)
       stopScannerRef.current?.()
+      setHasAutoStarted(false)
     }
-  }, [receiverMode, success])
+  }, [receiverMode, success, addDebugLog])
 
-  const handleStartScan = () => {
+  const handleStartScan = useCallback(() => {
     setReceivedFountainChunks(0)
     setError('')
+    setHasAutoStarted(true)
     onScanStart()
-  }
+  }, [onScanStart])
 
   const handleStopScan = () => {
     stopScannerRef.current?.()
     onScanStop()
   }
 
-  const handleReset = () => {
-    setReceivedFountainChunks(0)
-    setError('')
-    setShowMetadataInfo(false)
-    setDebugLog([`[${new Date().toLocaleTimeString()}] 📦 Reset - Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
-    onReset()
-  }
+
+  useEffect(() => {
+    if (receiverMode !== 'data-scanning' || success || isAwaitingFeedback) {
+      if (receiverMode !== 'data-scanning' || success) {
+        setHasAutoStarted(false)
+      }
+      return
+    }
+
+    if (!isScanning && !hasAutoStarted) {
+      handleStartScan()
+    }
+  }, [receiverMode, success, isAwaitingFeedback, isScanning, hasAutoStarted, handleStartScan])
 
   const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
@@ -251,57 +260,65 @@ export function FountainQRDataScanner({
   const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, GRID_MAX_RECTANGLES)
   const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
 
-  // Get color for rectangle based on decoded blocks in range and window status
-  function getRectangleColor(decodedInRange: number, totalInRange: number, isInWindow: boolean, isWindowActive: boolean) {
-    // If window mode is disabled, use original colors
-    if (!isWindowActive) {
-      if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
-      if (decodedInRange === totalInRange) return 'bg-green-500'
-      return 'bg-yellow-500'
-    }
-
-    // Window mode is active
-    if (isInWindow) {
-      // Blocks within window: use muted slate color to indicate active window
-      if (decodedInRange === 0) return 'bg-slate-300 dark:bg-slate-600'
-      if (decodedInRange === totalInRange) return 'bg-green-500'
-      return 'bg-yellow-500'
-    } else {
-      // Blocks outside window: use dimmed colors
-      if (decodedInRange === 0) return 'bg-gray-300 dark:bg-gray-800 opacity-50'
-      if (decodedInRange === totalInRange) return 'bg-green-600 opacity-60'
-      return 'bg-yellow-600 opacity-60'
-    }
+  // Get color for rectangle based on decoded blocks in range
+  function getRectangleColor(decodedInRange: number, totalInRange: number) {
+    if (decodedInRange === 0) return 'bg-gray-200 dark:bg-gray-700'
+    if (decodedInRange === totalInRange) return 'bg-green-500'
+    return 'bg-yellow-500'
   }
 
   return (
     <div className="space-y-4">
       {/* Video Preview */}
       {receiverMode === 'data-scanning' && (
-        <div className="relative bg-black rounded-lg overflow-hidden">
-          <video
-            ref={videoRef}
-            className="w-full h-auto"
-            style={{ maxHeight: '400px' }}
-          />
-          {isScanning && !isAwaitingFeedback && (
-            <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
-              ● SCANNING
-            </div>
-          )}
-          {isAwaitingFeedback && (
-            <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-              <p className="text-sm text-center">
-                Awaiting feedback processing. Scanning will resume automatically.
-              </p>
-            </div>
-          )}
-          {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
-            <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
-              <div className="space-y-1">
-                <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
-                <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+        <div className="space-y-3">
+          <div className="relative bg-black rounded-lg overflow-hidden">
+            <video
+              ref={videoRef}
+              className="w-full h-auto"
+              style={{ maxHeight: '400px' }}
+            />
+            {isScanning && !isAwaitingFeedback && (
+              <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
+                ● SCANNING
               </div>
+            )}
+            {isAwaitingFeedback && (
+              <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
+                <p className="text-sm text-center">
+                  Awaiting feedback processing. Scanning will resume automatically.
+                </p>
+              </div>
+            )}
+            {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
+              <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
+                  <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {!success && (
+            <div className="flex flex-wrap gap-2">
+              {receiverMode === 'data-scanning' && !isScanning && !isAwaitingFeedback && (
+                <Button onClick={handleStartScan} className="flex-1 sm:flex-none">
+                  📷 Start Scanning
+                </Button>
+              )}
+              {receiverMode === 'data-scanning' && !isScanning && !success && isAwaitingFeedback && (
+                <Button disabled className="flex-1 sm:flex-none" variant="secondary">
+                  ⏸️ Provide Feedback to Resume
+                </Button>
+              )}
+              {receiverMode === 'data-scanning' && isScanning && !success && (
+                <>
+                  <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
+                    ⏹ Stop Scanning
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -334,10 +351,10 @@ export function FountainQRDataScanner({
             {isWindowEnabled ? (
               <div className="text-xs text-muted-foreground">
                 {(() => {
-                  const decodedInWindow = decodedBlockIndices.filter(idx => idx >= currentWindowStart && idx < currentWindowEnd).length
-                  const windowSize = currentWindowEnd - currentWindowStart
+                  const windowSize = currentWindowEnd - firstMissingBlock
+                  const decodedInWindow = decodedBlockIndices.filter(idx => idx >= firstMissingBlock && idx < currentWindowEnd).length
                   const windowPercent = windowSize > 0 ? Math.round((decodedInWindow / windowSize) * 100) : 0
-                  return `Window Mode: Active (${windowPercent}% full, blocks ${currentWindowStart}-${currentWindowEnd} of ${fountainMetadata.totalSourceBlocks})`
+                  return `Window Mode: Active (${windowPercent}% full, blocks ${firstMissingBlock}-${currentWindowEnd} of ${fountainMetadata.totalSourceBlocks})`
                 })()}
               </div>
             ) : (
@@ -346,7 +363,7 @@ export function FountainQRDataScanner({
               </div>
             )}
           </div>
-          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
@@ -367,14 +384,19 @@ export function FountainQRDataScanner({
               // Check if this rectangle is within the current window
               // A rectangle is considered "in window" if any of its blocks fall within [currentWindowStart, currentWindowEnd)
               const isInWindow = rangeBlocks.some(block => block >= currentWindowStart && block < currentWindowEnd)
-              const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length, isInWindow, isWindowEnabled)
+              const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
+
+              // Apply a different background color for blocks within window range when window mode is enabled
+              const windowBackground = isWindowEnabled && isInWindow ? 'bg-purple-100 dark:bg-purple-900' : 'bg-transparent'
 
               return (
                 <div
                   key={i}
-                  className={`aspect-square rounded ${colorClass}`}
+                  className={`aspect-square p-0.5 ${windowBackground}`}
                   title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded${isWindowEnabled ? (isInWindow ? ' (in window)' : ' (outside window)') : ''}`}
-                />
+                >
+                  <div className={`w-full h-full rounded-full ${colorClass}`} />
+                </div>
               )
             })}
           </div>
@@ -420,7 +442,7 @@ export function FountainQRDataScanner({
           <AlertDescription>
             <p className="font-medium mb-2">📱 Fountain Code Transfer Mode:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm">
-              <li>Click "Start Scanning" to activate camera</li>
+              <li>Scanning starts automatically; use "Start Scanning" if you pause it</li>
               <li>Scan the metadata QR code first</li>
               <li>Then scan fountain-coded chunks</li>
               <li>You only need ~110% of chunks (can miss some)</li>
@@ -461,27 +483,7 @@ export function FountainQRDataScanner({
       </div>
 
       {/* Control Buttons */}
-      <div className="flex gap-2">
-        {receiverMode === 'data-scanning' && !isScanning && !success && !isAwaitingFeedback && (
-          <Button onClick={handleStartScan} className="flex-1">
-            📷 Start Scanning
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && !isScanning && !success && isAwaitingFeedback && (
-          <Button disabled className="flex-1" variant="secondary">
-            ⏸️ Provide Feedback to Resume
-          </Button>
-        )}
-        {receiverMode === 'data-scanning' && isScanning && !success && (
-          <>
-            <Button onClick={handleStopScan} variant="destructive" className="flex-1">
-              ⏹ Stop Scanning
-            </Button>
-            <Button onClick={handleReset} variant="outline">
-              Reset
-            </Button>
-          </>
-        )}
+      <div className="flex justify-end">
         {!success && (
           <Button
             onClick={() => {

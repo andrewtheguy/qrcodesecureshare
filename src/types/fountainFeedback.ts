@@ -29,6 +29,12 @@ interface FountainFeedbackBase {
   progress: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
+  /**
+   * Number of blocks decoded within the current window (windowStart..windowEnd).
+   * Used by the sender to decide when to expand the window based on actual progress.
+   * Required for all feedback payloads.
+   */
+  decodedInWindow: number;
 }
 
 /**
@@ -36,12 +42,6 @@ interface FountainFeedbackBase {
  */
 export interface FountainFeedbackStatistics extends FountainFeedbackBase {
   mode: 'statistics';
-  /** Number of blocks decoded in current window */
-  decodedInWindow?: number;
-  /** Total number of blocks decoded so far */
-  totalDecoded?: number;
-  /** Whether sender should expand the transfer window */
-  requestWindowExpansion: boolean;
 }
 
 /**

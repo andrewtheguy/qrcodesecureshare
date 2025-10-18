@@ -66,12 +66,11 @@ export function generateFeedbackConfirmationCode(feedback: FountainFeedback): st
     { sequence: feedback.sequence.toString() },
     { firstMissingBlock: feedback.firstMissingBlock.toString() },
     { progress: feedback.progress.toString() },
+    { decodedInWindow: feedback.decodedInWindow.toString() },
   ]
 
   // Add mode-specific fields
-  if (feedback.mode === 'statistics') {
-    fields.push({ requestWindowExpansion: feedback.requestWindowExpansion ? '1' : '0' })
-  } else if (feedback.mode === 'targeted') {
+  if (feedback.mode === 'targeted') {
     const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
     fields.push({ missingBlocks: sortedMissingBlocks.join(',') })
   }
