@@ -255,10 +255,29 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     return deduplicated;
   };
 
+  const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
+    try {
+      const dataUrl = await generateNonDataQR(feedback);
+      setAckQRUrl(dataUrl);
+      setSenderFeedbackSequence(prev => prev + 1);
+      onAckGenerated(dataUrl, feedback.sequence);
+    } catch (error) {
+      console.error('Failed to generate ACK QR:', error);
+      onError('Failed to generate acknowledgment QR code');
+    }
+  }, [onAckGenerated, onError]);
+
   const handleProcessFeedback = useCallback(async () => {
     const { valid, error, feedback } = validateInputs();
     if (!valid || !feedback) {
       showValidationError(error);
+      return;
+    }
+
+    // Validate encoder exists before processing
+    if (!encoder) {
+      console.error('[FountainQRManualFeedbackInput] CRITICAL: Encoder is null when processing feedback');
+      showValidationError('Encoder not available. Cannot process feedback.');
       return;
     }
 
@@ -329,7 +348,15 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       }
 
       // Get the current (possibly expanded) window info to send to receiver
-      const finalWindowInfo = encoder?.getWindowInfo();
+      console.log('[FountainQRManualFeedbackInput] Getting final window info for ACK generation');
+      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
+      const finalWindowInfo = encoder.getWindowInfo();
+      if (!finalWindowInfo) {
+        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null/undefined');
+        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
+        return;
+      }
+      console.log('[FountainQRManualFeedbackInput] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -338,8 +365,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
         windowExpanded,
-        windowStart: finalWindowInfo?.windowStart ?? 0,
-        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
+        windowStart: finalWindowInfo.windowStart,
+        windowEnd: finalWindowInfo.windowEnd,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -366,7 +393,15 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       }
 
       // Generate ACK without expansion (targeted mode is final cleanup)
-      const finalWindowInfo = encoder?.getWindowInfo();
+      console.log('[FountainQRManualFeedbackInput] Getting final window info for targeted mode ACK');
+      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
+      const finalWindowInfo = encoder.getWindowInfo();
+      if (!finalWindowInfo) {
+        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null in targeted mode');
+        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
+        return;
+      }
+      console.log('[FountainQRManualFeedbackInput] Targeted mode ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -375,8 +410,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
         windowExpanded: false,
-        windowStart: finalWindowInfo?.windowStart ?? 0,
-        windowEnd: finalWindowInfo?.windowEnd ?? (updatedWindowInfo?.totalBlocks ?? 0),
+        windowStart: finalWindowInfo.windowStart,
+        windowEnd: finalWindowInfo.windowEnd,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -393,19 +428,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onAckGenerated, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields]);
-
-  const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
-    try {
-      const dataUrl = await generateNonDataQR(feedback);
-      setAckQRUrl(dataUrl);
-      setSenderFeedbackSequence(prev => prev + 1);
-      onAckGenerated(dataUrl, feedback.sequence);
-    } catch (error) {
-      console.error('Failed to generate ACK QR:', error);
-      onError('Failed to generate acknowledgment QR code');
-    }
-  }, [onAckGenerated, onError]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onAckGenerated, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields, generateSenderFeedbackQR]);
 
   const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
