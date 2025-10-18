@@ -376,7 +376,7 @@ export function FountainQRDataScanner({
               </div>
             )}
           </div>
-          <div className={`grid gap-1`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
+          <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
               const startBlock = i * blocksPerRect
               const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
@@ -400,7 +400,7 @@ export function FountainQRDataScanner({
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
 
               // Apply a different background color for blocks within window range when window mode is enabled
-              const windowBackground = isWindowEnabled && isInWindow ? 'bg-slate-50 dark:bg-slate-950' : 'bg-transparent'
+              const windowBackground = isWindowEnabled && isInWindow ? 'bg-slate-100 dark:bg-slate-900' : 'bg-transparent'
 
               return (
                 <div
