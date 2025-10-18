@@ -9,6 +9,14 @@ import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
 import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD } from '@/utils/fountainConfig'
 import { getSegmentSizeBlocks } from '../utils/fountainConfig'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
@@ -66,12 +74,14 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
    const [step, setStep] = useState<'mode' | 'metadata' | 'transfer'>('mode')
    const [metadataQR, setMetadataQR] = useState<string>('')
    const [metadataJson, setMetadataJson] = useState<MetadataJson>(null)
-   const [metadataLoading, setMetadataLoading] = useState(false)
-   const [metadataError, setMetadataError] = useState<string>('')
-   const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
-   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
-   const [modeSizeError, setModeSizeError] = useState<string>('')
-   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
+  const [metadataLoading, setMetadataLoading] = useState(false)
+  const [metadataError, setMetadataError] = useState<string>('')
+  const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
+  const [currentSessionId, setCurrentSessionId] = useState<number>(0)
+  const [modeSizeError, setModeSizeError] = useState<string>('')
+  const [feedbackEnabled, setFeedbackEnabled] = useState(true)
+  const [exitDialogOpen, setExitDialogOpen] = useState(false)
+  const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -241,6 +251,64 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setModeSizeError('')
     setFeedbackEnabled(true)
     if (onReset) onReset()
+  }
+
+  const exitActionContent = {
+    metadata: {
+      title: 'Leave Transfer?',
+      description: 'Going back to the metadata screen will stop the current QR playback and reset progress. Continue?',
+      confirmLabel: 'Yes, Go to Metadata'
+    },
+    mode: {
+      title: 'Change Mode?',
+      description: 'Switching transfer mode will discard the current session settings and QR codes.',
+      confirmLabel: 'Yes, Change Mode'
+    },
+    reset: {
+      title: 'Reset Session?',
+      description: 'Resetting will clear the current transfer and return to file selection. This cannot be undone.',
+      confirmLabel: 'Yes, Reset Session'
+    }
+  } as const
+
+  const requestExitAction = (action: 'metadata' | 'mode' | 'reset') => {
+    setPendingExitAction(action)
+    setExitDialogOpen(true)
+  }
+
+  const handleConfirmExitAction = () => {
+    if (!pendingExitAction) {
+      setExitDialogOpen(false)
+      return
+    }
+
+    if (pendingExitAction === 'metadata') {
+      setStep('metadata')
+      setSenderRemountKey(id => id + 1)
+      setMetadataQR('')
+      setMetadataJson(null)
+      setMetadataError('')
+      setMetadataLoading(false)
+    } else if (pendingExitAction === 'mode') {
+      setTransferMode(null)
+      setStep('mode')
+      setMetadataQR('')
+      setMetadataJson(null)
+      setMetadataError('')
+      setMetadataLoading(false)
+      setSenderRemountKey(id => id + 1)
+      setFeedbackEnabled(true)
+    } else if (pendingExitAction === 'reset') {
+      handleResetSession()
+    }
+
+    setPendingExitAction(null)
+    setExitDialogOpen(false)
+  }
+
+  const handleCancelExitAction = () => {
+    setPendingExitAction(null)
+    setExitDialogOpen(false)
   }
 
 
@@ -477,7 +545,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         {/* Mode Switch Button */}
         <div className="flex gap-2 flex-wrap">
           <Button
-            onClick={() => setStep('metadata')}
+            onClick={() => requestExitAction('metadata')}
             variant="outline"
             size="sm"
             className="flex-1"
@@ -485,7 +553,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             ← Metadata
           </Button>
           <Button
-            onClick={() => { setStep('mode'); setTransferMode(null) }}
+            onClick={() => requestExitAction('mode')}
             variant="outline"
             size="sm"
             className="flex-1"
@@ -493,7 +561,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             Change Mode
           </Button>
           {onReset && (
-            <Button onClick={handleResetSession} variant="outline" size="sm" className="flex-1">
+            <Button onClick={() => requestExitAction('reset')} variant="outline" size="sm" className="flex-1">
               Reset Session
             </Button>
           )}
@@ -518,6 +586,33 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             )}
           </>
         )}
+        <Dialog
+          open={exitDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleCancelExitAction()
+            }
+          }}
+        >
+          {pendingExitAction && (
+            <DialogContent showCloseButton={false}>
+              <DialogHeader>
+                <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
+                <DialogDescription>
+                  {exitActionContent[pendingExitAction].description}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCancelExitAction}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleConfirmExitAction}>
+                  {exitActionContent[pendingExitAction].confirmLabel}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          )}
+        </Dialog>
       </CardContent>
     </Card>
   )

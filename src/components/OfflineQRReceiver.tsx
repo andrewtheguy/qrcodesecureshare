@@ -5,6 +5,14 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
 import { useQRScanner } from '@/hooks/useQRScanner'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 
 type TransferMode = 'sequential' | 'fountain' | null
 
@@ -43,6 +51,7 @@ export function OfflineQRReceiver() {
   // Used to force remount receiver component when a new file is chosen/confirmed
   const [receiverKey, setReceiverKey] = useState(0)
   const [error, setError] = useState<string>('')
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
 
   const addDebugLog = (message: string) => {
     console.log(`[AnimatedQRReceiver] ${message}`)
@@ -144,6 +153,47 @@ export function OfflineQRReceiver() {
     stopScanner()
   }
 
+  const requestReset = () => {
+    setResetDialogOpen(true)
+  }
+
+  const handleConfirmReset = () => {
+    setResetDialogOpen(false)
+    handleReset()
+  }
+
+  const handleCancelReset = () => {
+    setResetDialogOpen(false)
+  }
+
+  const resetConfirmationDialog = (
+    <Dialog
+      open={resetDialogOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          handleCancelReset()
+        }
+      }}
+    >
+      <DialogContent showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>Reset Receiver?</DialogTitle>
+          <DialogDescription>
+            This will stop the current scan and clear all received data. You will need to rescan the metadata QR code to start over.
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" onClick={handleCancelReset}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={handleConfirmReset}>
+            Yes, Reset Receiver
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+
   const handleConfirmMode = () => {
     if (detectedMetadata) {
       setTransferMode(detectedMetadata.mode)
@@ -155,88 +205,91 @@ export function OfflineQRReceiver() {
   // Metadata scanning screen
   if (!detectedMetadata && !transferMode) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">QR Code Receiver</CardTitle>
-          <p className="text-sm text-muted-foreground text-center">
-            Scan the metadata QR code to begin
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Video Preview */}
-          {isScanning && (
-            <div className="relative bg-black rounded-lg overflow-hidden">
-              <video
-                ref={videoRef}
-                className="w-full h-auto"
-                style={{ maxHeight: '400px' }}
-              />
-              <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-                ● SCANNING FOR METADATA
-              </div>
-            </div>
-          )}
-
-          {/* Error Alert */}
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* Instructions */}
-          {!isScanning && (
-            <Alert>
-              <AlertDescription>
-                <p className="font-medium mb-2">📱 How to receive a file:</p>
-                <ol className="list-decimal list-inside space-y-1 text-sm">
-                  <li>Click "Start Scanning" below</li>
-                  <li>Point camera at the sender's metadata QR code</li>
-                  <li>Transfer mode will be detected automatically</li>
-                  <li>Continue scanning data QR codes until complete</li>
-                </ol>
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Debug Log */}
-          {debugLog.length > 0 && (
-            <div className="border-t pt-3">
-              <Button
-                onClick={() => setShowDebugLog(!showDebugLog)}
-                variant="ghost"
-                size="sm"
-                className="w-full text-xs"
-              >
-                {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
-              </Button>
-              {showDebugLog && (
-                <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-                  {debugLog.map((log, i) => (
-                    <div key={i} className="py-0.5">
-                      {log}
-                    </div>
-                  ))}
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-center">QR Code Receiver</CardTitle>
+            <p className="text-sm text-muted-foreground text-center">
+              Scan the metadata QR code to begin
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Video Preview */}
+            {isScanning && (
+              <div className="relative bg-black rounded-lg overflow-hidden">
+                <video
+                  ref={videoRef}
+                  className="w-full h-auto"
+                  style={{ maxHeight: '400px' }}
+                />
+                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
+                  ● SCANNING FOR METADATA
                 </div>
+              </div>
+            )}
+
+            {/* Error Alert */}
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            {/* Instructions */}
+            {!isScanning && (
+              <Alert>
+                <AlertDescription>
+                  <p className="font-medium mb-2">📱 How to receive a file:</p>
+                  <ol className="list-decimal list-inside space-y-1 text-sm">
+                    <li>Click "Start Scanning" below</li>
+                    <li>Point camera at the sender's metadata QR code</li>
+                    <li>Transfer mode will be detected automatically</li>
+                    <li>Continue scanning data QR codes until complete</li>
+                  </ol>
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {/* Debug Log */}
+            {debugLog.length > 0 && (
+              <div className="border-t pt-3">
+                <Button
+                  onClick={() => setShowDebugLog(!showDebugLog)}
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                >
+                  {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
+                </Button>
+                {showDebugLog && (
+                  <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
+                    {debugLog.map((log, i) => (
+                      <div key={i} className="py-0.5">
+                        {log}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Control Buttons */}
+            <div className="flex gap-2">
+              {!isScanning && (
+                <Button onClick={handleStartScan} className="flex-1">
+                  📷 Start Scanning
+                </Button>
+              )}
+              {isScanning && (
+                <Button onClick={() => setIsScanning(false)} variant="destructive" className="flex-1">
+                  ⏹ Stop Scanning
+                </Button>
               )}
             </div>
-          )}
-
-          {/* Control Buttons */}
-          <div className="flex gap-2">
-            {!isScanning && (
-              <Button onClick={handleStartScan} className="flex-1">
-                📷 Start Scanning
-              </Button>
-            )}
-            {isScanning && (
-              <Button onClick={() => setIsScanning(false)} variant="destructive" className="flex-1">
-                ⏹ Stop Scanning
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+        {resetConfirmationDialog}
+      </>
     )
   }
 
@@ -247,144 +300,149 @@ export function OfflineQRReceiver() {
       : (detectedMetadata.mode === 'fountain' ? null : (detectedMetadata.totalChunks || 0))
 
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">
-            {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : '📋 Sequential Transfer'}
-          </CardTitle>
-          <p className="text-sm text-muted-foreground text-center">
-            Transfer mode detected automatically
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* File Info */}
-          <Alert>
-            <AlertDescription>
-              <div className="space-y-2">
-                <p className="font-medium text-lg">{detectedMetadata.name}</p>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p>📦 Size: {(detectedMetadata.size / 1024).toFixed(2)}KB</p>
+      <>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-center">
+              {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : '📋 Sequential Transfer'}
+            </CardTitle>
+            <p className="text-sm text-muted-foreground text-center">
+              Transfer mode detected automatically
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* File Info */}
+            <Alert>
+              <AlertDescription>
+                <div className="space-y-2">
+                  <p className="font-medium text-lg">{detectedMetadata.name}</p>
+                  <div className="text-sm text-muted-foreground space-y-1">
+                    <p>📦 Size: {(detectedMetadata.size / 1024).toFixed(2)}KB</p>
+                    {detectedMetadata.mode === 'fountain' ? (
+                      <>
+                        <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
+                        <p>📊 Est. Chunks Needed: ~{estimatedChunks || "unavailable"}</p>
+                      </>
+                    ) : (
+                      <p>🔢 Total Chunks: {detectedMetadata.totalChunks}</p>
+                    )}
+                  </div>
+                </div>
+              </AlertDescription>
+            </Alert>
+
+            {/* Mode Info */}
+            <Alert>
+              <AlertDescription>
+                <p className="font-medium mb-2">
+                  {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : '📋 Sequential Mode'}
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
                   {detectedMetadata.mode === 'fountain' ? (
                     <>
-                      <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
-                      <p>📊 Est. Chunks Needed: ~{estimatedChunks || "unavailable"}</p>
+                      <li>Receives random coded chunks</li>
+                      <li>Only needs ~110% of chunks to decode</li>
+                      <li>Can skip/miss chunks and still succeed</li>
                     </>
                   ) : (
-                    <p>🔢 Total Chunks: {detectedMetadata.totalChunks}</p>
+                    <>
+                      <li>Receives chunks in sequential order</li>
+                      <li>Needs ALL chunks to complete</li>
+                      <li>Can request missing chunks via feedback QR</li>
+                    </>
                   )}
-                </div>
-              </div>
-            </AlertDescription>
-          </Alert>
+                </ul>
+              </AlertDescription>
+            </Alert>
 
-          {/* Mode Info */}
-          <Alert>
-            <AlertDescription>
-              <p className="font-medium mb-2">
-                {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : '📋 Sequential Mode'}
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                {detectedMetadata.mode === 'fountain' ? (
-                  <>
-                    <li>Receives random coded chunks</li>
-                    <li>Only needs ~110% of chunks to decode</li>
-                    <li>Can skip/miss chunks and still succeed</li>
-                  </>
-                ) : (
-                  <>
-                    <li>Receives chunks in sequential order</li>
-                    <li>Needs ALL chunks to complete</li>
-                    <li>Can request missing chunks via feedback QR</li>
-                  </>
-                )}
-              </ul>
-            </AlertDescription>
-          </Alert>
-
-          {/* Action Buttons */}
-          <div className="flex gap-2">
-            <Button onClick={handleConfirmMode} className="flex-1">
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <Button onClick={handleConfirmMode} className="flex-1">
                 📥 Start Receiving Data
-            </Button>
-            <Button onClick={handleReset} variant="outline">
-              ↺ Reset
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              </Button>
+              <Button onClick={requestReset} variant="outline">
+                ↺ Reset
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+        {resetConfirmationDialog}
+      </>
     )
   }
 
   // Show selected receiver component
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center">
-          {transferMode === 'sequential' ? '📋 Sequential Receiver' : '🔁 Fountain Code Receiver'}
-        </CardTitle>
-        {detectedMetadata && (
-          <p className="text-sm text-muted-foreground text-center">
-            {detectedMetadata.name} • {(detectedMetadata.size / 1024).toFixed(2)}KB
-          </p>
-        )}
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Reset Button */}
-        <Button
-          onClick={handleReset}
-          variant="outline"
-          size="sm"
-          className="w-full"
-        >
-          ↺ Reset & Scan New File
-        </Button>
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-center">
+            {transferMode === 'sequential' ? '📋 Sequential Receiver' : '🔁 Fountain Code Receiver'}
+          </CardTitle>
+          {detectedMetadata && (
+            <p className="text-sm text-muted-foreground text-center">
+              {detectedMetadata.name} • {(detectedMetadata.size / 1024).toFixed(2)}KB
+            </p>
+          )}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Reset Button */}
+          <Button
+            onClick={requestReset}
+            variant="outline"
+            size="sm"
+            className="w-full"
+          >
+            ↺ Reset & Scan New File
+          </Button>
 
-
-        {/* Render appropriate receiver component */}
-        { detectedMetadata && (transferMode === 'sequential'  ? (
-          (() => {
-            const seqMeta = detectedMetadata as SequentialDetectedMetadata;
-            return (
-              <SequentialQRReceiver
-                key={receiverKey}
-                initialMetadata={{
-                  name: seqMeta.name,
-                  size: seqMeta.size,
-                  type: seqMeta.type,
-                  sessionId: seqMeta.sessionId,
-                  totalChunks: seqMeta.totalChunks,
-                  checksum: seqMeta.checksum,
-                  checksumAlg: seqMeta.checksumAlg
-                }}
-              />
-            );
-          })()
-        ) : transferMode === 'fountain' ? (
-          (() => {
-            const fountainMeta = detectedMetadata as FountainDetectedMetadata;
-            return (
-              <FountainQRReceiver
-                key={receiverKey}
-                initialMetadata={{
-                  name: fountainMeta.name,
-                  size: fountainMeta.size,
-                  type: fountainMeta.type,
-                  sessionId: fountainMeta.sessionId,
-                  totalSourceBlocks: fountainMeta.totalSourceBlocks,
-                  blockSize: fountainMeta.blockSize,
-                  checksum: fountainMeta.checksum,
-                  checksumAlg: fountainMeta.checksumAlg,
-                  windowEnabled: fountainMeta.windowEnabled,
-                  initialWindowBlocks: fountainMeta.initialWindowBlocks,
-                  windowTriggerThreshold: fountainMeta.windowTriggerThreshold,
-                  windowStart: fountainMeta.windowStart,
-                  feedbackEnabled: fountainMeta.feedbackEnabled
-                }}
-              />
-            );
-          })()
-        ) : null)}
-      </CardContent>
-    </Card>
+          {/* Render appropriate receiver component */}
+          {detectedMetadata && (transferMode === 'sequential' ? (
+            (() => {
+              const seqMeta = detectedMetadata as SequentialDetectedMetadata
+              return (
+                <SequentialQRReceiver
+                  key={receiverKey}
+                  initialMetadata={{
+                    name: seqMeta.name,
+                    size: seqMeta.size,
+                    type: seqMeta.type,
+                    sessionId: seqMeta.sessionId,
+                    totalChunks: seqMeta.totalChunks,
+                    checksum: seqMeta.checksum,
+                    checksumAlg: seqMeta.checksumAlg
+                  }}
+                />
+              )
+            })()
+          ) : transferMode === 'fountain' ? (
+            (() => {
+              const fountainMeta = detectedMetadata as FountainDetectedMetadata
+              return (
+                <FountainQRReceiver
+                  key={receiverKey}
+                  initialMetadata={{
+                    name: fountainMeta.name,
+                    size: fountainMeta.size,
+                    type: fountainMeta.type,
+                    sessionId: fountainMeta.sessionId,
+                    totalSourceBlocks: fountainMeta.totalSourceBlocks,
+                    blockSize: fountainMeta.blockSize,
+                    checksum: fountainMeta.checksum,
+                    checksumAlg: fountainMeta.checksumAlg,
+                    windowEnabled: fountainMeta.windowEnabled,
+                    initialWindowBlocks: fountainMeta.initialWindowBlocks,
+                    windowTriggerThreshold: fountainMeta.windowTriggerThreshold,
+                    windowStart: fountainMeta.windowStart,
+                    feedbackEnabled: fountainMeta.feedbackEnabled
+                  }}
+                />
+              )
+            })()
+          ) : null)}
+        </CardContent>
+      </Card>
+      {resetConfirmationDialog}
+    </>
   )
 }
