@@ -10,7 +10,8 @@
 
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
@@ -421,28 +422,56 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
   if (currentMode === 'scanning') {
     return (
-      <div className="space-y-4">
-        <Alert>
-          <AlertDescription>Scanning for receiver feedback QR code...</AlertDescription>
-        </Alert>
-        <div className="relative">
-          <video
-            ref={videoRef}
-            className="w-full max-w-md mx-auto border rounded-lg"
-            playsInline
-            muted
-          />
-          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-sm">
-            ● SCANNING
+      <Card className="border border-amber-500/60 bg-amber-950 text-amber-100 shadow-2xl">
+        <CardHeader className="pb-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-2">
+              <Badge
+                variant="outline"
+                className="border-amber-400/70 bg-amber-500/10 text-amber-100 uppercase tracking-wider"
+              >
+                Feedback Scan
+              </Badge>
+              <CardTitle className="text-xl font-semibold text-amber-50">Capture Receiver Feedback</CardTitle>
+              <p className="text-sm text-amber-200/70">
+                Align the camera with the receiver&apos;s amber QR card. This update lets you adjust the transmission window and send the next chunk batch.
+              </p>
+            </div>
+            <Button
+              onClick={handleStopScan}
+              variant="secondary"
+              className="bg-amber-900 text-amber-100 border border-amber-400/70 hover:bg-amber-800"
+            >
+              Cancel Scan
+            </Button>
           </div>
-        </div>
-        <p className="text-center text-sm text-muted-foreground">
-          Point your camera at the receiver's feedback QR code
-        </p>
-        <Button onClick={handleStopScan} variant="outline" className="w-full">
-          Cancel Scan
-        </Button>
-      </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="relative overflow-hidden rounded-2xl border border-amber-500/40 bg-black shadow-2xl">
+            <video
+              ref={videoRef}
+              className="w-full max-h-[420px] object-cover"
+              playsInline
+              muted
+            />
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute inset-5 rounded-xl border-2 border-amber-400/70 animate-pulse" />
+              <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-amber-400/80 bg-amber-500/30 px-3 py-1 text-xs font-semibold text-amber-50 shadow-md">
+                <span className="text-amber-200">●</span>
+                Scanning Feedback
+              </div>
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-amber-950/90 via-amber-950/10 to-transparent px-4 py-3 text-center text-sm text-amber-50">
+                Fill the glowing frame with the receiver&apos;s feedback QR to continue.
+              </div>
+            </div>
+          </div>
+          <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-100/80 space-y-1">
+            <p>• Ask the receiver to show the amber progress card you just shared.</p>
+            <p>• Once scanned, an ACK QR will appear for them automatically.</p>
+            <p>• If the QR looks dark with dense data, it&apos;s not feedback—stop and resume when ready.</p>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 
@@ -451,7 +480,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       <Button
         onClick={handleStartScan}
         disabled={!encoder}
-        className="w-full"
+        className="w-full bg-amber-600 hover:bg-amber-500 text-white"
       >
         Scan Feedback QR
       </Button>
