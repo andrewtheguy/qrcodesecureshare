@@ -125,10 +125,14 @@ export function OfflineQRReceiver() {
     setError(errorMessage)
   }, [])
 
+  // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps)
+  // Visual highlights remain enabled to help users align the QR code
   const { videoRef, stopScanner } = useQRScanner({
     onScan: handleMetadataScan,
     isScanning,
-    onError: handleScanError
+    onError: handleScanError,
+    maxScansPerSecond: 10,
+    enableVisualHighlights: true
   })
 
   const stopScannerRef = useRef(stopScanner)
@@ -221,6 +225,8 @@ export function OfflineQRReceiver() {
                   ref={videoRef}
                   className="w-full h-auto"
                   style={{ maxHeight: '400px' }}
+                  playsInline
+                  muted
                 />
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
                   ● SCANNING FOR METADATA

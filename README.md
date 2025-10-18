@@ -144,6 +144,24 @@ The app comes pre-configured with my own encryption key pairs for my website, yo
 - `OfflineQRReceiver.tsx`: Metadata scanning and receiver component selection for offline QR transfers
 - Various sender/receiver components for different transfer methods
 
+## 🔋 Performance & Battery Optimization
+
+QR code scanning is automatically optimized for mobile devices to reduce battery consumption and heat generation:
+
+- **Reduced scan rates**: 8 fps on mobile vs 15+ fps on desktop for continuous scanning
+- **Smart visual hints**: Highlights disabled on mobile to reduce rendering overhead
+- **Resolution limiting**: Video resolution constrained to prevent unnecessary high-resolution processing
+- **Adaptive optimization**: Different scan rates for different use cases (metadata vs. continuous scanning)
+
+### Tips for Best Mobile Performance
+
+- **Keep device steady**: Reduces missed scans and improves efficiency
+- **Ensure good lighting**: Better lighting enables faster detection at lower scan rates
+- **Position QR code properly**: Fill most of the camera view with the QR code
+- **Trust the optimization**: The reduced scan rate (8 fps) is intentional for battery preservation and still provides excellent performance
+
+These optimizations significantly reduce battery consumption and heat generation, especially during extended scanning sessions with Fountain Code transfers.
+
 ## 🔒 Security Considerations
 
 - **Client-side encryption**: All encryption happens in the browser

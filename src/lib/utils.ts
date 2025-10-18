@@ -33,3 +33,45 @@ export const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<C
 }
 
 // (Legacy computePublicKeyFingerprint removed in favor of SSH-style fingerprint from utils/fingerprint.ts)
+
+/**
+ * Detects if the current device is likely mobile by combining touch support,
+ * coarse pointer detection, and mobile user-agent heuristics. Falls back to
+ * viewport size only when touch is present but pointer metadata is unavailable.
+ */
+export function isMobileDevice(): boolean {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+    return false
+  }
+
+  const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  const hasCoarsePointer = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false
+  const mobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+
+  if (mobileUserAgent) {
+    return true
+  }
+
+  if (hasTouch && hasCoarsePointer) {
+    return true
+  }
+
+  if (hasTouch) {
+    const prefersCompactViewport = typeof window.matchMedia === 'function'
+      ? window.matchMedia('(max-width: 900px)').matches
+      : window.innerWidth < 900
+    return prefersCompactViewport
+  }
+
+  return false
+}
+
+/**
+ * Detects if the current device is running iOS
+ * @returns true if iOS device is detected
+ */
+export function isIOS(): boolean {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent)
+}

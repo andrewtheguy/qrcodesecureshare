@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { deriveKey } from '@/lib/utils'
+import { deriveKey, isMobileDevice } from '@/lib/utils'
 import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
 import { getJwkSshFingerprint } from '@/utils/fingerprint'
 import { WebRTCReceiver } from './WebRTCReceiver'
@@ -277,11 +277,16 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         throw new Error('Video element not available')
       }
       
+      // Mobile optimization: reduce scan rate and conditionally disable highlights
+      const isMobile = isMobileDevice()
+      const scanRate = isMobile ? 8 : 15
+      const showHighlights = !isMobile
+
       const scanner = new QrScanner(
         videoRef.current,
         (result) => {
           console.log('QR code detected:', result)
-          
+
           // Check if QR code contains encrypted file data
           if (result.data.startsWith(ENCRYPTED_FILE_MAGIC)) {
             try {
@@ -326,12 +331,24 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         },
         {
           returnDetailedScanResult: true,
-          highlightScanRegion: true,
-          highlightCodeOutline: true,
+          maxScansPerSecond: scanRate,
+          highlightScanRegion: showHighlights,
+          highlightCodeOutline: showHighlights,
+          preferredCamera: 'environment',
         }
       )
       scannerRef.current = scanner
-      await scanner.start()
+
+      // Start scanner with video constraints for mobile optimization
+      if (isMobile) {
+        await scanner.start({
+          facingMode: 'environment',
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        })
+      } else {
+        await scanner.start()
+      }
       console.log('QR scanner started successfully')
 
       // Load available cameras and classify into environment/user categories
