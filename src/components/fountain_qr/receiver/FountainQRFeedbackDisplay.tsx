@@ -568,54 +568,54 @@ export function FountainQRFeedbackDisplay({
   if (receiverMode === 'ack-scanning') {
     return (
       <div className="space-y-4">
-        <Card className="border border-blue-500/40 bg-slate-950 text-blue-100 shadow-xl">
+        <Card className="border border-emerald-500/50 bg-emerald-950 text-emerald-100 shadow-2xl">
           <CardHeader className="pb-2">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-2">
                 <Badge
                   variant="outline"
-                  className="border-blue-400/50 bg-blue-500/10 text-blue-100 tracking-wide uppercase"
+                  className="border-emerald-400/60 bg-emerald-500/10 text-emerald-100 tracking-wide uppercase"
                 >
                   ACK Scan Mode
                 </Badge>
-                <CardTitle className="text-xl font-semibold text-blue-100">Awaiting Sender Confirmation</CardTitle>
-                <p className="text-sm text-blue-200/70">
-                  Scan the acknowledgement QR that the sender shows after processing your feedback QR. This QR has a white background with bold borders.
+                <CardTitle className="text-xl font-semibold text-emerald-50">Awaiting Sender Confirmation</CardTitle>
+                <p className="text-sm text-emerald-200/70">
+                  Scan the emerald confirmation QR the sender presents after they process your feedback update. This card completes the feedback loop so you can resume receiving data.
                 </p>
               </div>
               <Button
                 onClick={handleShowFeedbackQR}
                 variant="secondary"
                 size="sm"
-                className="bg-blue-900 text-blue-100 hover:bg-blue-800 border border-blue-400/60"
+                className="bg-emerald-900 text-emerald-100 hover:bg-emerald-800 border border-emerald-400/60"
               >
                 Show Feedback QR
               </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative overflow-hidden rounded-2xl border border-blue-500/40 bg-black shadow-2xl">
+            <div className="relative overflow-hidden rounded-2xl border border-emerald-500/40 bg-black shadow-2xl">
               <video
                 ref={ackVideoRefFromHook}
                 className="w-full max-h-[420px] object-cover"
               />
               <div className="pointer-events-none absolute inset-0">
-                <div className="absolute inset-5 rounded-xl border-2 border-blue-400/60 animate-pulse" />
+                <div className="absolute inset-5 rounded-xl border-2 border-emerald-400/60 animate-pulse" />
                 {ackScannerIsScanning && (
-                  <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-blue-400/80 bg-blue-500/30 px-3 py-1 text-xs font-semibold text-blue-50 shadow-md">
-                    <span className="text-blue-200">●</span>
+                  <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-emerald-400/80 bg-emerald-500/30 px-3 py-1 text-xs font-semibold text-emerald-50 shadow-md">
+                    <span className="text-emerald-200">●</span>
                     Scanning for ACK
                   </div>
                 )}
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-slate-950/90 via-slate-950/10 to-transparent px-4 py-3 text-center text-sm text-blue-100">
-                  Align the sender&apos;s ACK QR inside the glowing frame to continue the transfer.
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-emerald-950/90 via-emerald-950/10 to-transparent px-4 py-3 text-center text-sm text-emerald-50">
+                  Align the sender&apos;s emerald QR inside the glowing frame to continue the transfer.
                 </div>
               </div>
             </div>
-            <Alert className="border border-blue-500/40 bg-blue-500/10 text-blue-100">
+            <Alert className="border border-emerald-500/40 bg-emerald-500/10 text-emerald-100">
               <AlertDescription>
                 <p className="text-sm font-medium">
-                  Ack QR codes always contain JSON. If you see a dense black QR, it&apos;s part of the data stream—ask the sender to show the confirmation ACK instead.
+                  Ack QR codes always contain JSON. If you see a dense black QR, it&apos;s part of the data stream—ask the sender to show the emerald confirmation QR instead.
                 </p>
               </AlertDescription>
             </Alert>
