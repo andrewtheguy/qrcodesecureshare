@@ -557,7 +557,7 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
-                <span className="font-mono text-sm cursor-text select-all">{currentWindowStart}</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Window End:</span>
                 <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>

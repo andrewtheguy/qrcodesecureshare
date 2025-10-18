@@ -311,14 +311,16 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         const decodedInWindow = feedback.decodedInWindow;
         const hasProgressed = decodedInWindow > lastDecodedInWindow;
 
-        if (hasProgressed) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
-        }
+        const meetsExpansionThreshold =
+          hasProgressed && clampedEffectiveWindowSize > 0 && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD;
 
         if (clampedEffectiveWindowSize === 0) {
           // Skip expansion when clamped effective window size is 0
           console.log('[FountainQRManualFeedbackInput] Skipping expansion: clampedEffectiveWindowSize is 0');
-        } else if (hasProgressed && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD) {
+          if (hasProgressed) {
+            onUpdateLastDecodedInWindow(decodedInWindow);
+          }
+        } else if (meetsExpansionThreshold) {
           const now = Date.now();
           if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
             const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
@@ -334,18 +336,41 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             console.log(
               `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, effectiveWindowSize=${effectiveWindowSize}, clampedEffectiveWindowSize=${clampedEffectiveWindowSize}, threshold=${Math.round(clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
             );
+            const oldWindowInfo = encoder?.getWindowInfo();
+            const oldWindowEnd = oldWindowInfo?.windowEnd;
             encoder?.expandWindow(expansionCalc.expansionBlocks);
-            windowExpanded = true;
-            onUpdateLastDecodedInWindow(decodedInWindow);
             const newWindowInfo = encoder?.getWindowInfo();
+            const expansionSucceeded =
+              !!newWindowInfo &&
+              (typeof oldWindowEnd === 'number'
+                ? newWindowInfo.windowEnd > oldWindowEnd
+                : expansionCalc.expansionBlocks > 0);
+
             if (newWindowInfo) {
               onUpdateWindowInfo(newWindowInfo);
-              console.log(
-                `[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-              );
+              if (expansionSucceeded) {
+                console.log(
+                  `[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
+                );
+              } else {
+                console.log(
+                  '[FountainQRManualFeedbackInput] Window expansion requested but window end did not change; retaining decodedInWindow state.'
+                );
+              }
             }
-            onUpdateLastWindowExpansion(now);
+
+            if (expansionSucceeded) {
+              windowExpanded = true;
+              onUpdateLastDecodedInWindow(0);
+              onUpdateLastWindowExpansion(now);
+            } else if (hasProgressed) {
+              onUpdateLastDecodedInWindow(decodedInWindow);
+            }
+          } else if (hasProgressed) {
+            onUpdateLastDecodedInWindow(decodedInWindow);
           }
+        } else if (hasProgressed) {
+          onUpdateLastDecodedInWindow(decodedInWindow);
         }
       }
 
