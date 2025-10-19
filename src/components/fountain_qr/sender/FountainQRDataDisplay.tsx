@@ -658,34 +658,39 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   return (
     <div className="space-y-4">
-      {/* QR Code Display (clean container without overlays) */}
-      <div className="flex justify-center bg-white p-4 rounded-lg">
-        {qrCodeUrl ? (
-          <img
-            src={qrCodeUrl}
-            alt={`Fountain coded chunk`}
-            className="max-w-full h-auto"
-            width="400"
-            height="400"
-          />
-        ) : (
-          <div className="w-[400px] h-[400px] flex items-center justify-center bg-gray-100">
-            <p className="text-muted-foreground">
-              {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
-            </p>
-          </div>
-        )}
+      {/* QR Code Display (styled to match receiver scanning palette) */}
+      <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-sky-500/40 bg-slate-950/90 p-6 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
+        <div className="pointer-events-none absolute inset-4 rounded-2xl border border-sky-400/30" />
+        <div className="relative flex items-center justify-center">
+          {qrCodeUrl ? (
+            <img
+              src={qrCodeUrl}
+              alt="Fountain coded chunk"
+              className="h-auto max-w-full drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
+              width="400"
+              height="400"
+            />
+          ) : (
+            <div className="flex h-[340px] w-[340px] flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
+              <p className="text-center text-sm font-medium">
+                {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
+              </p>
+              <p className="mt-2 text-xs text-sky-200/70">Keep the display steady for best scan quality.</p>
+            </div>
+          )}
+        </div>
+        <div className="pointer-events-none absolute inset-x-12 bottom-8 h-16 rounded-full bg-sky-500/10 blur-3xl" />
       </div>
 
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
         <span className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold min-w-[60px] justify-center ${
-          isPlaying ? 'bg-red-500 text-white' : 'bg-gray-300 text-gray-600'
+          isPlaying ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/40' : 'bg-sky-200 text-sky-700'
         }`}>
-          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse' : 'bg-gray-500'}`} /> LIVE
+          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse shadow-[0_0_6px_theme(colors.white/70%)]' : 'bg-sky-500'}`} /> LIVE
         </span>
         <span className={`px-2 py-0.5 rounded font-semibold min-w-[80px] justify-center ${
-          skippedChunks > 0 ? 'bg-amber-500 text-white' : 'bg-gray-300 text-gray-600'
+          skippedChunks > 0 ? 'bg-amber-500 text-white' : 'bg-sky-200 text-sky-700'
         }`}>
           Skipped {skippedChunks}
         </span>

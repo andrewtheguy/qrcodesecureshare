@@ -476,10 +476,10 @@ export function FountainQRFeedbackDisplay({
               {feedbackMode === 'targeted' && !skipTargetedModeForSession && (
                 <Button
                   onClick={onSkipTargetedMode}
-                  variant="outline"
-                  className="w-full border-amber-400/70 text-amber-100 hover:bg-amber-500/10"
+                  variant="secondary"
+                  className="w-full border border-amber-400/70 bg-amber-500 text-amber-950 font-semibold hover:bg-amber-400 focus-visible:ring-amber-300"
                 >
-                  Switch Back to Statistics-Only Feedback
+                  Disable Targeted Mode for This Session
                 </Button>
               )}
             </div>

@@ -278,48 +278,53 @@ export function FountainQRDataScanner({
       {/* Video Preview */}
       {receiverMode === 'data-scanning' && (
         <div className="space-y-3">
-          <div className="relative bg-black rounded-lg overflow-hidden">
-            <video
-              ref={videoRef}
-              className="w-full h-auto"
-              style={{ maxHeight: '400px' }}
-              playsInline
-              muted
-            />
-            <div
-              ref={scanRegionOverlayRef}
-              className="pointer-events-none absolute z-10 rounded-2xl border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.4)]"
-              style={{
-                backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px)',
-                backgroundSize: '20% 100%, 100% 20%'
-              }}
-            />
-            {isScanning && !isAwaitingFeedback && (
-              <div className="absolute top-2 left-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
-                ● SCANNING
+          <div className="relative mx-auto w-full max-w-md">
+            <div className="pointer-events-none absolute inset-x-10 -top-6 h-32 rounded-full bg-sky-500/15 blur-3xl" />
+            <div className="relative overflow-hidden rounded-2xl border border-sky-500/35 bg-slate-950/90 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)] p-3">
+              <div className="relative overflow-hidden rounded-xl bg-black">
+                <video
+                  ref={videoRef}
+                  className="w-full h-auto"
+                  style={{ maxHeight: '400px' }}
+                  playsInline
+                  muted
+                />
+                <div
+                  ref={scanRegionOverlayRef}
+                  className="pointer-events-none absolute inset-0 z-10 rounded-xl border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.4)]"
+                  style={{
+                    backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px)',
+                    backgroundSize: '20% 100%, 100% 20%'
+                  }}
+                />
+                {isScanning && !isAwaitingFeedback && (
+                  <div className="absolute top-3 left-3 rounded-full border border-sky-400/60 bg-sky-600/90 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-sky-500/30 z-20">
+                    ● SCANNING
+                  </div>
+                )}
+                {isAwaitingFeedback && (
+                  <div className="absolute bottom-3 left-3 right-3 rounded-xl border border-sky-400/20 bg-slate-950/85 px-3 py-3 text-sm text-sky-100 shadow-lg z-20">
+                    <p className="text-sm text-center">
+                      Awaiting feedback processing. Scanning will resume automatically.
+                    </p>
+                  </div>
+                )}
+                {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
+                  <div className="absolute top-16 right-3 max-w-xs rounded-xl border border-sky-400/40 bg-sky-600/80 px-3 py-2 text-white shadow-lg shadow-sky-500/40 z-20">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-sky-100">Sender's Last Message</p>
+                      <p className="text-sm font-medium">{senderFeedbackMessage}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-            {isAwaitingFeedback && (
-              <div className="absolute bottom-2 left-2 right-2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-lg z-20">
-                <p className="text-sm text-center">
-                  Awaiting feedback processing. Scanning will resume automatically.
-                </p>
-              </div>
-            )}
-            {senderFeedbackMessage && senderFeedbackMessage.trim() !== '' && (
-              <div className="absolute top-12 right-2 bg-blue-500/90 text-white px-3 py-2 rounded-lg shadow-lg max-w-xs z-20">
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-blue-100">Sender's Last Message</p>
-                  <p className="text-sm font-medium">{senderFeedbackMessage}</p>
-                </div>
-              </div>
-            )}
+            </div>
           </div>
 
           {!success && (
             <div className="flex flex-wrap gap-2">
               {receiverMode === 'data-scanning' && !isScanning && !isAwaitingFeedback && (
-                <Button onClick={handleStartScan} className="flex-1 sm:flex-none">
+                <Button onClick={handleStartScan} className="flex-1 sm:flex-none bg-sky-600 hover:bg-sky-500 text-white">
                   📷 Start Scanning
                 </Button>
               )}
