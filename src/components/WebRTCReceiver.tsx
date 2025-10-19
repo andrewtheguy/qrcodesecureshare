@@ -34,7 +34,7 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
 
   useEffect(() => {
     // Initialize Peer.js with matching signaling configuration
-    const peer = new Peer(undefined, createPeerOptions())
+    const peer = new Peer(createPeerOptions())
 
     peerRef.current = peer
 

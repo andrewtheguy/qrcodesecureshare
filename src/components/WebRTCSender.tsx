@@ -85,7 +85,7 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
     }
 
     // Initialize Peer.js with explicit signaling server configuration
-    const peer = new Peer(undefined, createPeerOptions())
+    const peer = new Peer(createPeerOptions())
 
     peerRef.current = peer
     isInitializedRef.current = true
