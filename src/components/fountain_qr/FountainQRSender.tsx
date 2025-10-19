@@ -206,10 +206,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     console.log('Chunk generated')
   }
 
-  const handleSkippedChunk = () => {
-    // Optional: Track skipped chunks if needed for parent-level logic
-    console.log('Chunk skipped due to size')
-  }
 
   const handleBufferUpdate = (bufferSize: number) => {
     // Optional: Monitor buffer status
@@ -342,7 +338,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           isActive={senderMode === 'data-display'}
           activationToken={activationToken}
           onChunkGenerated={handleChunkGenerated}
-          onSkippedChunk={handleSkippedChunk}
           onBufferUpdate={handleBufferUpdate}
           onError={handleDataDisplayError}
           fps={senderFps}

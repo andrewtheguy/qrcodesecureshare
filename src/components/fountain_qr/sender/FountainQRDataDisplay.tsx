@@ -49,7 +49,6 @@ interface FountainQRDataDisplayProps {
   isActive: boolean
   activationToken: number
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
-  onSkippedChunk: () => void
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
   fps: number
@@ -95,7 +94,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     isActive,
     activationToken,
     onChunkGenerated,
-    onSkippedChunk,
     onBufferUpdate,
     onError,
     fps,
@@ -104,7 +102,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
   const [chunkCount, setChunkCount] = useState(0)
-  const [skippedChunks, setSkippedChunks] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const [bufferLength, setBufferLength] = useState(0) // Separate state for UI display
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
@@ -189,7 +186,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (encoder && isActive && !isPlaying && activationToken > 0) {
       // Reset counters for fresh session
       setChunkCount(0)
-      setSkippedChunks(0)
       setIsPlaying(true)
     }
     // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
@@ -199,7 +195,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // Reset on session change
   useEffect(() => {
     setChunkCount(0)
-    setSkippedChunks(0)
     clearBuffer()
   }, [sessionId, clearBuffer])
 
@@ -502,8 +497,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Pre-check: Skip chunks that are too large before attempting QR generation
         if (expectedSize > MAX_QR_DATA_SIZE) {
           console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit ${MAX_QR_DATA_SIZE}, skipping (attempt ${attempt + 1}/${maxRetries})`)
-          setSkippedChunks(prev => prev + 1)
-          onSkippedChunk()
           attempt++
           continue
         }
@@ -574,8 +567,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Check if error is about data being too big
         if (errorMsg.includes('too big') || errorMsg.includes('too large') || errorMsg.includes('too much')) {
           console.warn(`Chunk too large for QR code (attempt ${attempt + 1}/${maxRetries}), generating new chunk...`)
-          setSkippedChunks(prev => prev + 1)
-          onSkippedChunk()
           attempt++
           // Try again with a new chunk
           continue
@@ -590,7 +581,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
     // If we exhausted all retries, show warning but keep last successful QR
     console.error(`Failed to generate QR after ${maxRetries} attempts - data chunks too large`)
-    onError(`Warning: Some chunks are too large for QR codes (${skippedChunks} skipped)`)
+    onError(`Warning: Some chunks are too large for QR codes`)
   }
 
   // Animation loop
@@ -630,7 +621,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
       setChunkCount(0)
-      setSkippedChunks(0)
       clearBuffer() // Clear buffer on restart
     }
     setIsPlaying(!isPlaying)
@@ -689,11 +679,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         }`}>
           <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse shadow-[0_0_6px_theme(colors.white/70%)]' : 'bg-sky-500'}`} /> LIVE
         </span>
-        <span className={`px-2 py-0.5 rounded font-semibold min-w-[80px] justify-center ${
-          skippedChunks > 0 ? 'bg-amber-500 text-white' : 'bg-sky-200 text-sky-700'
-        }`}>
-          Skipped {skippedChunks}
-        </span>
         <span className={`hidden`}>
           Buffer: {bufferLength || 0}
         </span>
@@ -725,11 +710,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 {chunkCount >= estimatedChunksNeeded
                   ? '✅ Receiver should now be able to decode'
                   : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
-              </p>
-            )}
-            {skippedChunks > 0 && (
-              <p className="text-amber-600 dark:text-amber-400 font-medium">
-                ⚠️ Skipped {skippedChunks}
               </p>
             )}
           </div>
@@ -780,12 +760,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             <li>Keep playing until receiver shows 100% decoded</li>
             <li>More robust than sequential chunk transfer</li>
           </ol>
-          {skippedChunks > 0 && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-3 pt-3 border-t">
-              <span className="font-medium">⚠️ Note:</span> {skippedChunks} chunk{skippedChunks > 1 ? 's were' : ' was'} too large for QR encoding and {skippedChunks > 1 ? 'were' : 'was'} automatically skipped.
-              This is normal - fountain coding generates new chunks on the fly.
-            </p>
-          )}
         </AlertDescription>
       </Alert>
     </div>
