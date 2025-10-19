@@ -1,6 +1,5 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
 import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 import path from 'path'
@@ -118,46 +117,6 @@ export default defineConfig({
       // failOnWarning: false, // Don't fail the build on warnings
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
-    }),
-    VitePWA({
-      registerType: 'autoUpdate',
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        // Add runtime caching for worker files with CacheFirst strategy for better offline support
-        // Workers are .js files and should be covered by globPatterns, but explicit caching ensures reliability
-        runtimeCaching: [
-          {
-            urlPattern: /\/assets\/(fountainDecoder\.worker|qrGenerator\.worker)-[\w-]+\.js$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'worker-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365, // 1 year
-              },
-            },
-          },
-        ],
-      },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
-      manifest: {
-        name: 'QR Code Secure Data Share',
-        short_name: 'QR Code Share',
-        description: 'Progressive Web App for QR Code Secure Data Share with encrypted file upload for large data.',
-        theme_color: '#ffffff',
-        icons: [
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      }
     })
   ],
   // Testing Recommendations:
