@@ -20,7 +20,7 @@ interface UseQRScannerOptions {
   maxScansPerSecond?: number
   /**
    * Enable visual highlights (scan region and code outline).
-   * Defaults to false on mobile to reduce rendering overhead, true on desktop.
+   * Defaults to true unless explicitly disabled by the caller.
    */
   enableVisualHighlights?: boolean
   /**
@@ -109,11 +109,10 @@ export function useQRScanner({
 
     // Mobile optimization strategy:
     // - Reduce scan rate from 25 fps to 8 fps on mobile to save battery
-    // - Disable visual highlights on mobile to reduce rendering overhead
     // - Constrain video resolution to prevent unnecessary high-res processing
     const isMobile = isMobileDevice()
     const scanRate = maxScansPerSecond ?? (isMobile ? 8 : 15)
-    const showHighlights = enableVisualHighlights ?? !isMobile
+    const showHighlights = enableVisualHighlights ?? true
 
     console.log(`[useQRScanner] Mobile: ${isMobile}, Scan rate: ${scanRate} fps, Visual highlights: ${showHighlights}`)
 

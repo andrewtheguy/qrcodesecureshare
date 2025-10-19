@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { computeChecksum } from '@/utils/checksum'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
@@ -56,6 +56,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [error, setError] = useState<string>('')
+  const scanRegionOverlayRef = useRef<HTMLDivElement | null>(null)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[SequentialQRReceiver] ${message}`)
@@ -130,7 +131,9 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const { videoRef, stopScanner } = useQRScanner({
     onScan: handleScan,
     isScanning,
-    onError: handleScanError
+    onError: handleScanError,
+    enableVisualHighlights: false,
+    scanRegionOverlayRef
   })
 
   // Auto-start scanning on mount
@@ -278,7 +281,16 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
           />
-          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium">
+          <div
+            ref={scanRegionOverlayRef}
+            className="pointer-events-none absolute inset-0 z-10 rounded-lg border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.35)]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.15) 1px, transparent 1px)',
+              backgroundSize: '20% 100%, 100% 20%'
+            }}
+          />
+          <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
             ● SCANNING
           </div>
         </div>

@@ -286,10 +286,10 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
         throw new Error('Video element not available')
       }
       
-      // Mobile optimization: reduce scan rate and conditionally disable highlights
+      // Mobile optimization: reduce scan rate while keeping highlights for better alignment guidance
       const isMobile = isMobileDevice()
       const scanRate = isMobile ? 8 : 15
-      const showHighlights = !isMobile
+      const showHighlights = true
 
       const scanner = new QrScanner(
         videoRef.current,
