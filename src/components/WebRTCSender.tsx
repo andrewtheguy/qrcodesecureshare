@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { createPeerOptions } from '@/lib/peerConfig'
 
 interface WebRTCSenderProps {
   encryptedFile: File
@@ -83,10 +84,8 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
       return
     }
 
-    // Initialize Peer.js with configuration
-    const peer = new Peer({
-      debug: 2, // Enable debug logging (0=none, 1=errors, 2=warnings, 3=all)
-    })
+    // Initialize Peer.js with explicit signaling server configuration
+    const peer = new Peer(undefined, createPeerOptions())
 
     peerRef.current = peer
     isInitializedRef.current = true

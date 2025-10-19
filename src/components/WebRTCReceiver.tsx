@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
+import { createPeerOptions } from '@/lib/peerConfig'
 
 interface WebRTCReceiverProps {
   peerId: string
@@ -32,8 +33,8 @@ export function WebRTCReceiver({ peerId, encryptionKey, filename, fileSize, onCo
   const totalReceivedRef = useRef(0)
 
   useEffect(() => {
-    // Initialize Peer.js
-    const peer = new Peer()
+    // Initialize Peer.js with matching signaling configuration
+    const peer = new Peer(undefined, createPeerOptions())
 
     peerRef.current = peer
 
