@@ -21,8 +21,9 @@ export const NON_DATA_QR_OPTIONS = {
 }
 
 // QR Code capacity mapping based on error correction level
-// For a 400px width QR code with binary data encoding (ISO-8859-1)
-// Based on QR Code version 40 (177x177 modules) capacity estimates
+// These base values correspond to QR version 40 (177x177 modules) byte-mode capacities
+// Capacity is determined by QR version and error correction level, independent of rendering size
+// Note: Rendering size only affects visual size and scanability, not data capacity
 export const QR_CAPACITY_MAP: Record<'L' | 'M' | 'Q' | 'H', { base: number, safetyMargin: number }> = {
   'L': { base: 2953, safetyMargin: 0.6 }, // Low ECC (7% recovery) - ~1772 bytes usable
   'M': { base: 2331, safetyMargin: 0.6 }, // Medium ECC (15% recovery) - ~1399 bytes usable
