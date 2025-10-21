@@ -14,6 +14,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
+import { deriveQRCapacity } from '@/constants'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
 import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput'
@@ -85,13 +86,17 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           checksumAlg
         }
 
+        // Derive QR capacity based on error correction level
+        const maxQRDataSize = deriveQRCapacity(currentQROptions.errorCorrectionLevel)
+
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
            blockSize: DEFAULT_BLOCK_SIZE,
            c: 0.2,
            delta: 0.01,
            // Optional: override doping rates here if experimenting
            degree1Rate: 0.08,
-           windowEnabled: feedbackEnabled ? undefined : false
+           windowEnabled: feedbackEnabled ? undefined : false,
+           maxQRDataSize // Pass QR capacity to encoder for degree tuning
           })
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
@@ -116,7 +121,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     }
 
     reader.readAsArrayBuffer(file)
-  }, [file])
+  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {

@@ -129,6 +129,7 @@ export interface FountainEncoderOptions {
   degree1Rate?: number
   lowDegreeRate?: number
   windowEnabled?: boolean  // force disable windowing (default: auto based on file size)
+  maxQRDataSize?: number  // maximum QR data size in bytes (for degree tuning)
 }
 
 export interface FountainEncoderStats {
@@ -170,7 +171,17 @@ export class FountainEncoder {
       this.sourceBlocks.push(block)
     }
 
-    const adaptiveMaxDegree = opts.maxDegree ?? Math.min(40, Math.max(8, Math.round(2.5 * Math.sqrt(numBlocks))))
+    // Calculate max degree based on QR capacity constraints
+    // QR chunk size = 2 (magic) + 2 (seed) + 1 (degree) + 1 (numIndices) + (degree * 2) + blockSize + 4 (checksum)
+    // Rearrange: degree * 2 <= maxQRDataSize - 2 - 2 - 1 - 1 - blockSize - 4
+    // degree <= (maxQRDataSize - blockSize - 10) / 2
+    const maxQRDataSize = opts.maxQRDataSize ?? 1000 // Conservative default
+    const maxDegreeFromQRCapacity = Math.floor((maxQRDataSize - this.blockSize - 10) / 2)
+    
+    // Use formula-based adaptive degree with QR capacity constraint
+    const formulaMaxDegree = Math.min(40, Math.max(8, Math.round(2.5 * Math.sqrt(numBlocks))))
+    const adaptiveMaxDegree = opts.maxDegree ?? Math.min(formulaMaxDegree, maxDegreeFromQRCapacity)
+    
     const c = opts.c ?? 0.2
     const delta = opts.delta ?? 0.01
     this.degreeDist = buildDegreeDistribution(numBlocks, c, delta, adaptiveMaxDegree)
