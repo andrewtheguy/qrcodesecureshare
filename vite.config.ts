@@ -9,6 +9,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
 
+const LONG_TERM_CACHE_SECONDS = 60 * 60 * 24 * 365 * 5 // 5 years in seconds
+
 // Custom plugin to copy QR scanner worker
 const copyQrWorkerPlugin = () => {
   return {
@@ -149,8 +151,27 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
         // Maximum cache size (50MB)
         maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
+        navigateFallback: '/index.html',
         // Runtime caching strategies
         runtimeCaching: [
+          {
+            // App shell should be instantly available offline via stale-while-revalidate
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'html-shell-cache',
+              expiration: {
+                maxEntries: 5,
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              matchOptions: {
+                ignoreSearch: true
+              }
+            }
+          },
           {
             // Cache all JavaScript modules including workers
             urlPattern: /^.*\.(js|mjs)$/i,
@@ -159,7 +180,7 @@ export default defineConfig({
               cacheName: 'js-cache',
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
               },
               cacheableResponse: {
                 statuses: [0, 200]
@@ -174,7 +195,7 @@ export default defineConfig({
               cacheName: 'css-cache',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
               }
             }
           },
@@ -186,21 +207,35 @@ export default defineConfig({
               cacheName: 'image-cache',
               expiration: {
                 maxEntries: 100,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
               }
             }
           },
           {
-            // Network first for HTML pages with long cache for offline use
-            urlPattern: /^.*\.html$/,
-            handler: 'NetworkFirst',
+            // Cache fonts and wasm assets that the scanner relies on
+            urlPattern: /^.*\.(woff2?|ttf|otf|wasm)$/i,
+            handler: 'CacheFirst',
             options: {
-              cacheName: 'html-cache',
+              cacheName: 'binary-cache',
               expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year - maximize offline time
+                maxEntries: 50,
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
+              }
+            }
+          },
+          {
+            // Ensure the dedicated QR worker is always available offline
+            urlPattern: ({ url }) => url.pathname.endsWith('qr-scanner-worker.min.js'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'qr-worker-cache',
+              expiration: {
+                maxEntries: 1,
+                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
               },
-              networkTimeoutSeconds: 3 // Fallback to cache quickly if network is slow/offline
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
             }
           }
         ],
