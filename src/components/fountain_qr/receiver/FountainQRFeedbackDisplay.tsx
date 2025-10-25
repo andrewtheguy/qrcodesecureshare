@@ -245,7 +245,7 @@ export function FountainQRFeedbackDisplay({
       pendingAckSequenceRef.current = feedback.sequence
 
       // Generate confirmation code
-      const code = generateFeedbackConfirmationCode(feedback)
+      const code = await generateFeedbackConfirmationCode(feedback)
       setConfirmationCode(code)
 
       // Mark this sequence as generated atomically

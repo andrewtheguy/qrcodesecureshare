@@ -133,7 +133,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setInputConfirmationCode('');
   }, [lastProcessedSequence]);
 
-  const validateInputs = useCallback((): { valid: boolean; error: string; feedback: FountainFeedback | null } => {
+  const validateInputs = useCallback(async (): Promise<{ valid: boolean; error: string; feedback: FountainFeedback | null }> => {
     // Parse and validate sessionId
     const parsedSessionId = parseInt(inputSessionId);
     if (isNaN(parsedSessionId) || parsedSessionId !== sessionId) {
@@ -203,7 +203,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
 
     // Validate confirmation code against expected value
-    const expectedCode = generateFeedbackConfirmationCode(feedback);
+    const expectedCode = await generateFeedbackConfirmationCode(feedback);
     const normalizedInput = normalizeConfirmationCode(inputConfirmationCode);
     const normalizedExpected = normalizeConfirmationCode(expectedCode);
 
@@ -265,7 +265,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   }, [onAckGenerated, onError]);
 
   const handleProcessFeedback = useCallback(async () => {
-    const { valid, error, feedback } = validateInputs();
+    const { valid, error, feedback } = await validateInputs();
     if (!valid || !feedback) {
       showValidationError(error);
       return;

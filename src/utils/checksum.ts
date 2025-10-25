@@ -1,34 +1,8 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
+import { crc32 as hashCrc32 } from 'hash-wasm'
 
-// SHA-256 checksum utility (browser WebCrypto)
-// Returns lowercase hex string.
-
-// Lightweight checksum utilities
+// Checksum utilities using hash-wasm for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
-
-let crc32Table: number[] | null = null
-
-function makeCrc32Table(): number[] {
-  const tbl: number[] = []
-  for (let i = 0; i < 256; i++) {
-    let c = i
-    for (let k = 0; k < 8; k++) {
-      c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1)
-    }
-    tbl[i] = c >>> 0
-  }
-  return tbl
-}
-
-function crc32(data: Uint8Array): string {
-  if (!crc32Table) crc32Table = makeCrc32Table()
-  let crc = 0 ^ (-1)
-  for (let i = 0; i < data.length; i++) {
-    crc = (crc >>> 8) ^ crc32Table![(crc ^ data[i]) & 0xFF]
-  }
-  crc = (crc ^ (-1)) >>> 0
-  return crc.toString(16).padStart(8, '0')
-}
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
 
@@ -37,8 +11,10 @@ export async function computeChecksum(
   algorithm: ChecksumAlgorithm = 'crc32'
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
-  if (algorithm === 'crc32') return crc32(data)
-  // SHA-256 path (slower, but cryptographically strong)
+  if (algorithm === 'crc32') {
+    return await hashCrc32(data)
+  }
+  // SHA-256 path using browser WebCrypto
   const copy = new Uint8Array(data) // fresh ArrayBuffer
   const digest = await crypto.subtle.digest('SHA-256', copy.buffer)
   const bytes = new Uint8Array(digest)
@@ -56,7 +32,7 @@ export function normalizeConfirmationCode(code: string): string {
  * The confirmation code includes the progress field in its calculation to ensure
  * all feedback fields are validated when using manual input mode.
  */
-export function generateFeedbackConfirmationCode(feedback: FountainFeedback): string {
+export async function generateFeedbackConfirmationCode(feedback: FountainFeedback): Promise<string> {
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
     { version: "1" },
@@ -82,8 +58,8 @@ export function generateFeedbackConfirmationCode(feedback: FountainFeedback): st
   const encoder = new TextEncoder()
   const data = encoder.encode(canonicalString)
 
-  // Compute CRC32 checksum
-  const checksum = crc32(data)
+  // Compute CRC32 checksum using hash-wasm
+  const checksum = await hashCrc32(data)
 
   // Format as user-friendly code: uppercase hex with hyphen
   const upperChecksum = checksum.toUpperCase()
