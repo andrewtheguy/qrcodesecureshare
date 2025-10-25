@@ -4,6 +4,7 @@ import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
+import { VitePWA } from 'vite-plugin-pwa'
 
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
@@ -117,6 +118,102 @@ export default defineConfig({
       // failOnWarning: false, // Don't fail the build on warnings
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
+    }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'icon.svg', 'vite.svg', 'qr-scanner-worker.min.js'],
+      manifest: {
+        name: 'QR Code Secure Data Share',
+        short_name: 'QR Share',
+        description: 'Securely share data using QR codes with end-to-end encryption',
+        theme_color: '#000000',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
+        icons: [
+          {
+            src: '/icon.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
+            purpose: 'any maskable'
+          },
+          {
+            src: '/favicon.ico',
+            sizes: '16x16',
+            type: 'image/x-icon'
+          }
+        ]
+      },
+      workbox: {
+        // Cache all static assets
+        globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
+        // Maximum cache size (50MB)
+        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
+        // Runtime caching strategies
+        runtimeCaching: [
+          {
+            // Cache all JavaScript modules including workers
+            urlPattern: /^.*\.(js|mjs)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'js-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              },
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            // Cache CSS files
+            urlPattern: /^.*\.css$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'css-cache',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              }
+            }
+          },
+          {
+            // Cache images
+            urlPattern: /^.*\.(png|jpg|jpeg|svg|gif|webp|ico)$/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'image-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              }
+            }
+          },
+          {
+            // Network first for HTML pages with long cache for offline use
+            urlPattern: /^.*\.html$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'html-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year - maximize offline time
+              },
+              networkTimeoutSeconds: 3 // Fallback to cache quickly if network is slow/offline
+            }
+          }
+        ],
+        // Skip waiting to activate new service worker immediately
+        skipWaiting: true,
+        clientsClaim: true,
+        // Clean up old caches
+        cleanupOutdatedCaches: true
+      },
+      devOptions: {
+        enabled: false, // Disable PWA in development to avoid caching issues
+        type: 'module'
+      }
     })
   ],
   // Testing Recommendations:

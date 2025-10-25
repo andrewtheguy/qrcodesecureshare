@@ -15,6 +15,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import { computeChecksum } from '@/utils/checksum'
+import { deriveQRCapacity } from '@/constants'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 interface WindowInfo {
@@ -53,36 +54,6 @@ interface FountainQRDataDisplayProps {
   onError: (error: string) => void
   fps: number
   onFpsChange: (fps: number) => void
-}
-
-// QR Code capacity mapping based on error correction level and canvas width
-// For a 400px width QR code with binary data encoding (ISO-8859-1)
-// Based on QR Code version 40 (177x177 modules) capacity estimates
-const QR_CAPACITY_MAP: Record<'L' | 'M' | 'Q' | 'H', { base: number, safetyMargin: number }> = {
-  'L': { base: 2953, safetyMargin: 0.6 }, // Low ECC (7% recovery) - ~1772 bytes usable
-  'M': { base: 2331, safetyMargin: 0.6 }, // Medium ECC (15% recovery) - ~1399 bytes usable
-  'Q': { base: 1663, safetyMargin: 0.6 }, // Quartile ECC (25% recovery) - ~998 bytes usable
-  'H': { base: 1273, safetyMargin: 0.6 }  // High ECC (30% recovery) - ~764 bytes usable
-}
-
-/**
- * Derives dynamic QR capacity based on error correction level
- * @param eccLevel - Error correction level (L, M, Q, H)
- * @param canvasWidth - QR code canvas width in pixels (default 400)
- * @returns Maximum safe data size in bytes
- */
-const deriveQRCapacity = (eccLevel: 'L' | 'M' | 'Q' | 'H', canvasWidth: number = 400): number => {
-  const capacityInfo = QR_CAPACITY_MAP[eccLevel]
-
-  // Scale capacity based on canvas width (linear approximation)
-  // 400px is our baseline; adjust if different canvas size
-  const scaleFactor = canvasWidth / 400
-  const scaledBase = Math.floor(capacityInfo.base * scaleFactor)
-
-  // Apply safety margin to ensure reliable encoding
-  const safeCapacity = Math.floor(scaledBase * capacityInfo.safetyMargin)
-
-  return safeCapacity
 }
 
 export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
@@ -177,8 +148,13 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (encoder) {
       const meta = encoder.getMetadata()
       setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
+      
+      // Log QR capacity and max degree info for debugging
+      if (import.meta.env.DEV) {
+        console.log(`[FountainQRDataDisplay] QR capacity: ${MAX_QR_DATA_SIZE} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)
+      }
     }
-  }, [encoder])
+  }, [encoder, MAX_QR_DATA_SIZE, currentQROptions.errorCorrectionLevel])
 
   // Auto-start playback once encoder is ready and activation token changes
   // This prevents auto-start during mode transitions in the parent component
