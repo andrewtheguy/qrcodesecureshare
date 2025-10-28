@@ -89,6 +89,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const chunkCountRef = useRef(chunkCount)
   const bufferLengthRef = useRef(bufferLength)
   const fpsRef = useRef(fps)
+  const chunkCounterRef = useRef<number>(0) // Track actual chunk count, synced to state every 500ms
 
   // Update refs when state changes
   useEffect(() => {
@@ -132,6 +133,19 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onBufferUpdate(0)
   }, [onBufferUpdate])
 
+  // Sync the actual chunk count ref to state periodically (every 500ms / half second) to avoid excessive re-renders
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Always update state with the latest count from ref
+      const latestCount = chunkCounterRef.current
+      if (latestCount !== chunkCount) {
+        setChunkCount(latestCount)
+      }
+    }, 500)
+
+    return () => clearInterval(interval)
+  }, [chunkCount])
+
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Dynamically compute max QR data size based on error correction level
@@ -161,6 +175,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   useEffect(() => {
     if (encoder && isActive && !isPlaying && activationToken > 0) {
       // Reset counters for fresh session
+      chunkCounterRef.current = 0
       setChunkCount(0)
       setIsPlaying(true)
     }
@@ -551,11 +566,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
         // Success! Update state and display
         currentChunkRef.current = chunk
-        setChunkCount(prev => {
-          const next = prev + 1
-          onChunkGenerated(next, chunk)
-          return next
-        })
+        chunkCounterRef.current++
+        onChunkGenerated(chunkCounterRef.current, chunk)
         setQrCodeUrl(dataUrl)
         lastSuccessfulQrRef.current = dataUrl
         return // Exit successfully
@@ -591,7 +603,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     const bufferedItem = consumeFromBuffer()
     if (bufferedItem) {
       currentChunkRef.current = bufferedItem.chunk
-      setChunkCount(bufferedItem.chunkNum)
+      chunkCounterRef.current = bufferedItem.chunkNum
       setQrCodeUrl(bufferedItem.qrUrl)
       lastSuccessfulQrRef.current = bufferedItem.qrUrl
       onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
@@ -603,7 +615,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       const bufferedItem = consumeFromBuffer()
       if (bufferedItem) {
         currentChunkRef.current = bufferedItem.chunk
-        setChunkCount(bufferedItem.chunkNum)
+        chunkCounterRef.current = bufferedItem.chunkNum
         setQrCodeUrl(bufferedItem.qrUrl)
         lastSuccessfulQrRef.current = bufferedItem.qrUrl
         onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
@@ -619,6 +631,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
+      chunkCounterRef.current = 0
       setChunkCount(0)
       clearBuffer() // Clear buffer on restart
     }
