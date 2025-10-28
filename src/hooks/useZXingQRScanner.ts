@@ -248,7 +248,11 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       switchCamera()
     }
     facingModeRef.current = facingMode
-  }, [facingMode, switchCamera])
+    // switchCamera intentionally omitted from dependency array: we only care about facingMode
+    // changes triggering the effect. switchCamera is called for its side effects (camera restart),
+    // not for its identity. Including it would cause unnecessary effect re-runs on every mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facingMode])
 
   // Cleanup on unmount
   useEffect(() => {
