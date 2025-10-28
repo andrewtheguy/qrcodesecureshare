@@ -79,9 +79,39 @@ WINDOW_ENABLE_THRESHOLD: 200 * 1024 // Unchanged
 - **Adaptive Performance**: Automatically switches between compact and detailed feedback modes
 - **User Experience**: Clear mode indicators and seamless sender-receiver synchronization
 
+## QR Scanning & Encoding Implementation
+
+### Current Technology Stack
+
+**QR Code Scanning:**
+- **ZXing WASM**: All QR code scanning throughout the application uses ZXing WASM (WebAssembly-based scanner)
+- **Implementation**: `src/workers/zxing-qr-scanner.worker.ts` provides a web worker interface for scanning
+- **Performance**: Optimized for both mobile (8 fps) and desktop (15+ fps) scanning
+- **Advantages**: High accuracy, fast processing, and efficient battery usage on mobile devices
+
+**Binary Data Encoding:**
+- **Fountain Codes**: Binary-compatible encoding using fountain (LT) codes with Robust Soliton distribution
+- **Configuration**: Block size set to 400 bytes for optimal QR code density
+- **Windowing**: Segment-based windowing for files > 200KB for reduced memory usage
+- **Data Format**: Magic bytes [0xFF][0xFD], 2-byte seed, 1-byte degree, variable-length indices and data with CRC32 checksum
+
+**QR Code Generation:**
+- **qrcode Library**: Retained for one-off QR code generation (simple text/URL QR codes)
+- **Background Generation**: `src/workers/qrGenerator.worker.ts` handles generation in web worker threads
+- **Future Encoder**: Will migrate to Sequential Scanning ZXing WASM encoder for binary mode transfers for consistency and better performance
+
+### Scanning Workflow
+
+1. **Data Scanning**: Receiver scans fountain code chunks at optimized FPS rates
+2. **Chunk Parsing**: ZXing WASM decodes QR codes, fountain decoder extracts binary data
+3. **Block Assembly**: Decoded chunks are collected and processed via web worker
+4. **Feedback Generation**: Statistical or targeted feedback is generated and displayed as QR
+5. **Continuous Transfer**: Process repeats until all blocks are received or file is completely reconstructed
+
 ## Backward Compatibility
 
 The optimized components use a new format incompatible with legacy components. Legacy components have been removed. Only data QR codes are optimized for easier scanning, while feedback QR codes remain at their original size.
 - **QR Generation**: `qrGenerator.worker.ts` handles background QR generation
+- **QR Scanning**: `zxing-qr-scanner.worker.ts` handles QR scanning with ZXing WASM
 - **Configuration**: `fountainConfig.ts` contains block size parameters
 - **Related Files**: `FountainQRSender.tsx`, `FountainQRReceiver.tsx`, `fountainCode.ts`

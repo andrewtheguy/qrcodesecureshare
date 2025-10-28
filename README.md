@@ -131,10 +131,23 @@ The app comes pre-configured with my own encryption key pairs for my website, yo
 - **Frontend**: React 19 + TypeScript
 - **Build Tool**: Vite
 - **Styling**: Tailwind CSS + Radix UI
-- **QR Codes**: qrcode + qr-scanner libraries
+- **QR Code Scanning**: ZXing WASM (high-performance WebAssembly-based scanner)
+- **QR Code Generation**: qrcode library (for one-off QR code generation)
+- **Binary Transfer**: Fountain codes (LT codes with Robust Soliton distribution) for efficient large file transfers
 - **Encryption**: Web Crypto API (AES-GCM, RSA-OAEP)
 - **P2P**: PeerJS for WebRTC
 - **PWA**: Vite PWA plugin
+
+### QR Code Implementation Details
+
+**Current Scanning & Encoding:**
+- **ZXing WASM**: Primary QR code scanner for all QR scanning operations, used throughout the application (src/workers/zxing-qr-scanner.worker.ts)
+- **Fountain Code Encoding**: Using ZXing WASM for QR code generation for Binary-compatible encoding to eliminate the need for Base64
+- **qrcode Library**: Retained for one-off QR code generation (simple text/URL QR codes)
+- **qr-scanner Library**: Previously used, now replaced by ZXing WASM for better performance
+
+**Future Plans:**
+- Replace sequential scanning Base64 encoding with ZXing WASM encoder for binary mode transfers to provide even better performance and compatibility
 
 ### Key Components
 - `Upload.tsx`: File upload and QR generation
