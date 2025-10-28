@@ -4,12 +4,9 @@ import { copyFileSync } from 'fs'
 import { resolve } from 'path'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
-import { VitePWA } from 'vite-plugin-pwa'
 
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
-
-const LONG_TERM_CACHE_SECONDS = 60 * 60 * 24 * 365 * 5 // 5 years in seconds
 
 // Custom plugin to copy QR scanner worker
 const copyQrWorkerPlugin = () => {
@@ -121,140 +118,11 @@ export default defineConfig({
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
     }),
-    VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icon.svg', 'vite.svg', 'qr-scanner-worker.min.js'],
-      manifest: {
-        name: 'QR Code Secure Data Share',
-        short_name: 'QR Share',
-        description: 'Securely share data using QR codes with end-to-end encryption',
-        theme_color: '#000000',
-        background_color: '#ffffff',
-        display: 'standalone',
-        start_url: '/',
-        icons: [
-          {
-            src: '/icon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
-          },
-          {
-            src: '/favicon.ico',
-            sizes: '16x16',
-            type: 'image/x-icon'
-          }
-        ]
-      },
-      workbox: {
-        // Cache all static assets
-        globPatterns: ['**/*.{js,css,html,ico,svg,woff,woff2}'],
-        // Maximum cache size (50MB)
-        maximumFileSizeToCacheInBytes: 50 * 1024 * 1024,
-        navigateFallback: '/index.html',
-        // Runtime caching strategies
-        runtimeCaching: [
-          {
-            // App shell should be instantly available offline via stale-while-revalidate
-            urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'html-shell-cache',
-              expiration: {
-                maxEntries: 5,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              },
-              matchOptions: {
-                ignoreSearch: true
-              }
-            }
-          },
-          {
-            // Cache all JavaScript modules including workers
-            urlPattern: /^.*\.(js|mjs)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'js-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          },
-          {
-            // Cache CSS files
-            urlPattern: /^.*\.css$/,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'css-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              }
-            }
-          },
-          {
-            // Cache images
-            urlPattern: /^.*\.(png|jpg|jpeg|svg|gif|webp|ico)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'image-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              }
-            }
-          },
-          {
-            // Cache fonts and wasm assets that the scanner relies on
-            urlPattern: /^.*\.(woff2?|ttf|otf|wasm)$/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'binary-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              }
-            }
-          },
-          {
-            // Ensure the dedicated QR worker is always available offline
-            urlPattern: ({ url }) => url.pathname.endsWith('qr-scanner-worker.min.js'),
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'qr-worker-cache',
-              expiration: {
-                maxEntries: 1,
-                maxAgeSeconds: LONG_TERM_CACHE_SECONDS
-              },
-              cacheableResponse: {
-                statuses: [0, 200]
-              }
-            }
-          }
-        ],
-        // Skip waiting to activate new service worker immediately
-        skipWaiting: true,
-        clientsClaim: true,
-        // Clean up old caches
-        cleanupOutdatedCaches: true
-      },
-      devOptions: {
-        enabled: false, // Disable PWA in development to avoid caching issues
-        type: 'module'
-      }
-    })
   ],
   // Testing Recommendations:
   // 1. Run `npm run build` and check the `dist` directory for worker chunks
   // 2. Look for files like `fountainDecoder.worker-[hash].js` and `qrGenerator.worker-[hash].js`
   // 3. Test in production build using `npm run preview`
-  // 4. Verify workers load correctly in both online and offline (PWA) modes
-  // 5. Check browser DevTools Network tab to confirm workers are loaded and cached
+  // 4. Verify workers load correctly in builds
+  // 5. Check browser DevTools Network tab to confirm workers are loaded
 })
