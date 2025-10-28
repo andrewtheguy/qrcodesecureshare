@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { computeChecksum } from '@/utils/checksum'
-import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -49,8 +48,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
-  const [showFeedbackQr, setShowFeedbackQr] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([
     `[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`
   ])
@@ -213,8 +210,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setSuccess(false)
     setDownloadUrl('')
     setIsScanning(false)
-    setShowFeedbackQr(false)
-    setFeedbackQrUrl('')
   }
 
   const handleDownload = () => {
@@ -228,48 +223,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     document.body.removeChild(link)
   }
 
-  const generateFeedbackQr = async () => {
-    if (totalChunks === 0) return
-
-    // Get missing data chunk indices
-    const missingChunks: number[] = []
-    for (let i = 0; i < totalChunks; i++) {
-      if (!receivedChunks.has(i)) {
-        missingChunks.push(i)
-      }
-    }
-
-    // Create feedback payload
-     const feedback = {
-       type: 'MISSING_CHUNKS_FEEDBACK',
-       sessionId: initialMetadata.sessionId,
-   timestamp: metadata.timestamp || Date.now(),
-   fileName: metadata.name || 'unknown',
-       totalChunks: totalChunks,
-       receivedCount: receivedChunks.size,
-       missingChunks
-     }
-
-    try {
-      const qrUrl = await QRCode.toDataURL(JSON.stringify(feedback), {
-        width: 300,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-      setFeedbackQrUrl(qrUrl)
-      setShowFeedbackQr(true)
-    } catch (err) {
-      console.error('Failed to generate feedback QR:', err)
-      setError('Failed to generate feedback QR code')
-    }
-  }
-
   const progress = totalChunks > 0 ? (receivedChunks.size / totalChunks) * 100 : 0
-  const hasMissingChunks = totalChunks > 0 && receivedChunks.size < totalChunks && receivedChunks.size > 0
 
   return (
     <div className="space-y-4">
@@ -331,59 +285,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         </div>
       )}
 
-      {/* Feedback QR Code Button */}
-      {hasMissingChunks && !showFeedbackQr && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📊 Missing {totalChunks - receivedChunks.size} data chunk(s)</p>
-              <p className="text-sm">
-                Generate a feedback QR code to show the sender which chunks are missing,
-                so they can repeat only those specific ones.
-              </p>
-              <Button onClick={generateFeedbackQr} className="w-full">
-                📋 Generate Feedback QR Code
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Feedback QR Code Display */}
-      {showFeedbackQr && feedbackQrUrl && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📋 Feedback QR Code</p>
-              <p className="text-sm">
-                Show this to the sender. They can scan it to repeat only the missing chunks.
-              </p>
-              <div className="flex justify-center bg-white p-4 rounded-lg">
-                <img src={feedbackQrUrl} alt="Feedback QR Code" className="max-w-[300px]" />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Missing chunks: {totalChunks - receivedChunks.size} of {totalChunks}
-                {totalChunks - receivedChunks.size <= 10 && (
-                  <span className="ml-2">
-                    (#{Array.from({ length: totalChunks }, (_, i) => i)
-                      .filter(i => !receivedChunks.has(i))
-                      .map(i => i + 1)
-                      .join(', ')})
-                  </span>
-                )}
-              </div>
-              <Button
-                onClick={() => setShowFeedbackQr(false)}
-                variant="outline"
-                className="w-full"
-              >
-                Hide Feedback QR
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
@@ -425,7 +326,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
               <li>Point camera at the metadata QR code first</li>
               <li>Then scan the data QR codes in sequence</li>
               <li>All chunks must be received to complete transfer</li>
-              <li>Use feedback QR if chunks are missing</li>
             </ol>
           </AlertDescription>
         </Alert>

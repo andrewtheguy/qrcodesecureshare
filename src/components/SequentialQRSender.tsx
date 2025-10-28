@@ -1,11 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
-import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
-import { isMobileDevice } from '@/lib/utils'
 
 interface SequentialQRSenderProps {
   file: File
@@ -27,23 +25,9 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
   const [error, setError] = useState<string>('')
   const [repeatMode, setRepeatMode] = useState(true) // Auto-repeat animation
   const [loopCount, setLoopCount] = useState(0)
-  const [scanningFeedback, setScanningFeedback] = useState(false)
-  const [missingChunksQueue, setMissingChunksQueue] = useState<number[]>([])
-  const [playingMissingOnly, setPlayingMissingOnly] = useState(false)
   const [hasStarted, setHasStarted] = useState(false) // User has pressed play at least once
   // Removed showMetadata state – always showing data chunks
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const feedbackVideoRef = useRef<HTMLVideoElement>(null)
-  const feedbackScannerRef = useRef<QrScanner | null>(null)
-
-  const startQrScanner = useCallback(async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
-    const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
-    if (constraints && Object.keys(constraints).length > 0) {
-      await startFn.call(scanner, constraints)
-    } else {
-      await startFn.call(scanner)
-    }
-  }, [])
 
   // Process file into chunks
   useEffect(() => {
@@ -129,53 +113,12 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     generateQR()
   }, [dataChunks, currentChunk, hasStarted])
 
-  const handleFeedbackScan = useCallback((data: string) => {
-    try {
-      const feedback = JSON.parse(data)
-
-      if (feedback.type === 'MISSING_CHUNKS_FEEDBACK' && Array.isArray(feedback.missingChunks)) {
-        // Validate session ID
-        const feedbackSessionId = feedback.sessionId
-        if (feedbackSessionId !== sessionId) {
-          console.warn(`Ignoring feedback from different session: expected ${sessionId}, got ${feedbackSessionId}`)
-          return
-        }
-        // Receiver already uses 0-based data chunk indices, so use them directly
-        setMissingChunksQueue(feedback.missingChunks)
-        setPlayingMissingOnly(true)
-        setCurrentChunk(feedback.missingChunks[0] || 0)
-        setScanningFeedback(false)
-        setIsPlaying(false)
-        setLoopCount(0)
-
-        // Stop the scanner
-        if (feedbackScannerRef.current) {
-          feedbackScannerRef.current.stop()
-        }
-      }
-    } catch (err) {
-      console.error('Failed to parse feedback QR:', err)
-    }
-  }, [sessionId])
-
   // Animation loop
   useEffect(() => {
     if (!isPlaying || dataChunks.length === 0) return
 
     const interval = setInterval(() => {
       setCurrentChunk((prev) => {
-        // If playing only missing chunks, use the queue
-        if (playingMissingOnly && missingChunksQueue.length > 0) {
-          const currentIndexInQueue = missingChunksQueue.indexOf(prev)
-          const nextIndexInQueue = currentIndexInQueue + 1
-
-          if (nextIndexInQueue >= missingChunksQueue.length) {
-            setLoopCount((count) => count + 1)
-            return repeatMode ? missingChunksQueue[0] : prev
-          }
-          return missingChunksQueue[nextIndexInQueue]
-        }
-
         // Normal playback - 0-based data chunks
         const next = prev + 1
         if (next >= dataChunks.length) {
@@ -187,7 +130,7 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-  }, [isPlaying, dataChunks.length, fps, repeatMode, playingMissingOnly, missingChunksQueue, handleFeedbackScan])
+  }, [isPlaying, dataChunks.length, fps, repeatMode])
 
   const handlePlayPause = () => {
     if (!hasStarted) {
@@ -230,75 +173,6 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
     }
   }
 
-  // Feedback scanner initialization
-  useEffect(() => {
-    if (!scanningFeedback || !feedbackVideoRef.current) {
-      return
-    }
-
-    // Mobile optimization: feedback scanning is brief, use 10 fps with conditional highlights
-    const isMobile = isMobileDevice()
-    const scanRate = isMobile ? 10 : 15
-    const showHighlights = !isMobile
-
-    const scanner = new QrScanner(
-      feedbackVideoRef.current,
-      (result) => {
-        handleFeedbackScan(result.data)
-      },
-      {
-        returnDetailedScanResult: true,
-        maxScansPerSecond: scanRate,
-        highlightScanRegion: showHighlights,
-        highlightCodeOutline: showHighlights,
-        preferredCamera: 'environment',
-      }
-    )
-
-    feedbackScannerRef.current = scanner
-
-    // Start scanner with video constraints for mobile optimization
-    const startPromise = isMobile
-      ? startQrScanner(scanner, {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        })
-      : startQrScanner(scanner)
-
-    startPromise.catch((err) => {
-      console.error('Feedback scanner start error:', err)
-      setError('Failed to start camera for feedback scanning')
-      setScanningFeedback(false)
-    })
-
-    return () => {
-      scanner.stop()
-      scanner.destroy()
-    }
-  }, [scanningFeedback, handleFeedbackScan, startQrScanner])
-
-
-  const handleStartFeedbackScan = () => {
-    setScanningFeedback(true)
-    setError('')
-  }
-
-  const handleStopFeedbackScan = () => {
-    setScanningFeedback(false)
-    if (feedbackScannerRef.current) {
-      feedbackScannerRef.current.stop()
-    }
-  }
-
-  const handleResetToAllChunks = () => {
-    setPlayingMissingOnly(false)
-    setMissingChunksQueue([])
-    setCurrentChunk(0)
-    setIsPlaying(false)
-    setLoopCount(0)
-  }
-
   if (error) {
     return (
       <Alert variant="destructive">
@@ -309,49 +183,6 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
 
   return (
     <div className="space-y-4">
-      {/* Feedback Scanner Mode */}
-      {scanningFeedback && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📷 Scanning for Feedback QR</p>
-              <div className="relative bg-black rounded-lg overflow-hidden">
-                <video
-                  ref={feedbackVideoRef}
-                  className="w-full h-auto"
-                  style={{ maxHeight: '300px' }}
-                />
-                <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
-                  ● SCANNING
-                </div>
-              </div>
-              <p className="text-sm">
-                Point camera at the receiver's feedback QR code to see which chunks are missing.
-              </p>
-              <Button onClick={handleStopFeedbackScan} variant="outline" className="w-full">
-                Cancel Scan
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Missing Chunks Mode Alert */}
-      {playingMissingOnly && missingChunksQueue.length > 0 && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="font-medium">🎯 Playing Missing Chunks Only</p>
-              <p className="text-sm">
-                Showing only {missingChunksQueue.length} missing chunk(s) out of {dataChunks.length} total.
-              </p>
-              <Button onClick={handleResetToAllChunks} variant="outline" size="sm" className="w-full">
-                ← Back to All Chunks
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
 
       {/* QR Code Display (clean container with no overlays) */}
       <div className="flex justify-center bg-white p-4 rounded-lg">
@@ -390,9 +221,6 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
           )}
           {loopCount > 0 && (
             <span className="px-2 py-0.5 rounded bg-blue-500 text-white font-semibold">Loop #{loopCount + 1}</span>
-          )}
-          {playingMissingOnly && missingChunksQueue.length > 0 && (
-            <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">Missing Mode</span>
           )}
         </div>
       )}
@@ -471,22 +299,6 @@ export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps)
               Completed {loopCount} loop{loopCount > 1 ? 's' : ''}
             </span>
           )}
-        </div>
-
-        {/* Feedback QR Scanner Button */}
-        <div className="pt-2 border-t">
-          <Button
-            onClick={handleStartFeedbackScan}
-            variant="secondary"
-            size="sm"
-            className="w-full"
-            disabled={scanningFeedback}
-          >
-            📷 Scan Receiver's Feedback QR
-          </Button>
-          <p className="text-xs text-muted-foreground text-center mt-1">
-            Get missing chunks from receiver
-          </p>
         </div>
       </div>
 
