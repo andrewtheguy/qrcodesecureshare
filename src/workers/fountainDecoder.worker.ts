@@ -191,13 +191,21 @@ self.onmessage = async (event: MessageEvent) => {
                         if (partData) {
                             const computedChecksum = await computeChecksum(partData, 'crc32');
                             const partInfo = decoder!.getPartInfo();
+                            const checksumMatch = computedChecksum === expectedPartChecksum;
+
                             partCompleteInfo = {
                                 partComplete: true,
-                                partChecksumMatch: computedChecksum === expectedPartChecksum,
+                                partChecksumMatch: checksumMatch,
                                 computedChecksum,
                                 currentPart: partInfo.currentPartIndex,
                                 totalParts: partInfo.totalParts
                             };
+
+                            // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
+                            if (checksumMatch) {
+                                decoder!.markPartCompleted(partInfo.currentPartIndex);
+                                console.log(`Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
+                            }
                         }
                     }
                 }
@@ -235,8 +243,10 @@ self.onmessage = async (event: MessageEvent) => {
                         partCompleteInfo
                     });
 
-                    // If complete, trigger reconstruction (only in non-part mode or when all parts done)
-                    if (isComplete && !partBasedMode) {
+                    // If complete, trigger reconstruction
+                    // In part-based mode, this happens when all parts are stored
+                    // In non-part mode, this happens when all blocks are decoded
+                    if (isComplete) {
                         const reconstructedData = decoder!.getDecodedData();
                         if (reconstructedData) {
                             const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
@@ -287,6 +297,28 @@ self.onmessage = async (event: MessageEvent) => {
                     isComplete: isComplete_,
                     decodedBlockIndices: decodedBlockIndices__
                 });
+                break;
+            }
+
+            case 'moveToNextPart': {
+                ensureDecoder();
+                if (!partBasedMode) {
+                    self.postMessage({ type: 'error', id, error: 'Not in part-based mode' });
+                    break;
+                }
+
+                const moved = decoder!.moveToNextPart();
+                if (moved) {
+                    const partInfo = decoder!.getPartInfo();
+                    self.postMessage({
+                        type: 'partTransitioned',
+                        id,
+                        newPartIndex: partInfo.currentPartIndex,
+                        totalParts: partInfo.totalParts
+                    });
+                } else {
+                    self.postMessage({ type: 'error', id, error: 'Failed to move to next part' });
+                }
                 break;
             }
 

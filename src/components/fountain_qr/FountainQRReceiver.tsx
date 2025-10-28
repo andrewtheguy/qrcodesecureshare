@@ -217,6 +217,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
         }
 
+        case 'partTransitioned': {
+          const { newPartIndex, totalParts } = data
+          console.log(`[FountainQRReceiver] Transitioned to part ${newPartIndex + 1}/${totalParts}`)
+          // Clear part completion info to allow new part processing
+          setPartCompleteInfo(null)
+          break
+        }
+
         case 'error': {
           const { error } = data
           if (error === 'Invalid checksum') {
@@ -269,13 +277,21 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setCurrentWindowStart(windowStart)
     setCurrentWindowEnd(windowEnd)
     console.log(`[FountainQRReceiver] Synced to sender's window range: ${windowStart}-${windowEnd}`)
+
+    // If a part was just completed, trigger move to next part
+    if (partCompleteInfo && partCompleteInfo.partChecksumMatch) {
+      const msgId = messageIdCounterRef.current++
+      workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId })
+      console.log(`[FountainQRReceiver] Moving to next part after ACK received`)
+    }
+
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
     setSenderFeedbackMessage(message)
     // Reset lastObservedWindowPercentageRef to 0 so progressDelta measures progress since window expansion
     lastObservedWindowPercentageRef.current = 0
-  }, [])
+  }, [partCompleteInfo])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
     console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)

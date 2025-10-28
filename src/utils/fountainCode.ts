@@ -597,6 +597,7 @@ export class FountainDecoder {
   private totalParts: number = 0
   private currentPartIndex: number = 0
   private completedParts: Set<number> = new Set()
+  private storedPartData: Map<number, Uint8Array> = new Map() // Store reconstructed part data
 
   constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
     this.metadata = metadata
@@ -676,6 +677,10 @@ export class FountainDecoder {
   }
 
   isComplete(): boolean {
+    if (this.partBasedMode) {
+      // In part-based mode, complete when all parts are stored
+      return this.storedPartData.size === this.totalParts
+    }
     return this.isDecoded
   }
 
@@ -685,6 +690,11 @@ export class FountainDecoder {
 
   // Reconstruct the original data
   getDecodedData(): Uint8Array | null {
+    // In part-based mode, check if all parts are completed
+    if (this.partBasedMode) {
+      return this.getDecodedDataFromParts()
+    }
+
     if (!this.isDecoded) return null
 
     // Reassemble blocks in order
@@ -700,6 +710,34 @@ export class FountainDecoder {
       offset += bytesToCopy
     }
 
+    return result
+  }
+
+  /**
+   * Reconstruct the final file from stored part data
+   */
+  private getDecodedDataFromParts(): Uint8Array | null {
+    if (!this.partBasedMode) return null
+    if (this.storedPartData.size !== this.totalParts) return null
+
+    // Check that all parts are present
+    for (let i = 0; i < this.totalParts; i++) {
+      if (!this.storedPartData.has(i)) return null
+    }
+
+    // Concatenate all parts in order
+    const result = new Uint8Array(this.metadata.size)
+    let offset = 0
+
+    for (let i = 0; i < this.totalParts; i++) {
+      const partData = this.storedPartData.get(i)
+      if (!partData) return null
+
+      result.set(partData, offset)
+      offset += partData.length
+    }
+
+    console.log(`Final file reconstructed from ${this.totalParts} parts (${result.length} bytes)`)
     return result
   }
 
@@ -822,6 +860,13 @@ export class FountainDecoder {
     if (!this.partBasedMode) return
     if (partIndex < 0 || partIndex >= this.totalParts) return
 
+    // First, reconstruct and store the part data before cleanup
+    const partData = this.getCurrentPartData()
+    if (partData) {
+      this.storedPartData.set(partIndex, partData)
+      console.log(`Part ${partIndex + 1}/${this.totalParts} reconstructed and stored (${partData.length} bytes)`)
+    }
+
     this.completedParts.add(partIndex)
 
     const partStartByte = partIndex * this.partSize
@@ -830,7 +875,7 @@ export class FountainDecoder {
     const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
     const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
 
-    // Clear decoded blocks and received chunks for this part to save memory
+    // Clear decoded blocks for this part to save memory
     for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
       this.decodedBlocks.delete(i)
     }
@@ -842,6 +887,8 @@ export class FountainDecoder {
         return !this.completedParts.has(blockPartIndex)
       })
     })
+
+    console.log(`Part ${partIndex + 1} memory cleaned up. Active blocks: ${this.decodedBlocks.size}, Active chunks: ${this.receivedChunks.length}`)
   }
 
   /**

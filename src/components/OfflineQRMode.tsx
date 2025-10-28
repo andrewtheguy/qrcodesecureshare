@@ -7,7 +7,9 @@ import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './Seque
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD } from '@/utils/fountainConfig'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, type PartSizeOption } from '@/utils/fountainConfig'
 import { getSegmentSizeBlocks } from '../utils/fountainConfig'
 import {
   Dialog,
@@ -80,6 +82,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
 
@@ -354,6 +357,46 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
             </div>
           </Button>
+
+          {/* Part Size Configuration - shown after fountain-feedback is selected */}
+          {transferMode === 'fountain-feedback' && (
+            <Card className="border-2 border-primary">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">Part Size Configuration</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground">
+                    Files are split into parts for efficient transfer with checksum validation. Choose a part size based on your file size and connection stability.
+                  </p>
+                  <RadioGroup value={partSizeOption} onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} className="space-y-3">
+                    <div className="flex items-start space-x-2">
+                      <RadioGroupItem value="SMALL" id="part-size-small" className="mt-1" />
+                      <div className="flex flex-col flex-1">
+                        <Label htmlFor="part-size-small" className="text-sm font-medium cursor-pointer">256 KB</Label>
+                        <p className="text-xs text-muted-foreground">Best for smaller files or slower connections</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <RadioGroupItem value="MEDIUM" id="part-size-medium" className="mt-1" />
+                      <div className="flex flex-col flex-1">
+                        <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB (Default)</Label>
+                        <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start space-x-2">
+                      <RadioGroupItem value="LARGE" id="part-size-large" className="mt-1" />
+                      <div className="flex flex-col flex-1">
+                        <Label htmlFor="part-size-large" className="text-sm font-medium cursor-pointer">1024 KB (1 MB)</Label>
+                        <p className="text-xs text-muted-foreground">Best for large files with stable connections</p>
+                      </div>
+                    </div>
+                  </RadioGroup>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <Button
             onClick={() => handleSelectMode('fountain-simple')}
             variant="outline"
@@ -581,6 +624,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   feedbackEnabled={feedbackEnabled}
                   checksum={metadataJson.checksum}
                   checksumAlg={metadataJson.checksumAlg}
+                  partSizeOption={partSizeOption}
                 />
               )
             )}

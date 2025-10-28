@@ -27,6 +27,7 @@ interface FountainQRSenderProps {
   feedbackEnabled?: boolean
   checksum: string
   checksumAlg: string
+  partSizeOption?: PartSizeOption
   qrOptions?: {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
@@ -34,7 +35,7 @@ interface FountainQRSenderProps {
 }
 
 
-export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'MEDIUM', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
@@ -65,7 +66,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
-  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
   const [senderFps, setSenderFps] = useState<number>(DEFAULT_FOUNTAIN_FPS)
   const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
@@ -444,45 +444,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <p className="text-xs text-muted-foreground">Type feedback details manually</p>
               </div>
             </RadioGroup>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Part Size Selection */}
-      {feedbackEnabled && (
-        <Card className="mb-4">
-          <CardHeader>
-            <CardTitle className="text-lg">Part Size Configuration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">
-                Files are split into parts for efficient transfer with checksum validation. Larger parts reduce overhead but take longer to validate.
-              </p>
-              <RadioGroup value={partSizeOption} onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="SMALL" id="part-size-small" />
-                  <div className="flex flex-col">
-                    <Label htmlFor="part-size-small" className="text-sm font-medium">256 KB</Label>
-                    <p className="text-xs text-muted-foreground">Best for smaller files or slower connections</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="MEDIUM" id="part-size-medium" />
-                  <div className="flex flex-col">
-                    <Label htmlFor="part-size-medium" className="text-sm font-medium">512 KB (Default)</Label>
-                    <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="LARGE" id="part-size-large" />
-                  <div className="flex flex-col">
-                    <Label htmlFor="part-size-large" className="text-sm font-medium">1024 KB (1 MB)</Label>
-                    <p className="text-xs text-muted-foreground">Best for large files with stable connections</p>
-                  </div>
-                </div>
-              </RadioGroup>
-            </div>
           </CardContent>
         </Card>
       )}
