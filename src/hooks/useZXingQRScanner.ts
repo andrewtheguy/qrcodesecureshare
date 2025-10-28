@@ -3,12 +3,14 @@ import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
 interface UseZXingQRScannerOptions {
-  onScan: (data: string[]) => void
+  onScan: (data: (string | Uint8Array)[]) => void
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
   facingMode?: 'environment' | 'user'
   scanInterval?: number
+  binary?: boolean // If true, return raw bytes; if false, return text
+  debounceMs?: number // Debounce duplicate scans within this time window (ms)
 }
 
 export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
@@ -19,6 +21,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     isScanning,
     facingMode = 'environment',
     scanInterval,
+    binary = false, // Default to text mode for backward compatibility
+    debounceMs = 0, // No debounce by default
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -27,6 +31,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const isScanningRef = useRef<boolean>(false)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const workerRef = useRef<Worker | null>(null)
+  const lastScannedRef = useRef<string>('')
+  const lastScanTimeRef = useRef<number>(0)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
   const enumerateCameras = useCallback(async () => {
@@ -47,6 +53,16 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
         if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
+          // Debounce duplicate scans
+          const scannedData = e.data.data[0]
+          const now = Date.now()
+          if (debounceMs > 0 && scannedData === lastScannedRef.current && now - lastScanTimeRef.current < debounceMs) {
+            // Skip this duplicate scan
+            return
+          }
+          lastScannedRef.current = scannedData
+          lastScanTimeRef.current = now
+
           // QR codes found! Pass all detected QR codes
           onScan(e.data.data)
         }
@@ -65,7 +81,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       worker.terminate()
       workerRef.current = null
     }
-  }, [onScan])
+  }, [onScan, debounceMs])
 
   const scanVideoFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || !workerRef.current) return
@@ -102,6 +118,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         {
           type: 'scan',
           imageData,
+          binary,
         },
         [imageData.data.buffer]
       )
@@ -263,6 +280,15 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
       if (scanLoopRef.current !== null) {
         cancelAnimationFrame(scanLoopRef.current)
+      }
+      // Add a small delay to ensure camera is fully released before new instance tries to access it
+      // This prevents "media was removed from the document" errors when rapidly switching components
+      if (videoRef.current) {
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = null
+          }
+        }, 50)
       }
     }
   }, [])

@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import {
   Dialog,
   DialogContent,
@@ -52,18 +52,27 @@ export function OfflineQRReceiver() {
   const [receiverKey, setReceiverKey] = useState(0)
   const [error, setError] = useState<string>('')
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  // Flag to prevent duplicate metadata detection
+  const [metadataDetected, setMetadataDetected] = useState(false)
 
   const addDebugLog = (message: string) => {
     console.log(`[AnimatedQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
-  const handleMetadataScan = useCallback((data: string) => {
+  const handleMetadataScan = useCallback((data: string | Uint8Array) => {
+    // Prevent duplicate detection if metadata already detected
+    if (metadataDetected) {
+      return
+    }
+
     try {
-      addDebugLog(`Scanned metadata text, length: ${data.length} chars`)
+      // Convert Uint8Array to string if needed
+      const qrCode = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
+      addDebugLog(`Scanned metadata text, length: ${qrCode.length} chars`)
 
       // Try to parse JSON (new format)
-      const parsed = JSON.parse(data)
+      const parsed = JSON.parse(qrCode)
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Not a JSON object')
       }
@@ -111,41 +120,37 @@ export function OfflineQRReceiver() {
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
 
+      // Mark metadata as detected and stop scanning immediately
+      setMetadataDetected(true)
       setIsScanning(false)
-      stopScannerRef.current?.()
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Metadata parse error: ${errorMsg}`)
       console.error('Metadata scan error:', err)
       setError('Failed to parse metadata QR code (expecting JSON).')
     }
-  }, [])
+  }, [metadataDetected])
 
   const handleScanError = useCallback((errorMessage: string) => {
     setError(errorMessage)
   }, [])
 
-  // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps)
-  // Visual highlights remain enabled to help users align the QR code
-  const { videoRef, stopScanner } = useQRScanner({
-    onScan: handleMetadataScan,
+  // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps = 100ms interval)
+  // Add debounce to prevent duplicate metadata detections within 500ms
+  const { videoRef, canvasRef } = useZXingQRScanner({
+    onScan: (data) => handleMetadataScan(data[0]),
     isScanning,
     onError: handleScanError,
-    maxScansPerSecond: 10,
-    enableVisualHighlights: true
+    scanInterval: 100,
+    debounceMs: 500
   })
-
-  const stopScannerRef = useRef(stopScanner)
-
-  useEffect(() => {
-    stopScannerRef.current = stopScanner
-  }, [stopScanner])
 
   const handleStartScan = () => {
     setIsScanning(true)
     setError('')
     setDetectedMetadata(null)
     setDebugLog([])
+    setMetadataDetected(false)
   }
 
   const handleReset = () => {
@@ -154,7 +159,7 @@ export function OfflineQRReceiver() {
     setTransferMode(null)
     setError('')
     setDebugLog([])
-    stopScanner()
+    setMetadataDetected(false)
   }
 
   const requestReset = () => {
@@ -228,6 +233,7 @@ export function OfflineQRReceiver() {
                   playsInline
                   muted
                 />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
                   ● SCANNING FOR METADATA
                 </div>

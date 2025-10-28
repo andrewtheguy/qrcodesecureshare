@@ -193,7 +193,7 @@ export function FountainQRDataScanner({
   }, [onScanError])
 
   // Continuous data scanning is the most battery-critical operation
-  // Use 8 fps on mobile and disable visual highlights to minimize power consumption
+  // Use 30 fps for faster QR code decoding while disabling visual highlights to minimize power consumption
   const { videoRef, stopScanner, restartScanner } = useQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
@@ -203,7 +203,7 @@ export function FountainQRDataScanner({
         onAckTransitionStatus(true);
     },
     onStop: () => addDebugLog('🛑 Data scanner stopped'),
-    maxScansPerSecond: 8,
+    maxScansPerSecond: 30,
     enableVisualHighlights: false,
     scanRegionOverlayRef
   })

@@ -8,25 +8,15 @@
  *
  */
 
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
-import type { default as QrScannerType } from 'qr-scanner';
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
 import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
-import { isMobileDevice } from '@/lib/utils';
-
-const startQrScanner = async (scanner: QrScannerType, constraints?: MediaTrackConstraints) => {
-  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>;
-  if (constraints && Object.keys(constraints).length > 0) {
-    await startFn.call(scanner, constraints);
-  } else {
-    await startFn.call(scanner);
-  }
-};
 
 interface WindowInfo {
   windowEnabled: boolean;
@@ -54,7 +44,6 @@ interface ProcessedFeedbackData {
 interface FountainQRFeedbackScannerProps {
   encoder: FountainEncoder | null;
   sessionId: number;
-  isActive: boolean;
   lastProcessedSequence: number;
   windowInfo: WindowInfo | null;
   lastDecodedInWindow: number;
@@ -66,12 +55,12 @@ interface FountainQRFeedbackScannerProps {
   onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
   onUpdateLastDecodedInWindow: (count: number) => void;
   onUpdateLastWindowExpansion: (timestamp: number) => void;
+  autoStartScanning?: boolean;
 }
 
 export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps> = ({
   encoder,
   sessionId,
-  isActive,
   lastProcessedSequence,
   windowInfo,
   lastDecodedInWindow,
@@ -83,18 +72,18 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   onUpdateWindowInfo,
   onUpdateLastDecodedInWindow,
   onUpdateLastWindowExpansion,
+  autoStartScanning = false,
 }) => {
   const [currentMode, setCurrentMode] = useState<'scanning' | 'idle'>('idle');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
+  const [processingRef, setProcessingRef] = useState(false);
 
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const scannerRef = useRef<QrScannerType | null>(null);
-  const processingRef = useRef(false);
-
-  // Reset sequence on session change
+  // Auto-start scanning if parent is in feedback-scanning mode
   useEffect(() => {
-    setSenderFeedbackSequence(0);
-  }, [sessionId]);
+    if (autoStartScanning && currentMode === 'idle') {
+      setCurrentMode('scanning');
+    }
+  }, [autoStartScanning]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedback) => {
     try {
@@ -108,16 +97,20 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
   }, [onAckGenerated, onError]);
 
-  const handleFeedbackScan = useCallback(async (result: { data: string }) => {
-    if (processingRef.current) return;
+  const handleFeedbackScan = useCallback(async (qrCodeData: string | Uint8Array) => {
+    if (processingRef) return;
+
+    // Convert Uint8Array to string if needed
+    const qrCode = qrCodeData instanceof Uint8Array ? new TextDecoder().decode(qrCodeData) : qrCodeData
+
     // guard against non-JSON data triggering false ack received breaking the whole flow
-    if (result.data[0] !== '{') {
+    if (qrCode[0] !== '{') {
       console.log('Ignoring non-JSON QR code');
       return;
     }
 
-    processingRef.current = true;
-    const data = JSON.parse(result.data) as FountainFeedback;
+    setProcessingRef(true);
+    const data = JSON.parse(qrCode) as FountainFeedback;
     if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
       onError('Invalid feedback QR code: wrong type, session, or sequence.');
       setCurrentMode('idle');
@@ -128,7 +121,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     if (typeof data.progress !== 'number' || data.progress < 0 || data.progress > 100) {
       onError('Invalid feedback QR: progress field missing or out of range (0-100)');
       setCurrentMode('idle');
-      processingRef.current = false;
+      setProcessingRef(false);
       return;
     }
 
@@ -136,6 +129,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
       onError('Stale feedback QR code: sequence already processed.');
       setCurrentMode('idle');
+      setProcessingRef(false);
       return;
     }
 
@@ -143,7 +137,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     if (!encoder) {
       console.error('[FountainQRFeedbackScanner] CRITICAL: Encoder is null when processing feedback');
       onError('Encoder not available. Cannot process feedback.');
-      processingRef.current = false;
+      setProcessingRef(false);
       return;
     }
 
@@ -252,8 +246,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         console.error('[FountainQRFeedbackScanner] Encoder metadata:', encoder.getMetadata());
         onError('Failed to get window info from encoder. Cannot generate ACK.');
         setCurrentMode('idle');
-        scannerRef.current?.stop();
-        processingRef.current = false;
+        setProcessingRef(false);
         return;
       }
       console.log('[FountainQRFeedbackScanner] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
@@ -281,14 +274,12 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       });
 
       onModeChange('ack-display');
-      scannerRef.current?.stop();
-      scannerRef.current?.destroy();
-      scannerRef.current = null;
+      setProcessingRef(false);
     } else if (data.mode === 'targeted') {
       if (!data.missingBlocks || !Array.isArray(data.missingBlocks)) {
         onError('Invalid targeted feedback: missingBlocks must be an array.');
         setCurrentMode('idle');
-        processingRef.current = false;
+        setProcessingRef(false);
         return;
       }
       const missingBlocks = data.missingBlocks;
@@ -310,8 +301,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         console.error('[FountainQRFeedbackScanner] CRITICAL: getWindowInfo() returned null in targeted mode');
         onError('Failed to get window info from encoder. Cannot generate ACK.');
         setCurrentMode('idle');
-        scannerRef.current?.stop();
-        processingRef.current = false;
+        setProcessingRef(false);
         return;
       }
       console.log('[FountainQRFeedbackScanner] Targeted mode ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
@@ -339,83 +329,26 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       });
 
       onModeChange('ack-display');
-      scannerRef.current?.stop();
-      scannerRef.current?.destroy();
-      scannerRef.current = null;
+      setProcessingRef(false);
     }
-    processingRef.current = false;
-    // setScanningFeedback(false);
-    scannerRef.current?.stop();
-   
-  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onAckGenerated, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR]);
+    setProcessingRef(false);
 
-  useEffect(() => {
-    if (isActive && currentMode === 'scanning') {
-      const initScanner = async () => {
-        try {
-          const { default: QrScanner } = await import('qr-scanner');
-          QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js';
-          if (!scannerRef.current && videoRef.current) {
-            // Mobile optimization: feedback scanning is brief, use 10 fps with conditional highlights
-            const isMobile = isMobileDevice();
-            const scanRate = isMobile ? 10 : 15;
-            const showHighlights = !isMobile;
+  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR, processingRef]);
 
-            scannerRef.current = new QrScanner(videoRef.current, handleFeedbackScan, {
-              returnDetailedScanResult: true,
-              maxScansPerSecond: scanRate,
-              highlightScanRegion: showHighlights,
-              highlightCodeOutline: showHighlights,
-              preferredCamera: 'environment',
-            });
-
-            // Start scanner with video constraints for mobile optimization
-            if (isMobile) {
-              await startQrScanner(scannerRef.current, {
-                facingMode: 'environment',
-                width: { ideal: 1280 },
-                height: { ideal: 720 }
-              });
-            } else {
-              await startQrScanner(scannerRef.current);
-            }
-            // setScanningFeedback(true);
-          }
-        } catch (error) {
-          console.error('Failed to initialize feedback scanner:', error);
-          onError('Failed to access camera for feedback scanning');
-          // setScanningFeedback(false);
-        }
-      };
-
-      initScanner();
-    } else if (!isActive || currentMode !== 'scanning') {
-      if (scannerRef.current) {
-        scannerRef.current.stop();
-        scannerRef.current.destroy();
-        scannerRef.current = null;
-      }
-      // setScanningFeedback(false);
-    }
-
-    return () => {
-      if (scannerRef.current) {
-        scannerRef.current.stop();
-        scannerRef.current.destroy();
-        scannerRef.current = null;
-      }
-    };
-  }, [isActive, currentMode, onModeChange, onError, handleFeedbackScan]);
+  // Initialize scanner hook after handleFeedbackScan is defined
+  const { videoRef, canvasRef } = useZXingQRScanner({
+    onScan: (data) => handleFeedbackScan(data[0]),
+    isScanning: currentMode === 'scanning',
+    onError: (error) => onError(error),
+    scanInterval: 100 // 10 fps for brief feedback scanning
+  });
 
   const handleStartScan = () => {
-    // setScanningFeedback(true);
     setCurrentMode('scanning');
     onModeChange('feedback-scanning');
   };
 
   const handleStopScan = () => {
-    // setScanningFeedback(false);
-    scannerRef.current?.stop();
     setCurrentMode('idle');
     onModeChange('data-display');
   };
@@ -454,6 +387,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
               playsInline
               muted
             />
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute inset-5 rounded-xl border-2 border-amber-400/70 animate-pulse" />
               <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-amber-400/80 bg-amber-500/30 px-3 py-1 text-xs font-semibold text-amber-50 shadow-md">

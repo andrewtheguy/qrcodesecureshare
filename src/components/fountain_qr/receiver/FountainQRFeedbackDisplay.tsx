@@ -17,7 +17,7 @@ import type { FountainMetadata } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
@@ -272,16 +272,19 @@ export function FountainQRFeedbackDisplay({
     }, 5000)
   }
 
-  const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
+  const handleSenderFeedbackScan = useCallback(async (data: string | Uint8Array): Promise<void> => {
+    // Convert Uint8Array to string if needed
+    const qrData = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
+
     // it is necessary to prevent processing binary data by accident
-    if (data[0] !== '{') {
+    if (qrData[0] !== '{') {
       console.warn('[FountainQRFeedbackDisplay] Ignoring non-JSON data')
       showAckError('That QR is part of the data stream. Ask the sender for the ACK confirmation QR to continue.')
       return
     }
 
     try {
-      const parsed = JSON.parse(data) as SenderFeedback
+      const parsed = JSON.parse(qrData) as SenderFeedback
 
       if (parsed.sequence < lastSenderFeedbackSequence || (parsed.sequence === lastSenderFeedbackSequence && lastAckTransitionSuccessful)) {
         console.warn(`[FountainQRFeedbackDisplay] Duplicate ACK rejected: sequence=${parsed.sequence}, lastSenderFeedbackSequence=${lastSenderFeedbackSequence}, lastAckTransitionSuccessful=${lastAckTransitionSuccessful}`)
@@ -363,8 +366,8 @@ export function FountainQRFeedbackDisplay({
   }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
-  const { videoRef: ackVideoRefFromHook } = useQRScanner({
-    onScan: handleSenderFeedbackScan,
+  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useZXingQRScanner({
+    onScan: (data) => handleSenderFeedbackScan(data[0]),
     isScanning: ackScannerIsScanning,
     onError: (errorMessage) => {
       setError(errorMessage)
@@ -599,6 +602,7 @@ export function FountainQRFeedbackDisplay({
                 ref={ackVideoRefFromHook}
                 className="w-full max-h-[420px] object-cover"
               />
+              <canvas ref={ackCanvasRef} style={{ display: 'none' }} />
               <div className="pointer-events-none absolute inset-0">
                 <div className="absolute inset-5 rounded-xl border-2 border-emerald-400/60 animate-pulse" />
                 {ackScannerIsScanning && (

@@ -1,10 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { computeChecksum } from '@/utils/checksum'
-import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
 interface ChunkData {
   meta: {
@@ -49,31 +48,37 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [feedbackQrUrl, setFeedbackQrUrl] = useState<string>('')
-  const [showFeedbackQr, setShowFeedbackQr] = useState(false)
   const [debugLog, setDebugLog] = useState<string[]>([
     `[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${initialMeta.name} (${initialMetadata.totalChunks} chunks)`
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [error, setError] = useState<string>('')
-  const scanRegionOverlayRef = useRef<HTMLDivElement | null>(null)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[SequentialQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
 
-  const handleScan = useCallback((data: string) => {
+  const handleScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
+    if (qrCodes.length === 0) return
+
+    const qrData = qrCodes[0]
     try {
-      addDebugLog(`Scanned chunk, length: ${data.length} chars, first char code: ${data.length > 0 ? data.charCodeAt(0) : 'N/A'}`)
+      // QR data is base64 encoded, decode it first
+      let bytes: Uint8Array
 
-      //  No metadata parsing here; parent guarantees metadata already acquired
-
-      // Convert string to bytes (QR scanner returns string from binary data or JSON)
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
+      if (typeof qrData === 'string') {
+        // Base64 encoded data
+        const binaryString = atob(qrData)
+        bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+      } else {
+        bytes = qrData as Uint8Array
       }
+
+      addDebugLog(`Scanned chunk, length: ${bytes.length} bytes, first byte: ${bytes[0]}`)
 
       addDebugLog(`Bytes length: ${bytes.length}, first byte: ${bytes[0]}, bytes[0]===1: ${bytes[0] === 1}`)
 
@@ -89,7 +94,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
         const chunkData = bytes.slice(offset)
 
-  addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
+        addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
 
         // Convert chunk data to base64 for storage
         const base64Data = btoa(String.fromCharCode(...chunkData))
@@ -128,12 +133,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setError(errorMessage)
   }, [])
 
-  const { videoRef, stopScanner } = useQRScanner({
+  const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
     isScanning,
     onError: handleScanError,
-    enableVisualHighlights: false,
-    scanRegionOverlayRef
+    binary: false
   })
 
   // Auto-start scanning on mount
@@ -185,7 +189,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           setDownloadUrl(url)
           setSuccess(true)
           setIsScanning(false)
-          stopScanner()
         } catch (err) {
           console.error('Reconstruction error:', err)
           setError('Failed to reconstruct file from chunks')
@@ -193,7 +196,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         }
       })()
     }
-  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type, stopScanner])
+  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type])
 
 
   const handleStartScan = () => {
@@ -206,7 +209,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
   const handleStopScan = () => {
     setIsScanning(false)
-    stopScanner()
   }
 
   const handleReset = () => {
@@ -218,8 +220,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setSuccess(false)
     setDownloadUrl('')
     setIsScanning(false)
-    setShowFeedbackQr(false)
-    setFeedbackQrUrl('')
   }
 
   const handleDownload = () => {
@@ -233,48 +233,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     document.body.removeChild(link)
   }
 
-  const generateFeedbackQr = async () => {
-    if (totalChunks === 0) return
-
-    // Get missing data chunk indices
-    const missingChunks: number[] = []
-    for (let i = 0; i < totalChunks; i++) {
-      if (!receivedChunks.has(i)) {
-        missingChunks.push(i)
-      }
-    }
-
-    // Create feedback payload
-     const feedback = {
-       type: 'MISSING_CHUNKS_FEEDBACK',
-       sessionId: initialMetadata.sessionId,
-   timestamp: metadata.timestamp || Date.now(),
-   fileName: metadata.name || 'unknown',
-       totalChunks: totalChunks,
-       receivedCount: receivedChunks.size,
-       missingChunks
-     }
-
-    try {
-      const qrUrl = await QRCode.toDataURL(JSON.stringify(feedback), {
-        width: 300,
-        margin: 2,
-        errorCorrectionLevel: 'M',
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
-      setFeedbackQrUrl(qrUrl)
-      setShowFeedbackQr(true)
-    } catch (err) {
-      console.error('Failed to generate feedback QR:', err)
-      setError('Failed to generate feedback QR code')
-    }
-  }
-
   const progress = totalChunks > 0 ? (receivedChunks.size / totalChunks) * 100 : 0
-  const hasMissingChunks = totalChunks > 0 && receivedChunks.size < totalChunks && receivedChunks.size > 0
 
   return (
     <div className="space-y-4">
@@ -285,16 +244,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
             ref={videoRef}
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
+            playsInline
+            muted
           />
-          <div
-            ref={scanRegionOverlayRef}
-            className="pointer-events-none absolute inset-0 z-10 rounded-lg border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.35)]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.15) 1px, transparent 1px)',
-              backgroundSize: '20% 100%, 100% 20%'
-            }}
-          />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-lg border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.35)]" />
           <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
             ● SCANNING
           </div>
@@ -341,59 +295,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         </div>
       )}
 
-      {/* Feedback QR Code Button */}
-      {hasMissingChunks && !showFeedbackQr && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📊 Missing {totalChunks - receivedChunks.size} data chunk(s)</p>
-              <p className="text-sm">
-                Generate a feedback QR code to show the sender which chunks are missing,
-                so they can repeat only those specific ones.
-              </p>
-              <Button onClick={generateFeedbackQr} className="w-full">
-                📋 Generate Feedback QR Code
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Feedback QR Code Display */}
-      {showFeedbackQr && feedbackQrUrl && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-3">
-              <p className="font-medium">📋 Feedback QR Code</p>
-              <p className="text-sm">
-                Show this to the sender. They can scan it to repeat only the missing chunks.
-              </p>
-              <div className="flex justify-center bg-white p-4 rounded-lg">
-                <img src={feedbackQrUrl} alt="Feedback QR Code" className="max-w-[300px]" />
-              </div>
-              <div className="text-xs text-muted-foreground">
-                Missing chunks: {totalChunks - receivedChunks.size} of {totalChunks}
-                {totalChunks - receivedChunks.size <= 10 && (
-                  <span className="ml-2">
-                    (#{Array.from({ length: totalChunks }, (_, i) => i)
-                      .filter(i => !receivedChunks.has(i))
-                      .map(i => i + 1)
-                      .join(', ')})
-                  </span>
-                )}
-              </div>
-              <Button
-                onClick={() => setShowFeedbackQr(false)}
-                variant="outline"
-                className="w-full"
-              >
-                Hide Feedback QR
-              </Button>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Error Alert */}
       {error && (
         <Alert variant="destructive">
@@ -435,7 +336,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
               <li>Point camera at the metadata QR code first</li>
               <li>Then scan the data QR codes in sequence</li>
               <li>All chunks must be received to complete transfer</li>
-              <li>Use feedback QR if chunks are missing</li>
             </ol>
           </AlertDescription>
         </Alert>
