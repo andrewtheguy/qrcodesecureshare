@@ -79,8 +79,6 @@ export function FountainQRDataScanner({
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
-  const stopScannerRef = useRef<(() => void) | null>(null)
-  const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
   const chunkCounterRef = useRef<number>(0)
   const lastUIUpdateRef = useRef<number>(Date.now())
 
@@ -212,29 +210,10 @@ export function FountainQRDataScanner({
     binary: true // Return Uint8Array for fountain binary data
   })
 
-  // Create wrapper functions for compatibility with existing stop/restart logic
-  const stopScanner = useCallback(() => {
-    // Handled by isScanning state change in useZXingQRScanner
-  }, [])
-
-  const restartScanner = useCallback(async () => {
-    // Handled by isScanning state change in useZXingQRScanner
-  }, [])
-
-  // Sync scanner refs
-  useEffect(() => {
-    stopScannerRef.current = stopScanner
-  }, [stopScanner])
-
-  useEffect(() => {
-    restartScannerRef.current = restartScanner
-  }, [restartScanner])
-
-  // Stop camera when receiverMode changes away from 'data-scanning' or when success becomes true
+  // Stop scanning when receiverMode changes away from 'data-scanning' or when success becomes true
   useEffect(() => {
     if (receiverMode !== 'data-scanning' || success) {
       addDebugLog(`🛑 Stopping camera due to mode change (mode=${receiverMode}) or success (success=${success})`)
-      stopScannerRef.current?.()
       setHasAutoStarted(false)
     }
   }, [receiverMode, success, addDebugLog])
@@ -249,7 +228,6 @@ export function FountainQRDataScanner({
   }, [onScanStart])
 
   const handleStopScan = () => {
-    stopScannerRef.current?.()
     onScanStop()
   }
 
