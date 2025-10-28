@@ -40,6 +40,8 @@ interface FountainDetectedMetadata extends DetectedMetadata {
   windowTriggerThreshold?: number
   windowStart?: number
   feedbackEnabled: boolean
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 export function OfflineQRReceiver() {
@@ -115,7 +117,9 @@ export function OfflineQRReceiver() {
           initialWindowBlocks: parsed.initialWindowBlocks,
           windowTriggerThreshold: parsed.windowTriggerThreshold,
           windowStart: parsed.windowStart,
-          feedbackEnabled: parsed.feedbackEnabled
+          feedbackEnabled: parsed.feedbackEnabled,
+          partBasedMode: parsed.partBasedMode,
+          partSize: parsed.partSize
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
@@ -446,7 +450,9 @@ export function OfflineQRReceiver() {
                     initialWindowBlocks: fountainMeta.initialWindowBlocks,
                     windowTriggerThreshold: fountainMeta.windowTriggerThreshold,
                     windowStart: fountainMeta.windowStart,
-                    feedbackEnabled: fountainMeta.feedbackEnabled
+                    feedbackEnabled: fountainMeta.feedbackEnabled,
+                    partBasedMode: fountainMeta.partBasedMode,
+                    partSize: fountainMeta.partSize
                   }}
                 />
               )

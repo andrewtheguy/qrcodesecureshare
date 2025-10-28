@@ -119,6 +119,8 @@ export interface FountainMetadata {
   blockSize: number
   checksum: string
   checksumAlg: string
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 export interface FountainEncoderOptions {

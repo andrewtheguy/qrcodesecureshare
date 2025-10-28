@@ -9,7 +9,7 @@ import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, type PartSizeOption } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { getSegmentSizeBlocks } from '../utils/fountainConfig'
 import {
   Dialog,
@@ -67,6 +67,8 @@ interface FountainMetadata {
   initialWindowBlocks: number
   windowStart: number
   feedbackEnabled: boolean
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 type MetadataJson = SequentialMetadata | FountainMetadata | null
@@ -176,7 +178,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             windowEnabled,
             initialWindowBlocks,
             windowStart: 0,
-            feedbackEnabled
+            feedbackEnabled,
+            partBasedMode: feedbackEnabled, // Enable part-based mode for feedback transfers
+            partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
           }
           if (cancelled) return
             const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))

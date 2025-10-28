@@ -30,6 +30,8 @@ interface FountainQRReceiverProps {
     windowTriggerThreshold?: number // for windowed fountain
     windowStart?: number // for windowed fountain
     feedbackEnabled: boolean
+    partBasedMode?: boolean
+    partSize?: number
   }
 }
 
@@ -46,6 +48,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
     checksum: initialMetadata.checksum,
     checksumAlg: initialMetadata.checksumAlg,
+    partBasedMode: initialMetadata.partBasedMode,
+    partSize: initialMetadata.partSize,
   }
 
   // Metadata is immutable for this mount (component remounted per file)
@@ -241,7 +245,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
 
     // Initialize worker
-    worker.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
+    console.log('[FountainQRReceiver] Initializing worker with:', {
+      partBasedMode: initialMeta.partBasedMode,
+      partSize: initialMeta.partSize,
+      metadata: initialMeta
+    })
+    worker.postMessage({
+      type: 'initialize',
+      id: messageIdCounterRef.current++,
+      metadata: initialMeta,
+      partBasedMode: initialMeta.partBasedMode || false,
+      partSize: initialMeta.partSize || 0
+    })
     // Debug logging moved to subcomponent
     } catch {
       setError('Failed to initialize decoding worker')
@@ -498,7 +513,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
     setSenderFeedbackMessage('') // Clear sender feedback message on reset
     // Reinitialize worker state without recreating the worker instance
-    workerRef.current?.postMessage({ type: 'initialize', id: messageIdCounterRef.current++, metadata: initialMeta })
+    workerRef.current?.postMessage({
+      type: 'initialize',
+      id: messageIdCounterRef.current++,
+      metadata: initialMeta,
+      partBasedMode: initialMeta.partBasedMode || false,
+      partSize: initialMeta.partSize || 0
+    })
   }
 
   const handleDownload = () => {

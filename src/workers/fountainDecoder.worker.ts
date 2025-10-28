@@ -82,9 +82,9 @@ function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: n
     let partInfo: { currentPart: number; totalParts: number; partChecksum: string } | undefined;
     const remainingBytes = bytes.length - offset - 4; // Subtract 4 for final checksum
 
-    // Check if there's exactly 8 bytes for part metadata OR if it's blockSize + 8
+    // Check if there's at least 8 bytes for part metadata
     // (part metadata comes before chunk data)
-    if (partBasedMode && remainingBytes >= metadata.blockSize + 8) {
+    if (partBasedMode && remainingBytes >= 8) {
         // Extract part metadata
         const currentPart = (bytes[offset] << 8) | bytes[offset + 1];
         offset += 2;
@@ -106,6 +106,8 @@ function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: n
 
         // Store expected checksum for validation when part completes
         expectedPartChecksum = partChecksumHex;
+
+        console.log(`[Worker] Parsed part metadata: part ${currentPart + 1}/${totalParts}, checksum: ${partChecksumHex}`);
     }
 
     // Extract data (between current offset and checksum)
@@ -135,6 +137,7 @@ self.onmessage = async (event: MessageEvent) => {
                 metadata = data.metadata as FountainMetadata;
                 partBasedMode = data.partBasedMode || false;
                 partSize = data.partSize || 0;
+                console.log(`[Worker] Initialized with partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
                 decoder = new FountainDecoder(metadata, partBasedMode, partSize);
                 receivedSeeds = new Set();
                 processedSeeds.clear();
@@ -157,14 +160,18 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                // Validate checksum over complete chunk: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+                // Validate checksum over complete chunk: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
                 // This is everything except magic bytes (first 2 bytes) and checksum itself (last 4 bytes)
                 const checksumPayload = binaryData.slice(2, chunk.checksumStart);
                 const expectedChecksumStr = Array.from(binaryData.slice(chunk.checksumStart))
                     .map(b => b.toString(16).padStart(2, '0'))
                     .join('');
-                const ok = (await computeChecksum(checksumPayload, 'crc32')) === expectedChecksumStr;
+                const computedChecksum = await computeChecksum(checksumPayload, 'crc32');
+                const ok = computedChecksum === expectedChecksumStr;
                 if (!ok) {
+                    console.error(`[Worker] Checksum mismatch! Expected: ${expectedChecksumStr}, Got: ${computedChecksum}`);
+                    console.error(`[Worker] Payload length: ${checksumPayload.length}, checksumStart: ${chunk.checksumStart}, total: ${binaryData.length}`);
+                    console.error(`[Worker] partBasedMode: ${partBasedMode}, partInfo:`, chunk.partInfo);
                     self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
                     break;
                 }
