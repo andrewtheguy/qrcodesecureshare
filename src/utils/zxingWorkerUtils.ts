@@ -59,11 +59,15 @@ export function decodeQRFromImage(file: File): Promise<string[] | null> {
             reject(err)
           }
 
-          // Send to worker for decoding
-          worker.postMessage({
-            type: 'scan',
-            imageData,
-          })
+          // Send to worker for decoding using transferable object for performance
+          // The ArrayBuffer will be transferred (not copied) to the worker
+          worker.postMessage(
+            {
+              type: 'scan',
+              imageData,
+            },
+            [imageData.data.buffer]
+          )
         }
 
         img.onerror = () => {
@@ -115,10 +119,14 @@ export function decodeQRFromImageData(imageData: ImageData): Promise<string[] | 
       reject(err)
     }
 
-    // Send to worker for decoding
-    worker.postMessage({
-      type: 'scan',
-      imageData,
-    })
+    // Send to worker for decoding using transferable object for performance
+    // The ArrayBuffer will be transferred (not copied) to the worker
+    worker.postMessage(
+      {
+        type: 'scan',
+        imageData,
+      },
+      [imageData.data.buffer]
+    )
   })
 }

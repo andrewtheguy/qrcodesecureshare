@@ -96,11 +96,15 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       // Get ImageData from canvas
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-      // Send to worker for decoding
-      workerRef.current.postMessage({
-        type: 'scan',
-        imageData,
-      })
+      // Send to worker for decoding using transferable object for performance
+      // The ArrayBuffer will be transferred (not copied) to the worker
+      workerRef.current.postMessage(
+        {
+          type: 'scan',
+          imageData,
+        },
+        [imageData.data.buffer]
+      )
     } catch (err) {
       // Silent fail - continue scanning
       console.error('Error scanning frame:', err)
