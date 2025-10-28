@@ -26,9 +26,18 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
       const { imageData, options, binary = false } = e.data
 
       const readerOptions: ReaderOptions = {
+        // Optimized for QR-only scanning from sender with monochrome QR codes
         formats: ['QRCode'],
-        tryHarder: true,
-        tryRotate: true,
+        // Speed optimization: don't try harder, expect well-formed QR codes from sender
+        tryHarder: false,
+        // Disable rotation detection: camera provides aligned QR codes
+        tryRotate: false,
+        // Disable invert detection: sender won't send inverted QR codes
+        tryInvert: false,
+        // Use FixedThreshold for monochrome QR codes (faster than LocalAverage)
+        binarizer: 'FixedThreshold',
+        // Only expect one QR code per frame
+        maxNumberOfSymbols: 1,
         ...options,
       }
 

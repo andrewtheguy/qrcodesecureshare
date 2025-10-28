@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
+import type { ReaderOptions } from 'zxing-wasm/reader'
 
 interface UseZXingQRScannerOptionsBase {
   onError?: (error: string) => void
@@ -9,6 +10,7 @@ interface UseZXingQRScannerOptionsBase {
   facingMode?: 'environment' | 'user'
   scanInterval?: number
   debounceMs?: number // Debounce duplicate scans within this time window (ms)
+  readerOptions?: Partial<ReaderOptions> // Custom reader options for barcode detection
 }
 
 interface UseZXingQRScannerBinaryOptions extends UseZXingQRScannerOptionsBase {
@@ -33,6 +35,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     scanInterval,
     binary = false, // Default to text mode for backward compatibility
     debounceMs = 0, // No debounce by default
+    readerOptions = {}, // Custom reader options
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -129,6 +132,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
           type: 'scan',
           imageData,
           binary,
+          options: readerOptions,
         },
         [imageData.data.buffer]
       )
@@ -136,7 +140,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       // Silent fail - continue scanning
       console.error('Error scanning frame:', err)
     }
-  }, [])
+  }, [binary, readerOptions])
 
   const startScanLoop = useCallback(() => {
     const isMobile = isMobileDevice()

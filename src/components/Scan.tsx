@@ -128,12 +128,23 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     setScanning(false)
   }, [])
 
-  // Use the new zxing-wasm scanner hook
+  // Use the new zxing-wasm scanner hook with maximized detection for general QR code scanning
   const { videoRef, canvasRef, availableCameras } = useZXingQRScanner({
     onScan: handleQRScan,
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
+    // Maximize detection for challenging QR codes (worn, angled, poor lighting, color variations)
+    readerOptions: {
+      formats: ['QRCode'],
+      tryHarder: true, // Spend more time finding barcodes
+      tryRotate: true, // Check rotated versions
+      tryInvert: true, // Check inverted versions (important for color/contrast variations)
+      tryDownscale: true, // Try downscaled versions for distant QR codes
+      tryDenoise: true, // Experimental: try denoising for noisy images
+      binarizer: 'LocalAverage', // Use adaptive thresholding for color variations
+      maxNumberOfSymbols: 1, // Only return first QR code found
+    },
   })
 
   const copyToClipboard = async (text: string, label?: string) => {

@@ -1,4 +1,5 @@
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
+import type { ReaderOptions } from 'zxing-wasm/reader'
 
 interface ScanResult {
   type: 'result'
@@ -6,12 +7,25 @@ interface ScanResult {
   error?: string
 }
 
+// Default maximized detection options for general QR code scanning
+const MAXIMIZED_DETECTION_OPTIONS: Partial<ReaderOptions> = {
+  formats: ['QRCode'],
+  tryHarder: true, // Spend more time finding barcodes
+  tryRotate: true, // Check rotated versions
+  tryInvert: true, // Check inverted versions (important for color/contrast variations)
+  tryDownscale: true, // Try downscaled versions for distant QR codes
+  tryDenoise: true, // Experimental: try denoising for noisy images
+  binarizer: 'LocalAverage', // Use adaptive thresholding for color variations
+  maxNumberOfSymbols: 1, // Only return first QR code found
+}
+
 /**
  * Decode QR codes from an image file using web worker
  * @param file The image file to decode
+ * @param readerOptions Optional custom reader options for detection tuning
  * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export function decodeQRFromImage(file: File): Promise<string[] | null> {
+export function decodeQRFromImage(file: File, readerOptions?: Partial<ReaderOptions>): Promise<string[] | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -65,6 +79,7 @@ export function decodeQRFromImage(file: File): Promise<string[] | null> {
             {
               type: 'scan',
               imageData,
+              options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
             },
             [imageData.data.buffer]
           )
@@ -91,9 +106,10 @@ export function decodeQRFromImage(file: File): Promise<string[] | null> {
 /**
  * Decode QR codes from ImageData using web worker
  * @param imageData The ImageData to decode
+ * @param readerOptions Optional custom reader options for detection tuning
  * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export function decodeQRFromImageData(imageData: ImageData): Promise<string[] | null> {
+export function decodeQRFromImageData(imageData: ImageData, readerOptions?: Partial<ReaderOptions>): Promise<string[] | null> {
   return new Promise((resolve, reject) => {
     const worker = new ZXingWorker()
 
@@ -125,6 +141,7 @@ export function decodeQRFromImageData(imageData: ImageData): Promise<string[] | 
       {
         type: 'scan',
         imageData,
+        options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
       },
       [imageData.data.buffer]
     )
