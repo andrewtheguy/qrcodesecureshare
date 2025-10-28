@@ -179,10 +179,32 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   }, [facingMode, enumerateCameras, onCameraReady, onError, startScanLoop])
 
   const switchCamera = useCallback(async () => {
-    stopCameraScanning()
+    // Don't use stopCameraScanning as it sets isScanningRef to false
+    // Instead, manually stop the stream and loop, then restart
+
+    // Cancel animation frame
+    if (scanLoopRef.current !== null) {
+      cancelAnimationFrame(scanLoopRef.current)
+      scanLoopRef.current = null
+    }
+
+    // Stop camera stream
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current = null
+    }
+
+    // Stop video element
+    if (videoRef.current) {
+      videoRef.current.srcObject = null
+    }
+
+    // Wait a bit before restarting
     await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // Restart camera (isScanningRef is still true)
     await startCameraScanning()
-  }, [stopCameraScanning, startCameraScanning])
+  }, [startCameraScanning])
 
   // Start/stop scanning based on isScanning prop
   useEffect(() => {
