@@ -4,7 +4,6 @@ import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
 import QRDecode from './components/QRDecode'
 import Logo from './components/Logo'
-import { PWARegister } from './components/PWARegister'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
@@ -36,7 +35,6 @@ function App() {
 
   return (
     <div className="min-h-screen">
-      <PWARegister />
       {/* Navbar */}
       <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
