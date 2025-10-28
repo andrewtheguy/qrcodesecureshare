@@ -382,14 +382,18 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           while (attempt < maxRetries && !success) {
             try {
               const chunk = encoder.generateChunk()
+              const partInfo = encoder.getPartInfo()
 
               const numIndices = chunk.indices.length
+              // Calculate expected size with optional part metadata
+              const partMetadataSize = partInfo.partBasedMode ? (2 + 2 + 8) : 0 // currentPart(2) + totalParts(2) + partChecksum(8 hex = 4 bytes)
               const expectedSize =
                 2 + // magic bytes
                 2 + // seed
                 1 + // degree
                 1 + // numIndices
                 (numIndices * 2) + // indices (2 bytes each)
+                partMetadataSize + // part metadata (if enabled)
                 chunk.data.length + // chunk data
                 4 // CRC32 checksum (4 bytes)
 
@@ -419,12 +423,30 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 binaryData[offset++] = idx & 0xFF
               }
 
+              // Part metadata (if part-based mode is enabled)
+              if (partInfo.partBasedMode) {
+                // Current part index (2 bytes)
+                binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
+                binaryData[offset++] = partInfo.currentPartIndex & 0xFF
+
+                // Total parts (2 bytes)
+                binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
+                binaryData[offset++] = partInfo.totalParts & 0xFF
+
+                // Part checksum (4 bytes) - stored as hex string, convert to bytes
+                const partChecksumHex = partInfo.currentPartChecksum
+                for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
+                  const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
+                  binaryData[offset++] = byte
+                }
+              }
+
               // Chunk data
               binaryData.set(chunk.data, offset)
               offset += chunk.data.length
 
               // Compute and append CRC32 checksum over complete chunk metadata and data
-              // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+              // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
               const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
               const checksumHex = await computeChecksum(checksumPayload, 'crc32')
               // Convert hex string to 4 bytes (big-endian)
@@ -483,6 +505,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       try {
         // Generate next fountain-coded chunk (internally tuned distribution + doping)
         const chunk = encoder.generateChunk()
+        const partInfo = encoder.getPartInfo()
 
         // Binary format for fountain chunk:
         // [0xFF][0xFD] - magic bytes for fountain chunk
@@ -490,22 +513,28 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // [degree(1 byte)]
         // [numIndices(1 byte)]
         // [indices... (2 bytes each)]
+        // [currentPart(2 bytes)] - optional, only if part-based mode
+        // [totalParts(2 bytes)] - optional, only if part-based mode
+        // [partChecksum(4 bytes)] - optional, only if part-based mode
         // [chunk data...]
-        // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+data
+        // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+partMetadata+data
 
         const numIndices = chunk.indices.length
+        const partMetadataSize = partInfo.partBasedMode ? (2 + 2 + 4) : 0 // currentPart(2) + totalParts(2) + partChecksum(4)
         const expectedSize =
           2 + // magic bytes
           2 + // seed
           1 + // degree
           1 + // numIndices
           (numIndices * 2) + // indices (2 bytes each)
+          partMetadataSize + // part metadata (if enabled)
           chunk.data.length + // chunk data
           4 // CRC32 checksum (4 bytes)
 
         // Guardrail test for worst-case data QR size (dev-only)
         if (import.meta.env.DEV) {
-          console.assert(expectedSize <= 1204, `QR size ${expectedSize} exceeds limit 1204 for blockSize=400, maxDegree<=40`)
+          const maxExpectedSize = partInfo.partBasedMode ? 1212 : 1204 // 8 extra bytes for part metadata
+          console.assert(expectedSize <= maxExpectedSize, `QR size ${expectedSize} exceeds limit ${maxExpectedSize} for blockSize=400, maxDegree<=40`)
         }
 
         // Pre-check: Skip chunks that are too large before attempting QR generation
@@ -537,12 +566,30 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           binaryData[offset++] = idx & 0xFF
         }
 
+        // Part metadata (if part-based mode is enabled)
+        if (partInfo.partBasedMode) {
+          // Current part index (2 bytes)
+          binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
+          binaryData[offset++] = partInfo.currentPartIndex & 0xFF
+
+          // Total parts (2 bytes)
+          binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
+          binaryData[offset++] = partInfo.totalParts & 0xFF
+
+          // Part checksum (4 bytes) - stored as hex string, convert to bytes
+          const partChecksumHex = partInfo.currentPartChecksum
+          for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
+            const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
+            binaryData[offset++] = byte
+          }
+        }
+
         // Chunk data
         binaryData.set(chunk.data, offset)
         offset += chunk.data.length
 
         // Compute and append CRC32 checksum over complete chunk metadata and data
-        // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + data
+        // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
         const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
         const checksumHex = await computeChecksum(checksumPayload, 'crc32')
         // Convert hex string to 4 bytes (big-endian)

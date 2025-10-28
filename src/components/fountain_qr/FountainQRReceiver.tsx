@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getSegmentSizeBlocks, WINDOW_BASELINE_THRESHOLD } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, getSegmentSizeBlocks, WINDOW_BASELINE_THRESHOLD, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
@@ -81,6 +81,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // First missing block tracking (updates only when feedback is generated)
   const [firstMissingBlock, setFirstMissingBlock] = useState<number>(0)
 
+  // Part-based transfer state
+  const [partCompleteInfo, setPartCompleteInfo] = useState<{
+    partComplete: boolean
+    partChecksumMatch: boolean
+    computedChecksum: string
+    currentPart: number
+    totalParts: number
+  } | null>(null)
+
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
 
@@ -121,7 +130,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
 
         case 'chunkProcessed': {
-          const { duplicate, decodedBlockCount, decodedBlockIndices } = data
+          const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo } = data
           if (duplicate) {
             // Debug logging moved to subcomponent
             return
@@ -131,10 +140,32 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           decodedBlockIndicesRef.current = decodedBlockIndices
           // Debug logging moved to subcomponent
 
+          // Handle part completion if in part-based mode
+          if (partCompleteInfo && partCompleteInfo.partComplete) {
+            console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum match: ${partCompleteInfo.partChecksumMatch}`)
+
+            // Store part completion info in state
+            setPartCompleteInfo(partCompleteInfo)
+
+            if (!partCompleteInfo.partChecksumMatch) {
+              // Part checksum mismatch - fail the transfer
+              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Expected: ${partCompleteInfo.computedChecksum.slice(0, 8)}, Got: different`)
+              setIsScanning(false)
+              return
+            }
+
+            // Part completed successfully - trigger feedback to sender
+            triggeredFeedbackRef.current = true
+            setReceiverMode('feedback-display')
+            setIsScanning(false)
+            setIsAwaitingFeedback(true)
+            break
+          }
+
           // Window saturation check with adaptive threshold
           const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= getSegmentSizeBlocks(fountainMetadata.blockSize)
-          // Disable window saturation feedback when targeted mode is active
-          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled) {
+          // Disable window saturation feedback when targeted mode is active or in part-based mode
+          if (isWindowEnabledRef.current && currentWindowEndRef.current < fountainMetadata.totalSourceBlocks && !isAwaitingFeedbackRef.current && !isTargetedModeActiveRef.current && isFileLargeEnoughForFeedback && feedbackEnabled && !partCompleteInfo) {
             const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
             const effectiveWindowSize = currentWindowEndRef.current - firstMissingBlock
 
@@ -402,9 +433,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Add guard to prevent feedback when all blocks are decoded
     if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
 
-    // Priority 2: Check for targeted mode threshold
+    // Priority 2: Check for targeted mode threshold (only if enabled)
     const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold && !skipTargetedModeForSession
-    if (crossedToTargeted) {
+    if (crossedToTargeted && ENABLE_TARGETED_MODE) {
       // Debug logging moved to subcomponent
       setReceiverMode('feedback-display')
       setIsScanning(false)
@@ -504,6 +535,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onSkipTargetedMode={handleSkipTargetedMode}
           lastAckTransitionSuccessful={lastAckTransitionSuccessful}
           onAckTransitionStatus={handleAckTransitionStatus}
+          partCompleteInfo={partCompleteInfo}
         />
       )}
 

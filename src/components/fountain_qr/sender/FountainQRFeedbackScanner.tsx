@@ -162,11 +162,43 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         progress: data.progress,
       };
 
+      // Check for part completion in part-based mode
+      let partTransition = false;
+      let newPartIndex: number | undefined;
+      if (data.partComplete && data.partChecksumMatch) {
+        console.log(`[FountainQRFeedbackScanner] Part ${(data.currentPart ?? 0) + 1}/${data.totalParts ?? 0} completed successfully`);
+
+        // Move encoder to next part
+        const moved = encoder?.moveToNextPart();
+        if (moved) {
+          partTransition = true;
+          const partInfo = encoder?.getPartInfo();
+          newPartIndex = partInfo?.currentPartIndex;
+          console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
+
+          // Update window info after part transition
+          const newWindowInfo = encoder?.getWindowInfo();
+          if (newWindowInfo) {
+            onUpdateWindowInfo(newWindowInfo);
+          }
+        } else {
+          console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
+        }
+      } else if (data.partComplete && !data.partChecksumMatch) {
+        // Part checksum mismatch - fail the transfer
+        onError(`Part ${(data.currentPart ?? 0) + 1} checksum validation failed on receiver`);
+        setCurrentMode('idle');
+        setProcessingRef(false);
+        return;
+      }
+
       // SENDER: Single authority for window expansion
       // Sender derives expansion decisions from receiver progress metrics instead of explicit flags
+      // Skip window expansion in part-based mode (use part transitions instead)
       let windowExpanded = false;
       const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? null;
-      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
+      const isPartBasedMode = data.currentPart !== undefined && data.totalParts !== undefined;
+      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete && !isPartBasedMode) {
         const { windowEnd } = effectiveWindowInfo;
         const effectiveWindowSize = windowEnd - firstMissingBlock;
         const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
@@ -250,16 +282,24 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         return;
       }
       console.log('[FountainQRFeedbackScanner] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+
+      // Determine message based on part transition or window expansion
+      let ackMessage = `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`;
+      if (partTransition && newPartIndex !== undefined) {
+        ackMessage = `Part ${(data.currentPart ?? 0) + 1} complete. Moving to part ${newPartIndex + 1}.`;
+      }
+
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
         sequence: senderFeedbackSequence,
         command: 'acknowledge',
         acknowledgedSequence: data.sequence,
-        message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
+        message: ackMessage,
         windowExpanded,
         windowStart: finalWindowInfo.windowStart,
         windowEnd: finalWindowInfo.windowEnd,
+        ...(partTransition && { partTransition, newPartIndex })
       };
 
       await generateSenderFeedbackQR(ackFeedback);

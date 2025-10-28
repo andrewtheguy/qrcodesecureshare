@@ -16,7 +16,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
-import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
+import { getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
@@ -70,6 +70,13 @@ interface FountainQRFeedbackDisplayProps {
   onSkipTargetedMode: () => void
   lastAckTransitionSuccessful: boolean
   onAckTransitionStatus: (successful: boolean) => void
+  partCompleteInfo: {
+    partComplete: boolean
+    partChecksumMatch: boolean
+    computedChecksum: string
+    currentPart: number
+    totalParts: number
+  } | null
 }
 
 export function FountainQRFeedbackDisplay({
@@ -93,7 +100,8 @@ export function FountainQRFeedbackDisplay({
   skipTargetedModeForSession,
   onSkipTargetedMode,
   lastAckTransitionSuccessful,
-  onAckTransitionStatus
+  onAckTransitionStatus,
+  partCompleteInfo
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
   const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
@@ -157,7 +165,7 @@ export function FountainQRFeedbackDisplay({
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
       let feedback: FountainFeedback
-      if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession) {
+      if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession || !ENABLE_TARGETED_MODE) {
         // Statistics-only feedback - compact format
         feedback = {
           type: 'FOUNTAIN_FEEDBACK',
@@ -166,7 +174,16 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
           progress: overallProgress,
-          decodedInWindow: decodedInWindow
+          decodedInWindow: decodedInWindow,
+          // Add part info if in part-based mode
+          ...(partCompleteInfo && {
+            currentPart: partCompleteInfo.currentPart,
+            totalParts: partCompleteInfo.totalParts,
+            partComplete: partCompleteInfo.partComplete,
+            partChecksumMatch: partCompleteInfo.partChecksumMatch,
+            computedChecksum: partCompleteInfo.computedChecksum,
+            completedParts: [] // TODO: Track completed parts
+          })
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -213,7 +230,16 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
           progress: overallProgress,
-          decodedInWindow: decodedInWindow
+          decodedInWindow: decodedInWindow,
+          // Add part info if in part-based mode
+          ...(partCompleteInfo && {
+            currentPart: partCompleteInfo.currentPart,
+            totalParts: partCompleteInfo.totalParts,
+            partComplete: partCompleteInfo.partComplete,
+            partChecksumMatch: partCompleteInfo.partChecksumMatch,
+            computedChecksum: partCompleteInfo.computedChecksum,
+            completedParts: [] // TODO: Track completed parts
+          })
         }
 
         const targetedFeedback = { ...feedbackBase, missingBlocks }

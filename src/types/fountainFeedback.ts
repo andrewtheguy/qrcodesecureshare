@@ -35,6 +35,20 @@ interface FountainFeedbackBase {
    * Required for all feedback payloads.
    */
   decodedInWindow: number;
+
+  // Part-based transfer fields (optional, used when part-based mode is enabled)
+  /** Current part index being decoded (0-indexed) */
+  currentPart?: number;
+  /** Total number of parts in the file */
+  totalParts?: number;
+  /** Whether the current part has been fully decoded */
+  partComplete?: boolean;
+  /** Whether the decoded part's checksum matches the expected checksum */
+  partChecksumMatch?: boolean;
+  /** Computed checksum of the decoded part (CRC32 hex string) */
+  computedChecksum?: string;
+  /** Array of completed part indices */
+  completedParts?: number[];
 }
 
 /**
@@ -89,6 +103,12 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   windowStart: number;
   /** Sender's current window end (source of truth for receiver) */
   windowEnd: number;
+
+  // Part-based transfer fields (optional, used when part-based mode is enabled)
+  /** Whether the sender is moving to the next part */
+  partTransition?: boolean;
+  /** New part index after transition */
+  newPartIndex?: number;
 }
 
 

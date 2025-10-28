@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FountainEncoder } from '@/utils/fountainCode'
-import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { deriveQRCapacity } from '@/constants'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
@@ -65,6 +65,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
   const [senderFps, setSenderFps] = useState<number>(DEFAULT_FOUNTAIN_FPS)
   const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
@@ -89,6 +90,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Derive QR capacity based on error correction level
         const maxQRDataSize = deriveQRCapacity(currentQROptions.errorCorrectionLevel)
 
+        // Enable part-based mode for feedback-enabled transfers
+        const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
+
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
            blockSize: DEFAULT_BLOCK_SIZE,
            c: 0.2,
@@ -96,7 +100,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
            // Optional: override doping rates here if experimenting
            degree1Rate: 0.08,
            windowEnabled: feedbackEnabled ? undefined : false,
-           maxQRDataSize // Pass QR capacity to encoder for degree tuning
+           maxQRDataSize, // Pass QR capacity to encoder for degree tuning
+           partBasedMode: feedbackEnabled, // Enable part-based mode in feedback mode
+           partSize // Part size for part-based transfer
           })
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
@@ -121,7 +127,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     }
 
     reader.readAsArrayBuffer(file)
-  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel])
+  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
@@ -438,6 +444,45 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <p className="text-xs text-muted-foreground">Type feedback details manually</p>
               </div>
             </RadioGroup>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Part Size Selection */}
+      {feedbackEnabled && (
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle className="text-lg">Part Size Configuration</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Files are split into parts for efficient transfer with checksum validation. Larger parts reduce overhead but take longer to validate.
+              </p>
+              <RadioGroup value={partSizeOption} onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="SMALL" id="part-size-small" />
+                  <div className="flex flex-col">
+                    <Label htmlFor="part-size-small" className="text-sm font-medium">256 KB</Label>
+                    <p className="text-xs text-muted-foreground">Best for smaller files or slower connections</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="MEDIUM" id="part-size-medium" />
+                  <div className="flex flex-col">
+                    <Label htmlFor="part-size-medium" className="text-sm font-medium">512 KB (Default)</Label>
+                    <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="LARGE" id="part-size-large" />
+                  <div className="flex flex-col">
+                    <Label htmlFor="part-size-large" className="text-sm font-medium">1024 KB (1 MB)</Label>
+                    <p className="text-xs text-muted-foreground">Best for large files with stable connections</p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
           </CardContent>
         </Card>
       )}
