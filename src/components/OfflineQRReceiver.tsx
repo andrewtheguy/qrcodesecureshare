@@ -52,6 +52,8 @@ export function OfflineQRReceiver() {
   const [receiverKey, setReceiverKey] = useState(0)
   const [error, setError] = useState<string>('')
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  // Flag to prevent duplicate metadata detection
+  const [metadataDetected, setMetadataDetected] = useState(false)
 
   const addDebugLog = (message: string) => {
     console.log(`[AnimatedQRReceiver] ${message}`)
@@ -59,6 +61,11 @@ export function OfflineQRReceiver() {
   }
 
   const handleMetadataScan = useCallback((data: string | Uint8Array) => {
+    // Prevent duplicate detection if metadata already detected
+    if (metadataDetected) {
+      return
+    }
+
     try {
       // Convert Uint8Array to string if needed
       const qrCode = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
@@ -113,6 +120,8 @@ export function OfflineQRReceiver() {
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
 
+      // Mark metadata as detected and stop scanning immediately
+      setMetadataDetected(true)
       setIsScanning(false)
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
@@ -120,7 +129,7 @@ export function OfflineQRReceiver() {
       console.error('Metadata scan error:', err)
       setError('Failed to parse metadata QR code (expecting JSON).')
     }
-  }, [])
+  }, [metadataDetected])
 
   const handleScanError = useCallback((errorMessage: string) => {
     setError(errorMessage)
@@ -139,6 +148,7 @@ export function OfflineQRReceiver() {
     setError('')
     setDetectedMetadata(null)
     setDebugLog([])
+    setMetadataDetected(false)
   }
 
   const handleReset = () => {
@@ -147,6 +157,7 @@ export function OfflineQRReceiver() {
     setTransferMode(null)
     setError('')
     setDebugLog([])
+    setMetadataDetected(false)
   }
 
   const requestReset = () => {
