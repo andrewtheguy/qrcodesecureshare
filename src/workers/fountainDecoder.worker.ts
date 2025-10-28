@@ -18,6 +18,8 @@ let decoder: FountainDecoder | null = null;
 let receivedSeeds: Set<number> = new Set();
 const processedSeeds: Set<number> = new Set();
 let metadata: FountainMetadata;
+let lastDecodeAttemptTime = 0; // Throttle decode attempts to every 500ms
+let lastDecodedBlockCount = 0; // Track last decoded count to detect new blocks
 
 /**
  * Parses binary chunk data into a FountainChunk object
@@ -95,6 +97,9 @@ self.onmessage = async (event: MessageEvent) => {
                 metadata = data.metadata as FountainMetadata;
                 decoder = new FountainDecoder(metadata);
                 receivedSeeds = new Set();
+                processedSeeds.clear();
+                lastDecodeAttemptTime = Date.now();
+                lastDecodedBlockCount = decoder.getDecodedBlockCount();
                 self.postMessage({ type: 'initialized', id, metadata });
                 break;
             }
@@ -129,27 +134,35 @@ self.onmessage = async (event: MessageEvent) => {
                 // Add chunk to decoder
                 decoder!.addChunk(chunk);
 
-                // Get progress
+                // Only attempt full decode check every 500ms or if new blocks were decoded
+                const now = Date.now();
                 const decodedBlockCount = decoder!.getDecodedBlockCount();
-                const progress = decoder!.getProgress();
-                const isComplete = decoder!.isComplete();
-                const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+                const hasNewBlocks = decodedBlockCount !== lastDecodedBlockCount;
+                const shouldAttemptDecode = (now - lastDecodeAttemptTime >= 500) || hasNewBlocks;
 
-                self.postMessage({
-                    type: 'chunkProcessed',
-                    id,
-                    seed: chunk.seed,
-                    decodedBlockCount,
-                    progress,
-                    isComplete,
-                    decodedBlockIndices
-                });
+                if (shouldAttemptDecode) {
+                    lastDecodeAttemptTime = now;
+                    lastDecodedBlockCount = decodedBlockCount;
 
-                // If complete, trigger reconstruction
-                if (isComplete) {
-                    const reconstructedData = decoder!.getDecodedData();
-                    if (reconstructedData) {
-                        
+                    // Get progress
+                    const progress = decoder!.getProgress();
+                    const isComplete = decoder!.isComplete();
+                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+
+                    self.postMessage({
+                        type: 'chunkProcessed',
+                        id,
+                        seed: chunk.seed,
+                        decodedBlockCount,
+                        progress,
+                        isComplete,
+                        decodedBlockIndices
+                    });
+
+                    // If complete, trigger reconstruction
+                    if (isComplete) {
+                        const reconstructedData = decoder!.getDecodedData();
+                        if (reconstructedData) {
                             const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
                             const integrityOk = computed === metadata.checksum;
                             self.postMessage({
@@ -160,8 +173,23 @@ self.onmessage = async (event: MessageEvent) => {
                                 expectedChecksum: metadata.checksum,
                                 calculatedChecksum: computed
                             }, [reconstructedData.buffer]);
-
+                        }
                     }
+                } else {
+                    // Queue chunk and send current state without full decode check
+                    const progress = decoder!.getProgress();
+                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+
+                    self.postMessage({
+                        type: 'chunkProcessed',
+                        id,
+                        seed: chunk.seed,
+                        queued: true,
+                        decodedBlockCount,
+                        progress,
+                        isComplete: false,
+                        decodedBlockIndices
+                    });
                 }
                 break;
             }
