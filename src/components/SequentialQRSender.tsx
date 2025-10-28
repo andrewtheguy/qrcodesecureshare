@@ -15,7 +15,7 @@ interface SequentialQRSenderProps {
 // Binary mode is more efficient (no base64 overhead)
 export const CHUNK_SIZE = 600 // bytes of raw binary data
 
-export function SequentialQRSender({ file, sessionId }: SequentialQRSenderProps) {
+export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   // Metadata removed: parent component is responsible for metadata QR
   const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)

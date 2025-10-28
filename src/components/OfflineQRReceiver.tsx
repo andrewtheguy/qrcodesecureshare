@@ -58,9 +58,10 @@ export function OfflineQRReceiver() {
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
-  const handleMetadataScan = useCallback((data: string) => {
+  const handleMetadataScan = useCallback((data: string | Uint8Array) => {
     try {
-      const qrCode = data
+      // Convert Uint8Array to string if needed
+      const qrCode = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
       addDebugLog(`Scanned metadata text, length: ${qrCode.length} chars`)
 
       // Try to parse JSON (new format)

@@ -68,13 +68,15 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Handle QR scan results (multiple QR codes from a single scan)
-  const handleQRScan = useCallback((qrCodes: string[]) => {
+  const handleQRScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
     if (!qrCodes || qrCodes.length === 0) {
       return
     }
 
     // Process the first QR code for now (can be extended to handle multiple in the future)
-    const data = qrCodes[0]
+    const qrData = qrCodes[0]
+    // Convert Uint8Array to string if needed
+    const data = qrData instanceof Uint8Array ? new TextDecoder().decode(qrData) : qrData
     console.log('QR code detected:', data)
 
     // Check if QR code contains encrypted file data

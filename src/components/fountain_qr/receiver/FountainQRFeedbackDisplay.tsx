@@ -272,16 +272,19 @@ export function FountainQRFeedbackDisplay({
     }, 5000)
   }
 
-  const handleSenderFeedbackScan = useCallback(async (data: string): Promise<void> => {
+  const handleSenderFeedbackScan = useCallback(async (data: string | Uint8Array): Promise<void> => {
+    // Convert Uint8Array to string if needed
+    const qrData = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
+
     // it is necessary to prevent processing binary data by accident
-    if (data[0] !== '{') {
+    if (qrData[0] !== '{') {
       console.warn('[FountainQRFeedbackDisplay] Ignoring non-JSON data')
       showAckError('That QR is part of the data stream. Ask the sender for the ACK confirmation QR to continue.')
       return
     }
 
     try {
-      const parsed = JSON.parse(data) as SenderFeedback
+      const parsed = JSON.parse(qrData) as SenderFeedback
 
       if (parsed.sequence < lastSenderFeedbackSequence || (parsed.sequence === lastSenderFeedbackSequence && lastAckTransitionSuccessful)) {
         console.warn(`[FountainQRFeedbackDisplay] Duplicate ACK rejected: sequence=${parsed.sequence}, lastSenderFeedbackSequence=${lastSenderFeedbackSequence}, lastAckTransitionSuccessful=${lastAckTransitionSuccessful}`)

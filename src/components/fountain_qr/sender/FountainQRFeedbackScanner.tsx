@@ -88,8 +88,12 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
   }, [onAckGenerated, onError]);
 
-  const handleFeedbackScan = useCallback(async (qrCode: string) => {
+  const handleFeedbackScan = useCallback(async (qrCodeData: string | Uint8Array) => {
     if (processingRef) return;
+
+    // Convert Uint8Array to string if needed
+    const qrCode = qrCodeData instanceof Uint8Array ? new TextDecoder().decode(qrCodeData) : qrCodeData
+
     // guard against non-JSON data triggering false ack received breaking the whole flow
     if (qrCode[0] !== '{') {
       console.log('Ignoring non-JSON QR code');
