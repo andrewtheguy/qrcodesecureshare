@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
+import QRDecode from './components/QRDecode'
 import Logo from './components/Logo'
 import { PWARegister } from './components/PWARegister'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -27,6 +28,7 @@ function App() {
     { value: "generateqr", label: "Generate QR Code", icon: "🔲" },
     { value: "upload", label: "Upload File", icon: "📤" },
     { value: "scan", label: "Scan QR", icon: "📸" },
+    { value: "decode", label: "Decode QR", icon: "🔍" },
     { value: "offline", label: "Offline Transfer", icon: "🔄" },
   ]
 
@@ -119,6 +121,7 @@ function App() {
         {activeTab === "generateqr" && <Upload ref={uploadRef} mode="text" />}
         {activeTab === "upload" && <Upload mode="file" />}
         {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
+        {activeTab === "decode" && <QRDecode />}
         {activeTab === "offline" && <OfflineTransfer />}
       </main>
     </div>
