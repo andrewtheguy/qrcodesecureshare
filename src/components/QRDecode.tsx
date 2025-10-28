@@ -35,6 +35,7 @@ export default function QRDecode() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scanLoopRef = useRef<number | null>(null)
+  const isScanningRef = useRef<boolean>(false)
 
   // Camera functions
   const enumerateCameras = async () => {
@@ -52,6 +53,16 @@ export default function QRDecode() {
       setCameraError(null)
       setError('')
 
+      // Set scanning first so video element renders
+      setScanning(true)
+
+      // Wait for video element to be rendered in DOM
+      await new Promise((resolve) => setTimeout(resolve, 100))
+
+      if (!videoRef.current) {
+        throw new Error('Video element not available')
+      }
+
       const isMobile = isMobileDevice()
       const constraints: MediaStreamConstraints = {
         video: isMobile
@@ -67,16 +78,11 @@ export default function QRDecode() {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       setCameraStream(stream)
+      videoRef.current.srcObject = stream
 
-      // Wait for video element to be ready
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Wait for video to load and play
+      await videoRef.current.play()
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
-
-      setScanning(true)
       await enumerateCameras()
       startScanLoop()
     } catch (err) {
@@ -85,11 +91,14 @@ export default function QRDecode() {
       setCameraError(
         `Camera access denied or unavailable. Please check your permissions. ${errorMessage}`
       )
+      setScanning(false)
+      isScanningRef.current = false
     }
   }
 
   const stopCameraScanning = useCallback(() => {
     setScanning(false)
+    isScanningRef.current = false
 
     // Stop camera stream
     if (cameraStream) {
@@ -115,7 +124,9 @@ export default function QRDecode() {
     let lastScanTime = 0
 
     const scanFrame = async () => {
-      if (!scanning && !scanLoopRef.current) return
+      if (!isScanningRef.current) {
+        return
+      }
 
       const now = Date.now()
       if (now - lastScanTime >= scanInterval) {
@@ -123,9 +134,12 @@ export default function QRDecode() {
         lastScanTime = now
       }
 
-      scanLoopRef.current = requestAnimationFrame(scanFrame)
+      if (isScanningRef.current) {
+        scanLoopRef.current = requestAnimationFrame(scanFrame)
+      }
     }
 
+    isScanningRef.current = true
     scanFrame()
   }
 
@@ -136,14 +150,20 @@ export default function QRDecode() {
     const canvas = canvasRef.current
 
     // Check if video is ready
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) return
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+      return
+    }
 
     try {
       // Set canvas size to match video
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
 
-      const ctx = canvas.getContext('2d')
+      if (canvas.width === 0 || canvas.height === 0) {
+        return
+      }
+
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (!ctx) return
 
       // Draw current video frame to canvas
@@ -191,6 +211,7 @@ export default function QRDecode() {
   // Cleanup on unmount or mode change
   useEffect(() => {
     return () => {
+      isScanningRef.current = false
       if (cameraStream) {
         cameraStream.getTracks().forEach((track) => track.stop())
       }
@@ -393,7 +414,7 @@ export default function QRDecode() {
                 <div className="relative">
                   <video
                     ref={videoRef}
-                    className="w-full max-w-md rounded-lg bg-black mx-auto"
+                    className="w-full max-w-md min-h-[300px] rounded-lg bg-black mx-auto"
                     playsInline
                     muted
                     autoPlay
