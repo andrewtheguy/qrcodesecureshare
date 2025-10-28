@@ -3,7 +3,7 @@ import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
 interface UseZXingQRScannerOptions {
-  onScan: (data: string) => void
+  onScan: (data: string[]) => void
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
@@ -46,8 +46,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
 
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
-        if (e.data.data) {
-          // QR code found!
+        if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
+          // QR codes found! Pass all detected QR codes
           onScan(e.data.data)
         }
         // If error or no data, silently continue scanning

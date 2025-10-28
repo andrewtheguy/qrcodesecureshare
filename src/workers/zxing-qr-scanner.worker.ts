@@ -8,7 +8,7 @@ interface ScanMessage {
 
 interface ScanResult {
   type: 'result'
-  data: string | null
+  data: string[] | null
   error?: string
 }
 
@@ -26,19 +26,13 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
 
       const results = await readBarcodes(imageData, readerOptions)
 
-      if (results.length > 0) {
-        const result: ScanResult = {
-          type: 'result',
-          data: results[0].text,
-        }
-        self.postMessage(result)
-      } else {
-        const result: ScanResult = {
-          type: 'result',
-          data: null,
-        }
-        self.postMessage(result)
+      const detectedTexts = results.length > 0 ? results.map((r) => r.text) : null
+
+      const result: ScanResult = {
+        type: 'result',
+        data: detectedTexts,
       }
+      self.postMessage(result)
     } catch (error) {
       const result: ScanResult = {
         type: 'result',

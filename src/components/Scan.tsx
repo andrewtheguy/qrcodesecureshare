@@ -67,8 +67,14 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const privateKeyClearTimeoutRef = useRef<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Handle QR scan results
-  const handleQRScan = useCallback((data: string) => {
+  // Handle QR scan results (multiple QR codes from a single scan)
+  const handleQRScan = useCallback((qrCodes: string[]) => {
+    if (!qrCodes || qrCodes.length === 0) {
+      return
+    }
+
+    // Process the first QR code for now (can be extended to handle multiple in the future)
+    const data = qrCodes[0]
     console.log('QR code detected:', data)
 
     // Check if QR code contains encrypted file data
@@ -342,18 +348,18 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     try {
       console.log('Processing uploaded image for QR code...')
 
-      // Decode the QR code using zxing-wasm worker
-      const result = await decodeQRFromImage(file)
+      // Decode the QR codes using zxing-wasm worker
+      const results = await decodeQRFromImage(file)
 
-      if (!result) {
+      if (!results || results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
         return
       }
 
-      console.log('QR code detected from uploaded image:', result)
+      console.log('QR codes detected from uploaded image:', results)
 
-      // Use the same handler as camera scan
-      handleQRScan(result)
+      // Use the same handler as camera scan, passing all detected QR codes
+      handleQRScan(results)
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')

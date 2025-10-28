@@ -11,7 +11,7 @@ interface ScanResult {
  * @param file The image file to decode
  * @returns Promise<string | null> The decoded QR code data or null if no QR code found
  */
-export async function decodeQRFromImage(file: File): Promise<string | null> {
+export function decodeQRFromImage(file: File): Promise<string | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -20,7 +20,7 @@ export async function decodeQRFromImage(file: File): Promise<string | null> {
         const imageUrl = e.target?.result as string
         const img = new Image()
 
-        img.onload = async () => {
+        img.onload = () => {
           const canvas = document.createElement('canvas')
           canvas.width = img.width
           canvas.height = img.height
@@ -38,14 +38,19 @@ export async function decodeQRFromImage(file: File): Promise<string | null> {
           const worker = new ZXingWorker()
 
           worker.onmessage = (event: MessageEvent<ScanResult>) => {
-            worker.terminate()
-
             if (event.data.type === 'result') {
+              worker.terminate()
+              worker.onmessage = null
+
               if (event.data.error) {
                 reject(new Error(event.data.error))
               } else {
                 resolve(event.data.data)
               }
+            } else {
+              worker.terminate()
+              worker.onmessage = null
+              reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
             }
           }
 
@@ -89,14 +94,19 @@ export async function decodeQRFromImageData(imageData: ImageData): Promise<strin
     const worker = new ZXingWorker()
 
     worker.onmessage = (event: MessageEvent<ScanResult>) => {
-      worker.terminate()
-
       if (event.data.type === 'result') {
+        worker.terminate()
+        worker.onmessage = null
+
         if (event.data.error) {
           reject(new Error(event.data.error))
         } else {
           resolve(event.data.data)
         }
+      } else {
+        worker.terminate()
+        worker.onmessage = null
+        reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
       }
     }
 
