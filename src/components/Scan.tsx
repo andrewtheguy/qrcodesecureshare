@@ -121,7 +121,7 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   }, [])
 
   // Use the new zxing-wasm scanner hook
-  const { videoRef, canvasRef, switchCamera, availableCameras } = useZXingQRScanner({
+  const { videoRef, canvasRef, availableCameras } = useZXingQRScanner({
     onScan: handleQRScan,
     onError: handleCameraError,
     isScanning: scanning,
@@ -329,10 +329,10 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     setScanning(false)
   }
 
-  const toggleFacingMode = async () => {
+  const toggleFacingMode = () => {
     const nextMode: 'environment' | 'user' = facingMode === 'environment' ? 'user' : 'environment'
     setFacingMode(nextMode)
-    await switchCamera()
+    // The hook will automatically restart the camera with the new facingMode
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {

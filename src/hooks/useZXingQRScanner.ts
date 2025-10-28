@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react'
+import { useRef, useEffect, useCallback, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
@@ -26,14 +26,14 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const scanLoopRef = useRef<number | null>(null)
   const isScanningRef = useRef<boolean>(false)
   const cameraStreamRef = useRef<MediaStream | null>(null)
-  const availableCamerasRef = useRef<MediaDeviceInfo[]>([])
   const workerRef = useRef<Worker | null>(null)
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
   const enumerateCameras = useCallback(async () => {
     try {
       const devices = await navigator.mediaDevices.enumerateDevices()
       const videoDevices = devices.filter((device) => device.kind === 'videoinput')
-      availableCamerasRef.current = videoDevices
+      setAvailableCameras(videoDevices)
     } catch (err) {
       console.error('Failed to enumerate cameras:', err)
     }
@@ -236,6 +236,16 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [isScanning, startCameraScanning, stopCameraScanning])
 
+  // Restart camera when facingMode changes (only if already scanning)
+  const facingModeRef = useRef(facingMode)
+  useEffect(() => {
+    // Skip on initial mount
+    if (facingModeRef.current !== facingMode && isScanningRef.current) {
+      switchCamera()
+    }
+    facingModeRef.current = facingMode
+  }, [facingMode, switchCamera])
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -253,6 +263,6 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     videoRef,
     canvasRef,
     switchCamera,
-    availableCameras: availableCamerasRef.current,
+    availableCameras,
   }
 }
