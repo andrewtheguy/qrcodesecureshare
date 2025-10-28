@@ -17,7 +17,7 @@ import type { FountainMetadata } from '@/utils/fountainCode'
 import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks } from '@/utils/fountainConfig'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
@@ -363,8 +363,8 @@ export function FountainQRFeedbackDisplay({
   }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
-  const { videoRef: ackVideoRefFromHook } = useQRScanner({
-    onScan: handleSenderFeedbackScan,
+  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useZXingQRScanner({
+    onScan: (data) => handleSenderFeedbackScan(data[0]),
     isScanning: ackScannerIsScanning,
     onError: (errorMessage) => {
       setError(errorMessage)
@@ -599,6 +599,7 @@ export function FountainQRFeedbackDisplay({
                 ref={ackVideoRefFromHook}
                 className="w-full max-h-[420px] object-cover"
               />
+              <canvas ref={ackCanvasRef} style={{ display: 'none' }} />
               <div className="pointer-events-none absolute inset-0">
                 <div className="absolute inset-5 rounded-xl border-2 border-emerald-400/60 animate-pulse" />
                 {ackScannerIsScanning && (

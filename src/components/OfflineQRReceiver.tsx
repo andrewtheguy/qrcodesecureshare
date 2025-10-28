@@ -1,10 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import {
   Dialog,
   DialogContent,
@@ -60,10 +60,11 @@ export function OfflineQRReceiver() {
 
   const handleMetadataScan = useCallback((data: string) => {
     try {
-      addDebugLog(`Scanned metadata text, length: ${data.length} chars`)
+      const qrCode = data
+      addDebugLog(`Scanned metadata text, length: ${qrCode.length} chars`)
 
       // Try to parse JSON (new format)
-      const parsed = JSON.parse(data)
+      const parsed = JSON.parse(qrCode)
       if (!parsed || typeof parsed !== 'object') {
         throw new Error('Not a JSON object')
       }
@@ -112,7 +113,6 @@ export function OfflineQRReceiver() {
       }
 
       setIsScanning(false)
-      stopScannerRef.current?.()
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Unknown error'
       addDebugLog(`✗ Metadata parse error: ${errorMsg}`)
@@ -125,21 +125,13 @@ export function OfflineQRReceiver() {
     setError(errorMessage)
   }, [])
 
-  // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps)
-  // Visual highlights remain enabled to help users align the QR code
-  const { videoRef, stopScanner } = useQRScanner({
-    onScan: handleMetadataScan,
+  // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps = 100ms interval)
+  const { videoRef, canvasRef } = useZXingQRScanner({
+    onScan: (data) => handleMetadataScan(data[0]),
     isScanning,
     onError: handleScanError,
-    maxScansPerSecond: 10,
-    enableVisualHighlights: true
+    scanInterval: 100
   })
-
-  const stopScannerRef = useRef(stopScanner)
-
-  useEffect(() => {
-    stopScannerRef.current = stopScanner
-  }, [stopScanner])
 
   const handleStartScan = () => {
     setIsScanning(true)
@@ -154,7 +146,6 @@ export function OfflineQRReceiver() {
     setTransferMode(null)
     setError('')
     setDebugLog([])
-    stopScanner()
   }
 
   const requestReset = () => {
@@ -228,6 +219,7 @@ export function OfflineQRReceiver() {
                   playsInline
                   muted
                 />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
                 <div className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium">
                   ● SCANNING FOR METADATA
                 </div>
