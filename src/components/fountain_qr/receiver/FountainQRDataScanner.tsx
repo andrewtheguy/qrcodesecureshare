@@ -81,6 +81,8 @@ export function FountainQRDataScanner({
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
+  const chunkCounterRef = useRef<number>(0)
+  const lastUIUpdateRef = useRef<number>(Date.now())
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -127,7 +129,15 @@ export function FountainQRDataScanner({
 
     // Send binary data to worker for processing
     workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
-    setReceivedFountainChunks(prev => prev + 1)
+
+    // Batch UI updates to every 500ms to avoid slowing down decoding
+    chunkCounterRef.current++
+    const now = Date.now()
+    if (now - lastUIUpdateRef.current >= 500) {
+      setReceivedFountainChunks(chunkCounterRef.current)
+      lastUIUpdateRef.current = now
+    }
+
     addDebugLog('📤 Sent chunk to worker for processing')
 
     // Invoke callback with parsed seed
@@ -231,6 +241,8 @@ export function FountainQRDataScanner({
 
   const handleStartScan = useCallback(() => {
     setReceivedFountainChunks(0)
+    chunkCounterRef.current = 0
+    lastUIUpdateRef.current = Date.now()
     setError('')
     setHasAutoStarted(true)
     onScanStart()
