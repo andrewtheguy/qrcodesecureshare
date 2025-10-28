@@ -60,8 +60,9 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           // Data payload
           chunkWithHeader.set(dataBytes, chunkOffset)
 
-          // Convert to string using Latin-1 encoding (preserves all byte values)
-          newDataChunks.push(String.fromCharCode(...chunkWithHeader))
+          // Convert to base64 for QR encoding
+          const base64Chunk = btoa(String.fromCharCode(...chunkWithHeader))
+          newDataChunks.push(base64Chunk)
         }
 
         setDataChunks(newDataChunks)
@@ -93,7 +94,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         const chunkString = dataChunks[currentChunk]
         if (!chunkString) return
 
-        // chunkString is already in Latin-1 encoding, pass directly to QRCode
+        // chunkString is base64 encoded, pass directly to QRCode
         const dataUrl = await QRCode.toDataURL(chunkString, {
           width: 400,
           margin: 2,

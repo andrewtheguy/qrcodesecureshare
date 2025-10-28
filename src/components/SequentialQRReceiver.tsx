@@ -64,9 +64,19 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
     const qrData = qrCodes[0]
     try {
-      // With binary: true, we should receive Uint8Array directly
-      // but handle both for safety
-      const bytes = qrData as Uint8Array;
+      // QR data is base64 encoded, decode it first
+      let bytes: Uint8Array
+
+      if (typeof qrData === 'string') {
+        // Base64 encoded data
+        const binaryString = atob(qrData)
+        bytes = new Uint8Array(binaryString.length)
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i)
+        }
+      } else {
+        bytes = qrData as Uint8Array
+      }
 
       addDebugLog(`Scanned chunk, length: ${bytes.length} bytes, first byte: ${bytes[0]}`)
 
@@ -127,7 +137,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     onScan: handleScan,
     isScanning,
     onError: handleScanError,
-    binary: true
+    binary: false
   })
 
   // Auto-start scanning on mount
