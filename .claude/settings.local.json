@@ -9,7 +9,8 @@
       "Bash(npm run build:*)",
       "Bash(git log:*)",
       "Bash(git checkout:*)",
-      "Bash(npm run lint)"
+      "Bash(npm run lint)",
+      "mcp__fetch__fetch_markdown"
     ],
     "deny": [],
     "ask": []

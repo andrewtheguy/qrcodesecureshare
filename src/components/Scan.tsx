@@ -1,15 +1,16 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import QrScanner from 'qr-scanner'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { deriveKey, isMobileDevice } from '@/lib/utils'
+import { deriveKey } from '@/lib/utils'
 import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
 import { getJwkSshFingerprint } from '@/utils/fingerprint'
 import { WebRTCReceiver } from './WebRTCReceiver'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
 interface EncryptedFileData {
   url: string
@@ -43,15 +44,6 @@ interface WebRTCReceiveState {
   data: WebRTCScanData | null
 }
 
-const startQrScanner = async (scanner: QrScanner, constraints?: MediaTrackConstraints) => {
-  const startFn = scanner.start as unknown as (mediaTrackConstraints?: MediaTrackConstraints) => Promise<void>
-  if (constraints && Object.keys(constraints).length > 0) {
-    await startFn.call(scanner, constraints)
-  } else {
-    await startFn.call(scanner)
-  }
-}
-
 const Scan = ({ onGenerateQR }: ScanProps) => {
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
@@ -67,17 +59,80 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
   const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
   // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
-  const [deviceIds, setDeviceIds] = useState<{ environment?: string; user?: string }>({})
-  const [loadingCameras, setLoadingCameras] = useState(false)
   const [cameraError, setCameraError] = useState<string | null>(null)
   const privateKeyImportDebounceRef = useRef<number | null>(null)
   const pageHiddenAtRef = useRef<number | null>(null)
   const VISIBILITY_CLEAR_THRESHOLD_MS = 60_000 // Clear if tab hidden > 60s
   // Timer ref to auto-clear private key after inactivity
   const privateKeyClearTimeoutRef = useRef<number | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const scannerRef = useRef<QrScanner | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Handle QR scan results (multiple QR codes from a single scan)
+  const handleQRScan = useCallback((qrCodes: string[]) => {
+    if (!qrCodes || qrCodes.length === 0) {
+      return
+    }
+
+    // Process the first QR code for now (can be extended to handle multiple in the future)
+    const data = qrCodes[0]
+    console.log('QR code detected:', data)
+
+    // Check if QR code contains encrypted file data
+    if (data.startsWith(ENCRYPTED_FILE_MAGIC)) {
+      try {
+        const jsonData = data.substring(ENCRYPTED_FILE_MAGIC.length)
+        const parsedData = JSON.parse(jsonData) as EncryptedFileData
+        console.log('Parsed encrypted file data:', parsedData)
+        setScannedData(parsedData)
+        setScannedText(null)
+        setScanState({ showingDetails: true, confirmDownload: true })
+        setScanning(false)
+      } catch (error) {
+        console.error('Invalid encrypted file data in QR code:', error)
+        alert('QR code contains invalid encrypted file data')
+      }
+    } else {
+      // Check if it's a WebRTC transfer QR code
+      try {
+        const parsedData = JSON.parse(data)
+        if (parsedData.type === 'webrtc-transfer' && parsedData.peerId && parsedData.encryptionKey) {
+          console.log('Parsed WebRTC transfer data:', parsedData)
+          // Show WebRTC receiver directly in this tab
+          setWebrtcReceive({ isReceiving: true, data: parsedData as WebRTCScanData })
+          setScannedData(null)
+          setScannedText(null)
+          setScanning(false)
+          return
+        } else {
+          // Regular text QR code
+          console.log('Regular text QR code:', data)
+          setScannedText(data)
+          setScannedData(null)
+          setScanning(false)
+        }
+      } catch {
+        // Regular text QR code
+        console.log('Regular text QR code:', data)
+        setScannedText(data)
+        setScannedData(null)
+        setScanning(false)
+      }
+    }
+  }, [])
+
+  // Handle camera errors
+  const handleCameraError = useCallback((error: string) => {
+    setCameraError(error)
+    setScanning(false)
+  }, [])
+
+  // Use the new zxing-wasm scanner hook
+  const { videoRef, canvasRef, availableCameras } = useZXingQRScanner({
+    onScan: handleQRScan,
+    onError: handleCameraError,
+    isScanning: scanning,
+    facingMode: facingMode,
+  })
 
   const copyToClipboard = async (text: string, label?: string) => {
     try {
@@ -271,171 +326,19 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     }
   }
 
-  const startScanning = async () => {
-    try {
-      setScanning(true)
-      console.log('Starting QR scanner...')
-      
-      // Set worker path - file is copied by Vite plugin during build
-      QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
-      
-      // Wait for the next render cycle to ensure video element exists
-      await new Promise(resolve => setTimeout(resolve, 100))
-      
-      if (!videoRef.current) {
-        throw new Error('Video element not available')
-      }
-      
-      // Mobile optimization: reduce scan rate while keeping highlights for better alignment guidance
-      const isMobile = isMobileDevice()
-      const scanRate = isMobile ? 8 : 15
-      const showHighlights = true
-
-      const scanner = new QrScanner(
-        videoRef.current,
-        (result) => {
-          console.log('QR code detected:', result)
-
-          // Check if QR code contains encrypted file data
-          if (result.data.startsWith(ENCRYPTED_FILE_MAGIC)) {
-            try {
-              const jsonData = result.data.substring(ENCRYPTED_FILE_MAGIC.length)
-              const data = JSON.parse(jsonData) as EncryptedFileData
-              console.log('Parsed encrypted file data:', data)
-              setScannedData(data)
-              setScannedText(null)
-              setScanState({ showingDetails: true, confirmDownload: true })
-              stopScanning()
-            } catch (error) {
-              console.error('Invalid encrypted file data in QR code:', error)
-              alert('QR code contains invalid encrypted file data')
-            }
-          } else {
-            // Check if it's a WebRTC transfer QR code
-            try {
-              const data = JSON.parse(result.data)
-              if (data.type === 'webrtc-transfer' && data.peerId && data.encryptionKey) {
-                console.log('Parsed WebRTC transfer data:', data)
-                // Show WebRTC receiver directly in this tab
-                setWebrtcReceive({ isReceiving: true, data: data as WebRTCScanData })
-                setScannedData(null)
-                setScannedText(null)
-                stopScanning()
-                return
-              } else {
-                // Regular text QR code
-                console.log('Regular text QR code:', result.data)
-                setScannedText(result.data)
-                setScannedData(null)
-                stopScanning()
-              }
-            } catch {
-              // Regular text QR code
-              console.log('Regular text QR code:', result.data)
-              setScannedText(result.data)
-              setScannedData(null)
-              stopScanning()
-            }
-          }
-        },
-        {
-          returnDetailedScanResult: true,
-          maxScansPerSecond: scanRate,
-          highlightScanRegion: showHighlights,
-          highlightCodeOutline: showHighlights,
-          preferredCamera: 'environment',
-        }
-      )
-      scannerRef.current = scanner
-
-      // Start scanner with video constraints for mobile optimization
-      if (isMobile) {
-        await startQrScanner(scanner, {
-          facingMode: 'environment',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        })
-      } else {
-        await startQrScanner(scanner)
-      }
-      console.log('QR scanner started successfully')
-
-      // Load available cameras and classify into environment/user categories
-      setLoadingCameras(true)
-      setCameraError(null)
-      try {
-        const list = await QrScanner.listCameras(true) as { id: string, label: string }[]
-        if (list && list.length) {
-          const ids: { environment?: string; user?: string } = {}
-          if (list.length === 1) {
-            const only = list[0]
-            if (/front|user|face/i.test(only.label)) ids.user = only.id
-            else ids.environment = only.id
-          } else {
-            // Multiple cameras: classify and only assign if distinct matches
-            const env = list.find(c => /back|rear|environment/i.test(c.label))
-            const user = list.find(c => /front|user|face/i.test(c.label))
-            if (env) ids.environment = env.id
-            if (user) ids.user = user.id
-            // If still missing one category attempt to fill with a different id than the other
-            if (!ids.environment) {
-              const alt = list.find(c => c.id !== ids.user)
-              if (alt) ids.environment = alt.id
-            }
-            if (!ids.user) {
-              const alt = list.find(c => c.id !== ids.environment)
-              if (alt) ids.user = alt.id
-              else delete ids.user // ensure not both if truly single classification
-            }
-            // If both ended up same id (edge case), drop one based on facingMode preference
-            if (ids.environment && ids.user && ids.environment === ids.user) {
-              if (facingMode === 'environment') delete ids.user
-              else delete ids.environment
-            }
-          }
-          setDeviceIds(ids)
-          // Choose starting id (prefer environment on mobile when both exist)
-          const preferred = (facingMode === 'environment' && ids.environment) ? ids.environment
-            : (facingMode === 'user' && ids.user) ? ids.user
-            : ids.environment || ids.user
-          if (preferred) {
-            try { await scanner.setCamera(preferred) } catch { console.warn('Could not set initial facingMode camera') }
-          }
-        }
-      } catch {
-        console.warn('Failed to classify cameras')
-        setCameraError('Camera access issue')
-      } finally {
-        setLoadingCameras(false)
-      }
-    } catch (error) {
-      console.error('Failed to start QR scanner:', error)
-      alert(`Failed to access camera: ${(error as Error).message}. Please ensure camera permissions are granted.`)
-      setScanning(false)
-    }
+  const startScanning = () => {
+    setCameraError(null)
+    setScanning(true)
   }
 
   const stopScanning = () => {
-    if (scannerRef.current) {
-      scannerRef.current.stop()
-      scannerRef.current.destroy()
-      scannerRef.current = null
-    }
     setScanning(false)
   }
 
-  const toggleFacingMode = async () => {
-    if (!scannerRef.current) return
+  const toggleFacingMode = () => {
     const nextMode: 'environment' | 'user' = facingMode === 'environment' ? 'user' : 'environment'
-    const targetId = (nextMode === 'environment' ? deviceIds.environment : deviceIds.user) || (nextMode === 'environment' ? deviceIds.user : deviceIds.environment)
-    if (!targetId) return
-    try {
-      await scannerRef.current.setCamera(targetId)
-      setFacingMode(nextMode)
-    } catch {
-      console.error('Failed to switch facing mode')
-      setCameraError('Failed to switch camera')
-    }
+    setFacingMode(nextMode)
+    // The hook will automatically restart the camera with the new facingMode
   }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -444,40 +347,24 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
 
     try {
       console.log('Processing uploaded image for QR code...')
-      
-      // Set worker path
-      QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
-      
-      const result = await QrScanner.scanImage(file, {
-        returnDetailedScanResult: true,
-      })
-      
-      console.log('QR code detected from uploaded image:', result)
-      
-      // Check if QR code contains encrypted file data
-      if (result.data.startsWith(ENCRYPTED_FILE_MAGIC)) {
-        try {
-          const jsonData = result.data.substring(ENCRYPTED_FILE_MAGIC.length)
-          const data = JSON.parse(jsonData) as EncryptedFileData
-          console.log('Parsed encrypted file data:', data)
-          setScannedData(data)
-          setScannedText(null)
-          setScanState({ showingDetails: true, confirmDownload: true })
-        } catch (error) {
-          console.error('Invalid encrypted file data in QR code:', error)
-          alert('QR code contains invalid encrypted file data')
-        }
-      } else {
-        // Regular text QR code
-        console.log('Regular text QR code:', result.data)
-        setScannedText(result.data)
-        setScannedData(null)
+
+      // Decode the QR codes using zxing-wasm worker
+      const results = await decodeQRFromImage(file)
+
+      if (!results || results.length === 0) {
+        alert('No QR code found in the uploaded image. Please try a different image.')
+        return
       }
+
+      console.log('QR codes detected from uploaded image:', results)
+
+      // Use the same handler as camera scan, passing all detected QR codes
+      handleQRScan(results)
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')
     }
-    
+
     // Clear the file input
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -692,10 +579,11 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
                 className="w-full max-w-md rounded-lg bg-black mx-auto"
                 playsInline
                 muted
+                autoPlay
               />
+              <canvas ref={canvasRef} className="hidden" />
               <div className="flex flex-col gap-2 items-center">
-                {loadingCameras && <p className="text-xs text-muted-foreground">Detecting cameras…</p>}
-                {!loadingCameras && (deviceIds.environment && deviceIds.user) && (
+                {availableCameras.length > 1 && (
                   <div className="flex items-center gap-3 flex-wrap justify-center">
                     <span className="text-xs font-medium text-muted-foreground">Mode:</span>
                     <code className="text-xs bg-muted px-2 py-1 rounded">{facingMode}</code>
