@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react'
-import { readBarcodes, type ReaderOptions } from 'zxing-wasm/reader'
 import { isMobileDevice } from '@/lib/utils'
+import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
 interface UseZXingQRScannerOptions {
   onScan: (data: string) => void
@@ -27,6 +27,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const isScanningRef = useRef<boolean>(false)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const availableCamerasRef = useRef<MediaDeviceInfo[]>([])
+  const workerRef = useRef<Worker | null>(null)
 
   const enumerateCameras = useCallback(async () => {
     try {
@@ -38,8 +39,36 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [])
 
-  const scanVideoFrame = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current) return
+  // Initialize worker
+  useEffect(() => {
+    const worker = new ZXingWorker()
+    workerRef.current = worker
+
+    worker.onmessage = (e: MessageEvent) => {
+      if (e.data.type === 'result') {
+        if (e.data.data) {
+          // QR code found!
+          onScan(e.data.data)
+        }
+        // If error or no data, silently continue scanning
+        if (e.data.error) {
+          console.error('Worker decode error:', e.data.error)
+        }
+      }
+    }
+
+    worker.onerror = (err) => {
+      console.error('Worker error:', err)
+    }
+
+    return () => {
+      worker.terminate()
+      workerRef.current = null
+    }
+  }, [onScan])
+
+  const scanVideoFrame = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !workerRef.current) return
 
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -67,24 +96,16 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       // Get ImageData from canvas
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-      // Decode with zxing-wasm
-      const readerOptions: ReaderOptions = {
-        formats: ['QRCode'],
-        tryHarder: true,
-        tryRotate: true,
-      }
-
-      const results = await readBarcodes(imageData, readerOptions)
-
-      if (results.length > 0) {
-        // QR code found!
-        onScan(results[0].text)
-      }
+      // Send to worker for decoding
+      workerRef.current.postMessage({
+        type: 'scan',
+        imageData,
+      })
     } catch (err) {
       // Silent fail - continue scanning
       console.error('Error scanning frame:', err)
     }
-  }, [onScan])
+  }, [])
 
   const startScanLoop = useCallback(() => {
     const isMobile = isMobileDevice()
@@ -92,14 +113,14 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
 
     let lastScanTime = 0
 
-    const scanFrame = async () => {
+    const scanFrame = () => {
       if (!isScanningRef.current) {
         return
       }
 
       const now = Date.now()
       if (now - lastScanTime >= interval) {
-        await scanVideoFrame()
+        scanVideoFrame()
         lastScanTime = now
       }
 

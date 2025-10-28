@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { readBarcodes, type ReaderOptions } from 'zxing-wasm/reader'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -342,70 +342,18 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
     try {
       console.log('Processing uploaded image for QR code...')
 
-      // Read file as data URL
-      const reader = new FileReader()
-      reader.onload = async (e) => {
-        try {
-          const imageUrl = e.target?.result as string
+      // Decode the QR code using zxing-wasm worker
+      const result = await decodeQRFromImage(file)
 
-          // Create an image element
-          const img = new Image()
-          img.src = imageUrl
-
-          img.onload = async () => {
-            try {
-              // Create a canvas and draw the image
-              const canvas = document.createElement('canvas')
-              canvas.width = img.width
-              canvas.height = img.height
-              const ctx = canvas.getContext('2d')
-              if (!ctx) {
-                alert('Failed to process image')
-                return
-              }
-
-              ctx.drawImage(img, 0, 0)
-              const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
-
-              // Decode the QR code using zxing-wasm
-              const readerOptions: ReaderOptions = {
-                formats: ['QRCode'],
-                tryHarder: true,
-                tryRotate: true,
-              }
-
-              const results = await readBarcodes(imageData, readerOptions)
-
-              if (results.length === 0) {
-                alert('No QR code found in the uploaded image. Please try a different image.')
-                return
-              }
-
-              const data = results[0].text
-              console.log('QR code detected from uploaded image:', data)
-
-              // Use the same handler as camera scan
-              handleQRScan(data)
-            } catch (err) {
-              console.error('Failed to scan QR code from image:', err)
-              alert('No QR code found in the uploaded image. Please try a different image.')
-            }
-          }
-
-          img.onerror = () => {
-            alert('Failed to load image')
-          }
-        } catch (err) {
-          console.error('Error processing file:', err)
-          alert('Failed to process image')
-        }
+      if (!result) {
+        alert('No QR code found in the uploaded image. Please try a different image.')
+        return
       }
 
-      reader.onerror = () => {
-        alert('Failed to read file')
-      }
+      console.log('QR code detected from uploaded image:', result)
 
-      reader.readAsDataURL(file)
+      // Use the same handler as camera scan
+      handleQRScan(result)
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')
