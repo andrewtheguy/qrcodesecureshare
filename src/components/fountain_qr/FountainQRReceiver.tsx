@@ -159,11 +159,22 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
               return
             }
 
-            // Part completed successfully - trigger feedback to sender
-            triggeredFeedbackRef.current = true
-            setReceiverMode('feedback-display')
-            setIsScanning(false)
-            setIsAwaitingFeedback(true)
+            // Check if this was the last part
+            const isLastPart = (partCompleteInfo.currentPart + 1) === partCompleteInfo.totalParts
+
+            if (isLastPart) {
+              // Last part completed - the transfer should be complete now
+              // The worker will send a 'complete' message when all parts are assembled
+              console.log('[FountainQRReceiver] Last part completed, waiting for final assembly...')
+              // Don't trigger feedback, just continue scanning to let the worker finish
+            } else {
+              // Not the last part - trigger feedback to move to next part
+              console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} completed, triggering feedback for next part`)
+              triggeredFeedbackRef.current = true
+              setReceiverMode('feedback-display')
+              setIsScanning(false)
+              setIsAwaitingFeedback(true)
+            }
             break
           }
 
