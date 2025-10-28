@@ -153,7 +153,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
             if (!partCompleteInfo.partChecksumMatch) {
               // Part checksum mismatch - fail the transfer
-              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Expected: ${partCompleteInfo.computedChecksum.slice(0, 8)}, Got: different`)
+              console.error(`[FountainQRReceiver] Part checksum mismatch! Computed: ${partCompleteInfo.computedChecksum}, partCompleteInfo:`, partCompleteInfo)
+              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Computed: ${partCompleteInfo.computedChecksum}, but expected different value from sender`)
               setIsScanning(false)
               return
             }

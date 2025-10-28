@@ -113,6 +113,14 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
            return
          }
 
+        // Compute part checksums if in part-based mode
+        if (feedbackEnabled) {
+          console.log('[FountainQRSender] Computing part checksums...')
+          await fountainEncoder.computePartChecksums()
+          const partInfo = fountainEncoder.getPartInfo()
+          console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+        }
+
         setEncoder(fountainEncoder)
         setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')

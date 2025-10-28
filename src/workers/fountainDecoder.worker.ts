@@ -200,6 +200,8 @@ self.onmessage = async (event: MessageEvent) => {
                             const partInfo = decoder!.getPartInfo();
                             const checksumMatch = computedChecksum === expectedPartChecksum;
 
+                            console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Computed checksum: ${computedChecksum}, Expected: ${expectedPartChecksum}, Match: ${checksumMatch}`);
+
                             partCompleteInfo = {
                                 partComplete: true,
                                 partChecksumMatch: checksumMatch,
