@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import QRCode from 'qrcode'
+import { writeBarcode } from 'zxing-wasm/full'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -13,11 +13,12 @@ interface SequentialQRSenderProps {
 // Maximum bytes per QR code chunk - using binary mode instead of base64
 // QR max ~2953 bytes (byte mode, error correction M)
 // Binary mode is more efficient (no base64 overhead)
-export const CHUNK_SIZE = 600 // bytes of raw binary data
+// Increased from 600 to 800 bytes with zxing-wasm binary QR encoding
+export const CHUNK_SIZE = 800 // bytes of raw binary data
 
 export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   // Metadata removed: parent component is responsible for metadata QR
-  const [dataChunks, setDataChunks] = useState<string[]>([]) // Data chunks only (0-based)
+  const [dataChunks, setDataChunks] = useState<Uint8Array[]>([]) // Data chunks only (0-based)
   const [currentChunk, setCurrentChunk] = useState(0)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -40,7 +41,7 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
         // Calculate number of data chunks needed & create data chunks (0-based indexing)
         const totalDataChunks = Math.ceil(bytes.length / CHUNK_SIZE)
         // Format: [type=1 (1 byte)][chunk index (2 bytes)][data (up to CHUNK_SIZE bytes)]
-        const newDataChunks: string[] = []
+        const newDataChunks: Uint8Array[] = []
         for (let i = 0; i < totalDataChunks; i++) {
           const start = i * CHUNK_SIZE
           const end = Math.min(start + CHUNK_SIZE, bytes.length)
@@ -60,9 +61,8 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
           // Data payload
           chunkWithHeader.set(dataBytes, chunkOffset)
 
-          // Convert to base64 for QR encoding
-          const base64Chunk = btoa(String.fromCharCode(...chunkWithHeader))
-          newDataChunks.push(base64Chunk)
+          // Store binary data directly (no base64 encoding)
+          newDataChunks.push(chunkWithHeader)
         }
 
         setDataChunks(newDataChunks)
@@ -91,19 +91,23 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
 
     const generateQR = async () => {
       try {
-        const chunkString = dataChunks[currentChunk]
-        if (!chunkString) return
+        const chunkBinary = dataChunks[currentChunk]
+        if (!chunkBinary) return
 
-        // chunkString is base64 encoded, pass directly to QRCode
-        const dataUrl = await QRCode.toDataURL(chunkString, {
-          width: 400,
-          margin: 2,
-          errorCorrectionLevel: 'M',
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
+        // Generate QR code with binary data using zxing-wasm
+        const result = await writeBarcode(chunkBinary, {
+          format: 'QRCode',
+          ecLevel: 'M',
+          sizeHint: 400,
+          withQuietZones: true
         })
+
+        if (result.error) {
+          throw new Error(result.error)
+        }
+
+        // Convert Blob to data URL
+        const dataUrl = URL.createObjectURL(result.image as Blob)
         setQrCodeUrl(dataUrl)
       } catch (err) {
         console.error('QR generation error:', err)
