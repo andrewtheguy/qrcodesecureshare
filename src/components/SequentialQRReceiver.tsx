@@ -4,7 +4,7 @@ import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
 interface ChunkData {
   meta: {
@@ -56,20 +56,22 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   ])
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [error, setError] = useState<string>('')
-  const scanRegionOverlayRef = useRef<HTMLDivElement | null>(null)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[SequentialQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
 
-  const handleScan = useCallback((data: string) => {
+  const handleScan = useCallback((qrCodes: string[]) => {
+    if (qrCodes.length === 0) return
+
+    const data = qrCodes[0]
     try {
       addDebugLog(`Scanned chunk, length: ${data.length} chars, first char code: ${data.length > 0 ? data.charCodeAt(0) : 'N/A'}`)
 
       //  No metadata parsing here; parent guarantees metadata already acquired
 
-      // Convert string to bytes (QR scanner returns string from binary data or JSON)
+      // Convert string to bytes (QR scanner returns string from binary data)
       const bytes = new Uint8Array(data.length)
       for (let i = 0; i < data.length; i++) {
         bytes[i] = data.charCodeAt(i) & 0xFF
@@ -89,7 +91,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         const chunkIndex = (bytes[offset++] << 8) | bytes[offset++]
         const chunkData = bytes.slice(offset)
 
-  addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
+        addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
 
         // Convert chunk data to base64 for storage
         const base64Data = btoa(String.fromCharCode(...chunkData))
@@ -128,12 +130,10 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setError(errorMessage)
   }, [])
 
-  const { videoRef, stopScanner } = useQRScanner({
+  const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
     isScanning,
-    onError: handleScanError,
-    enableVisualHighlights: false,
-    scanRegionOverlayRef
+    onError: handleScanError
   })
 
   // Auto-start scanning on mount
@@ -185,7 +185,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           setDownloadUrl(url)
           setSuccess(true)
           setIsScanning(false)
-          stopScanner()
         } catch (err) {
           console.error('Reconstruction error:', err)
           setError('Failed to reconstruct file from chunks')
@@ -193,7 +192,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         }
       })()
     }
-  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type, stopScanner])
+  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type])
 
 
   const handleStartScan = () => {
@@ -206,7 +205,6 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
   const handleStopScan = () => {
     setIsScanning(false)
-    stopScanner()
   }
 
   const handleReset = () => {
@@ -285,16 +283,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
             ref={videoRef}
             className="w-full h-auto"
             style={{ maxHeight: '400px' }}
+            playsInline
+            muted
           />
-          <div
-            ref={scanRegionOverlayRef}
-            className="pointer-events-none absolute inset-0 z-10 rounded-lg border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.35)]"
-            style={{
-              backgroundImage:
-                'linear-gradient(to right, rgba(255,255,255,0.15) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.15) 1px, transparent 1px)',
-              backgroundSize: '20% 100%, 100% 20%'
-            }}
-          />
+          <canvas ref={canvasRef} style={{ display: 'none' }} />
+          <div className="pointer-events-none absolute inset-0 z-10 rounded-lg border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.35)]" />
           <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs font-medium z-20">
             ● SCANNING
           </div>
