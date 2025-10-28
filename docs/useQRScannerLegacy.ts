@@ -45,7 +45,7 @@ const startQrScanner = async (scanner: QrScanner, constraints?: MediaTrackConstr
   }
 }
 
-export function useQRScanner({
+export function useQRScannerLegacy({
   onScan,
   isScanning,
   debounceMs = 500,

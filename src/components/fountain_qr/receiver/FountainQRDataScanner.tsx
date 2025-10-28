@@ -293,29 +293,6 @@ export function FountainQRDataScanner({
                   muted
                 />
                 <canvas ref={canvasRef} style={{ display: 'none' }} />
-                {/* Simple corner guides for scan region */}
-                <div className="pointer-events-none absolute inset-0 z-10">
-                  {/* Corner guides - top-left */}
-                  <div className="absolute top-4 left-4 w-4 h-4">
-                    <div className="absolute top-0 left-0 w-full h-0.5 bg-white" />
-                    <div className="absolute top-0 left-0 w-0.5 h-full bg-white" />
-                  </div>
-                  {/* Corner guides - top-right */}
-                  <div className="absolute top-4 right-4 w-4 h-4">
-                    <div className="absolute top-0 right-0 w-full h-0.5 bg-white" />
-                    <div className="absolute top-0 right-0 w-0.5 h-full bg-white" />
-                  </div>
-                  {/* Corner guides - bottom-left */}
-                  <div className="absolute bottom-4 left-4 w-4 h-4">
-                    <div className="absolute bottom-0 left-0 w-full h-0.5 bg-white" />
-                    <div className="absolute bottom-0 left-0 w-0.5 h-full bg-white" />
-                  </div>
-                  {/* Corner guides - bottom-right */}
-                  <div className="absolute bottom-4 right-4 w-4 h-4">
-                    <div className="absolute bottom-0 right-0 w-full h-0.5 bg-white" />
-                    <div className="absolute bottom-0 right-0 w-0.5 h-full bg-white" />
-                  </div>
-                </div>
                 {isScanning && !isAwaitingFeedback && (
                   <div className="absolute top-3 left-3 rounded-full border border-sky-400/60 bg-sky-600/90 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-sky-500/30 z-20">
                     ● SCANNING

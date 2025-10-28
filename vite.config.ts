@@ -1,30 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { copyFileSync } from 'fs'
-import { resolve } from 'path'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
 
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
-
-// Custom plugin to copy QR scanner worker
-const copyQrWorkerPlugin = () => {
-  return {
-    name: 'copy-qr-worker',
-    buildStart() {
-      // Copy QR scanner worker to public directory during build
-      try {
-        const workerSrc = resolve('node_modules/qr-scanner/qr-scanner-worker.min.js')
-        const workerDest = resolve('public/qr-scanner-worker.min.js')
-        copyFileSync(workerSrc, workerDest)
-        console.log('✓ Copied QR scanner worker to public directory')
-      } catch (error) {
-        console.warn('⚠ Failed to copy QR scanner worker:', (error as Error).message)
-      }
-    }
-  }
-}
 
 // Custom plugin to verify worker build output
 const verifyWorkerBuildPlugin = () => {
@@ -108,7 +88,6 @@ export default defineConfig({
     },
   },
   plugins: [
-    copyQrWorkerPlugin(),
     verifyWorkerBuildPlugin(),
     react(),
     tailwindcss(),
