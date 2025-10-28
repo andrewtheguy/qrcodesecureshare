@@ -84,7 +84,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
-  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('TINY')
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
 
@@ -377,8 +377,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                     <div className="flex items-start space-x-2">
                       <RadioGroupItem value="TINY" id="part-size-tiny" className="mt-1" />
                       <div className="flex flex-col flex-1">
-                        <Label htmlFor="part-size-tiny" className="text-sm font-medium cursor-pointer">32 KB (Default - Testing)</Label>
-                        <p className="text-xs text-muted-foreground">Ideal for testing multi-part transfers</p>
+                        <Label htmlFor="part-size-tiny" className="text-sm font-medium cursor-pointer">32 KB</Label>
+                        <p className="text-xs text-muted-foreground">For testing multi-part transfers</p>
                       </div>
                     </div>
                     <div className="flex items-start space-x-2">
@@ -391,7 +391,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                     <div className="flex items-start space-x-2">
                       <RadioGroupItem value="MEDIUM" id="part-size-medium" className="mt-1" />
                       <div className="flex flex-col flex-1">
-                        <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB</Label>
+                        <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB (Default)</Label>
                         <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
                       </div>
                     </div>
