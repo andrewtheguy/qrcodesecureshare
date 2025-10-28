@@ -2,16 +2,26 @@ import { useRef, useEffect, useCallback, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
-interface UseZXingQRScannerOptions {
-  onScan: (data: (string | Uint8Array)[]) => void
+interface UseZXingQRScannerOptionsBase {
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
   facingMode?: 'environment' | 'user'
   scanInterval?: number
-  binary?: boolean // If true, return raw bytes; if false, return text
   debounceMs?: number // Debounce duplicate scans within this time window (ms)
 }
+
+interface UseZXingQRScannerBinaryOptions extends UseZXingQRScannerOptionsBase {
+  onScan: (data: Uint8Array[]) => void
+  binary: true
+}
+
+interface UseZXingQRScannerTextOptions extends UseZXingQRScannerOptionsBase {
+  onScan: (data: string[]) => void
+  binary?: false
+}
+
+type UseZXingQRScannerOptions = UseZXingQRScannerBinaryOptions | UseZXingQRScannerTextOptions
 
 export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const {

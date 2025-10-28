@@ -7,12 +7,11 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import QrScanner from 'qr-scanner'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCode'
-import { useQRScanner } from '@/hooks/useQRScanner'
+import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
 // Optional: Extract ignored block list to a top-level constant or env for easier test control.
 const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
@@ -21,8 +20,6 @@ const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
 const GRID_COLUMNS = 20
 const GRID_MAX_ROWS = 12
 const GRID_MAX_RECTANGLES = GRID_COLUMNS * GRID_MAX_ROWS
-
-QrScanner.WORKER_PATH = '/qr-scanner-worker.min.js'
 
 interface FountainQRDataScannerProps {
   fountainMetadata: FountainMetadata
@@ -84,7 +81,8 @@ export function FountainQRDataScanner({
 
   const stopScannerRef = useRef<(() => void) | null>(null)
   const restartScannerRef = useRef<(() => Promise<void>) | null>(null)
-  const scanRegionOverlayRef = useRef<HTMLDivElement | null>(null)
+  const chunkCounterRef = useRef<number>(0)
+  const lastUIUpdateRef = useRef<number>(Date.now())
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -131,27 +129,40 @@ export function FountainQRDataScanner({
 
     // Send binary data to worker for processing
     workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
-    setReceivedFountainChunks(prev => prev + 1)
+
+    // Batch UI updates to every 500ms to avoid slowing down decoding
+    chunkCounterRef.current++
+    const now = Date.now()
+    if (now - lastUIUpdateRef.current >= 500) {
+      setReceivedFountainChunks(chunkCounterRef.current)
+      lastUIUpdateRef.current = now
+    }
+
     addDebugLog('📤 Sent chunk to worker for processing')
 
     // Invoke callback with parsed seed
     onChunkScanned(seed)
   }, [addDebugLog, onChunkScanned, isTargetedModeActive, workerRef, messageIdCounterRef])
 
-  const handleScan = useCallback((data: string) => {
+  const handleScan = useCallback((qrCodes: Uint8Array[]) => {
+    if (qrCodes.length === 0) return
+
+    const bytes = qrCodes[0]
     try {
-      addDebugLog(`Scanned chunk, length: ${data.length} bytes`)
+      addDebugLog(`Scanned chunk, length: ${bytes.length} bytes`)
 
       if (receiverMode === 'ack-scanning') {
         console.log('[DIAGNOSTIC] Early return: already in ack-scanning mode')
         return
       }
 
-      // Try to check if it is JSON first by checking
-      // if it begins with { (sender feedback)
-      if (data.startsWith('{')) {
+      // Try to check if it is JSON first by checking if it starts with ASCII '{' (0x7B)
+      // (sender feedback QR codes are JSON)
+      if (bytes[0] === 0x7B) { // '{' character
         try {
-          const json = JSON.parse(data)
+          // Convert bytes to string for JSON parsing
+          const jsonString = new TextDecoder().decode(bytes)
+          const json = JSON.parse(jsonString)
           if (json.type === 'FOUNTAIN_FEEDBACK') {
             addDebugLog('📥 Detected FOUNTAIN_FEEDBACK QR, switching to feedback-display mode')
             console.log('[DIAGNOSTIC] Switching to feedback-display mode')
@@ -168,11 +179,6 @@ export function FountainQRDataScanner({
         return
       }
 
-      // Convert string to bytes
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
-      }
       // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
       if (bytes.length >= 2 && bytes[0] === 0xFF && bytes[1] === 0xFD) {
         addDebugLog('🔁 Processing fountain chunk')
@@ -193,20 +199,27 @@ export function FountainQRDataScanner({
   }, [onScanError])
 
   // Continuous data scanning is the most battery-critical operation
-  // Use 30 fps for faster QR code decoding while disabling visual highlights to minimize power consumption
-  const { videoRef, stopScanner, restartScanner } = useQRScanner({
+  // Use 30 fps (33ms interval) for faster QR code decoding with zxing-wasm binary mode
+  const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
     onError: handleScanError,
-    onStart: () => {
-        addDebugLog('✅ Data scanner started');
-        onAckTransitionStatus(true);
+    onCameraReady: () => {
+      addDebugLog('✅ Data scanner started')
+      onAckTransitionStatus(true)
     },
-    onStop: () => addDebugLog('🛑 Data scanner stopped'),
-    maxScansPerSecond: 30,
-    enableVisualHighlights: false,
-    scanRegionOverlayRef
+    scanInterval: 33, // ~30 fps
+    binary: true // Return Uint8Array for fountain binary data
   })
+
+  // Create wrapper functions for compatibility with existing stop/restart logic
+  const stopScanner = useCallback(() => {
+    // Handled by isScanning state change in useZXingQRScanner
+  }, [])
+
+  const restartScanner = useCallback(async () => {
+    // Handled by isScanning state change in useZXingQRScanner
+  }, [])
 
   // Sync scanner refs
   useEffect(() => {
@@ -228,6 +241,8 @@ export function FountainQRDataScanner({
 
   const handleStartScan = useCallback(() => {
     setReceivedFountainChunks(0)
+    chunkCounterRef.current = 0
+    lastUIUpdateRef.current = Date.now()
     setError('')
     setHasAutoStarted(true)
     onScanStart()
@@ -289,14 +304,7 @@ export function FountainQRDataScanner({
                   playsInline
                   muted
                 />
-                <div
-                  ref={scanRegionOverlayRef}
-                  className="pointer-events-none absolute inset-0 z-10 rounded-xl border border-white/25 shadow-[0_0_30px_rgba(0,0,0,0.4)]"
-                  style={{
-                    backgroundImage: 'linear-gradient(to right, rgba(255,255,255,0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(255,255,255,0.18) 1px, transparent 1px)',
-                    backgroundSize: '20% 100%, 100% 20%'
-                  }}
-                />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
                 {isScanning && !isAwaitingFeedback && (
                   <div className="absolute top-3 left-3 rounded-full border border-sky-400/60 bg-sky-600/90 px-3 py-1 text-xs font-semibold text-white shadow-lg shadow-sky-500/30 z-20">
                     ● SCANNING

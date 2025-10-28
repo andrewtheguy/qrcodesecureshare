@@ -14,7 +14,7 @@ interface ChunkData {
   }
   index: number
   total: number
-  data: string // base64 encoded
+  data: Uint8Array // binary data
 }
 
 interface SequentialQRReceiverProps {
@@ -59,25 +59,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
 
-  const handleScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
+  const handleScan = useCallback((qrCodes: Uint8Array[]) => {
     if (qrCodes.length === 0) return
 
-    const qrData = qrCodes[0]
+    const bytes = qrCodes[0]
     try {
-      // QR data is base64 encoded, decode it first
-      let bytes: Uint8Array
-
-      if (typeof qrData === 'string') {
-        // Base64 encoded data
-        const binaryString = atob(qrData)
-        bytes = new Uint8Array(binaryString.length)
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i)
-        }
-      } else {
-        bytes = qrData as Uint8Array
-      }
-
       addDebugLog(`Scanned chunk, length: ${bytes.length} bytes, first byte: ${bytes[0]}`)
 
       addDebugLog(`Bytes length: ${bytes.length}, first byte: ${bytes[0]}, bytes[0]===1: ${bytes[0] === 1}`)
@@ -96,14 +82,11 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
 
         addDebugLog(`Data chunk ${chunkIndex + 1}/${totalChunks} (${chunkData.length} bytes)`)
 
-        // Convert chunk data to base64 for storage
-        const base64Data = btoa(String.fromCharCode(...chunkData))
-
         const chunk: ChunkData = {
           meta: metadata,
           index: chunkIndex,
           total: totalChunks,
-          data: base64Data
+          data: chunkData
         }
 
         // Add chunk to received set
@@ -137,7 +120,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     onScan: handleScan,
     isScanning,
     onError: handleScanError,
-    binary: false
+    binary: true
   })
 
   // Auto-start scanning on mount
@@ -163,12 +146,13 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           // Sort chunks by index
           const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
 
-          // Decode base64 data
-          const base64Data = sortedChunks.map(chunk => chunk.data).join('')
-          const binaryString = atob(base64Data)
-          const bytes = new Uint8Array(binaryString.length)
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i)
+          // Concatenate binary data chunks
+          const totalLength = sortedChunks.reduce((sum, chunk) => sum + chunk.data.length, 0)
+          const bytes = new Uint8Array(totalLength)
+          let offset = 0
+          for (const chunk of sortedChunks) {
+            bytes.set(chunk.data, offset)
+            offset += chunk.data.length
           }
 
           addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)

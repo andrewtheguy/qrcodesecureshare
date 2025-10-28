@@ -1,7 +1,7 @@
 // QR Generation Worker
-// Offloads expensive QRCode.toDataURL calls from main thread
+// Offloads expensive writeBarcode calls from main thread
 
-import QRCode from 'qrcode'
+import { writeBarcode } from 'zxing-wasm/full'
 
 // Listen for messages from main thread
 self.onmessage = async (e: MessageEvent) => {
@@ -9,15 +9,35 @@ self.onmessage = async (e: MessageEvent) => {
 
   if (type === 'generate') {
     try {
-      const svgString = await new Promise<string>((resolve, reject) => {
-        QRCode.toString(binaryString, { ...options, type: 'svg' }, (err, result) => {
-          if (err) reject(err)
-          else resolve(result)
-        })
+      // Convert binary string back to Uint8Array for zxing-wasm
+      const binaryData = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        binaryData[i] = binaryString.charCodeAt(i) & 0xFF
+      }
+
+      // Generate QR code using zxing-wasm
+      const result = await writeBarcode(binaryData, {
+        format: 'QRCode',
+        ecLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') || 'M',
+        sizeHint: options.width || 400,
+        withQuietZones: true
       })
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(new TextEncoder().encode(svgString))))
-      const qrUrl = 'data:image/svg+xml;base64,' + base64
-      self.postMessage({ type: 'success', id, qrUrl })
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // Convert Blob to data URL
+      const blob = result.image as Blob
+      const reader = new FileReader()
+      reader.onload = () => {
+        const qrUrl = reader.result as string
+        self.postMessage({ type: 'success', id, qrUrl })
+      }
+      reader.onerror = () => {
+        self.postMessage({ type: 'error', id, error: 'Failed to convert blob to data URL' })
+      }
+      reader.readAsDataURL(blob)
     } catch (error) {
       self.postMessage({ type: 'error', id, error: (error as Error).message })
     }
