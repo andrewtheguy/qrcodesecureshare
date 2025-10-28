@@ -4,11 +4,12 @@ interface ScanMessage {
   type: 'scan'
   imageData: ImageData
   options?: ReaderOptions
+  binary?: boolean // If true, return raw bytes; if false, return text
 }
 
 interface ScanResult {
   type: 'result'
-  data: string[] | null
+  data: (string | Uint8Array)[] | null
   error?: string
 }
 
@@ -22,7 +23,7 @@ interface UnexpectedMessageResponse {
 self.onmessage = async (e: MessageEvent<ScanMessage>) => {
   if (e.data.type === 'scan') {
     try {
-      const { imageData, options } = e.data
+      const { imageData, options, binary = false } = e.data
 
       const readerOptions: ReaderOptions = {
         formats: ['QRCode'],
@@ -33,11 +34,20 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
 
       const results = await readBarcodes(imageData, readerOptions)
 
-      const detectedTexts = results.length > 0 ? results.map((r) => r.text) : null
+      const detectedData = results.length > 0
+        ? results.map((r) => {
+            // If binary mode is enabled, return raw bytes; otherwise return text
+            if (binary) {
+              return r.bytes
+            } else {
+              return r.text
+            }
+          })
+        : null
 
       const result: ScanResult = {
         type: 'result',
-        data: detectedTexts,
+        data: detectedData,
       }
       self.postMessage(result)
     } catch (error) {

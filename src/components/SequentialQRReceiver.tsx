@@ -62,20 +62,16 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
 
-  const handleScan = useCallback((qrCodes: string[]) => {
+  const handleScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
     if (qrCodes.length === 0) return
 
-    const data = qrCodes[0]
+    const qrData = qrCodes[0]
     try {
-      addDebugLog(`Scanned chunk, length: ${data.length} chars, first char code: ${data.length > 0 ? data.charCodeAt(0) : 'N/A'}`)
+      // With binary: true, we should receive Uint8Array directly
+      // but handle both for safety
+      const bytes = qrData as Uint8Array;
 
-      //  No metadata parsing here; parent guarantees metadata already acquired
-
-      // Convert string to bytes (QR scanner returns string from binary data)
-      const bytes = new Uint8Array(data.length)
-      for (let i = 0; i < data.length; i++) {
-        bytes[i] = data.charCodeAt(i) & 0xFF
-      }
+      addDebugLog(`Scanned chunk, length: ${bytes.length} bytes, first byte: ${bytes[0]}`)
 
       addDebugLog(`Bytes length: ${bytes.length}, first byte: ${bytes[0]}, bytes[0]===1: ${bytes[0] === 1}`)
 
@@ -133,7 +129,8 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
     isScanning,
-    onError: handleScanError
+    onError: handleScanError,
+    binary: true
   })
 
   // Auto-start scanning on mount

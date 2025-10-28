@@ -10,7 +10,8 @@
       "Bash(git log:*)",
       "Bash(git checkout:*)",
       "Bash(npm run lint)",
-      "mcp__fetch__fetch_markdown"
+      "mcp__fetch__fetch_markdown",
+      "WebFetch(domain:zxing-wasm.deno.dev)"
     ],
     "deny": [],
     "ask": []

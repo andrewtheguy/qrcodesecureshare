@@ -3,12 +3,13 @@ import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
 interface UseZXingQRScannerOptions {
-  onScan: (data: string[]) => void
+  onScan: (data: (string | Uint8Array)[]) => void
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
   facingMode?: 'environment' | 'user'
   scanInterval?: number
+  binary?: boolean // If true, return raw bytes; if false, return text
 }
 
 export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
@@ -19,6 +20,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     isScanning,
     facingMode = 'environment',
     scanInterval,
+    binary = false, // Default to text mode for backward compatibility
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -102,6 +104,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         {
           type: 'scan',
           imageData,
+          binary,
         },
         [imageData.data.buffer]
       )
