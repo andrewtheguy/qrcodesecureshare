@@ -457,7 +457,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           <FountainQRFeedbackScanner
             encoder={encoder}
             sessionId={sessionId}
-            isActive={senderMode === 'feedback-scanning'}
             lastProcessedSequence={lastProcessedSequence}
             windowInfo={windowInfo}
             lastDecodedInWindow={lastDecodedInWindow}
