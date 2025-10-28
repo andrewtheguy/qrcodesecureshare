@@ -213,7 +213,14 @@ self.onmessage = async (event: MessageEvent) => {
                             // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
                             if (checksumMatch) {
                                 decoder!.markPartCompleted(partInfo.currentPartIndex);
-                                console.log(`Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
+                                console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
+
+                                // If this was the last part, force a decode check to trigger completion
+                                const isLastPart = (partInfo.currentPartIndex + 1) === partInfo.totalParts;
+                                if (isLastPart) {
+                                    console.log('[Worker] Last part completed, forcing completion check...');
+                                    lastDecodeAttemptTime = 0; // Force decode attempt
+                                }
                             }
                         }
                     }
