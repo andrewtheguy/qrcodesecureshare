@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import QRCode from 'qrcode'
+import { writeBarcode } from 'zxing-wasm/full'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
@@ -211,20 +211,43 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [fps])
 
   // Generate QR in worker (for data chunks only)
-  const generateQRInWorker = useCallback((binaryString: string, options: object): Promise<string> => {
+  const generateQRInWorker = useCallback((binaryString: string, options: { errorCorrectionLevel?: string; width?: number; margin?: number; color?: { dark: string; light: string } }): Promise<string> => {
     // Check if we should skip worker due to recent failures (exponential backoff)
     const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
     const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
 
+    // Convert binary string back to Uint8Array for zxing-wasm
+    const binaryData = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      binaryData[i] = binaryString.charCodeAt(i) & 0xFF
+    }
+
+    // Generate QR directly using zxing-wasm (writeBarcode is efficient enough)
+    const generateZXingQR = async (): Promise<string> => {
+      const result = await writeBarcode(binaryData, {
+        format: 'QRCode',
+        ecLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') || 'M',
+        sizeHint: options.width || 400,
+        withQuietZones: true
+      })
+
+      if (result.error) {
+        throw new Error(result.error)
+      }
+
+      // Convert Blob to data URL
+      return URL.createObjectURL(result.image as Blob)
+    }
+
     if (shouldSkipWorker) {
-      // Direct fallback during backoff period
-      return QRCode.toDataURL(binaryString, options)
+      // Direct generation during backoff period
+      return generateZXingQR()
     }
 
     const workerPromise = new Promise<string>((resolve, reject) => {
       if (!workerRef.current) {
-        // Fallback to direct QRCode.toDataURL if worker is unavailable
-        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+        // Fallback to direct zxing generation if worker is unavailable
+        generateZXingQR().then(resolve).catch(reject)
         return
       }
 
@@ -257,8 +280,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         console.warn('Worker postMessage failed; falling back:', err)
         clearTimeout(timeout)
         pendingRequests.current.delete(id)
-        // Fallback to direct QRCode.toDataURL on worker error
-        QRCode.toDataURL(binaryString, options).then(resolve).catch(reject)
+        // Fallback to direct zxing generation on worker error
+        generateZXingQR().then(resolve).catch(reject)
       }
     })
 
@@ -297,11 +320,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         if (failures >= 5) {
           setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
         } else if (failures >= 3) {
-          setWorkerFallbackHint('Using SVG-based QR generation method.')
+          setWorkerFallbackHint('Using zxing-wasm QR generation method.')
         }
       }
 
-      return QRCode.toDataURL(binaryString, options)
+      return generateZXingQR()
     })
   }, [chunkCountRef, bufferLengthRef, fpsRef, onFpsChange])
 
