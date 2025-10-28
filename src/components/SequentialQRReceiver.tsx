@@ -141,54 +141,59 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     setIsScanning(true)
   }, [])
 
-  const reconstructFile = useCallback(async (chunks: Map<number, ChunkData>, stopScan: () => void) => {
-    try {
-      // Sort chunks by index
-      const sortedChunks = Array.from(chunks.values()).sort((a, b) => a.index - b.index)
-
-      // Decode base64 data
-      const base64Data = sortedChunks.map(chunk => chunk.data).join('')
-      const binaryString = atob(base64Data)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-
-      addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
-
-      // Integrity verification using initialMetadata checksum (if present)
-      const calc = await computeChecksum(bytes, 'crc32')
-      const checksumMatch = calc === initialMetadata.checksum
-      addDebugLog(checksumMatch
-        ? `🔐 Integrity OK (crc32 ${calc})`
-        : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
-      setIntegrityOk(checksumMatch)
-      setActualChecksum(calc)
-
-
-      // Create blob and download URL
-      const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
-      const url = URL.createObjectURL(blob)
-
-      setDownloadUrl(url)
-      setSuccess(true)
-      setIsScanning(false)
-      stopScan()
-    } catch (err) {
-      console.error('Reconstruction error:', err)
-      setError('Failed to reconstruct file from chunks')
-    }
-  }, [addDebugLog, initialMetadata.checksum, initialMetadata.checksumAlg, metadata.type, metadata.name])
+  // Use ref to track if we've already initiated reconstruction (prevents duplicate calls)
+  const reconstructionInitiatedRef = useRef(false)
 
   // Check if all chunks received and reconstruct file
   useEffect(() => {
-  if (totalChunks === 0 || receivedChunks.size === 0) return
+    if (totalChunks === 0 || receivedChunks.size === 0) return
+    if (success || reconstructionInitiatedRef.current) return // Guard: Don't reconstruct again if already successful or in progress
 
     // totalChunks is the number of data chunks (metadata chunk is separate)
     if (receivedChunks.size === totalChunks) {
-      reconstructFile(receivedChunks, stopScanner)
+      reconstructionInitiatedRef.current = true // Mark that we're starting reconstruction
+
+      // Execute reconstruction inline to avoid dependency array issues
+      ;(async () => {
+        try {
+          // Sort chunks by index
+          const sortedChunks = Array.from(receivedChunks.values()).sort((a, b) => a.index - b.index)
+
+          // Decode base64 data
+          const base64Data = sortedChunks.map(chunk => chunk.data).join('')
+          const binaryString = atob(base64Data)
+          const bytes = new Uint8Array(binaryString.length)
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i)
+          }
+
+          addDebugLog(`✓ Reconstructed file: ${bytes.length} bytes`)
+
+          // Integrity verification using initialMetadata checksum (if present)
+          const calc = await computeChecksum(bytes, 'crc32')
+          const checksumMatch = calc === initialMetadata.checksum
+          addDebugLog(checksumMatch
+            ? `🔐 Integrity OK (crc32 ${calc})`
+            : `❌ Integrity FAILED (expected ${initialMetadata.checksum}, got ${calc})`)
+          setIntegrityOk(checksumMatch)
+          setActualChecksum(calc)
+
+          // Create blob and download URL
+          const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
+          const url = URL.createObjectURL(blob)
+
+          setDownloadUrl(url)
+          setSuccess(true)
+          setIsScanning(false)
+          stopScanner()
+        } catch (err) {
+          console.error('Reconstruction error:', err)
+          setError('Failed to reconstruct file from chunks')
+          reconstructionInitiatedRef.current = false // Reset on error so it can retry
+        }
+      })()
     }
-  }, [receivedChunks, totalChunks, reconstructFile, stopScanner])
+  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type, stopScanner])
 
 
   const handleStartScan = () => {
