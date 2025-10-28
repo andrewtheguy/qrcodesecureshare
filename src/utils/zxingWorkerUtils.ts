@@ -2,16 +2,16 @@ import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 
 interface ScanResult {
   type: 'result'
-  data: string | null
+  data: string[] | null
   error?: string
 }
 
 /**
- * Decode QR code from an image file using web worker
+ * Decode QR codes from an image file using web worker
  * @param file The image file to decode
- * @returns Promise<string | null> The decoded QR code data or null if no QR code found
+ * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export function decodeQRFromImage(file: File): Promise<string | null> {
+export function decodeQRFromImage(file: File): Promise<string[] | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -85,11 +85,11 @@ export function decodeQRFromImage(file: File): Promise<string | null> {
 }
 
 /**
- * Decode QR code from ImageData using web worker
+ * Decode QR codes from ImageData using web worker
  * @param imageData The ImageData to decode
- * @returns Promise<string | null> The decoded QR code data or null if no QR code found
+ * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export async function decodeQRFromImageData(imageData: ImageData): Promise<string | null> {
+export function decodeQRFromImageData(imageData: ImageData): Promise<string[] | null> {
   return new Promise((resolve, reject) => {
     const worker = new ZXingWorker()
 

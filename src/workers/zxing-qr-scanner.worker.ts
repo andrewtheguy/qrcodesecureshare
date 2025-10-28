@@ -12,6 +12,13 @@ interface ScanResult {
   error?: string
 }
 
+interface UnexpectedMessageResponse {
+  type: 'error'
+  error: string
+  unexpectedType: string
+  originalMessage: unknown
+}
+
 self.onmessage = async (e: MessageEvent<ScanMessage>) => {
   if (e.data.type === 'scan') {
     try {
@@ -41,6 +48,22 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
       }
       self.postMessage(result)
     }
+  } else {
+    // Handle unexpected message types for debugging
+    const unexpectedType = typeof e.data === 'object' && e.data !== null && 'type' in e.data
+      ? String((e.data as unknown as Record<string, unknown>).type)
+      : 'unknown'
+
+    const errorMessage = `Unexpected message type received: ${unexpectedType}`
+    console.warn(errorMessage, e.data)
+
+    const errorResponse: UnexpectedMessageResponse = {
+      type: 'error',
+      error: errorMessage,
+      unexpectedType,
+      originalMessage: e.data,
+    }
+    self.postMessage(errorResponse)
   }
 }
 
