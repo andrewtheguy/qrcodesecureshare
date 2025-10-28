@@ -136,11 +136,13 @@ export function OfflineQRReceiver() {
   }, [])
 
   // Metadata scanning is brief and one-time, so we use a slightly higher scan rate (10 fps = 100ms interval)
+  // Add debounce to prevent duplicate metadata detections within 500ms
   const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: (data) => handleMetadataScan(data[0]),
     isScanning,
     onError: handleScanError,
-    scanInterval: 100
+    scanInterval: 100,
+    debounceMs: 500
   })
 
   const handleStartScan = () => {
