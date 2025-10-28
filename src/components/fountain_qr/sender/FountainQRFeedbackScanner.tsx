@@ -8,7 +8,7 @@
  *
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +55,7 @@ interface FountainQRFeedbackScannerProps {
   onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
   onUpdateLastDecodedInWindow: (count: number) => void;
   onUpdateLastWindowExpansion: (timestamp: number) => void;
+  autoStartScanning?: boolean;
 }
 
 export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps> = ({
@@ -71,10 +72,18 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   onUpdateWindowInfo,
   onUpdateLastDecodedInWindow,
   onUpdateLastWindowExpansion,
+  autoStartScanning = false,
 }) => {
   const [currentMode, setCurrentMode] = useState<'scanning' | 'idle'>('idle');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
   const [processingRef, setProcessingRef] = useState(false);
+
+  // Auto-start scanning if parent is in feedback-scanning mode
+  useEffect(() => {
+    if (autoStartScanning && currentMode === 'idle') {
+      setCurrentMode('scanning');
+    }
+  }, [autoStartScanning]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedback) => {
     try {

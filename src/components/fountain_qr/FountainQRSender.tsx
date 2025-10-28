@@ -468,6 +468,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             onUpdateWindowInfo={handleUpdateWindowInfo}
             onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
             onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
+            autoStartScanning={senderMode === 'feedback-scanning'}
           />
         ) : (
           <FountainQRManualFeedbackInput
