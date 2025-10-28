@@ -81,6 +81,8 @@ export function FountainQRDataScanner({
 
   const chunkCounterRef = useRef<number>(0)
   const lastUIUpdateRef = useRef<number>(Date.now())
+  const lastBlocksReceivedRef = useRef<number>(0) // Track last received block count
+  const lastDecodeAttemptRef = useRef<number>(Date.now()) // Track last decode attempt time
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -125,9 +127,6 @@ export function FountainQRDataScanner({
     // Parse seed from bytes (big-endian from bytes[2] and bytes[3])
     const seed = (bytes[2] << 8) | bytes[3]
 
-    // Send binary data to worker for processing
-    workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
-
     // Batch UI updates to every 500ms to avoid slowing down decoding
     chunkCounterRef.current++
     const now = Date.now()
@@ -136,11 +135,21 @@ export function FountainQRDataScanner({
       lastUIUpdateRef.current = now
     }
 
-    addDebugLog('📤 Sent chunk to worker for processing')
+    // Only attempt decode once per second if new blocks have been received
+    const hasNewBlocks = decodedBlocks !== lastBlocksReceivedRef.current
+    if (hasNewBlocks || (now - lastDecodeAttemptRef.current >= 1000)) {
+      // Send binary data to worker for processing
+      workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
+      lastDecodeAttemptRef.current = now
+      lastBlocksReceivedRef.current = decodedBlocks
+      addDebugLog('📤 Sent chunk to worker for processing')
+    } else {
+      addDebugLog('⏭️  Skipping decode (no new blocks, within 1s window)')
+    }
 
     // Invoke callback with parsed seed
     onChunkScanned(seed)
-  }, [addDebugLog, onChunkScanned, isTargetedModeActive, workerRef, messageIdCounterRef])
+  }, [addDebugLog, onChunkScanned, isTargetedModeActive, workerRef, messageIdCounterRef, decodedBlocks])
 
   const handleScan = useCallback((qrCodes: Uint8Array[]) => {
     if (qrCodes.length === 0) return
@@ -222,6 +231,8 @@ export function FountainQRDataScanner({
     setReceivedFountainChunks(0)
     chunkCounterRef.current = 0
     lastUIUpdateRef.current = Date.now()
+    lastBlocksReceivedRef.current = 0
+    lastDecodeAttemptRef.current = Date.now()
     setError('')
     setHasAutoStarted(true)
     onScanStart()
