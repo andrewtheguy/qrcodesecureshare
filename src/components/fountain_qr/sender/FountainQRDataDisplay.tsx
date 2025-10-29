@@ -31,9 +31,9 @@ interface FountainQRDataDisplayProps {
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
-  fps: number
-  onFpsChange: (fps: number) => void
 }
+
+const DEFAULT_FPS = 25
 
 export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const {
@@ -45,12 +45,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     activationToken,
     onChunkGenerated,
     onBufferUpdate,
-    onError,
-    fps,
-    onFpsChange
+    onError
   } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
+  const [fps, setFps] = useState<number>(DEFAULT_FPS)
   const [chunkCount, setChunkCount] = useState(0)
   const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
   const [bufferLength, setBufferLength] = useState(0) // Separate state for UI display
@@ -299,7 +298,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         if (failures >= 5) {
           originalFpsRef.current = fpsRef.current
           const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
-          onFpsChange(reducedFps)
+          setFps(reducedFps)
           console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
         }
 
@@ -320,7 +319,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       return generateZXingQR()
     })
-  }, [chunkCountRef, bufferLengthRef, fpsRef, onFpsChange])
+  }, [chunkCountRef, bufferLengthRef, fpsRef])
 
   // Generate and display fountain-coded chunk in binary format
   useEffect(() => {
@@ -688,9 +687,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     })
 
     if (Math.abs(closestSnap - newFps) <= threshold) {
-      onFpsChange(closestSnap)
+      setFps(closestSnap)
     } else {
-      onFpsChange(newFps)
+      setFps(newFps)
     }
   }
 

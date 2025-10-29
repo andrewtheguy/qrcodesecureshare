@@ -19,8 +19,6 @@ import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
 import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput'
 
-const DEFAULT_FOUNTAIN_FPS = 20
-
 interface FountainQRSenderProps {
   file: File
   sessionId: number
@@ -44,7 +42,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
-  const [senderFps, setSenderFps] = useState<number>(DEFAULT_FOUNTAIN_FPS)
   const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
@@ -244,8 +241,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           onChunkGenerated={handleChunkGenerated}
           onBufferUpdate={handleBufferUpdate}
           onError={handleDataDisplayError}
-          fps={senderFps}
-          onFpsChange={setSenderFps}
         />
       )}
 
