@@ -16,27 +16,12 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
-import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
-
-interface WindowInfo {
-  windowEnabled: boolean;
-  windowStart: number;
-  windowEnd: number;
-  windowSize: number;
-  totalBlocks: number;
-  isWindowComplete: boolean;
-  skipBlocksBelow: number;
-  currentSegment: number;
-  totalSegments: number;
-  segmentProgress: number;
-  segmentSizeBlocks: number;
-}
 
 interface ProcessedFeedbackData {
   sequence: number;
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number | undefined; windowEnd?: number | undefined; progress?: number };
+  lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
   windowExpanded: boolean;
   message: string;
 }
@@ -45,16 +30,10 @@ interface FountainQRFeedbackScannerProps {
   encoder: FountainEncoder | null;
   sessionId: number;
   lastProcessedSequence: number;
-  windowInfo: WindowInfo | null;
-  lastDecodedInWindow: number;
-  lastWindowExpansion: number | null;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
   onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
-  onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
-  onUpdateLastDecodedInWindow: (count: number) => void;
-  onUpdateLastWindowExpansion: (timestamp: number) => void;
   autoStartScanning?: boolean;
 }
 
@@ -62,16 +41,10 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   encoder,
   sessionId,
   lastProcessedSequence,
-  windowInfo,
-  lastDecodedInWindow,
-  lastWindowExpansion,
   onFeedbackProcessed,
   onAckGenerated,
   onModeChange,
   onError,
-  onUpdateWindowInfo,
-  onUpdateLastDecodedInWindow,
-  onUpdateLastWindowExpansion,
   autoStartScanning = false,
 }) => {
   const [currentMode, setCurrentMode] = useState<'scanning' | 'idle'>('idle');
@@ -141,24 +114,14 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       return;
     }
 
-    const firstMissingBlock = data.firstMissingBlock || 0;
-
     if (data.mode === 'statistics') {
       console.log('Processing statistics feedback:', 'N/A', '/', 'N/A');
       console.log('Receiver progress:', data.progress, '%');
       encoder?.setReceivedBlocks([]);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
-
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
 
       const lastStats = {
         totalDecoded: 0,
-        totalBlocks: updatedWindowInfo?.totalBlocks ?? 0,
-        windowStart: updatedWindowInfo?.windowStart,
-        windowEnd: updatedWindowInfo?.windowEnd,
+        totalBlocks: encoder?.getMetadata().totalSourceBlocks ?? 0,
         progress: data.progress,
       };
 
@@ -175,12 +138,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
           const partInfo = encoder?.getPartInfo();
           newPartIndex = partInfo?.currentPartIndex;
           console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
-
-          // Update window info after part transition
-          const newWindowInfo = encoder?.getWindowInfo();
-          if (newWindowInfo) {
-            onUpdateWindowInfo(newWindowInfo);
-          }
         } else {
           console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
         }
@@ -192,99 +149,10 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         return;
       }
 
-      // SENDER: Single authority for window expansion
-      // Sender derives expansion decisions from receiver progress metrics instead of explicit flags
-      // Skip window expansion in part-based mode (use part transitions instead)
-      let windowExpanded = false;
-      const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? null;
-      const isPartBasedMode = data.currentPart !== undefined && data.totalParts !== undefined;
-      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete && !isPartBasedMode) {
-        const { windowEnd } = effectiveWindowInfo;
-        const effectiveWindowSize = windowEnd - firstMissingBlock;
-        const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
-        // Use decodedInWindow from feedback (required field)
-        const decodedInWindow = data.decodedInWindow;
-        const hasProgressed = decodedInWindow > lastDecodedInWindow;
+      // Window expansion logic removed - using part-based mode instead
 
-        const meetsExpansionThreshold =
-          hasProgressed && clampedEffectiveWindowSize > 0 && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD;
-
-        if (clampedEffectiveWindowSize === 0) {
-          // Skip expansion when clamped effective window size is 0
-          console.log('[FountainQRFeedbackScanner] Skipping expansion: clampedEffectiveWindowSize is 0');
-          if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (meetsExpansionThreshold) {
-          const now = Date.now();
-          if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-            const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
-            const expansionCalc = calculateWindowExpansionSize(
-              firstMissingBlock,
-              firstMissingBlock,
-              windowEnd,
-              clampedEffectiveWindowSize,
-              data.progress,
-              blockSize,
-              effectiveWindowInfo.totalBlocks
-            );
-            console.log(
-              `[FountainQRFeedbackScanner] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, effectiveWindowSize=${effectiveWindowSize}, clampedEffectiveWindowSize=${clampedEffectiveWindowSize}, threshold=${Math.round(clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
-            );
-            const oldWindowInfo = encoder?.getWindowInfo();
-            const oldWindowEnd = oldWindowInfo?.windowEnd;
-            encoder?.expandWindow(expansionCalc.expansionBlocks);
-            const newWindowInfo = encoder?.getWindowInfo();
-            const expansionSucceeded =
-              !!newWindowInfo &&
-              (typeof oldWindowEnd === 'number'
-                ? newWindowInfo.windowEnd > oldWindowEnd
-                : expansionCalc.expansionBlocks > 0);
-
-            if (newWindowInfo) {
-              onUpdateWindowInfo(newWindowInfo);
-              if (expansionSucceeded) {
-                console.log(
-                  `[FountainQRFeedbackScanner] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-                );
-              } else {
-                console.log(
-                  '[FountainQRFeedbackScanner] Window expansion requested but window end did not change; retaining decodedInWindow state.'
-                );
-              }
-            }
-
-            if (expansionSucceeded) {
-              windowExpanded = true;
-              onUpdateLastDecodedInWindow(0);
-              onUpdateLastWindowExpansion(now);
-            } else if (hasProgressed) {
-              onUpdateLastDecodedInWindow(decodedInWindow);
-            }
-          } else if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (hasProgressed) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
-        }
-      }
-
-      // Get the current (possibly expanded) window info to send to receiver
-      console.log('[FountainQRFeedbackScanner] Getting final window info for ACK generation');
-      console.log('[FountainQRFeedbackScanner] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRFeedbackScanner] CRITICAL: getWindowInfo() returned null/undefined');
-        console.error('[FountainQRFeedbackScanner] Encoder metadata:', encoder.getMetadata());
-        onError('Failed to get window info from encoder. Cannot generate ACK.');
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
-      }
-      console.log('[FountainQRFeedbackScanner] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
-
-      // Determine message based on part transition or window expansion
-      let ackMessage = `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`;
+      // Determine message based on part transition
+      let ackMessage = `Statistics received.`;
       if (partTransition && newPartIndex !== undefined) {
         ackMessage = `Part ${(data.currentPart ?? 0) + 1} complete. Moving to part ${newPartIndex + 1}.`;
       }
@@ -296,9 +164,9 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         command: 'acknowledge',
         acknowledgedSequence: data.sequence,
         message: ackMessage,
-        windowExpanded,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
+        windowExpanded: false,
+        windowStart: 0,
+        windowEnd: 0,
         ...(partTransition && { partTransition, newPartIndex })
       };
 
@@ -309,7 +177,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         sequence: data.sequence,
         mode: 'statistics',
         lastStats,
-        windowExpanded,
+        windowExpanded: false,
         message: ackFeedback.message,
       });
 
@@ -326,25 +194,9 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
       console.log('Receiver progress:', data.progress, '%');
       encoder?.setMissingBlocks(missingBlocks);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
 
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
-
-      // Generate ACK without expansion (targeted mode is final cleanup)
-      console.log('[FountainQRFeedbackScanner] Getting final window info for targeted mode ACK');
-      console.log('[FountainQRFeedbackScanner] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRFeedbackScanner] CRITICAL: getWindowInfo() returned null in targeted mode');
-        onError('Failed to get window info from encoder. Cannot generate ACK.');
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
-      }
-      console.log('[FountainQRFeedbackScanner] Targeted mode ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+      // Generate ACK for targeted mode (final cleanup)
+      console.log('[FountainQRFeedbackScanner] Processing targeted feedback for part cleanup');
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -353,8 +205,8 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         acknowledgedSequence: data.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
         windowExpanded: false,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
+        windowStart: 0,
+        windowEnd: 0,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -373,7 +225,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
     setProcessingRef(false);
 
-  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, encoder, onFeedbackProcessed, onModeChange, onError, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, generateSenderFeedbackQR, processingRef]);
+  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, processingRef]);
 
   // Initialize scanner hook after handleFeedbackScan is defined
   const { videoRef, canvasRef } = useZXingQRScanner({

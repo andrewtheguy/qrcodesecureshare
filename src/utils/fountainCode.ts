@@ -1,5 +1,3 @@
-import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getBaselineWindowExpansionBlocks } from './fountainConfig'
-
 /**
  * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
  *
@@ -10,15 +8,13 @@ import { WINDOW_ENABLE_THRESHOLD, getSegmentSizeBlocks, getBaselineWindowExpansi
  *  - Renormalizes distribution when truncated by max degree
  *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
  *  - Simplified generateChunk(): no parameter – encoder owns all tuning
- *  - Segment-based windowing for files > 200KB: treats large files as multiple small file segments.
- *    Window expansion is derived from the segment size and adaptive threshold rather than a fixed byte cap,
- *    allowing larger jumps when the receiver has already decoded substantial portions of the window.
+ *  - Part-based transfer for large files: splits files into fixed-size parts (256KB/512KB/1024KB)
+ *    with independent checksum validation and memory cleanup
  *
  * Recommended single-session max file size with default blockSize=400 bytes:
  *   Green zone: ≤ ~200 KB (k ≲ 500)
  *   Yellow zone: 200–250 KB (k 500–625) – still fine
- *   Red (split recommended): > 250 KB
- * Time estimate (default fps=2, overhead≈1.08): T ≈ 0.0009 * fileBytes seconds
+ *   For larger files: Use part-based transfer mode
  */
 
 // Pseudo-random number generator with seed (for reproducibility)
@@ -130,7 +126,6 @@ export interface FountainEncoderOptions {
   maxDegree?: number  // hard ceiling (auto chosen if omitted)
   degree1Rate?: number
   lowDegreeRate?: number
-  windowEnabled?: boolean  // force disable windowing (default: auto based on file size)
   maxQRDataSize?: number  // maximum QR data size in bytes (for degree tuning)
   // Part-based transfer options
   partBasedMode?: boolean  // enable part-based transfer (feedback mode only)
@@ -141,7 +136,6 @@ export interface FountainEncoderStats {
   producedChunks: number
   avgDegree: number
   uniqueBlockCoverage: number  // fraction of source blocks appearing in at least one emitted chunk
-  windowCoverage: number
 }
 
 export class FountainEncoder {
@@ -155,10 +149,6 @@ export class FountainEncoder {
   private samplerOpts: DegreeSamplerOptions
   private receivedBlocks: Set<number> = new Set()
   private targetedMode: boolean = false
-  private windowStart: number = 0
-  private windowEnd: number = 0
-  private windowEnabled: boolean = false
-  private skipBlocksBelow: number = 0
 
   // Part-based transfer fields
   private partBasedMode: boolean = false
@@ -233,40 +223,6 @@ export class FountainEncoder {
     }
 
     this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }
-
-    // Initialize window state
-    // SENDER IS THE SINGLE SOURCE OF TRUTH FOR WINDOWING
-    this.windowStart = 0
-    if (this.partBasedMode) {
-      // Part-based mode: window is set to current part boundaries
-      this.windowEnabled = true
-      this.initializeWindowForCurrentPart()
-    } else if (opts.windowEnabled === false) {
-      // Force disable windowing
-      this.windowEnabled = false
-      this.windowEnd = numBlocks
-    } else if (data.length < WINDOW_ENABLE_THRESHOLD) {
-      this.windowEnabled = false
-      this.windowEnd = numBlocks
-    } else {
-      // Files >= 200KB: Use segment-based windowing with fixed 200KB segments
-      this.windowEnabled = true
-      this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
-    }
-
-  }
-
-  /**
-   * Initialize window boundaries for the current part
-   */
-  private initializeWindowForCurrentPart(): void {
-    if (!this.partBasedMode) return
-
-    const partStartByte = this.currentPartIndex * this.partSize
-    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.originalData.length)
-
-    this.windowStart = Math.floor(partStartByte / this.blockSize)
-    this.windowEnd = Math.ceil(partEndByte / this.blockSize)
   }
 
   /**
@@ -308,7 +264,7 @@ export class FountainEncoder {
   }
 
   /**
-   * Move to the next part and update window boundaries
+   * Move to the next part
    * Returns true if moved to next part, false if already at last part
    */
   moveToNextPart(): boolean {
@@ -316,12 +272,10 @@ export class FountainEncoder {
     if (this.currentPartIndex >= this.totalParts - 1) return false
 
     this.currentPartIndex++
-    this.initializeWindowForCurrentPart()
 
     // Reset targeted mode for new part
     this.targetedMode = false
     this.receivedBlocks.clear()
-    this.skipBlocksBelow = this.windowStart
 
     return true
   }
@@ -353,8 +307,7 @@ export class FountainEncoder {
     return {
       producedChunks: this.chunkCounter,
       avgDegree: this.chunkCounter > 0 ? this.sumDegrees / this.chunkCounter : 0,
-      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0,
-      windowCoverage: this.windowEnabled ? (this.windowEnd - this.windowStart) / this.sourceBlocks.length : 1.0
+      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0
     }
   }
 
@@ -383,108 +336,41 @@ export class FountainEncoder {
   }
 
   /**
-   * Set the threshold below which blocks should be skipped
-   * This represents the first block index that should be considered for chunk generation
+   * Get available blocks for chunk generation
+   * In part-based mode, returns blocks in current part
+   * Otherwise, returns all blocks
    */
-  setSkipBlocksBelow(threshold: number): void {
-    this.skipBlocksBelow = Math.max(0, Math.min(threshold, this.sourceBlocks.length))
-  }
+  private getAvailableBlocks(): number[] {
+    if (this.partBasedMode) {
+      // Calculate blocks for current part
+      const partStartByte = this.currentPartIndex * this.partSize
+      const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.originalData.length)
+      const startBlockIndex = Math.floor(partStartByte / this.blockSize)
+      const endBlockIndex = Math.ceil(partEndByte / this.blockSize)
 
-  /**
-   * Expand the window by the specified number of blocks or the adaptive baseline increment if not provided.
-   * @param expansionBlocks - Optional number of blocks to expand by. If not provided, uses the baseline (segment * threshold).
-   * Returns true if expansion occurred, false if already at end
-   */
-  expandWindow(expansionBlocks?: number): boolean {
-    if (this.windowEnd >= this.sourceBlocks.length) {
-      return false // Already at the end
-    }
-
-    const defaultExpansion = getBaselineWindowExpansionBlocks(this.blockSize)
-    let expansion: number
-    if (expansionBlocks !== undefined) {
-      const coerced = Math.ceil(expansionBlocks)
-      expansion = coerced > 0 ? coerced : defaultExpansion
+      return Array.from(
+        { length: endBlockIndex - startBlockIndex },
+        (_, i) => i + startBlockIndex
+      )
     } else {
-      expansion = defaultExpansion
+      // Return all blocks
+      return Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
     }
-
-    this.windowEnd = Math.min(this.windowEnd + expansion, this.sourceBlocks.length)
-    return true
-  }
-
-  /**
-   * Get current window information
-   */
-  getWindowInfo(): {
-    windowEnabled: boolean
-    windowStart: number
-    windowEnd: number
-    windowSize: number
-    totalBlocks: number
-    isWindowComplete: boolean
-    skipBlocksBelow: number
-    currentSegment: number
-    totalSegments: number
-    segmentProgress: number
-    segmentSizeBlocks: number
-  } {
-    const { segmentSizeBlocks, totalSegments, currentSegment } = this.getSegmentMetrics()
-    // TODO: segmentProgress should be calculated based on receiver feedback (decoded blocks within current segment)
-    // For now, set to 0 as encoder doesn't track decoded blocks
-    const segmentProgress = 0
-
-    return {
-      windowEnabled: this.windowEnabled,
-      windowStart: this.windowStart,
-      windowEnd: this.windowEnd,
-      windowSize: this.windowEnd - this.windowStart,
-      totalBlocks: this.sourceBlocks.length,
-      isWindowComplete: this.windowEnd >= this.sourceBlocks.length,
-      skipBlocksBelow: this.skipBlocksBelow,
-      currentSegment,
-      totalSegments,
-      segmentProgress,
-      segmentSizeBlocks
-    }
-  }
-
-  /**
-   * Get segment metrics for segment-based windowing calculations
-   */
-  private getSegmentMetrics(): { segmentSizeBlocks: number, totalSegments: number, currentSegment: number } {
-    const segmentSizeBlocks = getSegmentSizeBlocks(this.blockSize)
-    const totalSegments = Math.ceil(this.sourceBlocks.length / segmentSizeBlocks)
-    const currentSegment = Math.min(totalSegments, Math.ceil(this.windowEnd / segmentSizeBlocks))
-    return { segmentSizeBlocks, totalSegments, currentSegment }
-  }
-
-  /**
-   * Get blocks in the current window
-   */
-  private getWindowBlocks(): number[] {
-    const windowBlocks = this.windowEnabled
-      ? Array.from({ length: this.windowEnd - this.windowStart }, (_, i) => i + this.windowStart)
-      : Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
-
-    // Apply skip threshold: filter out blocks below the contiguous prefix
-    return windowBlocks.filter(blockIdx => blockIdx >= this.skipBlocksBelow)
   }
 
   /**
    * Get missing blocks that receiver still needs
    */
   private getMissingBlocks(): number[] {
+    const availableBlocks = this.getAvailableBlocks()
 
-    const windowBlocks = this.getWindowBlocks()
-
-    // Then apply targeted mode filtering
+    // Apply targeted mode filtering
     if (!this.targetedMode) {
-      return windowBlocks
+      return availableBlocks
     }
 
     const missing: number[] = []
-    for (const blockIdx of windowBlocks) {
+    for (const blockIdx of availableBlocks) {
       if (!this.receivedBlocks.has(blockIdx)) {
         missing.push(blockIdx)
       }
@@ -496,32 +382,9 @@ export class FountainEncoder {
     const seed = this.chunkCounter++
     const rng = new SeededRandom(seed)
 
-    // In targeted mode, prefer missing blocks
-    let missingBlocks = this.getMissingBlocks()
-    let availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getWindowBlocks()
-
-    // If no available blocks after applying skip threshold, expand window or ignore skip
-    if (availableBlocks.length === 0) {
-      // Automatically expand the window until it covers skipBlocksBelow
-      while (this.windowEnd < this.skipBlocksBelow && this.expandWindow()) {
-        // Expansion happens in the condition
-      }
-
-      // Recalculate after expansion
-      const windowBlocks = this.getWindowBlocks()
-      missingBlocks = this.targetedMode ? windowBlocks.filter(idx => !this.receivedBlocks.has(idx)) : windowBlocks
-      availableBlocks = missingBlocks.length > 0 ? missingBlocks : windowBlocks
-
-      // If still empty, temporarily ignore the skip filter
-      if (availableBlocks.length === 0) {
-        const fullWindowBlocks = this.windowEnabled
-          ? Array.from({ length: this.windowEnd - this.windowStart }, (_, i) => i + this.windowStart)
-          : Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
-        availableBlocks = this.targetedMode ? fullWindowBlocks.filter(idx => !this.receivedBlocks.has(idx)) : fullWindowBlocks
-      }
-    }
-
-    const finalAvailableBlocks = availableBlocks
+    // Get missing blocks (or all available blocks if not in targeted mode)
+    const missingBlocks = this.getMissingBlocks()
+    const availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getAvailableBlocks()
 
     // Adjust degree based on how many blocks are left
     let degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
@@ -532,14 +395,14 @@ export class FountainEncoder {
     }
 
     // Cap degree at available blocks
-    degree = Math.min(degree, finalAvailableBlocks.length)
+    degree = Math.min(degree, availableBlocks.length)
 
     const indices: number[] = []
     const selected = new Set<number>()
 
     // Sample from available (missing) blocks
     while (selected.size < degree) {
-      const idx = finalAvailableBlocks[Math.floor(rng.next() * finalAvailableBlocks.length)]
+      const idx = availableBlocks[Math.floor(rng.next() * availableBlocks.length)]
       if (!selected.has(idx)) {
         selected.add(idx)
         indices.push(idx)

@@ -18,20 +18,6 @@ import { computeChecksum } from '@/utils/checksum'
 import { deriveQRCapacity } from '@/constants'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
-interface WindowInfo {
-  windowEnabled: boolean
-  windowStart: number
-  windowEnd: number
-  windowSize: number
-  totalBlocks: number
-  isWindowComplete: boolean
-  skipBlocksBelow: number
-  currentSegment: number
-  totalSegments: number
-  segmentProgress: number
-  segmentSizeBlocks: number
-}
-
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
   sessionId: number
@@ -39,13 +25,10 @@ interface FountainQRDataDisplayProps {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
   }
-  windowInfo: WindowInfo | null
   receivedBlocks: Set<number>
   lastStats: {
     totalDecoded: number
     totalBlocks: number
-    windowStart?: number
-    windowEnd?: number
   } | null
   isActive: boolean
   activationToken: number

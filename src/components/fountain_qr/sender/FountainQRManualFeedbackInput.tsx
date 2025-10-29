@@ -19,27 +19,12 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
-import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
-
-interface WindowInfo {
-  windowEnabled: boolean;
-  windowStart: number;
-  windowEnd: number;
-  windowSize: number;
-  totalBlocks: number;
-  isWindowComplete: boolean;
-  skipBlocksBelow: number;
-  currentSegment: number;
-  totalSegments: number;
-  segmentProgress: number;
-  segmentSizeBlocks: number;
-}
 
 interface ProcessedFeedbackData {
   sequence: number;
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
+  lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
   windowExpanded: boolean;
   message: string;
 }
@@ -49,16 +34,10 @@ interface FountainQRManualFeedbackInputProps {
   sessionId: number;
   isActive?: boolean;
   lastProcessedSequence: number;
-  windowInfo: WindowInfo | null;
-  lastDecodedInWindow: number;
-  lastWindowExpansion: number | null;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
   onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
-  onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
-  onUpdateLastDecodedInWindow: (count: number) => void;
-  onUpdateLastWindowExpansion: (timestamp: number) => void;
   skipTargetedModeForSession: boolean;
 }
 
@@ -66,16 +45,10 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   encoder,
   sessionId,
   lastProcessedSequence,
-  windowInfo,
-  lastDecodedInWindow,
-  lastWindowExpansion,
   onFeedbackProcessed,
   onAckGenerated,
   onModeChange,
   onError,
-  onUpdateWindowInfo,
-  onUpdateLastDecodedInWindow,
-  onUpdateLastWindowExpansion,
   skipTargetedModeForSession,
 }) => {
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
@@ -280,120 +253,31 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     // Clear any existing validation error
     setValidationError('');
-    const firstMissingBlock = feedback.firstMissingBlock || 0;
 
     if (feedback.mode === 'statistics') {
       encoder?.setReceivedBlocks([]);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
 
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
-
-      const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? encoder?.getWindowInfo() ?? null;
-      const totalBlocks = effectiveWindowInfo?.totalBlocks ?? 0;
+      const totalBlocks = encoder?.getMetadata().totalSourceBlocks ?? 0;
       const estimatedTotalDecoded = totalBlocks > 0 ? Math.round((feedback.progress / 100) * totalBlocks) : 0;
 
       const lastStats = {
         totalDecoded: estimatedTotalDecoded,
         totalBlocks,
-        windowStart: effectiveWindowInfo?.windowStart,
-        windowEnd: effectiveWindowInfo?.windowEnd,
         progress: feedback.progress,
       };
 
-      let windowExpanded = false;
-      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
-        const { windowEnd } = effectiveWindowInfo;
-        const effectiveWindowSize = windowEnd - firstMissingBlock;
-        const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
-        const decodedInWindow = feedback.decodedInWindow;
-        const hasProgressed = decodedInWindow > lastDecodedInWindow;
-
-        const meetsExpansionThreshold =
-          hasProgressed && clampedEffectiveWindowSize > 0 && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD;
-
-        if (clampedEffectiveWindowSize === 0) {
-          // Skip expansion when clamped effective window size is 0
-          console.log('[FountainQRManualFeedbackInput] Skipping expansion: clampedEffectiveWindowSize is 0');
-          if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (meetsExpansionThreshold) {
-          const now = Date.now();
-          if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-            const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
-            const expansionCalc = calculateWindowExpansionSize(
-              firstMissingBlock,
-              firstMissingBlock,
-              windowEnd,
-              clampedEffectiveWindowSize,
-              feedback.progress,
-              blockSize,
-              effectiveWindowInfo.totalBlocks
-            );
-            console.log(
-              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, effectiveWindowSize=${effectiveWindowSize}, clampedEffectiveWindowSize=${clampedEffectiveWindowSize}, threshold=${Math.round(clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
-            );
-            const oldWindowInfo = encoder?.getWindowInfo();
-            const oldWindowEnd = oldWindowInfo?.windowEnd;
-            encoder?.expandWindow(expansionCalc.expansionBlocks);
-            const newWindowInfo = encoder?.getWindowInfo();
-            const expansionSucceeded =
-              !!newWindowInfo &&
-              (typeof oldWindowEnd === 'number'
-                ? newWindowInfo.windowEnd > oldWindowEnd
-                : expansionCalc.expansionBlocks > 0);
-
-            if (newWindowInfo) {
-              onUpdateWindowInfo(newWindowInfo);
-              if (expansionSucceeded) {
-                console.log(
-                  `[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-                );
-              } else {
-                console.log(
-                  '[FountainQRManualFeedbackInput] Window expansion requested but window end did not change; retaining decodedInWindow state.'
-                );
-              }
-            }
-
-            if (expansionSucceeded) {
-              windowExpanded = true;
-              onUpdateLastDecodedInWindow(0);
-              onUpdateLastWindowExpansion(now);
-            } else if (hasProgressed) {
-              onUpdateLastDecodedInWindow(decodedInWindow);
-            }
-          } else if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (hasProgressed) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
-        }
-      }
-
-      // Get the current (possibly expanded) window info to send to receiver
-      console.log('[FountainQRManualFeedbackInput] Getting final window info for ACK generation');
-      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null/undefined');
-        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
-        return;
-      }
-      console.log('[FountainQRManualFeedbackInput] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+      // Window expansion logic removed - using part-based mode instead
+      const windowExpanded = false;
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
         sequence: senderFeedbackSequence,
         command: 'acknowledge',
         acknowledgedSequence: feedback.sequence,
-        message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
+        message: `Statistics received.`,
         windowExpanded,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
+        windowStart: 0,
+        windowEnd: 0,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -411,23 +295,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     } else if (feedback.mode === 'targeted') {
       const missingBlocks = feedback.missingBlocks || [];
       encoder?.setMissingBlocks(missingBlocks);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
 
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
-
-      // Generate ACK without expansion (targeted mode is final cleanup)
-      console.log('[FountainQRManualFeedbackInput] Getting final window info for targeted mode ACK');
-      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null in targeted mode');
-        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
-        return;
-      }
-      console.log('[FountainQRManualFeedbackInput] Targeted mode ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+      // Generate ACK for targeted mode (final cleanup)
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -436,8 +305,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         acknowledgedSequence: feedback.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
         windowExpanded: false,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
+        windowStart: 0,
+        windowEnd: 0,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -453,7 +322,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields, generateSenderFeedbackQR]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR]);
 
   const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
