@@ -435,12 +435,16 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
                 // Part checksum (4 bytes) - stored as hex string, convert to bytes
                 const partChecksumHex = partInfo.currentPartChecksum || '00000000'
-                console.log(`[Sender] Part checksum hex: "${partChecksumHex}", length: ${partChecksumHex.length}, offset before part checksum: ${offset}`)
+                if (import.meta.env.DEV) {
+                  console.log(`[Sender] Part checksum hex: "${partChecksumHex}", length: ${partChecksumHex.length}, offset before part checksum: ${offset}`)
+                }
                 for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
                   const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
                   binaryData[offset++] = byte
                 }
-                console.log(`[Sender] Offset after part checksum: ${offset}`)
+                if (import.meta.env.DEV) {
+                  console.log(`[Sender] Offset after part checksum: ${offset}`)
+                }
               }
 
               // Chunk data
@@ -451,15 +455,19 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
               const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
               const checksumHex = await computeChecksum(checksumPayload, 'crc32')
-              console.log(`[Sender] Computed checksum: ${checksumHex}, payload length: ${checksumPayload.length}, offset before: ${offset}, expectedSize: ${expectedSize}, partBasedMode: ${partInfo.partBasedMode}`)
+              if (import.meta.env.DEV) {
+                console.log(`[Sender] Computed checksum: ${checksumHex}, payload length: ${checksumPayload.length}, offset before: ${offset}, expectedSize: ${expectedSize}, partBasedMode: ${partInfo.partBasedMode}`)
+              }
               // Convert hex string to 4 bytes (big-endian)
               const checksumStartOffset = offset
               for (let i = 0; i < 8; i += 2) {
                 const byte = parseInt(checksumHex.slice(i, i + 2), 16)
                 binaryData[offset++] = byte
               }
-              console.log(`[Sender] Wrote checksum bytes at offset ${checksumStartOffset}-${offset - 1}: ${Array.from(binaryData.slice(checksumStartOffset, offset)).map(b => b.toString(16).padStart(2, '0')).join('')}`)
-              console.log(`[Sender] Final binaryData length: ${binaryData.length}, final offset: ${offset}`)
+              if (import.meta.env.DEV) {
+                console.log(`[Sender] Wrote checksum bytes at offset ${checksumStartOffset}-${offset - 1}: ${Array.from(binaryData.slice(checksumStartOffset, offset)).map(b => b.toString(16).padStart(2, '0')).join('')}`)
+                console.log(`[Sender] Final binaryData length: ${binaryData.length}, final offset: ${offset}`)
+              }
 
               const binaryString = String.fromCharCode(...binaryData)
 

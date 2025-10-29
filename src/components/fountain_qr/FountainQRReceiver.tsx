@@ -22,13 +22,9 @@ interface FountainQRReceiverProps {
     type: string
     sessionId: number
     totalSourceBlocks: number
-    blockSize?: number // for windowed fountain
+    blockSize?: number
     checksum: string
     checksumAlg: string
-    windowEnabled: boolean
-    initialWindowBlocks?: number // for windowed fountain
-    windowTriggerThreshold?: number // for windowed fountain
-    windowStart?: number // for windowed fountain
     feedbackEnabled: boolean
     partBasedMode?: boolean
     partSize?: number
@@ -64,11 +60,20 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
    const [skipTargetedModeForSession, setSkipTargetedModeForSession] = useState(false)
 
-  // Window state tracking
-  const [currentWindowStart, setCurrentWindowStart] = useState<number>(initialMetadata.windowStart ?? 0)
-  const [currentWindowEnd, setCurrentWindowEnd] = useState<number>(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
-  const [windowTriggerThreshold] = useState<number>(initialMetadata.windowTriggerThreshold ?? WINDOW_BASELINE_THRESHOLD)
-  const [isWindowEnabled] = useState<boolean>(initialMetadata.windowEnabled ?? false)
+  // Window mode removed - always disabled
+  const isWindowEnabled = false
+  const currentWindowStart = 0
+  const currentWindowEnd = fountainMetadata.totalSourceBlocks
+  const windowTriggerThreshold = 0
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
+  const setCurrentWindowStart = (..._args: any[]) => {} // no-op
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
+  const setCurrentWindowEnd = (..._args: any[]) => {} // no-op
+  const lastTriggeredWindowPercentage = 0
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars, @typescript-eslint/no-explicit-any
+  const setLastTriggeredWindowPercentage = (..._args: any[]) => {} // no-op
+  const lastObservedWindowPercentageRef = useRef<number>(0)
+
   const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const feedbackSequenceRef = useRef<number>(0)
@@ -78,9 +83,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [error, setError] = useState<string>('')
   const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
   const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
-
-  // Adaptive window threshold state
-  const [lastTriggeredWindowPercentage, setLastTriggeredWindowPercentage] = useState<number>(0)
 
   // First missing block tracking (updates only when feedback is generated)
   const [firstMissingBlock, setFirstMissingBlock] = useState<number>(0)
@@ -111,7 +113,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const triggeredFeedbackRef = useRef(false)
   const skipTargetedModeForSessionRef = useRef<boolean>(skipTargetedModeForSession)
   const lastTriggeredWindowPercentageRef = useRef<number>(0)
-  const lastObservedWindowPercentageRef = useRef<number>(0)
 
   // Worker initialization and cleanup
   useEffect(() => {
@@ -511,8 +512,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsScanning(false)
     setIsAwaitingFeedback(false)
     setReceiverMode('data-scanning')
-    setCurrentWindowStart(initialMetadata.windowStart ?? 0)
-    setCurrentWindowEnd(initialMetadata.initialWindowBlocks ?? fountainMetadata.totalSourceBlocks)
+    // Window mode removed
     feedbackSequenceRef.current = 0
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)

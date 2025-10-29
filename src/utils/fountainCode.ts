@@ -173,6 +173,11 @@ export class FountainEncoder {
     metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
     opts: FountainEncoderOptions = {}
   ) {
+    // Validate part-based mode parameters
+    if (opts.partBasedMode && (!opts.partSize || opts.partSize <= 0)) {
+      throw new Error('partSize must be > 0 when partBasedMode is enabled')
+    }
+
     this.originalData = data
     this.blockSize = opts.blockSize ?? 400
 
@@ -602,11 +607,16 @@ export class FountainDecoder {
   private storedPartData: Map<number, Uint8Array> = new Map() // Store reconstructed part data
 
   constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+    // Validate part-based mode parameters
+    if (partBasedMode && partSize <= 0) {
+      throw new Error('partSize must be > 0 when partBasedMode is enabled')
+    }
+
     this.metadata = metadata
     this.partBasedMode = partBasedMode
     this.partSize = partSize
 
-    if (this.partBasedMode && this.partSize > 0) {
+    if (this.partBasedMode) {
       this.totalParts = Math.ceil(metadata.size / partSize)
       this.currentPartIndex = 0
     }

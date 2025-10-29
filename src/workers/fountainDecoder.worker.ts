@@ -24,7 +24,7 @@ let lastDecodedBlockCount = 0; // Track last decoded count to detect new blocks
 // Part-based transfer state
 let partBasedMode = false;
 let partSize = 0;
-let expectedPartChecksum = ''; // Checksum from sender for current part
+const expectedPartChecksums = new Map<number, string>(); // Per-part checksums from sender, keyed by part index
 let lastPartCompleteCheck = 0; // Throttle part completion checks
 
 /**
@@ -104,8 +104,8 @@ function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: n
             partChecksum: partChecksumHex
         };
 
-        // Store expected checksum for validation when part completes
-        expectedPartChecksum = partChecksumHex;
+        // Store expected checksum for this part (indexed by part number)
+        expectedPartChecksums.set(currentPart, partChecksumHex);
 
         console.log(`[Worker] Parsed part metadata: part ${currentPart + 1}/${totalParts}, checksum: ${partChecksumHex}`);
     }
@@ -141,10 +141,10 @@ self.onmessage = async (event: MessageEvent) => {
                 decoder = new FountainDecoder(metadata, partBasedMode, partSize);
                 receivedSeeds = new Set();
                 processedSeeds.clear();
+                expectedPartChecksums.clear(); // Clear any previous part checksums
                 lastDecodeAttemptTime = Date.now();
                 lastDecodedBlockCount = decoder.getDecodedBlockCount();
                 lastPartCompleteCheck = 0;
-                expectedPartChecksum = '';
                 self.postMessage({ type: 'initialized', id, metadata });
                 break;
             }
@@ -198,9 +198,10 @@ self.onmessage = async (event: MessageEvent) => {
                         if (partData) {
                             const computedChecksum = await computeChecksum(partData, 'crc32');
                             const partInfo = decoder!.getPartInfo();
-                            const checksumMatch = computedChecksum === expectedPartChecksum;
+                            const expectedChecksum = expectedPartChecksums.get(partInfo.currentPartIndex) || '';
+                            const checksumMatch = computedChecksum === expectedChecksum;
 
-                            console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Computed checksum: ${computedChecksum}, Expected: ${expectedPartChecksum}, Match: ${checksumMatch}`);
+                            console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Computed checksum: ${computedChecksum}, Expected: ${expectedChecksum}, Match: ${checksumMatch}`);
 
                             partCompleteInfo = {
                                 partComplete: true,
@@ -214,6 +215,9 @@ self.onmessage = async (event: MessageEvent) => {
                             if (checksumMatch) {
                                 decoder!.markPartCompleted(partInfo.currentPartIndex);
                                 console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
+
+                                // Clean up the checksum from the map since this part is completed
+                                expectedPartChecksums.delete(partInfo.currentPartIndex);
 
                                 // If this was the last part, force a decode check to trigger completion
                                 const isLastPart = (partInfo.currentPartIndex + 1) === partInfo.totalParts;
