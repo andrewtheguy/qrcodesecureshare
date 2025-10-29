@@ -17,24 +17,12 @@ interface FountainFeedbackBase {
   sequence: number;
   /** Total number of source blocks */
   totalBlocks?: number;
-  /** Current window start block index */
-  windowStart?: number;
-  /** Current window end block index */
-  windowEnd?: number;
   /**
    * Overall file decode progress as a rounded integer from 0 to 100.
-   * This field is always included in feedback payloads and is used by the adaptive
-   * threshold algorithm to prevent premature feedback requests.
    */
   progress: number;
   /** First missing block index (contiguous prefix) */
   firstMissingBlock: number;
-  /**
-   * Number of blocks decoded within the current window (windowStart..windowEnd).
-   * Used by the sender to decide when to expand the window based on actual progress.
-   * Required for all feedback payloads.
-   */
-  decodedInWindow: number;
 
   // Part-based transfer fields (optional, used when part-based mode is enabled)
   /** Current part index being decoded (0-indexed) */
@@ -97,12 +85,6 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   acknowledgedSequence: number;
   /** Status message */
   message: string;
-  /** Whether the window was expanded */
-  windowExpanded: boolean;
-  /** Sender's current window start (source of truth for receiver) */
-  windowStart: number;
-  /** Sender's current window end (source of truth for receiver) */
-  windowEnd: number;
 
   // Part-based transfer fields (optional, used when part-based mode is enabled)
   /** Whether the sender is moving to the next part */

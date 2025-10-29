@@ -35,14 +35,13 @@ export function normalizeConfirmationCode(code: string): string {
 export async function generateFeedbackConfirmationCode(feedback: FountainFeedback): Promise<string> {
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
-    { version: "1" },
+    { version: "2" }, // Increment version since we removed decodedInWindow
     { type: feedback.type },
     { mode: feedback.mode },
     { sessionId: feedback.sessionId.toString() },
     { sequence: feedback.sequence.toString() },
     { firstMissingBlock: feedback.firstMissingBlock.toString() },
     { progress: feedback.progress.toString() },
-    { decodedInWindow: feedback.decodedInWindow.toString() },
   ]
 
   // Add mode-specific fields

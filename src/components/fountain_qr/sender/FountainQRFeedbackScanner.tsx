@@ -4,7 +4,7 @@
  * This component handles the SENDER's feedback scanning and acknowledgment generation phases
  * of the Fountain Code transfer. It scans feedback QR codes from the receiver containing
  * decoding progress information and generates acknowledgment QR codes to confirm receipt
- * and potentially expand the transmission window.
+ * and coordinate part transitions.
  *
  */
 
@@ -22,7 +22,6 @@ interface ProcessedFeedbackData {
   mode: 'statistics' | 'targeted';
   receivedBlocks?: Set<number>;
   lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
-  windowExpanded: boolean;
   message: string;
 }
 
@@ -164,9 +163,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         command: 'acknowledge',
         acknowledgedSequence: data.sequence,
         message: ackMessage,
-        windowExpanded: false,
-        windowStart: 0,
-        windowEnd: 0,
         ...(partTransition && { partTransition, newPartIndex })
       };
 
@@ -177,7 +173,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         sequence: data.sequence,
         mode: 'statistics',
         lastStats,
-        windowExpanded: false,
         message: ackFeedback.message,
       });
 
@@ -204,9 +199,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         command: 'acknowledge',
         acknowledgedSequence: data.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
-        windowExpanded: false,
-        windowStart: 0,
-        windowEnd: 0,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -216,7 +208,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         sequence: data.sequence,
         mode: 'targeted',
         receivedBlocks: new Set(),
-        windowExpanded: false,
         message: ackFeedback.message,
       });
 
@@ -259,7 +250,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
               </Badge>
               <CardTitle className="text-xl font-semibold text-amber-50">Capture Receiver Feedback</CardTitle>
               <p className="text-sm text-amber-200/70">
-                Align the camera with the receiver&apos;s amber QR card. This update lets you adjust the transmission window and send the next chunk batch.
+                Align the camera with the receiver&apos;s amber QR card to receive progress updates and continue the transfer.
               </p>
             </div>
             <Button

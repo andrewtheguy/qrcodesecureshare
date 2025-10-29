@@ -142,8 +142,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     sequence: number;
     mode: 'statistics' | 'targeted';
     receivedBlocks?: Set<number>;
-    lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
-    windowExpanded: boolean;
+    lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
     message: string;
   }) => {
     setLastProcessedSequence(feedbackData.sequence);
@@ -285,7 +284,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 </Badge>
                 <CardTitle className="text-xl font-semibold text-emerald-50">Show This QR to the Receiver</CardTitle>
                 <p className="text-sm text-emerald-200/70">
-                  Hold the code steady while the receiver scans. This confirms their feedback and unlocks the next data window.
+                  Hold the code steady while the receiver scans. This confirms their feedback and allows the transfer to continue.
                 </p>
               </div>
               <Button

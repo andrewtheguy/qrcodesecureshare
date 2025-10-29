@@ -53,15 +53,12 @@ interface FountainQRFeedbackDisplayProps {
   sessionId: number
   decodedBlocks: number
   decodedBlockIndices: number[]
-  currentWindowStart: number
-  currentWindowEnd: number
   feedbackSequence: number
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
   onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
-  onFirstMissingBlockUpdate: (value: number) => void
-  onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => void
+  onAckReceived: (acknowledgedSequence: number, message: string) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
   onSequenceIncrement: () => void
@@ -84,14 +81,11 @@ export function FountainQRFeedbackDisplay({
   sessionId,
   decodedBlocks,
   decodedBlockIndices,
-  currentWindowStart,
-  currentWindowEnd,
   feedbackSequence,
   lastSenderFeedbackSequence,
   receiverMode,
   isActive,
   onFeedbackGenerated,
-  onFirstMissingBlockUpdate,
   onAckReceived,
   onModeChange,
   onError,
@@ -116,8 +110,6 @@ export function FountainQRFeedbackDisplay({
 
   // Refs for stable inputs to prevent mid-cycle re-generation
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
-  const currentWindowStartRef = useRef<number>(currentWindowStart)
-  const currentWindowEndRef = useRef<number>(currentWindowEnd)
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
   const lastGeneratedSequenceRef = useRef<number>(-1)
@@ -126,11 +118,9 @@ export function FountainQRFeedbackDisplay({
   // Update refs when props change
   useEffect(() => {
     decodedBlockIndicesRef.current = decodedBlockIndices
-    currentWindowStartRef.current = currentWindowStart
-    currentWindowEndRef.current = currentWindowEnd
     fountainMetadataRef.current = fountainMetadata
     sessionIdRef.current = sessionId
-  }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, fountainMetadata, sessionId])
+  }, [decodedBlockIndices, fountainMetadata, sessionId])
 
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
@@ -156,11 +146,6 @@ export function FountainQRFeedbackDisplay({
       }
 
       const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-      // Notify parent of the firstMissingBlock value that will be sent in feedback
-      onFirstMissingBlockUpdate(firstMissingBlock)
-      // Calculate decoded blocks within current window bounds
-      const windowEnd = currentWindowEndRef.current
-      const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= firstMissingBlock && idx < windowEnd).length
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
@@ -174,7 +159,6 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
           progress: overallProgress,
-          decodedInWindow: decodedInWindow,
           // Add part info if in part-based mode
           ...(partCompleteInfo && {
             currentPart: partCompleteInfo.currentPart,
@@ -230,7 +214,6 @@ export function FountainQRFeedbackDisplay({
           sequence: seq,
           firstMissingBlock: firstMissingBlock,
           progress: overallProgress,
-          decodedInWindow: decodedInWindow,
           // Add part info if in part-based mode
           ...(partCompleteInfo && {
             currentPart: partCompleteInfo.currentPart,
@@ -281,7 +264,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, onFeedbackGenerated, onFirstMissingBlockUpdate, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
+  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
@@ -331,13 +314,6 @@ export function FountainQRFeedbackDisplay({
         return
       }
 
-      // Add window range validation
-      if (parsed.command === 'acknowledge' && parsed.windowExpanded !== undefined) {
-        // Note: Window validation is defensive since sender should generate valid ACKs
-        // This protects against corrupted data
-        // No specific window range data in ACK, so we skip detailed validation here
-      }
-
       switch (parsed.command) {
 
         case 'acknowledge': {
@@ -377,9 +353,7 @@ export function FountainQRFeedbackDisplay({
               console.log('[FountainQRFeedbackDisplay] Executing delayed transition to data-scanning mode')
               onModeChange('data-scanning')
 
-              // RECEIVER: Adopt sender's window range as the absolute source of truth
-              // Sender is the single authority for window state - receiver must sync to sender's range
-              onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
+              onAckReceived(parsed.acknowledgedSequence, parsed.message)
             }, 150)
            break
         }
@@ -450,7 +424,7 @@ export function FountainQRFeedbackDisplay({
     const modeMessage = skipTargetedModeForSession
       ? 'Statistics mode locked for this session to keep QR payloads compact.'
       : missingBlocksCount > getTargetedModeMaxMissingBlocks()
-        ? 'Compact stats mode: sharing window progress and decode rate.'
+        ? 'Compact stats mode: sharing progress and decode rate.'
         : feedbackMode === 'targeted'
           ? 'Targeted mode: sharing precise missing block ranges for cleanup.'
           : 'Statistics fallback: payload trimmed to stay scan-friendly.'
@@ -547,15 +521,6 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">Progress:</span>
                 <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
 
-                <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
-                <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.decodedInWindow} / {currentWindowEnd - feedbackData.firstMissingBlock} (
-                  {currentWindowEnd - feedbackData.firstMissingBlock > 0
-                    ? Math.round((feedbackData.decodedInWindow / (currentWindowEnd - feedbackData.firstMissingBlock)) * 100)
-                    : 0
-                  }%)
-                </span>
-
                 {feedbackData.mode === 'targeted' && (
                   <>
                     <span className="text-muted-foreground font-medium text-sm">Missing Blocks:</span>
@@ -573,12 +538,6 @@ export function FountainQRFeedbackDisplay({
 
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window End:</span>
-                <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
                 <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>
