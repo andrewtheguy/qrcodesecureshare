@@ -119,6 +119,8 @@ export interface FountainMetadata {
   blockSize: number
   checksum: string
   checksumAlg: string
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 export interface FountainEncoderOptions {
@@ -130,6 +132,9 @@ export interface FountainEncoderOptions {
   lowDegreeRate?: number
   windowEnabled?: boolean  // force disable windowing (default: auto based on file size)
   maxQRDataSize?: number  // maximum QR data size in bytes (for degree tuning)
+  // Part-based transfer options
+  partBasedMode?: boolean  // enable part-based transfer (feedback mode only)
+  partSize?: number  // size of each part in bytes (256KB, 512KB, or 1024KB)
 }
 
 export interface FountainEncoderStats {
@@ -150,17 +155,42 @@ export class FountainEncoder {
   private samplerOpts: DegreeSamplerOptions
   private receivedBlocks: Set<number> = new Set()
   private targetedMode: boolean = false
-  private windowStart: number
-  private windowEnd: number
-  private windowEnabled: boolean
+  private windowStart: number = 0
+  private windowEnd: number = 0
+  private windowEnabled: boolean = false
   private skipBlocksBelow: number = 0
+
+  // Part-based transfer fields
+  private partBasedMode: boolean = false
+  private partSize: number = 0
+  private totalParts: number = 0
+  private currentPartIndex: number = 0
+  private partChecksums: string[] = []
+  private originalData: Uint8Array
 
   constructor(
     data: Uint8Array,
     metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
     opts: FountainEncoderOptions = {}
   ) {
+    // Validate part-based mode parameters
+    if (opts.partBasedMode && (!opts.partSize || opts.partSize <= 0)) {
+      throw new Error('partSize must be > 0 when partBasedMode is enabled')
+    }
+
+    this.originalData = data
     this.blockSize = opts.blockSize ?? 400
+
+    // Initialize part-based mode if enabled
+    if (opts.partBasedMode && opts.partSize) {
+      this.partBasedMode = true
+      this.partSize = opts.partSize
+      this.totalParts = Math.ceil(data.length / this.partSize)
+      this.currentPartIndex = 0
+      // Initialize with empty checksums array - will be computed asynchronously
+      this.partChecksums = new Array(this.totalParts).fill('')
+    }
+
     const numBlocks = Math.ceil(data.length / this.blockSize)
 
     for (let i = 0; i < numBlocks; i++) {
@@ -207,7 +237,11 @@ export class FountainEncoder {
     // Initialize window state
     // SENDER IS THE SINGLE SOURCE OF TRUTH FOR WINDOWING
     this.windowStart = 0
-    if (opts.windowEnabled === false) {
+    if (this.partBasedMode) {
+      // Part-based mode: window is set to current part boundaries
+      this.windowEnabled = true
+      this.initializeWindowForCurrentPart()
+    } else if (opts.windowEnabled === false) {
       // Force disable windowing
       this.windowEnabled = false
       this.windowEnd = numBlocks
@@ -220,6 +254,97 @@ export class FountainEncoder {
       this.windowEnd = Math.min(getSegmentSizeBlocks(this.blockSize), numBlocks)
     }
 
+  }
+
+  /**
+   * Initialize window boundaries for the current part
+   */
+  private initializeWindowForCurrentPart(): void {
+    if (!this.partBasedMode) return
+
+    const partStartByte = this.currentPartIndex * this.partSize
+    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.originalData.length)
+
+    this.windowStart = Math.floor(partStartByte / this.blockSize)
+    this.windowEnd = Math.ceil(partEndByte / this.blockSize)
+  }
+
+  /**
+   * Compute checksums for all parts asynchronously
+   * Should be called after encoder initialization
+   */
+  async computePartChecksums(): Promise<void> {
+    if (!this.partBasedMode) return
+
+    const { computeChecksum } = await import('./checksum')
+
+    for (let i = 0; i < this.totalParts; i++) {
+      const partStartByte = i * this.partSize
+      const partEndByte = Math.min((i + 1) * this.partSize, this.originalData.length)
+      const partData = this.originalData.slice(partStartByte, partEndByte)
+      this.partChecksums[i] = await computeChecksum(partData, 'crc32')
+    }
+  }
+
+  /**
+   * Get part information
+   */
+  getPartInfo(): {
+    partBasedMode: boolean
+    currentPartIndex: number
+    totalParts: number
+    partSize: number
+    currentPartChecksum: string
+    partChecksums: string[]
+  } {
+    return {
+      partBasedMode: this.partBasedMode,
+      currentPartIndex: this.currentPartIndex,
+      totalParts: this.totalParts,
+      partSize: this.partSize,
+      currentPartChecksum: this.partChecksums[this.currentPartIndex] || '',
+      partChecksums: [...this.partChecksums]
+    }
+  }
+
+  /**
+   * Move to the next part and update window boundaries
+   * Returns true if moved to next part, false if already at last part
+   */
+  moveToNextPart(): boolean {
+    if (!this.partBasedMode) return false
+    if (this.currentPartIndex >= this.totalParts - 1) return false
+
+    this.currentPartIndex++
+    this.initializeWindowForCurrentPart()
+
+    // Reset targeted mode for new part
+    this.targetedMode = false
+    this.receivedBlocks.clear()
+    this.skipBlocksBelow = this.windowStart
+
+    return true
+  }
+
+  /**
+   * Mark a part as completed and clean up its source blocks to save memory
+   * This is called by the sender when receiver confirms part completion
+   */
+  markPartCompleted(partIndex: number): void {
+    if (!this.partBasedMode) return
+    if (partIndex < 0 || partIndex >= this.totalParts) return
+
+    const partStartByte = partIndex * this.partSize
+    const partEndByte = Math.min((partIndex + 1) * this.partSize, this.originalData.length)
+
+    const startBlockIndex = Math.floor(partStartByte / this.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.blockSize)
+
+    // Clear source blocks for this part to save memory
+    for (let i = startBlockIndex; i < endBlockIndex && i < this.sourceBlocks.length; i++) {
+      // Replace with empty array to free memory
+      this.sourceBlocks[i] = new Uint8Array(0)
+    }
   }
 
   getMetadata(): FountainMetadata { return this.metadata }
@@ -473,8 +598,28 @@ export class FountainDecoder {
   private receivedChunks: FountainChunk[] = []
   private isDecoded: boolean = false
 
-  constructor(metadata: FountainMetadata) {
+  // Part-based transfer fields
+  private partBasedMode: boolean = false
+  private partSize: number = 0
+  private totalParts: number = 0
+  private currentPartIndex: number = 0
+  private completedParts: Set<number> = new Set()
+  private storedPartData: Map<number, Uint8Array> = new Map() // Store reconstructed part data
+
+  constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+    // Validate part-based mode parameters
+    if (partBasedMode && partSize <= 0) {
+      throw new Error('partSize must be > 0 when partBasedMode is enabled')
+    }
+
     this.metadata = metadata
+    this.partBasedMode = partBasedMode
+    this.partSize = partSize
+
+    if (this.partBasedMode) {
+      this.totalParts = Math.ceil(metadata.size / partSize)
+      this.currentPartIndex = 0
+    }
   }
 
   // Add a received chunk and try to decode
@@ -544,6 +689,10 @@ export class FountainDecoder {
   }
 
   isComplete(): boolean {
+    if (this.partBasedMode) {
+      // In part-based mode, complete when all parts are stored
+      return this.storedPartData.size === this.totalParts
+    }
     return this.isDecoded
   }
 
@@ -553,6 +702,11 @@ export class FountainDecoder {
 
   // Reconstruct the original data
   getDecodedData(): Uint8Array | null {
+    // In part-based mode, check if all parts are completed
+    if (this.partBasedMode) {
+      return this.getDecodedDataFromParts()
+    }
+
     if (!this.isDecoded) return null
 
     // Reassemble blocks in order
@@ -568,6 +722,34 @@ export class FountainDecoder {
       offset += bytesToCopy
     }
 
+    return result
+  }
+
+  /**
+   * Reconstruct the final file from stored part data
+   */
+  private getDecodedDataFromParts(): Uint8Array | null {
+    if (!this.partBasedMode) return null
+    if (this.storedPartData.size !== this.totalParts) return null
+
+    // Check that all parts are present
+    for (let i = 0; i < this.totalParts; i++) {
+      if (!this.storedPartData.has(i)) return null
+    }
+
+    // Concatenate all parts in order
+    const result = new Uint8Array(this.metadata.size)
+    let offset = 0
+
+    for (let i = 0; i < this.totalParts; i++) {
+      const partData = this.storedPartData.get(i)
+      if (!partData) return null
+
+      result.set(partData, offset)
+      offset += partData.length
+    }
+
+    console.log(`Final file reconstructed from ${this.totalParts} parts (${result.length} bytes)`)
     return result
   }
 
@@ -609,6 +791,170 @@ export class FountainDecoder {
     }
 
     return result
+  }
+
+  /**
+   * Check if the current part is complete (all blocks in part decoded)
+   */
+  isCurrentPartComplete(): boolean {
+    if (!this.partBasedMode) return this.isDecoded
+
+    const partStartByte = this.currentPartIndex * this.partSize
+    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
+
+    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
+
+    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
+      if (!this.decodedBlocks.has(i)) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  /**
+   * Get the data for the current part (for checksum validation)
+   * Returns null if part is not complete
+   */
+  getCurrentPartData(): Uint8Array | null {
+    if (!this.partBasedMode || !this.isCurrentPartComplete()) return null
+
+    const partStartByte = this.currentPartIndex * this.partSize
+    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
+    const partDataSize = partEndByte - partStartByte
+
+    const result = new Uint8Array(partDataSize)
+    let resultOffset = 0
+
+    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
+
+    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
+      const block = this.decodedBlocks.get(i)
+      if (!block) return null
+
+      const blockStartInPart = Math.max(0, partStartByte - i * this.metadata.blockSize)
+      const blockEndInPart = Math.min(this.metadata.blockSize, partEndByte - i * this.metadata.blockSize)
+      const bytesToCopy = blockEndInPart - blockStartInPart
+
+      result.set(block.slice(blockStartInPart, blockEndInPart), resultOffset)
+      resultOffset += bytesToCopy
+    }
+
+    return result
+  }
+
+  /**
+   * Get part information
+   */
+  getPartInfo(): {
+    partBasedMode: boolean
+    currentPartIndex: number
+    totalParts: number
+    partSize: number
+    completedParts: number[]
+  } {
+    return {
+      partBasedMode: this.partBasedMode,
+      currentPartIndex: this.currentPartIndex,
+      totalParts: this.totalParts,
+      partSize: this.partSize,
+      completedParts: Array.from(this.completedParts).sort((a, b) => a - b)
+    }
+  }
+
+  /**
+   * Mark a part as completed and clean up its decoded blocks to save memory
+   */
+  markPartCompleted(partIndex: number): void {
+    if (!this.partBasedMode) return
+    if (partIndex < 0 || partIndex >= this.totalParts) return
+
+    // First, reconstruct and store the part data before cleanup
+    const partData = this.getCurrentPartData()
+    if (partData) {
+      this.storedPartData.set(partIndex, partData)
+      console.log(`Part ${partIndex + 1}/${this.totalParts} reconstructed and stored (${partData.length} bytes)`)
+    }
+
+    this.completedParts.add(partIndex)
+
+    const partStartByte = partIndex * this.partSize
+    const partEndByte = Math.min((partIndex + 1) * this.partSize, this.metadata.size)
+
+    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
+
+    // Clear decoded blocks for this part to save memory
+    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
+      this.decodedBlocks.delete(i)
+    }
+
+    // Clear received chunks that only contain blocks from completed parts
+    this.receivedChunks = this.receivedChunks.filter(chunk => {
+      return chunk.indices.some(idx => {
+        const blockPartIndex = Math.floor((idx * this.metadata.blockSize) / this.partSize)
+        return !this.completedParts.has(blockPartIndex)
+      })
+    })
+
+    console.log(`Part ${partIndex + 1} memory cleaned up. Active blocks: ${this.decodedBlocks.size}, Active chunks: ${this.receivedChunks.length}`)
+  }
+
+  /**
+   * Move to the next part
+   * Returns true if moved to next part, false if already at last part
+   */
+  moveToNextPart(): boolean {
+    if (!this.partBasedMode) return false
+    if (this.currentPartIndex >= this.totalParts - 1) return false
+
+    // Mark current part as completed before moving
+    if (this.isCurrentPartComplete()) {
+      this.markPartCompleted(this.currentPartIndex)
+    }
+
+    this.currentPartIndex++
+    return true
+  }
+
+  /**
+   * Get the number of decoded blocks in the current part
+   */
+  getCurrentPartDecodedBlockCount(): number {
+    if (!this.partBasedMode) return this.decodedBlocks.size
+
+    const partStartByte = this.currentPartIndex * this.partSize
+    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
+
+    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
+
+    let count = 0
+    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
+      if (this.decodedBlocks.has(i)) {
+        count++
+      }
+    }
+
+    return count
+  }
+
+  /**
+   * Get the total number of blocks in the current part
+   */
+  getCurrentPartTotalBlockCount(): number {
+    if (!this.partBasedMode) return this.metadata.totalSourceBlocks
+
+    const partStartByte = this.currentPartIndex * this.partSize
+    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
+
+    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
+    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
+
+    return Math.min(endBlockIndex - startBlockIndex, this.metadata.totalSourceBlocks - startBlockIndex)
   }
 
 }

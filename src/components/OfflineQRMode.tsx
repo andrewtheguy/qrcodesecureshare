@@ -7,8 +7,9 @@ import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './Seque
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
-import { DEFAULT_BLOCK_SIZE, WINDOW_ENABLE_THRESHOLD } from '@/utils/fountainConfig'
-import { getSegmentSizeBlocks } from '../utils/fountainConfig'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
+import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import {
   Dialog,
   DialogContent,
@@ -61,17 +62,16 @@ interface FountainMetadata {
   chunkSize: number
   checksumAlg: 'crc32'
   checksum: string
-  windowEnabled: boolean
-  initialWindowBlocks: number
-  windowStart: number
   feedbackEnabled: boolean
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 type MetadataJson = SequentialMetadata | FountainMetadata | null
 
 export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
    const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
-   const [step, setStep] = useState<'mode' | 'metadata' | 'transfer'>('mode')
+   const [step, setStep] = useState<'mode' | 'partSize' | 'metadata' | 'transfer'>('mode')
    const [metadataQR, setMetadataQR] = useState<string>('')
    const [metadataJson, setMetadataJson] = useState<MetadataJson>(null)
   const [metadataLoading, setMetadataLoading] = useState(false)
@@ -80,6 +80,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
 
@@ -139,22 +140,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
            const sessionId = Math.floor(Math.random() * 65536)
            setCurrentSessionId(sessionId)
 
-           // Calculate window configuration
-           // Note: Actual window padding is applied by FountainEncoder (sender is source of truth)
-           // This metadata just stores the "natural" initial window size
-           let windowEnabled = false
-           let initialWindowBlocks = totalSourceBlocks
-           if (!feedbackEnabled) {
-             // No-feedback mode: disable windowing and cover entire file
-             windowEnabled = false
-             initialWindowBlocks = totalSourceBlocks
-           } else {
-             if (size >= WINDOW_ENABLE_THRESHOLD) {
-               windowEnabled = true
-               // Files >= 200KB: Use segment-based windowing with fixed 200KB segments
-               initialWindowBlocks = Math.min(getSegmentSizeBlocks(DEFAULT_BLOCK_SIZE), totalSourceBlocks)
-             }
-           }
+           // Window mode removed - always disabled
 
           const meta: FountainMetadata = {
             type: 'METADATA',
@@ -170,10 +156,18 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             chunkSize: DEFAULT_BLOCK_SIZE, // include for parity
             checksumAlg: 'crc32',
             checksum,
-            windowEnabled,
-            initialWindowBlocks,
-            windowStart: 0,
-            feedbackEnabled
+            feedbackEnabled,
+            partBasedMode: feedbackEnabled, // Enable part-based mode for feedback transfers
+            partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
+          }
+          if (import.meta.env.DEV) {
+            console.log('[OfflineQRMode] Metadata generation:', {
+              transferMode,
+              feedbackEnabled,
+              partBasedMode: feedbackEnabled,
+              partSizeOption,
+              partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
+            })
           }
           if (cancelled) return
             const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
@@ -224,14 +218,22 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
     if (mode === 'fountain-feedback') {
       setFeedbackEnabled(true)
+      // Go to part size configuration step instead of metadata
+      setStep('partSize')
     } else if (mode === 'fountain-simple') {
       setFeedbackEnabled(false)
+      setStep('metadata')
+    } else {
+      setStep('metadata')
     }
 
-     setStep('metadata')
      setMetadataQR('')
      setMetadataJson(null)
    }
+
+  const handleContinueToMetadata = () => {
+    setStep('metadata')
+  }
 
   const handleStartTransfer = () => {
     setStep('transfer')
@@ -354,6 +356,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
             </div>
           </Button>
+
           <Button
             onClick={() => handleSelectMode('fountain-simple')}
             variant="outline"
@@ -389,6 +392,61 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               Select Different File
             </Button>
           )}
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Part Size Configuration screen (for fountain-feedback mode)
+  if (step === 'partSize' && transferMode === 'fountain-feedback') {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Part Size Configuration</CardTitle>
+          <p className="text-sm text-muted-foreground mt-2">
+            Files are split into parts for efficient transfer with checksum validation. Choose a part size based on your file size and connection stability.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <RadioGroup value={partSizeOption} onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} className="space-y-3">
+            <div className="flex items-start space-x-2">
+              <RadioGroupItem value="TINY" id="part-size-tiny" className="mt-1" />
+              <div className="flex flex-col flex-1">
+                <Label htmlFor="part-size-tiny" className="text-sm font-medium cursor-pointer">32 KB</Label>
+                <p className="text-xs text-muted-foreground">For testing multi-part transfers</p>
+              </div>
+            </div>
+            <div className="flex items-start space-x-2">
+              <RadioGroupItem value="SMALL" id="part-size-small" className="mt-1" />
+              <div className="flex flex-col flex-1">
+                <Label htmlFor="part-size-small" className="text-sm font-medium cursor-pointer">256 KB</Label>
+                <p className="text-xs text-muted-foreground">Best for smaller files or slower connections</p>
+              </div>
+            </div>
+            <div className="flex items-start space-x-2">
+              <RadioGroupItem value="MEDIUM" id="part-size-medium" className="mt-1" />
+              <div className="flex flex-col flex-1">
+                <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB (Default)</Label>
+                <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
+              </div>
+            </div>
+            <div className="flex items-start space-x-2">
+              <RadioGroupItem value="LARGE" id="part-size-large" className="mt-1" />
+              <div className="flex flex-col flex-1">
+                <Label htmlFor="part-size-large" className="text-sm font-medium cursor-pointer">1024 KB (1 MB)</Label>
+                <p className="text-xs text-muted-foreground">Best for large files with stable connections</p>
+              </div>
+            </div>
+          </RadioGroup>
+
+          <div className="flex gap-2">
+            <Button onClick={() => setStep('mode')} variant="outline" className="flex-1">
+              Back
+            </Button>
+            <Button onClick={handleContinueToMetadata} className="flex-1">
+              Continue to Metadata
+            </Button>
+          </div>
         </CardContent>
       </Card>
     )
@@ -581,6 +639,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   feedbackEnabled={feedbackEnabled}
                   checksum={metadataJson.checksum}
                   checksumAlg={metadataJson.checksumAlg}
+                  partSizeOption={partSizeOption}
                 />
               )
             )}

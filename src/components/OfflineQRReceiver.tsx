@@ -35,11 +35,9 @@ interface FountainDetectedMetadata extends DetectedMetadata {
   mode: 'fountain'
   totalSourceBlocks: number
   blockSize: number
-  windowEnabled: boolean
-  initialWindowBlocks?: number
-  windowTriggerThreshold?: number
-  windowStart?: number
   feedbackEnabled: boolean
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 export function OfflineQRReceiver() {
@@ -111,11 +109,9 @@ export function OfflineQRReceiver() {
           blockSize: parsed.blockSize,
           checksum: parsed.checksum,
           checksumAlg: parsed.checksumAlg,
-          windowEnabled: parsed.windowEnabled,
-          initialWindowBlocks: parsed.initialWindowBlocks,
-          windowTriggerThreshold: parsed.windowTriggerThreshold,
-          windowStart: parsed.windowStart,
-          feedbackEnabled: parsed.feedbackEnabled
+          feedbackEnabled: parsed.feedbackEnabled,
+          partBasedMode: parsed.partBasedMode,
+          partSize: parsed.partSize
         })
         addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
       }
@@ -442,11 +438,9 @@ export function OfflineQRReceiver() {
                     blockSize: fountainMeta.blockSize,
                     checksum: fountainMeta.checksum,
                     checksumAlg: fountainMeta.checksumAlg,
-                    windowEnabled: fountainMeta.windowEnabled,
-                    initialWindowBlocks: fountainMeta.initialWindowBlocks,
-                    windowTriggerThreshold: fountainMeta.windowTriggerThreshold,
-                    windowStart: fountainMeta.windowStart,
-                    feedbackEnabled: fountainMeta.feedbackEnabled
+                    feedbackEnabled: fountainMeta.feedbackEnabled,
+                    partBasedMode: fountainMeta.partBasedMode,
+                    partSize: fountainMeta.partSize
                   }}
                 />
               )

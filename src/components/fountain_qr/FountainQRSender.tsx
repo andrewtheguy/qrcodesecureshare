@@ -13,7 +13,7 @@ import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FountainEncoder } from '@/utils/fountainCode'
-import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { deriveQRCapacity } from '@/constants'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
@@ -27,6 +27,7 @@ interface FountainQRSenderProps {
   feedbackEnabled?: boolean
   checksum: string
   checksumAlg: string
+  partSizeOption?: PartSizeOption
   qrOptions?: {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
@@ -34,7 +35,7 @@ interface FountainQRSenderProps {
 }
 
 
-export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'MEDIUM', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
@@ -89,6 +90,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Derive QR capacity based on error correction level
         const maxQRDataSize = deriveQRCapacity(currentQROptions.errorCorrectionLevel)
 
+        // Enable part-based mode for feedback-enabled transfers
+        const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
+
         const fountainEncoder = new FountainEncoder(bytes, metadata, {
            blockSize: DEFAULT_BLOCK_SIZE,
            c: 0.2,
@@ -96,7 +100,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
            // Optional: override doping rates here if experimenting
            degree1Rate: 0.08,
            windowEnabled: feedbackEnabled ? undefined : false,
-           maxQRDataSize // Pass QR capacity to encoder for degree tuning
+           maxQRDataSize, // Pass QR capacity to encoder for degree tuning
+           partBasedMode: feedbackEnabled, // Enable part-based mode in feedback mode
+           partSize // Part size for part-based transfer
           })
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
@@ -106,6 +112,14 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
            console.warn(`Block size mismatch detected: encoder=${encoderBlockSize}, DEFAULT_BLOCK_SIZE=${DEFAULT_BLOCK_SIZE}`)
            return
          }
+
+        // Compute part checksums if in part-based mode
+        if (feedbackEnabled) {
+          console.log('[FountainQRSender] Computing part checksums...')
+          await fountainEncoder.computePartChecksums()
+          const partInfo = fountainEncoder.getPartInfo()
+          console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+        }
 
         setEncoder(fountainEncoder)
         setWindowInfo(fountainEncoder.getWindowInfo())
@@ -121,7 +135,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     }
 
     reader.readAsArrayBuffer(file)
-  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel])
+  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
