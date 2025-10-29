@@ -26,10 +26,6 @@ interface FountainQRDataDisplayProps {
     margin: number
   }
   receivedBlocks: Set<number>
-  lastStats: {
-    totalDecoded: number
-    totalBlocks: number
-  } | null
   isActive: boolean
   activationToken: number
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void

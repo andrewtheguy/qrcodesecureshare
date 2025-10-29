@@ -39,13 +39,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
-  const [lastStats, setLastStats] = useState<{
-    totalDecoded: number
-    totalBlocks: number
-    progress?: number
-  } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
+  const [lastFeedbackMode, setLastFeedbackMode] = useState<'part-complete' | 'targeted' | null>(null)
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
@@ -140,19 +135,16 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
-    mode: 'statistics' | 'targeted';
+    mode: 'part-complete' | 'targeted';
     receivedBlocks?: Set<number>;
-    lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
     message: string;
   }) => {
     setLastProcessedSequence(feedbackData.sequence);
     setLastFeedbackMode(feedbackData.mode);
-    if (feedbackData.mode === 'statistics') {
-      setLastStats(feedbackData.lastStats || null);
-      setReceivedBlocks(new Set());
-    } else if (feedbackData.mode === 'targeted') {
+    if (feedbackData.mode === 'targeted') {
       setReceivedBlocks(feedbackData.receivedBlocks || new Set());
-      setLastStats(null);
+    } else {
+      setReceivedBlocks(new Set());
     }
     console.log('Feedback processed:', feedbackData);
   };
@@ -208,34 +200,21 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
 
       {/* Receiver Progress Alert */}
-      {(lastStats || receivedBlocksCount > 0) && (
+      {receivedBlocksCount > 0 && (
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Statistics Mode)'}</p>
+              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Part-Complete Mode)'}</p>
               <div className="text-sm">
-                {receivedBlocksCount === 0 && lastStats ? (
-                  <>
-                    <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
-                    <p>Receiver reports: {lastStats.progress ?? 'N/A'}% complete</p>
-                          {lastProcessedSequence >= 0 && (
-                            <p>Last feedback: sequence {lastProcessedSequence}</p>
-                          )}
-                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when only a few blocks remain</p>
-                  </>
+                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                {decodingProgress >= 100 ? (
+                  <p className="text-green-600 dark:text-green-400 font-medium mt-1">
+                    ✅ Transfer complete! You can stop sending.
+                  </p>
                 ) : (
-                  <>
-                      <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                    {decodingProgress >= 100 ? (
-                      <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                        ✅ Transfer complete! You can stop sending.
-                      </p>
-                    ) : (
-                      <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                        🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
-                      </p>
-                    )}
-                  </>
+                  <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
+                    🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
+                  </p>
                 )}
               </div>
             </div>
@@ -260,7 +239,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           sessionId={sessionId}
           qrOptions={currentQROptions}
           receivedBlocks={receivedBlocks}
-          lastStats={lastStats}
           isActive={senderMode === 'data-display'}
           activationToken={activationToken}
           onChunkGenerated={handleChunkGenerated}
@@ -441,7 +419,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
                 <li>Receiver must scan ACK before resuming data scanning</li>
                 <li>If you don't have a camera, use 'Manual Input' mode to type feedback details from the receiver's display</li>
-                  <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+                  <li className="text-blue-600 dark:text-blue-400">For part-based transfers, feedback QR signals part completion with checksum validation</li>
                   <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
               </>
             ) : (

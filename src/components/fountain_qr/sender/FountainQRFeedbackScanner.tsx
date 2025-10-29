@@ -19,9 +19,8 @@ import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'statistics' | 'targeted';
+  mode: 'part-complete' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; progress?: number };
   message: string;
 }
 
@@ -89,14 +88,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       return;
     }
 
-    // Validate progress field
-    if (typeof data.progress !== 'number' || data.progress < 0 || data.progress > 100) {
-      onError('Invalid feedback QR: progress field missing or out of range (0-100)');
-      setCurrentMode('idle');
-      setProcessingRef(false);
-      return;
-    }
-
     if (data.sequence <= lastProcessedSequence) {
       console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
       onError('Stale feedback QR code: sequence already processed.');
@@ -113,22 +104,16 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       return;
     }
 
-    if (data.mode === 'statistics') {
-      console.log('Processing statistics feedback:', 'N/A', '/', 'N/A');
-      console.log('Receiver progress:', data.progress, '%');
-      encoder?.setReceivedBlocks([]);
+    if (data.mode === 'part-complete') {
+      console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
+      console.log(`[FountainQRFeedbackScanner] Checksum match: ${data.partChecksumMatch}`);
 
-      const lastStats = {
-        totalDecoded: 0,
-        totalBlocks: encoder?.getMetadata().totalSourceBlocks ?? 0,
-        progress: data.progress,
-      };
-
-      // Check for part completion in part-based mode
+      // Check for part completion
       let partTransition = false;
       let newPartIndex: number | undefined;
-      if (data.partComplete && data.partChecksumMatch) {
-        console.log(`[FountainQRFeedbackScanner] Part ${(data.currentPart ?? 0) + 1}/${data.totalParts ?? 0} completed successfully`);
+
+      if (data.partChecksumMatch) {
+        console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
 
         // Move encoder to next part
         const moved = encoder?.moveToNextPart();
@@ -140,20 +125,18 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         } else {
           console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
         }
-      } else if (data.partComplete && !data.partChecksumMatch) {
+      } else {
         // Part checksum mismatch - fail the transfer
-        onError(`Part ${(data.currentPart ?? 0) + 1} checksum validation failed on receiver`);
+        onError(`Part ${data.currentPart + 1} checksum validation failed on receiver`);
         setCurrentMode('idle');
         setProcessingRef(false);
         return;
       }
 
-      // Window expansion logic removed - using part-based mode instead
-
       // Determine message based on part transition
-      let ackMessage = `Statistics received.`;
+      let ackMessage = `Part completion acknowledged.`;
       if (partTransition && newPartIndex !== undefined) {
-        ackMessage = `Part ${(data.currentPart ?? 0) + 1} complete. Moving to part ${newPartIndex + 1}.`;
+        ackMessage = `Part ${data.currentPart + 1} complete. Moving to part ${newPartIndex + 1}.`;
       }
 
       const ackFeedback: SenderFeedbackAcknowledge = {
@@ -171,8 +154,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
       onFeedbackProcessed({
         sequence: data.sequence,
-        mode: 'statistics',
-        lastStats,
+        mode: 'part-complete',
         message: ackFeedback.message,
       });
 
@@ -186,12 +168,11 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         return;
       }
       const missingBlocks = data.missingBlocks;
-      console.log('Processing targeted feedback with', missingBlocks.length, 'missing blocks');
-      console.log('Receiver progress:', data.progress, '%');
+      console.log(`[FountainQRFeedbackScanner] Processing targeted feedback for part ${data.currentPart + 1}/${data.totalParts}`);
+      console.log(`[FountainQRFeedbackScanner] Missing blocks: ${missingBlocks.length}`);
       encoder?.setMissingBlocks(missingBlocks);
 
       // Generate ACK for targeted mode (final cleanup)
-      console.log('[FountainQRFeedbackScanner] Processing targeted feedback for part cleanup');
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,

@@ -19,7 +19,6 @@ import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
-import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
 /**
  * Formats an array of missing block indices into a human-readable range string.
@@ -57,7 +56,7 @@ interface FountainQRFeedbackDisplayProps {
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
-  onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
+  onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete' | 'targeted', sequence: number) => void
   onAckReceived: (acknowledgedSequence: number, message: string) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
@@ -98,7 +97,7 @@ export function FountainQRFeedbackDisplay({
   partCompleteInfo
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
-  const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
+  const [feedbackMode, setFeedbackMode] = useState<'part-complete' | 'targeted'>('part-complete')
   const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
   const [confirmationCode, setConfirmationCode] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -136,38 +135,35 @@ export function FountainQRFeedbackDisplay({
       // Use prop directly - parent owns this value
       const seq = feedbackSequence
 
-      // Calculate overall file progress as rounded integer (0-100)
-      const overallProgress = Math.round((decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100)
-
       // Gate re-generation: only generate if we haven't already generated for this sequence
       if (seq === lastGeneratedSequenceRef.current) {
         generatingRef.current = false
         return
       }
 
-      const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
+      // Validate that partCompleteInfo is available for part-based mode
+      if (!partCompleteInfo) {
+        console.error('[FountainQRFeedbackDisplay] Part info is required for feedback generation')
+        setError('Part information not available for feedback generation')
+        generatingRef.current = false
+        return
+      }
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
       let feedback: FountainFeedback
+
       if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession || !ENABLE_TARGETED_MODE) {
-        // Statistics-only feedback - compact format
+        // Part-complete mode - simplified feedback with minimal details
         feedback = {
           type: 'FOUNTAIN_FEEDBACK',
-          mode: 'statistics',
+          mode: 'part-complete',
           sessionId: sessionId,
           sequence: seq,
-          firstMissingBlock: firstMissingBlock,
-          progress: overallProgress,
-          // Add part info if in part-based mode
-          ...(partCompleteInfo && {
-            currentPart: partCompleteInfo.currentPart,
-            totalParts: partCompleteInfo.totalParts,
-            partComplete: partCompleteInfo.partComplete,
-            partChecksumMatch: partCompleteInfo.partChecksumMatch,
-            computedChecksum: partCompleteInfo.computedChecksum,
-            completedParts: [] // TODO: Track completed parts
-          })
+          currentPart: partCompleteInfo.currentPart,
+          totalParts: partCompleteInfo.totalParts,
+          partChecksumMatch: partCompleteInfo.partChecksumMatch,
+          computedChecksum: partCompleteInfo.computedChecksum,
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -212,17 +208,8 @@ export function FountainQRFeedbackDisplay({
           mode: 'targeted' as const,
           sessionId: sessionId,
           sequence: seq,
-          firstMissingBlock: firstMissingBlock,
-          progress: overallProgress,
-          // Add part info if in part-based mode
-          ...(partCompleteInfo && {
-            currentPart: partCompleteInfo.currentPart,
-            totalParts: partCompleteInfo.totalParts,
-            partComplete: partCompleteInfo.partComplete,
-            partChecksumMatch: partCompleteInfo.partChecksumMatch,
-            computedChecksum: partCompleteInfo.computedChecksum,
-            completedParts: [] // TODO: Track completed parts
-          })
+          currentPart: partCompleteInfo.currentPart,
+          totalParts: partCompleteInfo.totalParts,
         }
 
         const targetedFeedback = { ...feedbackBase, missingBlocks }
@@ -422,12 +409,12 @@ export function FountainQRFeedbackDisplay({
     const decodedPercent = totalBlocks > 0 ? Math.round((decodedBlocks / totalBlocks) * 100) : 0
     const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlocks
     const modeMessage = skipTargetedModeForSession
-      ? 'Statistics mode locked for this session to keep QR payloads compact.'
+      ? 'Part-complete mode locked for this session to keep QR payloads compact.'
       : missingBlocksCount > getTargetedModeMaxMissingBlocks()
-        ? 'Compact stats mode: sharing progress and decode rate.'
+        ? 'Part-complete mode: signaling part completion and checksum validation.'
         : feedbackMode === 'targeted'
-          ? 'Targeted mode: sharing precise missing block ranges for cleanup.'
-          : 'Statistics fallback: payload trimmed to stay scan-friendly.'
+          ? 'Targeted mode: sharing precise missing block ranges for final cleanup.'
+          : 'Part-complete mode: compact payload for easy scanning.'
 
     return (
       <div className="space-y-4">
@@ -513,13 +500,30 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.sequence}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Mode:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.mode.charAt(0).toUpperCase() + feedbackData.mode.slice(1)}</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {feedbackData.mode === 'part-complete' ? 'Part Complete' : 'Targeted'}
+                </span>
 
-                <span className="text-muted-foreground font-medium text-sm">First Missing Block:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
+                <span className="text-muted-foreground font-medium text-sm">Current Part:</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {(feedbackData.mode === 'part-complete' ? feedbackData.currentPart : feedbackData.currentPart) + 1} / {feedbackData.mode === 'part-complete' ? feedbackData.totalParts : feedbackData.totalParts}
+                </span>
 
-                <span className="text-muted-foreground font-medium text-sm">Progress:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.progress}%</span>
+                {feedbackData.mode === 'part-complete' && (
+                  <>
+                    <span className="text-muted-foreground font-medium text-sm">Checksum Match:</span>
+                    <span className="font-mono text-sm cursor-text select-all">
+                      {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
+                    </span>
+
+                    {feedbackData.computedChecksum && (
+                      <>
+                        <span className="text-muted-foreground font-medium text-sm">Computed Checksum:</span>
+                        <span className="font-mono text-sm cursor-text select-all">{feedbackData.computedChecksum}</span>
+                      </>
+                    )}
+                  </>
+                )}
 
                 {feedbackData.mode === 'targeted' && (
                   <>

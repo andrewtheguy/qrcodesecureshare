@@ -9,56 +9,48 @@
 interface FountainFeedbackBase {
   /** Always 'FOUNTAIN_FEEDBACK' */
   type: 'FOUNTAIN_FEEDBACK';
-  /** Either 'statistics' or 'targeted' */
-  mode: 'statistics' | 'targeted';
+  /** Either 'part-complete' or 'targeted' */
+  mode: 'part-complete' | 'targeted';
   /** Session ID to match feedback with sender */
   sessionId: number;
   /** Sequence number to prevent duplicate processing */
   sequence: number;
-  /** Total number of source blocks */
-  totalBlocks?: number;
-  /**
-   * Overall file decode progress as a rounded integer from 0 to 100.
-   */
-  progress: number;
-  /** First missing block index (contiguous prefix) */
-  firstMissingBlock: number;
+}
 
-  // Part-based transfer fields (optional, used when part-based mode is enabled)
-  /** Current part index being decoded (0-indexed) */
-  currentPart?: number;
+/**
+ * Part completion feedback payload - signals that a part has been decoded and validated.
+ * This is the primary feedback mode for part-based transfers.
+ */
+export interface FountainFeedbackPartComplete extends FountainFeedbackBase {
+  mode: 'part-complete';
+  /** Current part index that was completed (0-indexed) */
+  currentPart: number;
   /** Total number of parts in the file */
-  totalParts?: number;
-  /** Whether the current part has been fully decoded */
-  partComplete?: boolean;
+  totalParts: number;
   /** Whether the decoded part's checksum matches the expected checksum */
-  partChecksumMatch?: boolean;
+  partChecksumMatch: boolean;
   /** Computed checksum of the decoded part (CRC32 hex string) */
   computedChecksum?: string;
-  /** Array of completed part indices */
-  completedParts?: number[];
 }
 
 /**
- * Statistics mode feedback payload - compact format for early transfer stages.
- */
-export interface FountainFeedbackStatistics extends FountainFeedbackBase {
-  mode: 'statistics';
-}
-
-/**
- * Targeted mode feedback payload - includes missing block indices for final transfer stages.
+ * Targeted mode feedback payload - includes missing block indices for final cleanup.
+ * Used when only a few blocks remain missing (≤10 blocks).
  */
 export interface FountainFeedbackTargeted extends FountainFeedbackBase {
   mode: 'targeted';
   /** Array of missing block indices that need to be sent */
   missingBlocks: number[];
+  /** Current part index being decoded (0-indexed) */
+  currentPart: number;
+  /** Total number of parts in the file */
+  totalParts: number;
 }
 
 /**
  * Union type for all fountain feedback payloads.
  */
-export type FountainFeedback = FountainFeedbackStatistics | FountainFeedbackTargeted;
+export type FountainFeedback = FountainFeedbackPartComplete | FountainFeedbackTargeted;
 
 /**
  * Base interface for sender feedback payloads.

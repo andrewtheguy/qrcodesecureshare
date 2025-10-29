@@ -29,23 +29,33 @@ export function normalizeConfirmationCode(code: string): string {
 
 /**
  * Generates a confirmation code for feedback payloads.
- * The confirmation code includes the progress field in its calculation to ensure
- * all feedback fields are validated when using manual input mode.
+ * The confirmation code validates all essential feedback fields for manual input mode.
  */
 export async function generateFeedbackConfirmationCode(feedback: FountainFeedback): Promise<string> {
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
-    { version: "2" }, // Increment version since we removed decodedInWindow
+    { version: "3" }, // v3: Simplified to part-complete mode, removed progress/firstMissingBlock
     { type: feedback.type },
     { mode: feedback.mode },
     { sessionId: feedback.sessionId.toString() },
     { sequence: feedback.sequence.toString() },
-    { firstMissingBlock: feedback.firstMissingBlock.toString() },
-    { progress: feedback.progress.toString() },
   ]
 
   // Add mode-specific fields
-  if (feedback.mode === 'targeted') {
+  if (feedback.mode === 'part-complete') {
+    fields.push(
+      { currentPart: feedback.currentPart.toString() },
+      { totalParts: feedback.totalParts.toString() },
+      { partChecksumMatch: feedback.partChecksumMatch.toString() }
+    )
+    if (feedback.computedChecksum) {
+      fields.push({ computedChecksum: feedback.computedChecksum })
+    }
+  } else if (feedback.mode === 'targeted') {
+    fields.push(
+      { currentPart: feedback.currentPart.toString() },
+      { totalParts: feedback.totalParts.toString() }
+    )
     const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
     fields.push({ missingBlocks: sortedMissingBlocks.join(',') })
   }
