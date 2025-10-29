@@ -40,6 +40,23 @@ export function normalizeConfirmationCode(code: string): string {
  * Optional fields will cause confirmation code mismatches between QR and manual input.
  */
 export async function generateFeedbackConfirmationCode(feedback: FountainFeedback): Promise<string> {
+  // DEBUG: Log the incoming feedback object
+  //console.log('[generateFeedbackConfirmationCode] Input feedback:', JSON.stringify(feedback, null, 2));
+
+  // Check for unexpected extra fields
+  const knownFields = feedback.mode === 'part-complete'
+    ? ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'partChecksumMatch']
+    : ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'missingBlocks'];
+
+  const actualFields = Object.keys(feedback);
+  const extraFields = actualFields.filter(f => !knownFields.includes(f));
+  if (extraFields.length > 0) {
+    console.warn('[generateFeedbackConfirmationCode] ⚠️  Extra fields detected (will be ignored):', extraFields);
+    extraFields.forEach(f => {
+      console.warn(`  - ${f}:`, (feedback as unknown as Record<string, unknown>)[f]);
+    });
+  }
+
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
     { version: "3" }, // v3: Simplified to part-complete mode, removed progress/firstMissingBlock

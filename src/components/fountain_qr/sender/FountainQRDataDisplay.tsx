@@ -141,7 +141,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (encoder) {
       const meta = encoder.getMetadata()
       setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
-      
+
       // Log QR capacity and max degree info for debugging
       if (import.meta.env.DEV) {
         console.log(`[FountainQRDataDisplay] QR capacity: ${MAX_QR_DATA_SIZE} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)

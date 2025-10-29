@@ -55,7 +55,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputSessionId] = useState(sessionId.toString());
   const [inputSequence, setInputSequence] = useState((lastProcessedSequence + 1).toString());
   const [inputMode, setInputMode] = useState<'part-complete' | 'targeted'>('part-complete');
-  const [inputCurrentPart, setInputCurrentPart] = useState('0');
+  // Note: User enters 1-indexed values (what they see on display), but we store as strings for UI
+  // Conversion to 0-indexed happens in validateInputs before checksum generation
+  const [inputCurrentPart, setInputCurrentPart] = useState('1');
   const [inputTotalParts, setInputTotalParts] = useState('1');
   const [inputPartChecksumMatch, setInputPartChecksumMatch] = useState<'true' | 'false'>('true');
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
@@ -97,7 +99,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const resetInputFields = useCallback(() => {
     setInputSequence((lastProcessedSequence + 1).toString());
     setInputMode('part-complete');
-    setInputCurrentPart('0');
+    setInputCurrentPart('1'); // Reset to 1 (user enters 1-indexed values)
     setInputTotalParts('1');
     setInputPartChecksumMatch('true');
     setInputMissingBlocks('');
@@ -133,10 +135,10 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
       // Do NOT include optional fields like computedChecksum
 
-      // Parse and validate currentPart
-      const parsedCurrentPart = parseInt(inputCurrentPart);
-      if (isNaN(parsedCurrentPart) || parsedCurrentPart < 0) {
-        return { valid: false, error: `Invalid current part: Must be a non-negative integer. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
+      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
+      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
+      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
       }
 
       // Parse and validate totalParts
@@ -145,9 +147,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
       }
 
-      if (parsedCurrentPart >= parsedTotalParts) {
-        return { valid: false, error: `Current part (${parsedCurrentPart}) must be less than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+      if (parsedCurrentPartDisplay > parsedTotalParts) {
+        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
       }
+
+      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
+      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
 
       feedback = {
         type: 'FOUNTAIN_FEEDBACK',
@@ -167,15 +172,23 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
       // Do NOT include optional fields
 
-      const parsedCurrentPart = parseInt(inputCurrentPart);
-      if (isNaN(parsedCurrentPart) || parsedCurrentPart < 0) {
-        return { valid: false, error: `Invalid current part: Must be a non-negative integer. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
+      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
+      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
+      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
       }
 
       const parsedTotalParts = parseInt(inputTotalParts);
       if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
         return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
       }
+
+      if (parsedCurrentPartDisplay > parsedTotalParts) {
+        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+      }
+
+      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
+      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
 
       let missingBlocks: number[];
       try {
@@ -445,14 +458,17 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="currentPart" className="text-xs">Current Part (0-indexed)</Label>
+            <Label htmlFor="currentPart" className="text-xs">Current Part (as shown on display)</Label>
             <Input
               id="currentPart"
               type="number"
-              min="0"
+              min="1"
               value={inputCurrentPart}
               onChange={(e) => setInputCurrentPart(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enter the exact part number shown on receiver's display
+            </p>
           </div>
           <div>
             <Label htmlFor="totalParts" className="text-xs">Total Parts</Label>
