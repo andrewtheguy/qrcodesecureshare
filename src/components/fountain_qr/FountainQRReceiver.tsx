@@ -346,14 +346,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   //           These files are small enough to decode quickly without any feedback overhead
   //      Action: Early return - no feedback QR generation for small files
   //
-  //   1. WINDOW SATURATION (HIGHEST PRIORITY - MANDATORY)
-  //      Location: Inline in handleBinaryFountainChunk (lines ~368-382)
-  //      When: windowDecodePercentage >= windowTriggerThreshold
-  //      Why highest: Required for windowed transfers to continue; blocking operation
+  //   1. PART COMPLETION (HIGHEST PRIORITY - MANDATORY)
+  //      Location: Inline in handleBinaryFountainChunk
+  //      When: Part is fully decoded and checksum validated
+  //      Why highest: Required for part-based transfers to continue; blocking operation
   //      Guards: !showFeedbackQR && !isAwaitingFeedback
   //
   //   2. TARGETED MODE (SECOND PRIORITY - EFFICIENCY)
-  //      Location: This useEffect (lines ~515-523)
+  //      Location: This useEffect
   //      When: currentMissingBlocks <= TARGETED_MODE_MAX_MISSING_BLOCKS
   //      Why: Optimize final blocks transfer efficiency
   //
@@ -399,8 +399,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       return
     }
 
-    // Prevent getting stuck in targeted mode when window expansion is needed
-    // If we're in targeted mode but have many missing blocks, switch back to statistics mode
+    // Part-based mode ensures proper progression without needing to switch back
+    // Targeted mode only activates at the very end for final cleanup
     // NOTE: This check was causing erroneous mode switches due to stale ref reads
     // Removed to prevent unpredictable feedback mode transitions
 

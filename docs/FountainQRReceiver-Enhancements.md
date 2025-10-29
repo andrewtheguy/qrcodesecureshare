@@ -1,23 +1,23 @@
 # FountainQRReceiver New Techniques and Enhancements on v0.1.8
 
 ## Overview
-The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms and windowed transfer support. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
+The `FountainQRReceiver.tsx` component has been significantly enhanced with advanced feedback mechanisms and part-based transfer support. These improvements enable more efficient and robust fountain code transfers, especially for larger files.
 
 
 
 ## Key New Features
 
-### 1. Windowed Transfer Support
-- **Purpose**: Enables progressive file transfer by focusing on specific block ranges
-- **Configuration**: Controlled via metadata props (`windowEnabled`, `initialWindowBlocks`, `windowExpansionFactor`, `windowTriggerThreshold`, `windowStart`)
+### 1. Part-Based Transfer Support
+- **Purpose**: Enables progressive file transfer by dividing large files into manageable parts
+- **Configuration**: Configurable part sizes (32KB, 256KB, 512KB, 1024KB)
 - **Benefits**: Reduces memory usage and improves transfer efficiency for large files
-- **Implementation**: Tracks `currentWindowStart` and `currentWindowEnd` states, expands window upon feedback acknowledgment
+- **Implementation**: Tracks current part index and validates part checksums independently
 
 ### 2. Advanced Feedback System
 - **Multi-Mode Feedback**: Supports both 'statistics' (compact) and 'targeted' (detailed) feedback modes
 - **Priority-Based Triggers**: Implements mutually exclusive feedback generation with strict priority ordering:
-  1. **Window Saturation** (Highest Priority): Triggers when window decode percentage reaches threshold
-  2. **Targeted Mode**: Activates when missing blocks drop below `TARGETED_MODE_MAX_MISSING_BLOCKS`
+  1. **Part Completion** (Highest Priority): Triggers when a part is fully decoded and checksum validated
+  2. **Targeted Mode**: Activates when missing blocks drop below `TARGETED_MODE_MAX_MISSING_BLOCKS` for final cleanup
 
 
 ### 4. Receiver Mode Management
@@ -33,8 +33,8 @@ The `FountainQRReceiver.tsx` component has been significantly enhanced with adva
 - **Sequence Tracking**: Maintains feedback sequence numbers for proper acknowledgment handling
 
 ### 6. Sender Feedback Processing
-- **Acknowledgment Handling**: Processes ACK messages to resume data scanning and expand windows
-- **Rollback Support**: Handles sender-initiated rollbacks to specific block indices
+- **Acknowledgment Handling**: Processes ACK messages to resume data scanning and coordinate part transitions
+- **Part Transition Support**: Handles sender signals to move to the next part when current part is complete
 - **Sequence Validation**: Prevents duplicate or out-of-order feedback processing
 
 
@@ -45,39 +45,41 @@ The `FountainQRReceiver.tsx` component has been significantly enhanced with adva
 
 ## Configuration Parameters
 
-### Window Configuration
+### Part-Based Transfer Configuration
 ```typescript
-windowEnabled?: boolean          // Enable/disable windowed transfers
-initialWindowBlocks?: number     // Initial window size
-windowExpansionFactor?: number   // Window expansion multiplier (default: 0.5)
-windowTriggerThreshold?: number  // Window saturation threshold (default: 0.5)
-windowStart?: number            // Starting block index (default: 0)
+PART_SIZE_OPTIONS: {
+  TINY: 32 * 1024,    // 32KB (for testing)
+  SMALL: 256 * 1024,  // 256KB
+  MEDIUM: 512 * 1024, // 512KB
+  LARGE: 1024 * 1024, // 1MB (1024KB)
+}
 ```
-
 
 ### Fountain Code Configuration Updates
 ```typescript
 DEFAULT_BLOCK_SIZE: 400          // Reduced from 600 bytes for smaller data QR codes
-WINDOW_ENABLE_THRESHOLD: 200 * 1024 // Unchanged
+TARGETED_MODE_MAX_MISSING_BLOCKS: 10 // Final cleanup threshold
+ENABLE_TARGETED_MODE: false      // Temporarily disabled for part-based testing
 ```
 
 ## Usage Flow
 
-1. **Initialization**: Component receives metadata with window and session configuration
-2. **Data Scanning**: Receiver scans fountain chunks at optimized 4 FPS, tracking progress and window saturation
-3. **Feedback Trigger**: When conditions met, generates appropriate feedback QR (statistics/targeted)
+1. **Initialization**: Component receives metadata with part-based configuration and session info
+2. **Data Scanning**: Receiver scans fountain chunks at optimized 4 FPS, tracking progress within current part
+3. **Feedback Trigger**: When part completion or other conditions met, generates appropriate feedback QR (statistics/targeted)
 4. **Feedback Display**: Shows QR to sender, switches to feedback-display mode
 5. **ACK Scanning**: Switches to ack-scanning mode to receive sender acknowledgment
-6. **Window Expansion**: Upon ACK, expands window and resumes data scanning
-8. **Completion**: File reconstruction when all blocks decoded
+6. **Part Transition**: Upon ACK with part transition signal, moves to next part and resumes data scanning
+7. **Completion**: File reconstruction when all parts are decoded and validated
 
 
 ## Benefits
 
-- **Improved Efficiency**: Windowed transfers reduce memory requirements for large files
-- **Better Reliability**: Feedback mechanisms ensure robust transfer completion
+- **Improved Efficiency**: Part-based transfers reduce memory requirements for large files
+- **Better Reliability**: Part checksums and feedback mechanisms ensure robust transfer completion
 - **Adaptive Performance**: Automatically switches between compact and detailed feedback modes
 - **User Experience**: Clear mode indicators and seamless sender-receiver synchronization
+- **Independent Validation**: Each part is validated independently with CRC32 checksums
 
 ## QR Scanning & Encoding Implementation
 
@@ -92,7 +94,7 @@ WINDOW_ENABLE_THRESHOLD: 200 * 1024 // Unchanged
 **Binary Data Encoding:**
 - **Fountain Codes**: Binary-compatible encoding using fountain (LT) codes with Robust Soliton distribution
 - **Configuration**: Block size set to 400 bytes for optimal QR code density
-- **Windowing**: Segment-based windowing for files > 200KB for reduced memory usage
+- **Part-Based Transfer**: Divides large files into configurable parts (32KB-1MB) for reduced memory usage
 - **Data Format**: Magic bytes [0xFF][0xFD], 2-byte seed, 1-byte degree, variable-length indices and data with CRC32 checksum
 
 **QR Code Generation:**
