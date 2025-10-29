@@ -519,7 +519,7 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Progress:</span>
-                <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
+                <span className="font-mono text-sm cursor-text select-all">{feedbackData.progress}%</span>
 
                 {feedbackData.mode === 'targeted' && (
                   <>
