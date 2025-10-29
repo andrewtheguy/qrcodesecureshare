@@ -19,7 +19,6 @@ import { generateNonDataQR } from '@/utils/qrUtils'
 import { getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
-import { calculateFirstMissingBlock } from '@/utils/fountainHelpers'
 
 /**
  * Formats an array of missing block indices into a human-readable range string.
@@ -53,15 +52,12 @@ interface FountainQRFeedbackDisplayProps {
   sessionId: number
   decodedBlocks: number
   decodedBlockIndices: number[]
-  currentWindowStart: number
-  currentWindowEnd: number
   feedbackSequence: number
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
-  onFeedbackGenerated: (feedbackUrl: string, mode: 'statistics' | 'targeted', sequence: number) => void
-  onFirstMissingBlockUpdate: (value: number) => void
-  onAckReceived: (acknowledgedSequence: number, windowExpanded: boolean, message: string, windowStart?: number, windowEnd?: number) => void
+  onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete' | 'targeted', sequence: number) => void
+  onAckReceived: (acknowledgedSequence: number, message: string) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
   onSequenceIncrement: () => void
@@ -84,14 +80,11 @@ export function FountainQRFeedbackDisplay({
   sessionId,
   decodedBlocks,
   decodedBlockIndices,
-  currentWindowStart,
-  currentWindowEnd,
   feedbackSequence,
   lastSenderFeedbackSequence,
   receiverMode,
   isActive,
   onFeedbackGenerated,
-  onFirstMissingBlockUpdate,
   onAckReceived,
   onModeChange,
   onError,
@@ -104,7 +97,7 @@ export function FountainQRFeedbackDisplay({
   partCompleteInfo
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
-  const [feedbackMode, setFeedbackMode] = useState<'statistics' | 'targeted'>('statistics')
+  const [feedbackMode, setFeedbackMode] = useState<'part-complete' | 'targeted'>('part-complete')
   const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
   const [confirmationCode, setConfirmationCode] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -116,8 +109,6 @@ export function FountainQRFeedbackDisplay({
 
   // Refs for stable inputs to prevent mid-cycle re-generation
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
-  const currentWindowStartRef = useRef<number>(currentWindowStart)
-  const currentWindowEndRef = useRef<number>(currentWindowEnd)
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
   const lastGeneratedSequenceRef = useRef<number>(-1)
@@ -126,11 +117,9 @@ export function FountainQRFeedbackDisplay({
   // Update refs when props change
   useEffect(() => {
     decodedBlockIndicesRef.current = decodedBlockIndices
-    currentWindowStartRef.current = currentWindowStart
-    currentWindowEndRef.current = currentWindowEnd
     fountainMetadataRef.current = fountainMetadata
     sessionIdRef.current = sessionId
-  }, [decodedBlockIndices, currentWindowStart, currentWindowEnd, fountainMetadata, sessionId])
+  }, [decodedBlockIndices, fountainMetadata, sessionId])
 
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
@@ -146,44 +135,42 @@ export function FountainQRFeedbackDisplay({
       // Use prop directly - parent owns this value
       const seq = feedbackSequence
 
-      // Calculate overall file progress as rounded integer (0-100)
-      const overallProgress = Math.round((decodedBlockIndices.length / fountainMetadata.totalSourceBlocks) * 100)
-
       // Gate re-generation: only generate if we haven't already generated for this sequence
       if (seq === lastGeneratedSequenceRef.current) {
         generatingRef.current = false
         return
       }
 
-      const firstMissingBlock = calculateFirstMissingBlock(decodedBlockIndices)
-      // Notify parent of the firstMissingBlock value that will be sent in feedback
-      onFirstMissingBlockUpdate(firstMissingBlock)
-      // Calculate decoded blocks within current window bounds
-      const windowEnd = currentWindowEndRef.current
-      const decodedInWindow = decodedBlockIndices.filter((idx) => idx >= firstMissingBlock && idx < windowEnd).length
+      // Validate that partCompleteInfo is available for part-based mode
+      if (!partCompleteInfo) {
+        console.error('[FountainQRFeedbackDisplay] Part info is required for feedback generation')
+        setError('Part information not available for feedback generation')
+        generatingRef.current = false
+        return
+      }
 
       const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
       const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
       let feedback: FountainFeedback
+
       if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession || !ENABLE_TARGETED_MODE) {
-        // Statistics-only feedback - compact format
+        // Part-complete mode - simplified feedback with minimal details
+        //
+        // SYNC REQUIREMENT: These fields MUST match exactly with:
+        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
+        // 3. checksum.ts - generateFeedbackConfirmationCode()
+        //
+        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields like computedChecksum.
+        // Optional fields break confirmation code validation and cause manual input mismatches.
         feedback = {
           type: 'FOUNTAIN_FEEDBACK',
-          mode: 'statistics',
+          mode: 'part-complete',
           sessionId: sessionId,
           sequence: seq,
-          firstMissingBlock: firstMissingBlock,
-          progress: overallProgress,
-          decodedInWindow: decodedInWindow,
-          // Add part info if in part-based mode
-          ...(partCompleteInfo && {
-            currentPart: partCompleteInfo.currentPart,
-            totalParts: partCompleteInfo.totalParts,
-            partComplete: partCompleteInfo.partComplete,
-            partChecksumMatch: partCompleteInfo.partChecksumMatch,
-            computedChecksum: partCompleteInfo.computedChecksum,
-            completedParts: [] // TODO: Track completed parts
-          })
+          currentPart: partCompleteInfo.currentPart,
+          totalParts: partCompleteInfo.totalParts,
+          partChecksumMatch: partCompleteInfo.partChecksumMatch,
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -223,23 +210,21 @@ export function FountainQRFeedbackDisplay({
           }
         }
 
+        // Targeted mode - includes specific missing block indices for final cleanup
+        //
+        // SYNC REQUIREMENT: These fields MUST match exactly with:
+        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
+        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields for targeted mode
+        // 3. checksum.ts - generateFeedbackConfirmationCode() for targeted mode
+        //
+        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields.
         const feedbackBase = {
           type: 'FOUNTAIN_FEEDBACK' as const,
           mode: 'targeted' as const,
           sessionId: sessionId,
           sequence: seq,
-          firstMissingBlock: firstMissingBlock,
-          progress: overallProgress,
-          decodedInWindow: decodedInWindow,
-          // Add part info if in part-based mode
-          ...(partCompleteInfo && {
-            currentPart: partCompleteInfo.currentPart,
-            totalParts: partCompleteInfo.totalParts,
-            partComplete: partCompleteInfo.partComplete,
-            partChecksumMatch: partCompleteInfo.partChecksumMatch,
-            computedChecksum: partCompleteInfo.computedChecksum,
-            completedParts: [] // TODO: Track completed parts
-          })
+          currentPart: partCompleteInfo.currentPart,
+          totalParts: partCompleteInfo.totalParts,
         }
 
         const targetedFeedback = { ...feedbackBase, missingBlocks }
@@ -281,7 +266,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, onFeedbackGenerated, onFirstMissingBlockUpdate, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
+  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
@@ -331,13 +316,6 @@ export function FountainQRFeedbackDisplay({
         return
       }
 
-      // Add window range validation
-      if (parsed.command === 'acknowledge' && parsed.windowExpanded !== undefined) {
-        // Note: Window validation is defensive since sender should generate valid ACKs
-        // This protects against corrupted data
-        // No specific window range data in ACK, so we skip detailed validation here
-      }
-
       switch (parsed.command) {
 
         case 'acknowledge': {
@@ -377,9 +355,7 @@ export function FountainQRFeedbackDisplay({
               console.log('[FountainQRFeedbackDisplay] Executing delayed transition to data-scanning mode')
               onModeChange('data-scanning')
 
-              // RECEIVER: Adopt sender's window range as the absolute source of truth
-              // Sender is the single authority for window state - receiver must sync to sender's range
-              onAckReceived(parsed.acknowledgedSequence, parsed.windowExpanded, parsed.message, parsed.windowStart, parsed.windowEnd)
+              onAckReceived(parsed.acknowledgedSequence, parsed.message)
             }, 150)
            break
         }
@@ -448,12 +424,12 @@ export function FountainQRFeedbackDisplay({
     const decodedPercent = totalBlocks > 0 ? Math.round((decodedBlocks / totalBlocks) * 100) : 0
     const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlocks
     const modeMessage = skipTargetedModeForSession
-      ? 'Statistics mode locked for this session to keep QR payloads compact.'
+      ? 'Part-complete mode locked for this session to keep QR payloads compact.'
       : missingBlocksCount > getTargetedModeMaxMissingBlocks()
-        ? 'Compact stats mode: sharing window progress and decode rate.'
+        ? 'Part-complete mode: signaling part completion and checksum validation.'
         : feedbackMode === 'targeted'
-          ? 'Targeted mode: sharing precise missing block ranges for cleanup.'
-          : 'Statistics fallback: payload trimmed to stay scan-friendly.'
+          ? 'Targeted mode: sharing precise missing block ranges for final cleanup.'
+          : 'Part-complete mode: compact payload for easy scanning.'
 
     return (
       <div className="space-y-4">
@@ -538,23 +514,29 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">Sequence:</span>
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.sequence}</span>
 
+                {/* SYNC REQUIREMENT: Display fields MUST match feedback generation above
+                    Part-complete mode: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+                    Targeted mode: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
+                    Do NOT display optional fields - they are not included in feedback QR or confirmation code */}
+
                 <span className="text-muted-foreground font-medium text-sm">Mode:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.mode.charAt(0).toUpperCase() + feedbackData.mode.slice(1)}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">First Missing Block:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Progress:</span>
-                <span className="font-mono text-sm cursor-text select-all">{Math.round((decodedBlocks / fountainMetadata.totalSourceBlocks) * 100)}%</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Decoded in Window:</span>
                 <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.decodedInWindow} / {currentWindowEnd - feedbackData.firstMissingBlock} (
-                  {currentWindowEnd - feedbackData.firstMissingBlock > 0
-                    ? Math.round((feedbackData.decodedInWindow / (currentWindowEnd - feedbackData.firstMissingBlock)) * 100)
-                    : 0
-                  }%)
+                  {feedbackData.mode === 'part-complete' ? 'Part Complete' : 'Targeted'}
                 </span>
+
+                <span className="text-muted-foreground font-medium text-sm">Current Part:</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {(feedbackData.mode === 'part-complete' ? feedbackData.currentPart : feedbackData.currentPart) + 1} / {feedbackData.mode === 'part-complete' ? feedbackData.totalParts : feedbackData.totalParts}
+                </span>
+
+                {feedbackData.mode === 'part-complete' && (
+                  <>
+                    <span className="text-muted-foreground font-medium text-sm">Checksum Match:</span>
+                    <span className="font-mono text-sm cursor-text select-all">
+                      {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
+                    </span>
+                  </>
+                )}
 
                 {feedbackData.mode === 'targeted' && (
                   <>
@@ -573,12 +555,6 @@ export function FountainQRFeedbackDisplay({
 
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window Start:</span>
-                <span className="font-mono text-sm cursor-text select-all">{feedbackData.firstMissingBlock}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Window End:</span>
-                <span className="font-mono text-sm cursor-text select-all">{currentWindowEnd}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Total Decoded:</span>
                 <span className="font-mono text-sm cursor-text select-all">{decodedBlocks}</span>

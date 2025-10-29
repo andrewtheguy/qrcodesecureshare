@@ -18,20 +18,6 @@ import { computeChecksum } from '@/utils/checksum'
 import { deriveQRCapacity } from '@/constants'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
-interface WindowInfo {
-  windowEnabled: boolean
-  windowStart: number
-  windowEnd: number
-  windowSize: number
-  totalBlocks: number
-  isWindowComplete: boolean
-  skipBlocksBelow: number
-  currentSegment: number
-  totalSegments: number
-  segmentProgress: number
-  segmentSizeBlocks: number
-}
-
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
   sessionId: number
@@ -39,14 +25,7 @@ interface FountainQRDataDisplayProps {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
   }
-  windowInfo: WindowInfo | null
   receivedBlocks: Set<number>
-  lastStats: {
-    totalDecoded: number
-    totalBlocks: number
-    windowStart?: number
-    windowEnd?: number
-  } | null
   isActive: boolean
   activationToken: number
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
@@ -162,7 +141,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (encoder) {
       const meta = encoder.getMetadata()
       setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
-      
+
       // Log QR capacity and max degree info for debugging
       if (import.meta.env.DEV) {
         console.log(`[FountainQRDataDisplay] QR capacity: ${MAX_QR_DATA_SIZE} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)

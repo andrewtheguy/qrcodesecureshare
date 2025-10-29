@@ -39,30 +39,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
-  const [windowInfo, setWindowInfo] = useState<{
-    windowEnabled: boolean
-    windowStart: number
-    windowEnd: number
-    windowSize: number
-    totalBlocks: number
-    isWindowComplete: boolean
-    skipBlocksBelow: number
-    currentSegment: number
-    totalSegments: number
-    segmentProgress: number
-    segmentSizeBlocks: number
-  } | null>(null)
-  const [lastWindowExpansion, setLastWindowExpansion] = useState<number | null>(null)
-  const [lastDecodedInWindow, setLastDecodedInWindow] = useState<number>(0)
-  const [lastStats, setLastStats] = useState<{
-    totalDecoded: number
-    totalBlocks: number
-    windowStart?: number
-    windowEnd?: number
-    progress?: number
-  } | null>(null)
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [lastFeedbackMode, setLastFeedbackMode] = useState<'statistics' | 'targeted' | null>(null)
+  const [lastFeedbackMode, setLastFeedbackMode] = useState<'part-complete' | 'targeted' | null>(null)
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
@@ -99,7 +77,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
            delta: 0.01,
            // Optional: override doping rates here if experimenting
            degree1Rate: 0.08,
-           windowEnabled: feedbackEnabled ? undefined : false,
            maxQRDataSize, // Pass QR capacity to encoder for degree tuning
            partBasedMode: feedbackEnabled, // Enable part-based mode in feedback mode
            partSize // Part size for part-based transfer
@@ -122,7 +99,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         }
 
         setEncoder(fountainEncoder)
-        setWindowInfo(fountainEncoder.getWindowInfo())
         setError('')
       } catch (err) {
         setError('Failed to process file')
@@ -159,20 +135,16 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
-    mode: 'statistics' | 'targeted';
+    mode: 'part-complete' | 'targeted';
     receivedBlocks?: Set<number>;
-    lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
-    windowExpanded: boolean;
     message: string;
   }) => {
     setLastProcessedSequence(feedbackData.sequence);
     setLastFeedbackMode(feedbackData.mode);
-    if (feedbackData.mode === 'statistics') {
-      setLastStats(feedbackData.lastStats || null);
-      setReceivedBlocks(new Set());
-    } else if (feedbackData.mode === 'targeted') {
+    if (feedbackData.mode === 'targeted') {
       setReceivedBlocks(feedbackData.receivedBlocks || new Set());
-      setLastStats(null);
+    } else {
+      setReceivedBlocks(new Set());
     }
     console.log('Feedback processed:', feedbackData);
   };
@@ -194,30 +166,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleFeedbackError = (error: string) => {
     setError(error);
-  };
-
-  const handleUpdateWindowInfo = (updatedWindowInfo: {
-    windowEnabled: boolean;
-    windowStart: number;
-    windowEnd: number;
-    windowSize: number;
-    totalBlocks: number;
-    isWindowComplete: boolean;
-    skipBlocksBelow: number;
-    currentSegment: number;
-    totalSegments: number;
-    segmentProgress: number;
-    segmentSizeBlocks: number;
-  }) => {
-    setWindowInfo(updatedWindowInfo);
-  };
-
-  const handleUpdateLastDecodedInWindow = (count: number) => {
-    setLastDecodedInWindow(count);
-  };
-
-  const handleUpdateLastWindowExpansion = (timestamp: number) => {
-    setLastWindowExpansion(timestamp);
   };
 
   const handleChunkGenerated = () => {
@@ -250,84 +198,23 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   return (
     <div className="space-y-4">
 
-      {/* Window Progress Alert */}
-      {windowInfo && windowInfo.windowEnabled && (
+
+      {/* Receiver Progress Alert */}
+      {receivedBlocksCount > 0 && (
         <Alert>
           <AlertDescription>
             <div className="space-y-2">
-              <p className="font-medium">🪟 Window Progress</p>
+              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Part-Complete Mode)'}</p>
               <div className="text-sm">
-                <p>Window Range: {windowInfo.skipBlocksBelow}-{windowInfo.windowEnd} of {windowInfo.totalBlocks} blocks</p>
-                <p>Window % of file: {((windowInfo.windowEnd / windowInfo.totalBlocks) * 100).toFixed(1)}%</p>
-                <p>Segment: {windowInfo.currentSegment} / {windowInfo.totalSegments}</p>
-                <p>Segment progress: {windowInfo.segmentProgress.toFixed(1)}%</p>
-                {windowInfo.skipBlocksBelow > 0 && (
-                  <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
-                )}
-                <p className="text-xs text-muted-foreground">Session ID: {sessionId}</p>
-                {windowInfo.isWindowComplete ? (
+                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
+                {decodingProgress >= 100 ? (
                   <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                    ✅ Full file now in transfer window
+                    ✅ Transfer complete! You can stop sending.
                   </p>
                 ) : (
                   <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                    📈 Window will expand automatically as blocks are decoded
+                    🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
                   </p>
-                )}
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
-
-      {/* Receiver Progress Alert */}
-      {(lastStats || receivedBlocksCount > 0) && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Statistics Mode)'}</p>
-              <div className="text-sm">
-                {receivedBlocksCount === 0 && lastStats ? (
-                  <>
-                    <p>Overall: {lastStats.totalDecoded} / {lastStats.totalBlocks} blocks ({((lastStats.totalDecoded / lastStats.totalBlocks) * 100).toFixed(1)}%)</p>
-                    <p>Receiver reports: {lastStats.progress ?? 'N/A'}% complete</p>
-                          {windowInfo?.windowEnabled && lastStats.windowStart != null && lastStats.windowEnd != null && (
-                            <p>Current window: blocks {windowInfo.skipBlocksBelow}-{lastStats.windowEnd}</p>
-                          )}
-                          {windowInfo && windowInfo.skipBlocksBelow > 0 && (
-                            <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
-                          )}
-                          {lastProcessedSequence >= 0 && (
-                            <p>Last feedback: sequence {lastProcessedSequence}</p>
-                          )}
-                          <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">📈 Sending random chunks - targeted encoding will activate when only a few blocks remain</p>
-                  </>
-                ) : (
-                  <>
-                    {windowInfo && windowInfo.windowEnabled ? (
-                      <>
-                        <p>Overall: {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                        <p>Current window: {Array.from(receivedBlocks).filter((blockIdx: number) =>
-                          blockIdx >= windowInfo.skipBlocksBelow && blockIdx < windowInfo.windowEnd
-                        ).length} / {windowInfo.windowEnd - windowInfo.skipBlocksBelow} blocks</p>
-                        {windowInfo && windowInfo.skipBlocksBelow > 0 && (
-                          <p className="text-xs text-muted-foreground">Skipping blocks 0-{windowInfo.skipBlocksBelow - 1} (contiguous prefix decoded)</p>
-                        )}
-                      </>
-                    ) : (
-                      <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                    )}
-                    {decodingProgress >= 100 ? (
-                      <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                        ✅ Transfer complete! You can stop sending.
-                      </p>
-                    ) : (
-                      <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                        🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
-                      </p>
-                    )}
-                  </>
                 )}
               </div>
             </div>
@@ -351,9 +238,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           encoder={encoder}
           sessionId={sessionId}
           qrOptions={currentQROptions}
-          windowInfo={windowInfo}
           receivedBlocks={receivedBlocks}
-          lastStats={lastStats}
           isActive={senderMode === 'data-display'}
           activationToken={activationToken}
           onChunkGenerated={handleChunkGenerated}
@@ -377,7 +262,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 </Badge>
                 <CardTitle className="text-xl font-semibold text-emerald-50">Show This QR to the Receiver</CardTitle>
                 <p className="text-sm text-emerald-200/70">
-                  Hold the code steady while the receiver scans. This confirms their feedback and unlocks the next data window.
+                  Hold the code steady while the receiver scans. This confirms their feedback and allows the transfer to continue.
                 </p>
               </div>
               <Button
@@ -472,16 +357,10 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             encoder={encoder}
             sessionId={sessionId}
             lastProcessedSequence={lastProcessedSequence}
-            windowInfo={windowInfo}
-            lastDecodedInWindow={lastDecodedInWindow}
-            lastWindowExpansion={lastWindowExpansion}
             onFeedbackProcessed={handleFeedbackProcessed}
             onAckGenerated={handleAckGenerated}
             onModeChange={handleFeedbackModeChange}
             onError={handleFeedbackError}
-            onUpdateWindowInfo={handleUpdateWindowInfo}
-            onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
-            onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
             autoStartScanning={senderMode === 'feedback-scanning'}
           />
         ) : (
@@ -490,16 +369,10 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             sessionId={sessionId}
             isActive={true}
             lastProcessedSequence={lastProcessedSequence}
-            windowInfo={windowInfo}
-            lastDecodedInWindow={lastDecodedInWindow}
-            lastWindowExpansion={lastWindowExpansion}
             onFeedbackProcessed={handleFeedbackProcessed}
             onAckGenerated={handleAckGenerated}
             onModeChange={handleFeedbackModeChange}
             onError={handleFeedbackError}
-            onUpdateWindowInfo={handleUpdateWindowInfo}
-            onUpdateLastDecodedInWindow={handleUpdateLastDecodedInWindow}
-            onUpdateLastWindowExpansion={handleUpdateLastWindowExpansion}
             skipTargetedModeForSession={false}
           />
         )
@@ -546,12 +419,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
                 <li>Receiver must scan ACK before resuming data scanning</li>
                 <li>If you don't have a camera, use 'Manual Input' mode to type feedback details from the receiver's display</li>
-                {windowInfo && windowInfo.windowEnabled && (
-                  <li className="text-blue-600 dark:text-blue-400">For large files ({'>'}200KB), transfer uses a sliding window that expands as blocks are decoded</li>
-                  )}
-                  <li className="text-blue-600 dark:text-blue-400">For most of the transfer, feedback QR contains only statistics (compact)</li>
+                  <li className="text-blue-600 dark:text-blue-400">For part-based transfers, feedback QR signals part completion with checksum validation</li>
                   <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
-                  <li className="text-blue-600 dark:text-blue-400">Feedback QR includes contiguous progress to skip already-decoded blocks</li>
               </>
             ) : (
               <>
@@ -563,11 +432,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
               </>
             )}
           </ol>
-          {windowInfo && windowInfo.windowEnabled && feedbackEnabled && (
-            <p className="text-xs text-blue-600 dark:text-blue-400 mt-3 pt-3 border-t">
-              <span className="font-medium">🪟 Tip:</span> Scan feedback QR periodically to enable automatic window expansion for large files.
-            </p>
-          )}
         </AlertDescription>
       </Alert>
     </div>

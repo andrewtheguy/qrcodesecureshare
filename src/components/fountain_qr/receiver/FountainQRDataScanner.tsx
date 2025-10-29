@@ -34,10 +34,6 @@ interface FountainQRDataScannerProps {
   isTargetedModeActive: boolean
   senderFeedbackMessage: string
   decodedBlockIndices?: number[]
-  isWindowEnabled: boolean
-  currentWindowStart: number
-  currentWindowEnd: number
-  firstMissingBlock: number
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
@@ -60,10 +56,6 @@ export function FountainQRDataScanner({
   isTargetedModeActive,
   senderFeedbackMessage,
   decodedBlockIndices = [],
-  isWindowEnabled,
-  currentWindowStart,
-  currentWindowEnd,
-  firstMissingBlock,
   onChunkScanned,
   onScanError,
   onScanStart,
@@ -355,20 +347,9 @@ export function FountainQRDataScanner({
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">Block Progress</div>
-            {isWindowEnabled ? (
-              <div className="text-xs text-muted-foreground">
-                {(() => {
-                  const windowSize = currentWindowEnd - firstMissingBlock
-                  const decodedInWindow = decodedBlockIndices.filter(idx => idx >= firstMissingBlock && idx < currentWindowEnd).length
-                  const windowPercent = windowSize > 0 ? Math.round((decodedInWindow / windowSize) * 100) : 0
-                  return `Window Mode: Active (${windowPercent}% full, blocks ${firstMissingBlock}-${currentWindowEnd} of ${fountainMetadata.totalSourceBlocks})`
-                })()}
-              </div>
-            ) : (
-              <div className="text-xs text-muted-foreground">
-                Window Mode: Disabled
-              </div>
-            )}
+            <div className="text-xs text-muted-foreground">
+              {decodedBlocks} / {fountainMetadata.totalSourceBlocks} blocks decoded
+            </div>
           </div>
           <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
@@ -388,19 +369,14 @@ export function FountainQRDataScanner({
               const rangeBlocks = Array.from({ length: endBlock - startBlock }, (_, j) => startBlock + j)
               const decodedInRange = rangeBlocks.filter(block => decodedBlockIndices.includes(block)).length
 
-              // Check if this rectangle is within the current window
-              // A rectangle is considered "in window" if any of its blocks fall within [currentWindowStart, currentWindowEnd)
-              const isInWindow = rangeBlocks.some(block => block >= currentWindowStart && block < currentWindowEnd)
+              // Window logic removed - no window-specific styling
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
-
-              // Apply a different background color for blocks within window range when window mode is enabled
-              const windowBackground = isWindowEnabled && isInWindow ? 'bg-purple-100 dark:bg-purple-900' : 'bg-transparent'
 
               return (
                 <div
                   key={i}
-                  className={`aspect-square p-0.5 ${windowBackground}`}
-                  title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded${isWindowEnabled ? (isInWindow ? ' (in window)' : ' (outside window)') : ''}`}
+                  className="aspect-square p-0.5 bg-transparent"
+                  title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded`}
                 >
                   <div className={`w-full h-full rounded-full ${colorClass}`} />
                 </div>

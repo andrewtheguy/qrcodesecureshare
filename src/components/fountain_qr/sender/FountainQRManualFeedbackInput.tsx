@@ -19,28 +19,11 @@ import { FountainEncoder } from '@/utils/fountainCode';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
-import { WINDOW_BASELINE_THRESHOLD, calculateWindowExpansionSize, DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
-
-interface WindowInfo {
-  windowEnabled: boolean;
-  windowStart: number;
-  windowEnd: number;
-  windowSize: number;
-  totalBlocks: number;
-  isWindowComplete: boolean;
-  skipBlocksBelow: number;
-  currentSegment: number;
-  totalSegments: number;
-  segmentProgress: number;
-  segmentSizeBlocks: number;
-}
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'statistics' | 'targeted';
+  mode: 'part-complete' | 'targeted';
   receivedBlocks?: Set<number>;
-  lastStats?: { totalDecoded: number; totalBlocks: number; windowStart?: number; windowEnd?: number; progress?: number };
-  windowExpanded: boolean;
   message: string;
 }
 
@@ -49,16 +32,10 @@ interface FountainQRManualFeedbackInputProps {
   sessionId: number;
   isActive?: boolean;
   lastProcessedSequence: number;
-  windowInfo: WindowInfo | null;
-  lastDecodedInWindow: number;
-  lastWindowExpansion: number | null;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
   onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
-  onUpdateWindowInfo: (windowInfo: WindowInfo) => void;
-  onUpdateLastDecodedInWindow: (count: number) => void;
-  onUpdateLastWindowExpansion: (timestamp: number) => void;
   skipTargetedModeForSession: boolean;
 }
 
@@ -66,16 +43,10 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   encoder,
   sessionId,
   lastProcessedSequence,
-  windowInfo,
-  lastDecodedInWindow,
-  lastWindowExpansion,
   onFeedbackProcessed,
   onAckGenerated,
   onModeChange,
   onError,
-  onUpdateWindowInfo,
-  onUpdateLastDecodedInWindow,
-  onUpdateLastWindowExpansion,
   skipTargetedModeForSession,
 }) => {
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
@@ -83,10 +54,12 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   // Form field states
   const [inputSessionId] = useState(sessionId.toString());
   const [inputSequence, setInputSequence] = useState((lastProcessedSequence + 1).toString());
-  const [inputMode, setInputMode] = useState<'statistics' | 'targeted'>('statistics');
-  const [inputFirstMissingBlock, setInputFirstMissingBlock] = useState('0');
-  const [inputProgress, setInputProgress] = useState('');
-  const [inputDecodedInWindow, setInputDecodedInWindow] = useState('');
+  const [inputMode, setInputMode] = useState<'part-complete' | 'targeted'>('part-complete');
+  // Note: User enters 1-indexed values (what they see on display), but we store as strings for UI
+  // Conversion to 0-indexed happens in validateInputs before checksum generation
+  const [inputCurrentPart, setInputCurrentPart] = useState('1');
+  const [inputTotalParts, setInputTotalParts] = useState('1');
+  const [inputPartChecksumMatch, setInputPartChecksumMatch] = useState<'true' | 'false'>('true');
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
@@ -125,10 +98,10 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
   const resetInputFields = useCallback(() => {
     setInputSequence((lastProcessedSequence + 1).toString());
-    setInputMode('statistics');
-    setInputFirstMissingBlock('0');
-    setInputProgress('');
-    setInputDecodedInWindow('');
+    setInputMode('part-complete');
+    setInputCurrentPart('1'); // Reset to 1 (user enters 1-indexed values)
+    setInputTotalParts('1');
+    setInputPartChecksumMatch('true');
     setInputMissingBlocks('');
     setInputConfirmationCode('');
   }, [lastProcessedSequence]);
@@ -146,24 +119,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       return { valid: false, error: `Invalid sequence: Must be greater than ${lastProcessedSequence} (last processed). Current value: ${parsedSequence}. Please check the Sequence field from receiver's feedback display.`, feedback: null };
     }
 
-    // Parse and validate firstMissingBlock
-    const parsedFirstMissingBlock = parseInt(inputFirstMissingBlock);
-    if (isNaN(parsedFirstMissingBlock) || parsedFirstMissingBlock < 0) {
-      return { valid: false, error: `Invalid first missing block: Must be a non-negative integer. Current value: ${inputFirstMissingBlock}. Please verify this field from receiver's feedback display.`, feedback: null };
-    }
-
-    // Parse and validate progress
-    const parsedProgress = parseInt(inputProgress);
-    if (isNaN(parsedProgress) || parsedProgress < 0 || parsedProgress > 100) {
-      return { valid: false, error: `Invalid progress: Must be an integer between 0 and 100. Current value: ${inputProgress}. Please verify this field from receiver's feedback display.`, feedback: null };
-    }
-
-    // Parse and validate decodedInWindow
-    const parsedDecodedInWindow = parseInt(inputDecodedInWindow);
-    if (isNaN(parsedDecodedInWindow) || parsedDecodedInWindow < 0) {
-      return { valid: false, error: `Invalid decoded in window: Must be a non-negative integer. Current value: ${inputDecodedInWindow}. Please verify this field from receiver's feedback display.`, feedback: null };
-    }
-
     // Validate confirmation code
     if (!inputConfirmationCode.trim()) {
       return { valid: false, error: 'Confirmation code required: Please enter the confirmation code shown in receiver\'s Feedback Details card to verify input accuracy.', feedback: null };
@@ -171,18 +126,70 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     let feedback: FountainFeedback;
 
-    if (inputMode === 'statistics') {
+    if (inputMode === 'part-complete') {
+      // SYNC REQUIREMENT: These fields MUST match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
+      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+      // Do NOT include optional fields like computedChecksum
+
+      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
+      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
+      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
+      }
+
+      // Parse and validate totalParts
+      const parsedTotalParts = parseInt(inputTotalParts);
+      if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
+        return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
+      }
+
+      if (parsedCurrentPartDisplay > parsedTotalParts) {
+        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+      }
+
+      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
+      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
+
       feedback = {
         type: 'FOUNTAIN_FEEDBACK',
-        mode: 'statistics',
+        mode: 'part-complete',
         sessionId: parsedSessionId,
         sequence: parsedSequence,
-        firstMissingBlock: parsedFirstMissingBlock,
-        progress: parsedProgress,
-        decodedInWindow: parsedDecodedInWindow,
+        currentPart: parsedCurrentPart,
+        totalParts: parsedTotalParts,
+        partChecksumMatch: inputPartChecksumMatch === 'true',
       };
     } else {
-      // Targeted mode
+      // SYNC REQUIREMENT: These fields MUST match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
+      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
+      // Do NOT include optional fields
+
+      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
+      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
+      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
+      }
+
+      const parsedTotalParts = parseInt(inputTotalParts);
+      if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
+        return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
+      }
+
+      if (parsedCurrentPartDisplay > parsedTotalParts) {
+        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+      }
+
+      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
+      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
+
       let missingBlocks: number[];
       try {
         missingBlocks = parseMissingBlocks(inputMissingBlocks);
@@ -195,9 +202,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         mode: 'targeted',
         sessionId: parsedSessionId,
         sequence: parsedSequence,
-        firstMissingBlock: parsedFirstMissingBlock,
-        progress: parsedProgress,
-        decodedInWindow: parsedDecodedInWindow,
+        currentPart: parsedCurrentPart,
+        totalParts: parsedTotalParts,
         missingBlocks,
       };
     }
@@ -210,13 +216,13 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     if (normalizedInput !== normalizedExpected) {
       return {
         valid: false,
-        error: `Confirmation code mismatch: The code you entered doesn't match the expected value for this feedback. This indicates a typo in one or more fields. Please double-check all fields (Session ID, Sequence, First Missing Block, Progress, Decoded in Window, and mode-specific fields) and try again. Expected: ${expectedCode}, Got: ${inputConfirmationCode}`,
+        error: `Confirmation code mismatch: The code you entered doesn't match the expected value for this feedback. This indicates a typo in one or more fields. Please double-check all fields (Session ID, Sequence, Current Part, Total Parts, and mode-specific fields) and try again. Expected: ${expectedCode}, Got: ${inputConfirmationCode}`,
         feedback: null
       };
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputMode, inputFirstMissingBlock, inputProgress, inputDecodedInWindow, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [inputSessionId, inputSequence, inputMode, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const parseMissingBlocks = (input: string): number[] => {
     const trimmedInput = input.trim();
@@ -280,154 +286,67 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     // Clear any existing validation error
     setValidationError('');
-    const firstMissingBlock = feedback.firstMissingBlock || 0;
 
-    if (feedback.mode === 'statistics') {
-      encoder?.setReceivedBlocks([]);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
+    if (feedback.mode === 'part-complete') {
+      console.log(`[FountainQRManualFeedbackInput] Processing part-complete feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`);
+      console.log(`[FountainQRManualFeedbackInput] Checksum match: ${feedback.partChecksumMatch}`);
 
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
+      // Check for part completion
+      let partTransition = false;
+      let newPartIndex: number | undefined;
 
-      const effectiveWindowInfo = updatedWindowInfo ?? windowInfo ?? encoder?.getWindowInfo() ?? null;
-      const totalBlocks = effectiveWindowInfo?.totalBlocks ?? 0;
-      const estimatedTotalDecoded = totalBlocks > 0 ? Math.round((feedback.progress / 100) * totalBlocks) : 0;
+      if (feedback.partChecksumMatch) {
+        console.log(`[FountainQRManualFeedbackInput] Part ${feedback.currentPart + 1}/${feedback.totalParts} completed successfully`);
 
-      const lastStats = {
-        totalDecoded: estimatedTotalDecoded,
-        totalBlocks,
-        windowStart: effectiveWindowInfo?.windowStart,
-        windowEnd: effectiveWindowInfo?.windowEnd,
-        progress: feedback.progress,
-      };
-
-      let windowExpanded = false;
-      if (effectiveWindowInfo?.windowEnabled && !effectiveWindowInfo.isWindowComplete) {
-        const { windowEnd } = effectiveWindowInfo;
-        const effectiveWindowSize = windowEnd - firstMissingBlock;
-        const clampedEffectiveWindowSize = Math.max(effectiveWindowSize, 0);
-        const decodedInWindow = feedback.decodedInWindow;
-        const hasProgressed = decodedInWindow > lastDecodedInWindow;
-
-        const meetsExpansionThreshold =
-          hasProgressed && clampedEffectiveWindowSize > 0 && decodedInWindow >= clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD;
-
-        if (clampedEffectiveWindowSize === 0) {
-          // Skip expansion when clamped effective window size is 0
-          console.log('[FountainQRManualFeedbackInput] Skipping expansion: clampedEffectiveWindowSize is 0');
-          if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (meetsExpansionThreshold) {
-          const now = Date.now();
-          if (!lastWindowExpansion || now - lastWindowExpansion > 2000) {
-            const blockSize = encoder?.getMetadata()?.blockSize ?? DEFAULT_BLOCK_SIZE;
-            const expansionCalc = calculateWindowExpansionSize(
-              firstMissingBlock,
-              firstMissingBlock,
-              windowEnd,
-              clampedEffectiveWindowSize,
-              feedback.progress,
-              blockSize,
-              effectiveWindowInfo.totalBlocks
-            );
-            console.log(
-              `[FountainQRManualFeedbackInput] Expansion calculation (statistics): decodedInWindow=${decodedInWindow}, effectiveWindowSize=${effectiveWindowSize}, clampedEffectiveWindowSize=${clampedEffectiveWindowSize}, threshold=${Math.round(clampedEffectiveWindowSize * WINDOW_BASELINE_THRESHOLD)}, effective=${expansionCalc.effectivePercent.toFixed(2)}, extra=${expansionCalc.extraPercent.toFixed(2)}, blocks=${expansionCalc.expansionBlocks}`
-            );
-            const oldWindowInfo = encoder?.getWindowInfo();
-            const oldWindowEnd = oldWindowInfo?.windowEnd;
-            encoder?.expandWindow(expansionCalc.expansionBlocks);
-            const newWindowInfo = encoder?.getWindowInfo();
-            const expansionSucceeded =
-              !!newWindowInfo &&
-              (typeof oldWindowEnd === 'number'
-                ? newWindowInfo.windowEnd > oldWindowEnd
-                : expansionCalc.expansionBlocks > 0);
-
-            if (newWindowInfo) {
-              onUpdateWindowInfo(newWindowInfo);
-              if (expansionSucceeded) {
-                console.log(
-                  `[FountainQRManualFeedbackInput] Window expanded (statistics mode): new end=${newWindowInfo.windowEnd}, expansion=${expansionCalc.expansionBlocks} blocks`
-                );
-              } else {
-                console.log(
-                  '[FountainQRManualFeedbackInput] Window expansion requested but window end did not change; retaining decodedInWindow state.'
-                );
-              }
-            }
-
-            if (expansionSucceeded) {
-              windowExpanded = true;
-              onUpdateLastDecodedInWindow(0);
-              onUpdateLastWindowExpansion(now);
-            } else if (hasProgressed) {
-              onUpdateLastDecodedInWindow(decodedInWindow);
-            }
-          } else if (hasProgressed) {
-            onUpdateLastDecodedInWindow(decodedInWindow);
-          }
-        } else if (hasProgressed) {
-          onUpdateLastDecodedInWindow(decodedInWindow);
+        // Move encoder to next part
+        const moved = encoder?.moveToNextPart();
+        if (moved) {
+          partTransition = true;
+          const partInfo = encoder?.getPartInfo();
+          newPartIndex = partInfo?.currentPartIndex;
+          console.log(`[FountainQRManualFeedbackInput] Moved to part ${(newPartIndex ?? 0) + 1}`);
+        } else {
+          console.log('[FountainQRManualFeedbackInput] Part complete, but this was the last part');
         }
-      }
-
-      // Get the current (possibly expanded) window info to send to receiver
-      console.log('[FountainQRManualFeedbackInput] Getting final window info for ACK generation');
-      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null/undefined');
-        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
+      } else {
+        // Part checksum mismatch - fail the transfer
+        showValidationError(`Part ${feedback.currentPart + 1} checksum validation failed on receiver`);
         return;
       }
-      console.log('[FountainQRManualFeedbackInput] ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+
+      // Determine message based on part transition
+      let ackMessage = `Part completion acknowledged.`;
+      if (partTransition && newPartIndex !== undefined) {
+        ackMessage = `Part ${feedback.currentPart + 1} complete. Moving to part ${newPartIndex + 1}.`;
+      }
+
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
         sequence: senderFeedbackSequence,
         command: 'acknowledge',
         acknowledgedSequence: feedback.sequence,
-        message: `Statistics received. Window ${windowExpanded ? 'expanded' : 'unchanged'}.`,
-        windowExpanded,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
+        message: ackMessage,
+        ...(partTransition && { partTransition, newPartIndex })
       };
 
       await generateSenderFeedbackQR(ackFeedback);
-      resetInputFields(); // Add this line
+      resetInputFields();
 
       onFeedbackProcessed({
         sequence: feedback.sequence,
-        mode: 'statistics',
-        lastStats,
-        windowExpanded,
+        mode: 'part-complete',
         message: ackFeedback.message,
       });
 
       onModeChange('ack-display');
     } else if (feedback.mode === 'targeted') {
       const missingBlocks = feedback.missingBlocks || [];
+      console.log(`[FountainQRManualFeedbackInput] Processing targeted feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`);
+      console.log(`[FountainQRManualFeedbackInput] Missing blocks: ${missingBlocks.length}`);
       encoder?.setMissingBlocks(missingBlocks);
-      encoder?.setSkipBlocksBelow(firstMissingBlock);
 
-      const updatedWindowInfo = encoder?.getWindowInfo();
-      if (updatedWindowInfo) {
-        onUpdateWindowInfo(updatedWindowInfo);
-      }
-
-      // Generate ACK without expansion (targeted mode is final cleanup)
-      console.log('[FountainQRManualFeedbackInput] Getting final window info for targeted mode ACK');
-      console.log('[FountainQRManualFeedbackInput] Encoder state:', encoder ? 'valid' : 'NULL');
-      const finalWindowInfo = encoder.getWindowInfo();
-      if (!finalWindowInfo) {
-        console.error('[FountainQRManualFeedbackInput] CRITICAL: getWindowInfo() returned null in targeted mode');
-        showValidationError('Failed to get window info from encoder. Cannot generate ACK.');
-        return;
-      }
-      console.log('[FountainQRManualFeedbackInput] Targeted mode ACK generated with window range:', finalWindowInfo.windowStart, '-', finalWindowInfo.windowEnd);
+      // Generate ACK for targeted mode (final cleanup)
       const ackFeedback: SenderFeedbackAcknowledge = {
         type: 'SENDER_FEEDBACK',
         sessionId,
@@ -435,25 +354,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         command: 'acknowledge',
         acknowledgedSequence: feedback.sequence,
         message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
-        windowExpanded: false,
-        windowStart: finalWindowInfo.windowStart,
-        windowEnd: finalWindowInfo.windowEnd,
       };
 
       await generateSenderFeedbackQR(ackFeedback);
-      resetInputFields(); // Add this line
+      resetInputFields();
 
       onFeedbackProcessed({
         sequence: feedback.sequence,
         mode: 'targeted',
         receivedBlocks: new Set(),
-        windowExpanded: false,
         message: ackFeedback.message,
       });
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, windowInfo, lastDecodedInWindow, lastWindowExpansion, onFeedbackProcessed, onModeChange, onUpdateWindowInfo, onUpdateLastDecodedInWindow, onUpdateLastWindowExpansion, resetInputFields, generateSenderFeedbackQR]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR]);
 
   const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
@@ -491,7 +406,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           <Alert>
             <AlertDescription>
               <p className="font-medium">ℹ️ Targeted Mode Disabled</p>
-              <p className="text-sm">Statistics mode will be used for all feedback this session.</p>
+              <p className="text-sm">Part-complete mode will be used for all feedback this session.</p>
             </AlertDescription>
           </Alert>
         )}
@@ -518,12 +433,21 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </div>
         </div>
 
+        {/* SYNC REQUIREMENT: UI fields MUST match exactly with:
+            1. FountainQRFeedbackDisplay.tsx - feedback generation and display
+            2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+            3. checksum.ts - generateFeedbackConfirmationCode()
+
+            Part-complete mode: currentPart, totalParts, partChecksumMatch
+            Targeted mode: currentPart, totalParts, missingBlocks
+            Do NOT include optional fields like computedChecksum */}
+
         <div>
           <Label className="text-xs">Feedback Mode</Label>
-          <RadioGroup value={inputMode} onValueChange={(value: 'statistics' | 'targeted') => setInputMode(value)}>
+          <RadioGroup value={inputMode} onValueChange={(value: 'part-complete' | 'targeted') => setInputMode(value)}>
             <div className="flex items-center space-x-2">
-              <RadioGroupItem value="statistics" id="statistics" />
-              <Label htmlFor="statistics" className="text-sm">Statistics</Label>
+              <RadioGroupItem value="part-complete" id="part-complete" />
+              <Label htmlFor="part-complete" className="text-sm">Part Complete</Label>
             </div>
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="targeted" id="targeted" />
@@ -532,43 +456,48 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </RadioGroup>
         </div>
 
-        <div>
-          <Label htmlFor="firstMissingBlock" className="text-xs">First Missing Block</Label>
-          <Input
-            id="firstMissingBlock"
-            type="number"
-            value={inputFirstMissingBlock}
-            onChange={(e) => setInputFirstMissingBlock(e.target.value)}
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="currentPart" className="text-xs">Current Part (as shown on display)</Label>
+            <Input
+              id="currentPart"
+              type="number"
+              min="1"
+              value={inputCurrentPart}
+              onChange={(e) => setInputCurrentPart(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enter the exact part number shown on receiver's display
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="totalParts" className="text-xs">Total Parts</Label>
+            <Input
+              id="totalParts"
+              type="number"
+              min="1"
+              value={inputTotalParts}
+              onChange={(e) => setInputTotalParts(e.target.value)}
+            />
+          </div>
         </div>
 
-        <div>
-          <Label htmlFor="progress" className="text-xs">Progress (%)</Label>
-          <Input
-            id="progress"
-            type="number"
-            min="0"
-            max="100"
-            value={inputProgress}
-            onChange={(e) => setInputProgress(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Overall file decode progress (0-100)
-          </p>
-        </div>
-        <div>
-          <Label htmlFor="decodedInWindow" className="text-xs">Decoded in Window *</Label>
-          <Input
-            id="decodedInWindow"
-            type="number"
-            min="0"
-            value={inputDecodedInWindow}
-            onChange={(e) => setInputDecodedInWindow(e.target.value)}
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Number of blocks decoded within the current window range
-          </p>
-        </div>
+        {inputMode === 'part-complete' && (
+          <div>
+            <Label className="text-xs">Part Checksum Match</Label>
+            <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="true" id="checksum-yes" />
+                <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="false" id="checksum-no" />
+                <Label htmlFor="checksum-no" className="text-sm">No</Label>
+              </div>
+            </RadioGroup>
+          </div>
+        )}
+
         {inputMode === 'targeted' && (
           <div>
             <Label htmlFor="missingBlocks" className="text-xs">Missing Blocks</Label>
@@ -624,7 +553,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. All required fields (Session ID, Sequence, First Missing Block, Progress, Decoded in Window, and mode-specific fields) must be entered. Double-check each field before processing. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter the Current Part number exactly as displayed (e.g., if it shows "Part 1", enter 1), Total Parts, and the Confirmation Code. For part-complete mode, also enter Checksum Match (Yes/No). For targeted mode, enter the Missing Blocks. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 
