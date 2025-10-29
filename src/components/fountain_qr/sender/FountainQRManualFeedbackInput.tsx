@@ -58,7 +58,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputCurrentPart, setInputCurrentPart] = useState('0');
   const [inputTotalParts, setInputTotalParts] = useState('1');
   const [inputPartChecksumMatch, setInputPartChecksumMatch] = useState<'true' | 'false'>('true');
-  const [inputComputedChecksum, setInputComputedChecksum] = useState('');
   const [inputMissingBlocks, setInputMissingBlocks] = useState('');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
@@ -101,7 +100,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setInputCurrentPart('0');
     setInputTotalParts('1');
     setInputPartChecksumMatch('true');
-    setInputComputedChecksum('');
     setInputMissingBlocks('');
     setInputConfirmationCode('');
   }, [lastProcessedSequence]);
@@ -127,6 +125,14 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     let feedback: FountainFeedback;
 
     if (inputMode === 'part-complete') {
+      // SYNC REQUIREMENT: These fields MUST match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
+      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+      // Do NOT include optional fields like computedChecksum
+
       // Parse and validate currentPart
       const parsedCurrentPart = parseInt(inputCurrentPart);
       if (isNaN(parsedCurrentPart) || parsedCurrentPart < 0) {
@@ -151,10 +157,16 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         currentPart: parsedCurrentPart,
         totalParts: parsedTotalParts,
         partChecksumMatch: inputPartChecksumMatch === 'true',
-        ...(inputComputedChecksum.trim() && { computedChecksum: inputComputedChecksum.trim() }),
       };
     } else {
-      // Targeted mode
+      // SYNC REQUIREMENT: These fields MUST match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
+      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
+      // Do NOT include optional fields
+
       const parsedCurrentPart = parseInt(inputCurrentPart);
       if (isNaN(parsedCurrentPart) || parsedCurrentPart < 0) {
         return { valid: false, error: `Invalid current part: Must be a non-negative integer. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
@@ -197,7 +209,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputMode, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputComputedChecksum, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [inputSessionId, inputSequence, inputMode, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const parseMissingBlocks = (input: string): number[] => {
     const trimmedInput = input.trim();
@@ -408,6 +420,15 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </div>
         </div>
 
+        {/* SYNC REQUIREMENT: UI fields MUST match exactly with:
+            1. FountainQRFeedbackDisplay.tsx - feedback generation and display
+            2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+            3. checksum.ts - generateFeedbackConfirmationCode()
+
+            Part-complete mode: currentPart, totalParts, partChecksumMatch
+            Targeted mode: currentPart, totalParts, missingBlocks
+            Do NOT include optional fields like computedChecksum */}
+
         <div>
           <Label className="text-xs">Feedback Mode</Label>
           <RadioGroup value={inputMode} onValueChange={(value: 'part-complete' | 'targeted') => setInputMode(value)}>
@@ -446,36 +467,19 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         </div>
 
         {inputMode === 'part-complete' && (
-          <>
-            <div>
-              <Label className="text-xs">Part Checksum Match</Label>
-              <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="true" id="checksum-yes" />
-                  <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="false" id="checksum-no" />
-                  <Label htmlFor="checksum-no" className="text-sm">No</Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            <div>
-              <Label htmlFor="computedChecksum" className="text-xs">Computed Checksum (Optional)</Label>
-              <Input
-                id="computedChecksum"
-                type="text"
-                value={inputComputedChecksum}
-                onChange={(e) => setInputComputedChecksum(e.target.value)}
-                placeholder="e.g., a1b2c3d4"
-                className="font-mono"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                CRC32 checksum from receiver (if displayed)
-              </p>
-            </div>
-          </>
+          <div>
+            <Label className="text-xs">Part Checksum Match</Label>
+            <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="true" id="checksum-yes" />
+                <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="false" id="checksum-no" />
+                <Label htmlFor="checksum-no" className="text-sm">No</Label>
+              </div>
+            </RadioGroup>
+          </div>
         )}
 
         {inputMode === 'targeted' && (
@@ -533,7 +537,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter Current Part, Total Parts, and the Confirmation Code. For part-complete mode, also enter Checksum Match (Yes/No) and optionally the Computed Checksum. For targeted mode, enter the Missing Blocks. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter Current Part, Total Parts, and the Confirmation Code. For part-complete mode, also enter Checksum Match (Yes/No). For targeted mode, enter the Missing Blocks. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 

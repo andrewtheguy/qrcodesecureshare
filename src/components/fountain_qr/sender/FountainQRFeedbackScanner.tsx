@@ -105,6 +105,13 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
 
     if (data.mode === 'part-complete') {
+      // SYNC REQUIREMENT: Validate these fields match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
+      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for part-complete mode
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+      // Do NOT expect optional fields like computedChecksum
       console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
       console.log(`[FountainQRFeedbackScanner] Checksum match: ${data.partChecksumMatch}`);
 
@@ -161,6 +168,13 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       onModeChange('ack-display');
       setProcessingRef(false);
     } else if (data.mode === 'targeted') {
+      // SYNC REQUIREMENT: Validate these fields match exactly with:
+      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
+      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for targeted mode
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
+      // Do NOT expect optional fields
       if (!data.missingBlocks || !Array.isArray(data.missingBlocks)) {
         onError('Invalid targeted feedback: missingBlocks must be an array.');
         setCurrentMode('idle');

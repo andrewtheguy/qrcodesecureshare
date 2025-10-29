@@ -30,6 +30,14 @@ export function normalizeConfirmationCode(code: string): string {
 /**
  * Generates a confirmation code for feedback payloads.
  * The confirmation code validates all essential feedback fields for manual input mode.
+ *
+ * SYNC REQUIREMENT: Fields included in checksum MUST match exactly with:
+ * 1. FountainQRFeedbackDisplay.tsx - feedback generation
+ * 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+ * 3. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
+ *
+ * IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields.
+ * Optional fields will cause confirmation code mismatches between QR and manual input.
  */
 export async function generateFeedbackConfirmationCode(feedback: FountainFeedback): Promise<string> {
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
@@ -43,15 +51,15 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
 
   // Add mode-specific fields
   if (feedback.mode === 'part-complete') {
+    // Part-complete required fields: currentPart, totalParts, partChecksumMatch
+    // Do NOT include computedChecksum (optional field)
     fields.push(
       { currentPart: feedback.currentPart.toString() },
       { totalParts: feedback.totalParts.toString() },
       { partChecksumMatch: feedback.partChecksumMatch.toString() }
     )
-    if (feedback.computedChecksum) {
-      fields.push({ computedChecksum: feedback.computedChecksum })
-    }
   } else if (feedback.mode === 'targeted') {
+    // Targeted required fields: currentPart, totalParts, missingBlocks
     fields.push(
       { currentPart: feedback.currentPart.toString() },
       { totalParts: feedback.totalParts.toString() }

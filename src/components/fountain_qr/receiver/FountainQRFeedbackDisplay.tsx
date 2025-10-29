@@ -155,6 +155,14 @@ export function FountainQRFeedbackDisplay({
 
       if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession || !ENABLE_TARGETED_MODE) {
         // Part-complete mode - simplified feedback with minimal details
+        //
+        // SYNC REQUIREMENT: These fields MUST match exactly with:
+        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
+        // 3. checksum.ts - generateFeedbackConfirmationCode()
+        //
+        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields like computedChecksum.
+        // Optional fields break confirmation code validation and cause manual input mismatches.
         feedback = {
           type: 'FOUNTAIN_FEEDBACK',
           mode: 'part-complete',
@@ -163,7 +171,6 @@ export function FountainQRFeedbackDisplay({
           currentPart: partCompleteInfo.currentPart,
           totalParts: partCompleteInfo.totalParts,
           partChecksumMatch: partCompleteInfo.partChecksumMatch,
-          computedChecksum: partCompleteInfo.computedChecksum,
         }
       } else {
         // Targeted feedback with missing block indices - for final stage
@@ -203,6 +210,14 @@ export function FountainQRFeedbackDisplay({
           }
         }
 
+        // Targeted mode - includes specific missing block indices for final cleanup
+        //
+        // SYNC REQUIREMENT: These fields MUST match exactly with:
+        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
+        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields for targeted mode
+        // 3. checksum.ts - generateFeedbackConfirmationCode() for targeted mode
+        //
+        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields.
         const feedbackBase = {
           type: 'FOUNTAIN_FEEDBACK' as const,
           mode: 'targeted' as const,
@@ -499,6 +514,11 @@ export function FountainQRFeedbackDisplay({
                 <span className="text-muted-foreground font-medium text-sm">Sequence:</span>
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.sequence}</span>
 
+                {/* SYNC REQUIREMENT: Display fields MUST match feedback generation above
+                    Part-complete mode: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+                    Targeted mode: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
+                    Do NOT display optional fields - they are not included in feedback QR or confirmation code */}
+
                 <span className="text-muted-foreground font-medium text-sm">Mode:</span>
                 <span className="font-mono text-sm cursor-text select-all">
                   {feedbackData.mode === 'part-complete' ? 'Part Complete' : 'Targeted'}
@@ -515,13 +535,6 @@ export function FountainQRFeedbackDisplay({
                     <span className="font-mono text-sm cursor-text select-all">
                       {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
                     </span>
-
-                    {feedbackData.computedChecksum && (
-                      <>
-                        <span className="text-muted-foreground font-medium text-sm">Computed Checksum:</span>
-                        <span className="font-mono text-sm cursor-text select-all">{feedbackData.computedChecksum}</span>
-                      </>
-                    )}
                   </>
                 )}
 
