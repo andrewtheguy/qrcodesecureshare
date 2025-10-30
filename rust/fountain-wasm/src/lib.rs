@@ -13,7 +13,7 @@ mod tests;
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-pub use types::{FountainChunk, FountainMetadata};
+pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata};
 pub use parser::PartMetadata;
 
 /// WASM-exported Fountain Encoder
@@ -128,10 +128,8 @@ impl WasmFountainEncoder {
     // Part-Based Mode Methods
     // ========================================
 
-    /// Get part info as a JS object
-    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize, currentPartChecksum?, partChecksums? }
-    #[wasm_bindgen(js_name = getPartInfo)]
-    pub fn get_part_info(&self) -> JsValue {
+    /// Get part info as a Rust struct (internal)
+    fn get_part_info_internal(&self) -> PartInfo {
         let (part_based_mode, current_part_index, total_parts, part_size) =
             self.encoder.get_part_info();
 
@@ -143,48 +141,29 @@ impl WasmFountainEncoder {
             web_sys::console::error_1(&"Part info values exceed u32::MAX".into());
         }
 
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &obj,
-            &"partBasedMode".into(),
-            &JsValue::from(part_based_mode),
-        )
-        .ok();
-        js_sys::Reflect::set(
-            &obj,
-            &"currentPartIndex".into(),
-            &JsValue::from(current_part_index as u32),
-        )
-        .ok();
-        js_sys::Reflect::set(
-            &obj,
-            &"totalParts".into(),
-            &JsValue::from(total_parts as u32),
-        )
-        .ok();
-        js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
-
-        // Add current part checksum if available
-        if let Some(checksum) = self.encoder.get_current_part_checksum() {
-            js_sys::Reflect::set(
-                &obj,
-                &"currentPartChecksum".into(),
-                &JsValue::from_str(checksum),
-            )
-            .ok();
-        }
-
-        // Add all part checksums if available
+        let current_part_checksum = self.encoder.get_current_part_checksum().map(|s| s.to_string());
         let checksums = self.encoder.get_part_checksums();
-        if !checksums.is_empty() {
-            let checksums_array = Array::new();
-            for checksum in checksums {
-                checksums_array.push(&JsValue::from_str(checksum));
-            }
-            js_sys::Reflect::set(&obj, &"partChecksums".into(), &checksums_array).ok();
-        }
+        let part_checksums = if !checksums.is_empty() {
+            Some(checksums.into_iter().map(|s| s.to_string()).collect())
+        } else {
+            None
+        };
 
-        obj.into()
+        PartInfo {
+            part_based_mode,
+            current_part_index: current_part_index as u32,
+            total_parts: total_parts as u32,
+            part_size: part_size as u32,
+            current_part_checksum,
+            part_checksums,
+        }
+    }
+
+    /// Get part info as a JS object
+    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize, currentPartChecksum?, partChecksums? }
+    #[wasm_bindgen(js_name = getPartInfo)]
+    pub fn get_part_info(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.get_part_info_internal()).unwrap_or(JsValue::NULL)
     }
 
     /// Set part checksums
@@ -376,10 +355,8 @@ impl WasmFountainDecoder {
         self.decoder.get_current_part_total_block_count()
     }
 
-    /// Get part info as a JS object
-    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
-    #[wasm_bindgen(js_name = getPartInfo)]
-    pub fn get_part_info(&self) -> JsValue {
+    /// Get part info as a Rust struct (internal)
+    fn get_part_info_internal(&self) -> PartInfo {
         let (part_based_mode, current_part_index, total_parts, part_size) =
             self.decoder.get_part_info();
 
@@ -391,28 +368,21 @@ impl WasmFountainDecoder {
             web_sys::console::error_1(&"Part info values exceed u32::MAX".into());
         }
 
-        let obj = js_sys::Object::new();
-        js_sys::Reflect::set(
-            &obj,
-            &"partBasedMode".into(),
-            &JsValue::from(part_based_mode),
-        )
-        .ok();
-        js_sys::Reflect::set(
-            &obj,
-            &"currentPartIndex".into(),
-            &JsValue::from(current_part_index as u32),
-        )
-        .ok();
-        js_sys::Reflect::set(
-            &obj,
-            &"totalParts".into(),
-            &JsValue::from(total_parts as u32),
-        )
-        .ok();
-        js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
+        PartInfo {
+            part_based_mode,
+            current_part_index: current_part_index as u32,
+            total_parts: total_parts as u32,
+            part_size: part_size as u32,
+            current_part_checksum: None,
+            part_checksums: None,
+        }
+    }
 
-        obj.into()
+    /// Get part info as a JS object
+    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
+    #[wasm_bindgen(js_name = getPartInfo)]
+    pub fn get_part_info(&self) -> JsValue {
+        serde_wasm_bindgen::to_value(&self.get_part_info_internal()).unwrap_or(JsValue::NULL)
     }
 }
 
@@ -457,6 +427,32 @@ pub fn crc32(data: Uint8Array) -> String {
 /// }
 /// ```
 ///
+/// Parse binary chunk into structured result (internal)
+fn parse_binary_chunk_internal(
+    bytes: &[u8],
+    part_based_mode: bool,
+    total_source_blocks: usize,
+) -> Result<ParsedChunkResult, String> {
+    let parsed = parser::parse_binary_chunk(bytes, part_based_mode, total_source_blocks)?;
+
+    let indices = parsed.chunk.indices.iter().map(|&idx| idx as u32).collect();
+
+    let part_metadata = parsed.part_metadata.map(|meta| ParsedPartMetadata {
+        current_part: meta.current_part,
+        total_parts: meta.total_parts,
+        part_checksum: meta.part_checksum,
+    });
+
+    Ok(ParsedChunkResult {
+        seed: parsed.chunk.seed,
+        degree: parsed.chunk.degree as u32,
+        indices,
+        data: parsed.chunk.data,
+        checksum_start: parsed.checksum_start as u32,
+        part_metadata,
+    })
+}
+
 /// # Errors
 /// Returns JS error if parsing fails
 #[wasm_bindgen(js_name = parseBinaryChunk)]
@@ -466,41 +462,20 @@ pub fn parse_binary_chunk_wasm(
     total_source_blocks: usize,
 ) -> Result<JsValue, JsValue> {
     let bytes_vec = bytes.to_vec();
-    let parsed = parser::parse_binary_chunk(&bytes_vec, part_based_mode, total_source_blocks)
+    let parsed = parse_binary_chunk_internal(&bytes_vec, part_based_mode, total_source_blocks)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    // Create JS object with chunk data
-    let obj = js_sys::Object::new();
+    // Convert data to Uint8Array before serialization
+    let data_array = Uint8Array::new_with_length(parsed.data.len() as u32);
+    data_array.copy_from(&parsed.data);
 
-    // Add chunk fields
-    js_sys::Reflect::set(&obj, &"seed".into(), &JsValue::from(parsed.chunk.seed)).ok();
-    js_sys::Reflect::set(&obj, &"degree".into(), &JsValue::from(parsed.chunk.degree as u32)).ok();
+    // Serialize the result (without data) to JsValue
+    let obj = serde_wasm_bindgen::to_value(&parsed).unwrap_or(JsValue::NULL);
 
-    // Add indices as array
-    let indices_array = Array::new();
-    for &idx in &parsed.chunk.indices {
-        indices_array.push(&JsValue::from(idx as u32));
-    }
-    js_sys::Reflect::set(&obj, &"indices".into(), &indices_array).ok();
-
-    // Add data as Uint8Array
-    let data_array = Uint8Array::new_with_length(parsed.chunk.data.len() as u32);
-    data_array.copy_from(&parsed.chunk.data);
+    // Add data array to the object
     js_sys::Reflect::set(&obj, &"data".into(), &data_array).ok();
 
-    // Add checksum position
-    js_sys::Reflect::set(&obj, &"checksumStart".into(), &JsValue::from(parsed.checksum_start as u32)).ok();
-
-    // Add part metadata if present
-    if let Some(part_meta) = parsed.part_metadata {
-        let part_obj = js_sys::Object::new();
-        js_sys::Reflect::set(&part_obj, &"currentPart".into(), &JsValue::from(part_meta.current_part)).ok();
-        js_sys::Reflect::set(&part_obj, &"totalParts".into(), &JsValue::from(part_meta.total_parts)).ok();
-        js_sys::Reflect::set(&part_obj, &"partChecksum".into(), &JsValue::from_str(&part_meta.part_checksum)).ok();
-        js_sys::Reflect::set(&obj, &"partMetadata".into(), &part_obj).ok();
-    }
-
-    Ok(obj.into())
+    Ok(obj)
 }
 
 /// Create a composite dedup key for chunk identification

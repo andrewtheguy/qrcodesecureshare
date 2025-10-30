@@ -131,7 +131,7 @@ mod tests {
     #[test]
     fn test_xor_blocks_empty() {
         let result = xor_blocks(&[]);
-        assert_eq!(result, Vec::new());
+        assert_eq!(result, Vec::<u8>::new());
     }
 
     #[test]

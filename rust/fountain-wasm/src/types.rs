@@ -118,6 +118,60 @@ impl FountainChunk {
     }
 }
 
+/// Part-based mode information for fountain transfers
+/// Includes current progress and optional checksums for part validation
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartInfo {
+    /// Whether part-based mode is enabled
+    pub part_based_mode: bool,
+    /// Current part being processed (0-indexed)
+    pub current_part_index: u32,
+    /// Total number of parts
+    pub total_parts: u32,
+    /// Size of each part in bytes
+    pub part_size: u32,
+    /// Checksum of the current part (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_part_checksum: Option<String>,
+    /// Checksums for all parts (if available)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part_checksums: Option<Vec<String>>,
+}
+
+/// Result of parsing a binary fountain chunk
+/// Contains the decoded chunk metadata and optional part metadata
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedChunkResult {
+    /// RNG seed for deterministic block selection
+    pub seed: u32,
+    /// Number of source blocks XORed together
+    pub degree: u32,
+    /// Indices of source blocks used in this chunk (as u32 for JSON compatibility)
+    pub indices: Vec<u32>,
+    /// Encoded data as a Vec<u8> (will be handled separately as Uint8Array in WASM)
+    #[serde(skip)]
+    pub data: Vec<u8>,
+    /// Byte offset where the CRC32 checksum begins
+    pub checksum_start: u32,
+    /// Part metadata if part-based mode is enabled
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part_metadata: Option<ParsedPartMetadata>,
+}
+
+/// Part metadata extracted from a binary chunk
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedPartMetadata {
+    /// Current part number (0-indexed)
+    pub current_part: u16,
+    /// Total number of parts
+    pub total_parts: u16,
+    /// Checksum of this part as hex string
+    pub part_checksum: String,
+}
+
 /// Metadata about the original file and fountain encoding parameters
 #[wasm_bindgen]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -988,5 +1042,112 @@ mod tests {
             ..Default::default()
         };
         assert!(options.validate().is_ok());
+    }
+
+    #[test]
+    fn test_part_info_serialization_basic() {
+        let part_info = PartInfo {
+            part_based_mode: true,
+            current_part_index: 2,
+            total_parts: 5,
+            part_size: 1024,
+            current_part_checksum: None,
+            part_checksums: None,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&part_info).expect("serialization failed");
+
+        // Verify camelCase conversion
+        assert!(json.contains("\"partBasedMode\""));
+        assert!(json.contains("\"currentPartIndex\""));
+        assert!(json.contains("\"totalParts\""));
+        assert!(json.contains("\"partSize\""));
+
+        // Deserialize and verify
+        let deserialized: PartInfo = serde_json::from_str(&json).expect("deserialization failed");
+        assert_eq!(deserialized.part_based_mode, true);
+        assert_eq!(deserialized.current_part_index, 2);
+        assert_eq!(deserialized.total_parts, 5);
+        assert_eq!(deserialized.part_size, 1024);
+        assert!(deserialized.current_part_checksum.is_none());
+        assert!(deserialized.part_checksums.is_none());
+    }
+
+    #[test]
+    fn test_part_info_serialization_with_checksums() {
+        let part_info = PartInfo {
+            part_based_mode: true,
+            current_part_index: 1,
+            total_parts: 3,
+            part_size: 2048,
+            current_part_checksum: Some("abc123def456".to_string()),
+            part_checksums: Some(vec![
+                "checksum1".to_string(),
+                "checksum2".to_string(),
+                "checksum3".to_string(),
+            ]),
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&part_info).expect("serialization failed");
+
+        // Verify optional fields are present
+        assert!(json.contains("\"currentPartChecksum\""));
+        assert!(json.contains("\"partChecksums\""));
+        assert!(json.contains("abc123def456"));
+
+        // Deserialize and verify
+        let deserialized: PartInfo = serde_json::from_str(&json).expect("deserialization failed");
+        assert_eq!(deserialized.current_part_checksum, Some("abc123def456".to_string()));
+        assert_eq!(deserialized.part_checksums.as_ref().unwrap().len(), 3);
+        assert_eq!(deserialized.part_checksums.as_ref().unwrap()[0], "checksum1");
+    }
+
+    #[test]
+    fn test_part_info_skip_serializing_none_fields() {
+        let part_info = PartInfo {
+            part_based_mode: false,
+            current_part_index: 0,
+            total_parts: 1,
+            part_size: 512,
+            current_part_checksum: None,
+            part_checksums: None,
+        };
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&part_info).expect("serialization failed");
+
+        // Verify that None fields are NOT present in JSON (due to skip_serializing_if)
+        assert!(!json.contains("\"currentPartChecksum\""));
+        assert!(!json.contains("\"partChecksums\""));
+
+        // But required fields should be present
+        assert!(json.contains("\"partBasedMode\":false"));
+        assert!(json.contains("\"currentPartIndex\":0"));
+    }
+
+    #[test]
+    fn test_part_info_roundtrip_via_json() {
+        let original = PartInfo {
+            part_based_mode: true,
+            current_part_index: 10,
+            total_parts: 20,
+            part_size: 4096,
+            current_part_checksum: Some("abcdef123456".to_string()),
+            part_checksums: Some(vec!["a".to_string(), "b".to_string()]),
+        };
+
+        // Roundtrip through JSON
+        let json = serde_json::to_string(&original).expect("serialization failed");
+        let roundtrip: PartInfo = serde_json::from_str(&json).expect("deserialization failed");
+
+        // Verify all fields match
+        assert_eq!(roundtrip.part_based_mode, original.part_based_mode);
+        assert_eq!(roundtrip.current_part_index, original.current_part_index);
+        assert_eq!(roundtrip.total_parts, original.total_parts);
+        assert_eq!(roundtrip.part_size, original.part_size);
+        assert_eq!(roundtrip.current_part_checksum, original.current_part_checksum);
+        assert_eq!(roundtrip.part_checksums, original.part_checksums);
     }
 }
