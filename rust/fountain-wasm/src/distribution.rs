@@ -20,10 +20,10 @@ pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> 
 
     // Build robust component (tau)
     for d in 1..spike_loc.min(max_degree) {
-        tau[d] = r_val / (spike_loc * k) as f64;
+        tau[d - 1] = r_val / (d * k) as f64;
     }
     if spike_loc <= max_degree {
-        tau[spike_loc - 1] = r_val * (spike_loc as f64).ln() / k as f64;
+        tau[spike_loc - 1] = r_val * (r_val / delta).ln() / k as f64;
     }
 
     // Combine and normalize
@@ -57,10 +57,10 @@ pub fn sample_degree_with_doping<R: Rng>(
         return 1;
     }
 
-    // Force degree 2-3 with probability low_degree_rate
+    // Force degree 2-3 with probability low_degree_rate (favor degree 2)
     if roll < degree1_rate + low_degree_rate {
         if distribution.len() >= 2 {
-            return if rng.gen::<bool>() { 2 } else { 3 };
+            return if rng.gen::<f64>() < 0.6 { 2 } else { 3 };
         }
         return 2;
     }
