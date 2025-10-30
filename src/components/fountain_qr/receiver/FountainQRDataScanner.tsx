@@ -10,7 +10,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import type { FountainMetadata } from '@/utils/fountainCode'
+import type { FountainMetadata } from '@/utils/fountainCodeHybrid'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
 // Optional: Extract ignored block list to a top-level constant or env for easier test control.

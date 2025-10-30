@@ -12,7 +12,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FountainEncoder } from '@/utils/fountainCode';
+import { FountainEncoder } from '@/utils/fountainCodeHybrid';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';

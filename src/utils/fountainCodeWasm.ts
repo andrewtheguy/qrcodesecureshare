@@ -1,4 +1,4 @@
-import type { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
 
 // Re-export types for convenience
 export interface FountainChunk {
@@ -34,9 +34,6 @@ export class FountainWasmEncoder {
     metadata: { name: string; type: string; timestamp?: number },
     options?: FountainEncoderOptions
   ) {
-    // Dynamic import will be handled by the module loader
-    const { WasmFountainEncoder } = require('../../rust/fountain-wasm/pkg/fountain_wasm')
-
     this.wasmEncoder = new WasmFountainEncoder(
       data,
       metadata.name,
@@ -84,9 +81,6 @@ export class FountainWasmDecoder {
   private wasmDecoder: WasmFountainDecoder
 
   constructor(metadata: FountainMetadata) {
-    // Dynamic import will be handled by the module loader
-    const { WasmFountainDecoder } = require('../../rust/fountain-wasm/pkg/fountain_wasm')
-
     this.wasmDecoder = new WasmFountainDecoder(metadata)
   }
 

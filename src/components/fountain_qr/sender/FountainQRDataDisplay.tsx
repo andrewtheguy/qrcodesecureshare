@@ -13,7 +13,7 @@ import { writeBarcode } from 'zxing-wasm/full'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
-import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
+import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeHybrid'
 import { computeChecksum } from '@/utils/checksum'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 

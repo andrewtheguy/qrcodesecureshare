@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { FountainEncoder } from '@/utils/fountainCode';
+import { FountainEncoder } from '@/utils/fountainCodeHybrid';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
