@@ -19,7 +19,18 @@
       "Read(//Users/it3/codes/**)",
       "Bash(cat:*)",
       "Bash(wasm-pack build:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(for file in /Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/FountainQRReceiver.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/FountainQRSender.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/receiver/FountainQRDataScanner.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/receiver/FountainQRFeedbackDisplay.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/sender/FountainQRDataDisplay.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/sender/FountainQRFeedbackScanner.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/components/fountain_qr/sender/FountainQRManualFeedbackInput.tsx )",
+      "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/workers/fountainDecoder.worker.ts)",
+      "Bash(do)",
+      "Bash(done)",
+      "Bash(npm run build:js:*)"
     ],
     "deny": [],
     "ask": []

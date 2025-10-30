@@ -68,16 +68,15 @@ export interface WasmFountainMetadata {
 }
 
 /**
- * @deprecated Use WasmFountainMetadata for WASM boundaries
- * This type is kept for backward compatibility but should not be used for new WASM calls
+ * Extended metadata type for application use
+ * Includes all fields from WasmFountainMetadata plus additional app-level fields
  */
-export interface FountainMetadata {
-  name: string
-  size: number
-  fileType: string
-  timestamp: number
-  totalSourceBlocks: number
-  blockSize: number
+export interface FountainMetadata extends WasmFountainMetadata {
+  type?: string  // Alias for fileType for backward compatibility
+  partBasedMode?: boolean
+  partSize?: number
+  checksum?: string
+  checksumAlg?: string
 }
 
 export interface FountainEncoderOptions {
@@ -91,6 +90,8 @@ export interface FountainEncoderOptions {
   degree1Rate?: number
   lowDegreeRate?: number
   maxQRDataSize?: number
+  partBasedMode?: boolean
+  partSize?: number
 }
 
 /**
@@ -118,7 +119,9 @@ export class FountainWasmEncoder {
       options?.maxDegree,
       options?.degree1Rate,
       options?.lowDegreeRate,
-      options?.maxQRDataSize
+      options?.maxQRDataSize,
+      options?.partBasedMode,
+      options?.partSize
     )
   }
 
@@ -160,6 +163,96 @@ export class FountainWasmEncoder {
    */
   blockSize(): number {
     return this.wasmEncoder.blockSize()
+  }
+
+  // ========================================
+  // Targeted Mode Methods
+  // ========================================
+
+  /**
+   * Set which blocks the receiver has already decoded
+   * This enables targeted encoding that focuses on missing blocks
+   */
+  setReceivedBlocks(blockIndices: number[]): void {
+    this.wasmEncoder.setReceivedBlocks(new Uint32Array(blockIndices))
+  }
+
+  /**
+   * Set which blocks the receiver still needs (missing blocks)
+   * This enables targeted encoding that focuses on missing blocks
+   */
+  setMissingBlocks(missingIndices: number[]): void {
+    this.wasmEncoder.setMissingBlocks(new Uint32Array(missingIndices))
+  }
+
+  // ========================================
+  // Part-Based Mode Methods
+  // ========================================
+
+  /**
+   * Get part information
+   */
+  getPartInfo(): {
+    partBasedMode: boolean;
+    currentPartIndex: number;
+    totalParts: number;
+    partSize: number;
+    currentPartChecksum?: string;
+    partChecksums?: string[];
+  } {
+    return this.wasmEncoder.getPartInfo() as {
+      partBasedMode: boolean;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
+      currentPartChecksum?: string;
+      partChecksums?: string[];
+    }
+  }
+
+  /**
+   * Move to the next part
+   * Returns true if moved, false if already at last part
+   */
+  moveToNextPart(): boolean {
+    return this.wasmEncoder.moveToNextPart()
+  }
+
+  /**
+   * Mark a part as completed
+   */
+  markPartCompleted(partIndex: number): void {
+    this.wasmEncoder.markPartCompleted(partIndex)
+  }
+
+  /**
+   * Get contiguous blocks data
+   */
+  getContiguousBlocksData(startIdx: number, endIdx: number): Uint8Array | null {
+    return this.wasmEncoder.getContiguousBlocksData(startIdx, endIdx) || null
+  }
+
+  /**
+   * Compute checksums for all parts asynchronously
+   * Returns array of CRC32 checksums (one per part)
+   */
+  async computePartChecksums(originalData: Uint8Array): Promise<string[]> {
+    const { crc32 } = await import('../wasm/fountain_wasm')
+    const { partBasedMode, totalParts, partSize } = this.getPartInfo()
+
+    if (!partBasedMode || totalParts === 0) {
+      return []
+    }
+
+    const checksums: string[] = []
+    for (let i = 0; i < totalParts; i++) {
+      const partStartByte = i * partSize
+      const partEndByte = Math.min((i + 1) * partSize, originalData.length)
+      const partData = originalData.slice(partStartByte, partEndByte)
+      checksums.push(crc32(partData))
+    }
+
+    return checksums
   }
 }
 
@@ -294,8 +387,25 @@ export class FountainWasmDecoder {
   /**
    * Get part info
    */
-  getPartInfo(): { partBasedMode: boolean; currentPartIndex: number; totalParts: number; partSize: number } {
+  getPartInfo(): {
+    partBasedMode: boolean;
+    currentPartIndex: number;
+    totalParts: number;
+    partSize: number;
+    currentPartChecksum?: string;
+    partChecksums?: string[];
+  } {
     const partInfo = this.wasmDecoder.getPartInfo()
-    return partInfo as { partBasedMode: boolean; currentPartIndex: number; totalParts: number; partSize: number }
+    return partInfo as {
+      partBasedMode: boolean;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
+      currentPartChecksum?: string;
+      partChecksums?: string[];
+    }
   }
 }
+
+// Re-export with simplified names for backward compatibility with fountainCodeHybrid
+export { FountainWasmEncoder as FountainEncoder, FountainWasmDecoder as FountainDecoder }

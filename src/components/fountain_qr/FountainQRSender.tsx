@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FountainEncoder } from '@/utils/fountainCodeHybrid'
+import { FountainEncoder } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { getQRCapacity } from '@/utils/qrCapacity'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
@@ -92,7 +92,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Compute part checksums if in part-based mode
         if (feedbackEnabled) {
           console.log('[FountainQRSender] Computing part checksums...')
-          await fountainEncoder.computePartChecksums()
+          await fountainEncoder.computePartChecksums(bytes)
           const partInfo = fountainEncoder.getPartInfo()
           console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
         }

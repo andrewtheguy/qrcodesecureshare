@@ -10,6 +10,7 @@
     "build": "npm run build:wasm && npm run build:js",
     "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
+    "test": "cd rust/fountain-wasm && cargo test --all",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
     "generate-keys": "node scripts/generate-keys.cjs"

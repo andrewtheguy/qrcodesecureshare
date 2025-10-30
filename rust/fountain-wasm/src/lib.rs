@@ -35,6 +35,8 @@ impl WasmFountainEncoder {
     /// * `seed_offset` - Optional seed offset for session-specific randomization
     /// * `fixed_overhead` - Optional fixed overhead in bytes (default: 10)
     /// * `part_overhead` - Optional part-based mode overhead in bytes (default: 0)
+    /// * `part_based_mode` - Optional enable part-based mode (default: false)
+    /// * `part_size` - Optional part size in bytes (default: 0)
     #[wasm_bindgen(constructor)]
     pub fn new(
         data: Uint8Array,
@@ -51,6 +53,8 @@ impl WasmFountainEncoder {
         degree1_rate: Option<f64>,
         low_degree_rate: Option<f64>,
         max_qr_data_size: Option<usize>,
+        part_based_mode: Option<bool>,
+        part_size: Option<usize>,
     ) -> Result<WasmFountainEncoder, JsValue> {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
@@ -83,6 +87,12 @@ impl WasmFountainEncoder {
         }
         if let Some(max_qr) = max_qr_data_size {
             options = options.with_max_qr_data_size(max_qr);
+        }
+        if let Some(pbm) = part_based_mode {
+            options = options.with_part_based_mode(pbm);
+        }
+        if let Some(ps) = part_size {
+            options = options.with_part_size(ps);
         }
 
         let encoder = encoder::FountainEncoder::new(
@@ -126,6 +136,82 @@ impl WasmFountainEncoder {
     #[wasm_bindgen(js_name = blockSize)]
     pub fn block_size(&self) -> usize {
         self.encoder.block_size()
+    }
+
+    // ========================================
+    // Targeted Mode Methods
+    // ========================================
+
+    /// Set which blocks the receiver has already decoded
+    #[wasm_bindgen(js_name = setReceivedBlocks)]
+    pub fn set_received_blocks(&mut self, block_indices: Vec<usize>) {
+        self.encoder.set_received_blocks(block_indices);
+    }
+
+    /// Set which blocks the receiver still needs (missing blocks)
+    #[wasm_bindgen(js_name = setMissingBlocks)]
+    pub fn set_missing_blocks(&mut self, missing_indices: Vec<usize>) {
+        self.encoder.set_missing_blocks(missing_indices);
+    }
+
+    // ========================================
+    // Part-Based Mode Methods
+    // ========================================
+
+    /// Get part info as a JS object
+    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
+    #[wasm_bindgen(js_name = getPartInfo)]
+    pub fn get_part_info(&self) -> JsValue {
+        let (part_based_mode, current_part_index, total_parts, part_size) =
+            self.encoder.get_part_info();
+
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(
+            &obj,
+            &"partBasedMode".into(),
+            &JsValue::from(part_based_mode),
+        )
+        .ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"currentPartIndex".into(),
+            &JsValue::from(current_part_index as u32),
+        )
+        .ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"totalParts".into(),
+            &JsValue::from(total_parts as u32),
+        )
+        .ok();
+        js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
+
+        obj.into()
+    }
+
+    /// Move to the next part
+    /// Returns true if moved, false if already at last part
+    #[wasm_bindgen(js_name = moveToNextPart)]
+    pub fn move_to_next_part(&mut self) -> bool {
+        self.encoder.move_to_next_part()
+    }
+
+    /// Mark a part as completed
+    #[wasm_bindgen(js_name = markPartCompleted)]
+    pub fn mark_part_completed(&mut self, part_index: usize) {
+        self.encoder.mark_part_completed(part_index);
+    }
+
+    /// Get contiguous blocks data
+    #[wasm_bindgen(js_name = getContiguousBlocksData)]
+    pub fn get_contiguous_blocks_data(&self, start_idx: usize, end_idx: usize) -> Option<Uint8Array> {
+        self.encoder
+            .get_contiguous_blocks_data(start_idx, end_idx)
+            .map(|data| {
+                let array = Uint8Array::new_with_length(data.len() as u32);
+                array.copy_from(&data);
+                array
+            })
     }
 }
 

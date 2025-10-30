@@ -4,10 +4,13 @@ use crate::distribution::{
 use crate::rng::{create_rng, select_indices_with_rng};
 use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
 use crate::xor::xor_blocks;
+use std::collections::HashSet;
 
 pub struct FountainEncoder {
     /// Source data split into blocks
     blocks: Vec<Vec<u8>>,
+    /// Original data (for part-based mode operations)
+    original_data: Vec<u8>,
     /// Metadata about the encoding
     metadata: FountainMetadata,
     /// Degree distribution for chunk generation
@@ -20,6 +23,22 @@ pub struct FountainEncoder {
     current_seed: u32,
     /// Initial seed offset (for session-specific randomization)
     seed_offset: u32,
+
+    // Targeted mode fields
+    /// Set of block indices that have been received (for targeted encoding)
+    received_blocks: HashSet<usize>,
+    /// Whether targeted mode is active
+    targeted_mode: bool,
+
+    // Part-based mode fields
+    /// Whether part-based mode is enabled
+    part_based_mode: bool,
+    /// Size of each part in bytes
+    part_size: usize,
+    /// Total number of parts
+    total_parts: usize,
+    /// Current part index
+    current_part_index: usize,
 }
 
 impl FountainEncoder {
@@ -82,19 +101,44 @@ impl FountainEncoder {
             (timestamp as u64 % (u32::MAX as u64)) as u32
         });
 
+        // Initialize part-based mode if configured
+        let part_based_mode = options.part_based_mode;
+        let part_size = options.part_size;
+        let (total_parts, current_part_index) = if part_based_mode && part_size > 0 {
+            let total = (total_size + part_size - 1) / part_size;
+            (total, 0)
+        } else {
+            (0, 0)
+        };
+
         Self {
             blocks,
+            original_data: data,
             metadata,
             degree_distribution,
             max_degree,
             options,
             current_seed: 0,
             seed_offset: offset,
+            received_blocks: HashSet::new(),
+            targeted_mode: false,
+            part_based_mode,
+            part_size,
+            total_parts,
+            current_part_index,
         }
     }
 
     /// Generate a single fountain chunk
     pub fn generate_chunk(&mut self) -> FountainChunk {
+        // Get available blocks (respects targeted mode and part-based mode)
+        let available_blocks = self.get_available_blocks();
+
+        // If no blocks available (all received or part is empty), return empty chunk
+        if available_blocks.is_empty() {
+            return FountainChunk::new(0, 0, vec![], vec![]);
+        }
+
         // Apply seed offset for session-specific randomization
         let seed = self.current_seed.wrapping_add(self.seed_offset);
         self.current_seed = self.current_seed.wrapping_add(1);
@@ -110,10 +154,16 @@ impl FountainEncoder {
             self.options.low_degree_rate,
         )
         .min(self.max_degree)
-        .min(self.blocks.len());
+        .min(available_blocks.len());
 
-        // Select indices using the same RNG instance (no reseeding)
-        let indices = select_indices_with_rng(&mut rng, degree, self.blocks.len());
+        // Select indices from available blocks using the same RNG instance (no reseeding)
+        let selected_positions = select_indices_with_rng(&mut rng, degree, available_blocks.len());
+
+        // Map positions to actual block indices
+        let indices: Vec<usize> = selected_positions
+            .iter()
+            .map(|&pos| available_blocks[pos])
+            .collect();
 
         // XOR selected blocks
         let block_refs: Vec<&[u8]> = indices.iter().map(|&i| self.blocks[i].as_slice()).collect();
@@ -140,6 +190,137 @@ impl FountainEncoder {
     /// Get the block size
     pub fn block_size(&self) -> usize {
         self.metadata.block_size
+    }
+
+    // ========================================
+    // Targeted Mode Methods
+    // ========================================
+
+    /// Set which blocks the receiver has already decoded
+    /// This enables targeted encoding that focuses on missing blocks
+    pub fn set_received_blocks(&mut self, block_indices: Vec<usize>) {
+        self.received_blocks = block_indices.into_iter().collect();
+        self.targeted_mode = !self.received_blocks.is_empty();
+    }
+
+    /// Set which blocks the receiver still needs (missing blocks)
+    /// This enables targeted encoding that focuses on missing blocks
+    pub fn set_missing_blocks(&mut self, missing_indices: Vec<usize>) {
+        let total_blocks = self.blocks.len();
+        self.received_blocks.clear();
+
+        // Create a set of all blocks, then remove the missing ones
+        for i in 0..total_blocks {
+            if !missing_indices.contains(&i) {
+                self.received_blocks.insert(i);
+            }
+        }
+
+        self.targeted_mode = !self.received_blocks.is_empty();
+    }
+
+    /// Get available blocks for chunk generation
+    /// In targeted mode, excludes received blocks
+    /// In part-based mode, restricts to current part
+    fn get_available_blocks(&self) -> Vec<usize> {
+        let mut available: Vec<usize> = if self.part_based_mode {
+            // Calculate blocks for current part
+            let part_start_byte = self.current_part_index * self.part_size;
+            let part_end_byte = std::cmp::min(
+                (self.current_part_index + 1) * self.part_size,
+                self.original_data.len(),
+            );
+            let start_block_index = part_start_byte / self.metadata.block_size;
+            let end_block_index = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+
+            (start_block_index..end_block_index.min(self.blocks.len())).collect()
+        } else {
+            // All blocks
+            (0..self.blocks.len()).collect()
+        };
+
+        // Filter out received blocks in targeted mode
+        if self.targeted_mode {
+            available.retain(|&i| !self.received_blocks.contains(&i));
+        }
+
+        available
+    }
+
+    // ========================================
+    // Part-Based Mode Methods
+    // ========================================
+
+    /// Get part information
+    pub fn get_part_info(&self) -> (bool, usize, usize, usize) {
+        (
+            self.part_based_mode,
+            self.current_part_index,
+            self.total_parts,
+            self.part_size,
+        )
+    }
+
+    /// Move to the next part
+    /// Returns true if moved to next part, false if already at last part
+    pub fn move_to_next_part(&mut self) -> bool {
+        if !self.part_based_mode {
+            return false;
+        }
+        if self.current_part_index >= self.total_parts - 1 {
+            return false;
+        }
+
+        self.current_part_index += 1;
+
+        // Reset targeted mode for new part
+        self.targeted_mode = false;
+        self.received_blocks.clear();
+
+        true
+    }
+
+    /// Mark a part as completed and clean up its source blocks to save memory
+    /// This is called by the sender when receiver confirms part completion
+    pub fn mark_part_completed(&mut self, part_index: usize) {
+        if !self.part_based_mode {
+            return;
+        }
+        if part_index >= self.total_parts {
+            return;
+        }
+
+        let part_start_byte = part_index * self.part_size;
+        let part_end_byte = std::cmp::min(
+            (part_index + 1) * self.part_size,
+            self.original_data.len(),
+        );
+
+        let start_block_index = part_start_byte / self.metadata.block_size;
+        let end_block_index = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+
+        // Clear source blocks for this part to save memory
+        for i in start_block_index..end_block_index.min(self.blocks.len()) {
+            // Replace with empty vector to free memory
+            self.blocks[i] = Vec::new();
+        }
+    }
+
+    /// Get contiguous blocks data for a range
+    /// Used for checksum validation
+    pub fn get_contiguous_blocks_data(&self, start_idx: usize, end_idx: usize) -> Option<Vec<u8>> {
+        if start_idx >= end_idx || end_idx > self.blocks.len() {
+            return None;
+        }
+
+        let total_size = (end_idx - start_idx) * self.metadata.block_size;
+        let mut result = Vec::with_capacity(total_size);
+
+        for i in start_idx..end_idx {
+            result.extend_from_slice(&self.blocks[i]);
+        }
+
+        Some(result)
     }
 }
 

@@ -8,7 +8,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import type { FountainMetadata } from '@/utils/fountainCodeHybrid'
+import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
@@ -37,7 +37,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const initialMeta: FountainMetadata = {
     name: initialMetadata.name,
     size: initialMetadata.size,
-    type: initialMetadata.type,
+    fileType: initialMetadata.type,
+    type: initialMetadata.type, // Backward compatibility alias
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
     blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,

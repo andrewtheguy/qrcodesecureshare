@@ -13,7 +13,7 @@ import { writeBarcode } from 'zxing-wasm/full'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
-import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeHybrid'
+import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
 import { computeChecksum } from '@/utils/checksum'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
@@ -538,7 +538,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           binaryData[offset++] = partInfo.totalParts & 0xFF
 
           // Part checksum (4 bytes) - stored as hex string, convert to bytes
-          const partChecksumHex = partInfo.currentPartChecksum
+          const partChecksumHex = partInfo.currentPartChecksum || '00000000'
           for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
             const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
             binaryData[offset++] = byte

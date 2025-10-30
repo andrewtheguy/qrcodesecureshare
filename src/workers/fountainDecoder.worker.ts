@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { FountainDecoder } from '../utils/fountainCodeHybrid';
-import type { FountainMetadata, FountainChunk } from '../utils/fountainCodeHybrid';
+import { FountainDecoder } from '../utils/fountainCodeWasm';
+import type { FountainMetadata, FountainChunk } from '../utils/fountainCodeWasm';
 import { computeChecksum, type ChecksumAlgorithm } from '../utils/checksum';
 
 /**
