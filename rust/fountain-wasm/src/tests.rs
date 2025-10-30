@@ -399,11 +399,14 @@ mod integration_tests {
 
             let part_data = decoder.get_current_part_data().unwrap();
 
-            // Validate part checksum
+            // Validate part checksum format (CRC32 produces 8-character hex string)
             let part_checksum = crc32(&part_data);
-            assert!(
-                !part_checksum.is_empty(),
-                "Part checksum should not be empty"
+            assert_eq!(
+                part_checksum.len(),
+                8,
+                "Part {} checksum should be 8 hex characters (CRC32 format), got: {}",
+                part_idx,
+                part_checksum
             );
 
             all_parts_data.extend_from_slice(&part_data);
