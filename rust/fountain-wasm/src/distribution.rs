@@ -112,8 +112,7 @@ pub fn calculate_max_degree(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::SeedableRng;
-    use rand_chacha::ChaCha8Rng;
+    use crate::rng::LcgRandom;
 
     #[test]
     fn test_build_robust_soliton() {
@@ -131,7 +130,7 @@ mod tests {
     #[test]
     fn test_sample_degree() {
         let dist = build_robust_soliton(100, 0.2, 0.01, 20);
-        let mut rng = ChaCha8Rng::seed_from_u64(42);
+        let mut rng = LcgRandom::new(42);
 
         for _ in 0..100 {
             let degree = sample_degree_with_doping(&mut rng, &dist, 0.08, 0.18);

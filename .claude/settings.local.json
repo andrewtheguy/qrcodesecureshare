@@ -14,7 +14,8 @@
       "WebFetch(domain:zxing-wasm.deno.dev)",
       "Bash(curl:*)",
       "Bash(npm run build:wasm:*)",
-      "Bash(cargo test:*)"
+      "Bash(cargo test:*)",
+      "Bash(python3:*)"
     ],
     "deny": [],
     "ask": []

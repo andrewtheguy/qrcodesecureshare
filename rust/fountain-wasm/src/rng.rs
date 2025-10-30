@@ -1,11 +1,77 @@
-use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
+use rand::RngCore;
 use std::collections::HashSet;
+use std::ops::Range;
+
+/// Linear Congruential Generator (LCG) that matches the TypeScript SeededRandom implementation
+/// Uses the same constants: multiplier=9301, increment=49297, modulus=233280
+pub struct LcgRandom {
+    state: u32,
+}
+
+impl LcgRandom {
+    /// Create a new LCG with the given seed
+    pub fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    /// Internal method to advance the state
+    /// Implements: state = (state * 9301 + 49297) % 233280
+    fn advance_state(&mut self) -> u32 {
+        self.state = (self.state.wrapping_mul(9301).wrapping_add(49297)) % 233280;
+        self.state
+    }
+
+    /// Generate the next random number between 0.0 and 1.0
+    /// Returns: state / 233280.0
+    pub fn next(&mut self) -> f64 {
+        self.advance_state() as f64 / 233280.0
+    }
+
+    /// Generate a random value in the given range [start, end)
+    pub fn gen_range(&mut self, range: Range<usize>) -> usize {
+        let random_float = self.next();
+        let range_size = (range.end - range.start) as f64;
+        range.start + (random_float * range_size).floor() as usize
+    }
+}
+
+// Implement the RngCore trait for LcgRandom so it can be used with generic code
+impl RngCore for LcgRandom {
+    fn next_u32(&mut self) -> u32 {
+        // Use the shared advance_state method
+        self.advance_state()
+    }
+
+    fn next_u64(&mut self) -> u64 {
+        // Combine two u32 values to create a u64
+        let high = self.next_u32() as u64;
+        let low = self.next_u32() as u64;
+        (high << 32) | low
+    }
+
+    fn fill_bytes(&mut self, dest: &mut [u8]) {
+        // Fill buffer with random bytes
+        for chunk in dest.chunks_mut(4) {
+            let val = self.next_u32();
+            let bytes = val.to_le_bytes();
+            for (i, b) in chunk.iter_mut().enumerate() {
+                if i < bytes.len() {
+                    *b = bytes[i];
+                }
+            }
+        }
+    }
+
+    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand::Error> {
+        self.fill_bytes(dest);
+        Ok(())
+    }
+}
 
 /// Select random unique indices using a seeded RNG
 /// Returns a sorted vector of unique indices
 pub fn select_indices(seed: u32, degree: usize, max_index: usize) -> Vec<usize> {
-    let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
+    let mut rng = LcgRandom::new(seed);
     let mut selected = HashSet::new();
 
     // Keep selecting until we have enough unique indices
@@ -21,13 +87,76 @@ pub fn select_indices(seed: u32, degree: usize, max_index: usize) -> Vec<usize> 
 }
 
 /// Create a seeded RNG from a u32 seed
-pub fn create_rng(seed: u32) -> ChaCha8Rng {
-    ChaCha8Rng::seed_from_u64(seed as u64)
+pub fn create_rng(seed: u32) -> LcgRandom {
+    LcgRandom::new(seed)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_lcg_deterministic() {
+        // Test that two LCG instances with the same seed produce identical sequences
+        let mut rng1 = LcgRandom::new(12345);
+        let mut rng2 = LcgRandom::new(12345);
+
+        for _ in 0..100 {
+            let val1 = rng1.next();
+            let val2 = rng2.next();
+            assert_eq!(val1, val2);
+        }
+    }
+
+    #[test]
+    fn test_lcg_matches_typescript() {
+        // Test that the LCG produces the same values as the TypeScript implementation
+        // TypeScript SeededRandom with seed=12345 produces:
+        // First call: state=96382, value=0.4131601508916324
+        // Second call: state=3239, value=0.01388460219478738
+        // Third call: state=82116, value=0.3520061728395062
+
+        let mut rng = LcgRandom::new(12345);
+
+        // First value
+        let val1 = rng.next();
+        let expected_state1 = 96382;
+        let expected_val1 = 0.4131601508916324;
+        assert_eq!(rng.state, expected_state1);
+        assert!((val1 - expected_val1).abs() < 1e-10);
+
+        // Second value
+        let val2 = rng.next();
+        let expected_state2 = 3239;
+        let expected_val2 = 0.01388460219478738;
+        assert_eq!(rng.state, expected_state2);
+        assert!((val2 - expected_val2).abs() < 1e-10);
+
+        // Third value
+        let val3 = rng.next();
+        let expected_state3 = 82116;
+        let expected_val3 = 0.3520061728395062;
+        assert_eq!(rng.state, expected_state3);
+        assert!((val3 - expected_val3).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_lcg_gen_range() {
+        // Test that gen_range produces values in the expected range
+        let mut rng = LcgRandom::new(42);
+
+        for _ in 0..100 {
+            let val = rng.gen_range(0..10);
+            assert!(val < 10);
+        }
+
+        // Test with a different range
+        let mut rng2 = LcgRandom::new(999);
+        for _ in 0..100 {
+            let val = rng2.gen_range(50..100);
+            assert!(val >= 50 && val < 100);
+        }
+    }
 
     #[test]
     fn test_select_indices_unique() {
@@ -44,9 +173,13 @@ mod tests {
 
     #[test]
     fn test_select_indices_deterministic() {
+        // Test multiple times with the same seed to ensure determinism
         let indices1 = select_indices(123, 10, 50);
         let indices2 = select_indices(123, 10, 50);
+        let indices3 = select_indices(123, 10, 50);
+
         assert_eq!(indices1, indices2);
+        assert_eq!(indices2, indices3);
     }
 
     #[test]
@@ -69,8 +202,8 @@ mod tests {
         let mut rng1 = create_rng(42);
         let mut rng2 = create_rng(42);
 
-        let val1: u32 = rng1.gen();
-        let val2: u32 = rng2.gen();
+        let val1 = rng1.next();
+        let val2 = rng2.next();
         assert_eq!(val1, val2);
     }
 }
