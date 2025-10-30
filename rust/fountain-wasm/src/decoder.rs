@@ -84,7 +84,8 @@ impl FountainDecoder {
     /// Returns true if decoding is now complete
     fn attempt_decode(&mut self) -> bool {
         // Recreate working chunks from original received chunks (like JavaScript)
-        let mut working_chunks: Vec<DecodingChunk> = self.received_chunks
+        let mut working_chunks: Vec<DecodingChunk> = self
+            .received_chunks
             .iter()
             .map(|chunk| DecodingChunk {
                 indices: chunk.indices.iter().copied().collect(),
@@ -99,29 +100,35 @@ impl FountainDecoder {
         while made_progress {
             made_progress = false;
 
-            // Find chunks with exactly one active index and collect decoding info
-            let mut to_decode = Vec::new();
-            for (i, chunk) in working_chunks.iter().enumerate() {
-                if chunk.indices.len() == 1 {
-                    let block_idx = *chunk.indices.iter().next().unwrap();
-                    if !decoded.contains_key(&block_idx) {
-                        to_decode.push((i, block_idx, chunk.data.clone()));
-                    }
+            for i in 0..working_chunks.len() {
+                if working_chunks[i].indices.len() != 1 {
+                    continue;
                 }
-            }
 
-            // Process decoded blocks
-            for (_chunk_idx, block_idx, decoded_block) in to_decode {
-                decoded.insert(block_idx, decoded_block.clone());
+                let block_idx = *working_chunks[i].indices.iter().next().unwrap();
+
+                if decoded.contains_key(&block_idx) {
+                    continue;
+                }
+
+                let decoded_block = working_chunks[i].data.clone();
                 made_progress = true;
 
-                // XOR this newly decoded block out of all chunks
+                // XOR this newly decoded block out of all other chunks that reference it
                 for j in 0..working_chunks.len() {
-                    if working_chunks[j].indices.contains(&block_idx) {
+                    if j == i {
+                        continue;
+                    }
+
+                    if working_chunks[j].indices.remove(&block_idx) {
                         xor_into(&mut working_chunks[j].data, &decoded_block);
-                        working_chunks[j].indices.remove(&block_idx);
                     }
                 }
+
+                // Remove the decoded index from the current chunk as well
+                working_chunks[i].indices.remove(&block_idx);
+
+                decoded.insert(block_idx, decoded_block);
             }
         }
 
