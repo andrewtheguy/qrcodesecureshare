@@ -105,6 +105,7 @@ export class FountainWasmEncoder {
     metadata: { name: string; type: string; timestamp?: number },
     options?: FountainEncoderOptions
   ) {
+    // All parameters explicitly passed to prevent missing parameter bugs
     this.wasmEncoder = new WasmFountainEncoder(
       data,
       metadata.name,
