@@ -5,10 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --target web",
-    "build:wasm:fountain": "cd rust/fountain-wasm && wasm-pack build --target web",
-    "build:full": "npm run build:wasm && npm run build",
+    "build:js": "tsc -b && vite build",
+    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
+    "build": "npm run build:wasm && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
