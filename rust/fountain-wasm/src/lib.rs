@@ -143,7 +143,7 @@ impl WasmFountainEncoder {
     // ========================================
 
     /// Get part info as a JS object
-    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
+    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize, currentPartChecksum?, partChecksums? }
     #[wasm_bindgen(js_name = getPartInfo)]
     pub fn get_part_info(&self) -> JsValue {
         let (part_based_mode, current_part_index, total_parts, part_size) =
@@ -170,7 +170,33 @@ impl WasmFountainEncoder {
         .ok();
         js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
 
+        // Add current part checksum if available
+        if let Some(checksum) = self.encoder.get_current_part_checksum() {
+            js_sys::Reflect::set(
+                &obj,
+                &"currentPartChecksum".into(),
+                &JsValue::from_str(checksum),
+            )
+            .ok();
+        }
+
+        // Add all part checksums if available
+        let checksums = self.encoder.get_part_checksums();
+        if !checksums.is_empty() {
+            let checksums_array = Array::new();
+            for checksum in checksums {
+                checksums_array.push(&JsValue::from_str(checksum));
+            }
+            js_sys::Reflect::set(&obj, &"partChecksums".into(), &checksums_array).ok();
+        }
+
         obj.into()
+    }
+
+    /// Set part checksums
+    #[wasm_bindgen(js_name = setPartChecksums)]
+    pub fn set_part_checksums(&mut self, checksums: Vec<String>) {
+        self.encoder.set_part_checksums(checksums);
     }
 
     /// Move to the next part

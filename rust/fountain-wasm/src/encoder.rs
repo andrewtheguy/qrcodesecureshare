@@ -32,6 +32,8 @@ pub struct FountainEncoder {
     total_parts: usize,
     /// Current part index
     current_part_index: usize,
+    /// CRC32 checksums for each part (hex strings)
+    part_checksums: Vec<String>,
 }
 
 impl FountainEncoder {
@@ -117,6 +119,7 @@ impl FountainEncoder {
             part_size,
             total_parts,
             current_part_index,
+            part_checksums: Vec::new(),
         }
     }
 
@@ -215,6 +218,25 @@ impl FountainEncoder {
             self.total_parts,
             self.part_size,
         )
+    }
+
+    /// Set part checksums (computed externally and passed in)
+    pub fn set_part_checksums(&mut self, checksums: Vec<String>) {
+        self.part_checksums = checksums;
+    }
+
+    /// Get part checksums
+    pub fn get_part_checksums(&self) -> &[String] {
+        &self.part_checksums
+    }
+
+    /// Get current part checksum
+    pub fn get_current_part_checksum(&self) -> Option<&str> {
+        if self.current_part_index < self.part_checksums.len() {
+            Some(&self.part_checksums[self.current_part_index])
+        } else {
+            None
+        }
     }
 
     /// Move to the next part

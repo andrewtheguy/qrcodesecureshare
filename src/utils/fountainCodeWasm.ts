@@ -215,6 +215,7 @@ export class FountainWasmEncoder {
 
   /**
    * Compute checksums for all parts asynchronously
+   * Stores checksums in the encoder and returns them
    * Returns array of CRC32 checksums (one per part)
    */
   async computePartChecksums(originalData: Uint8Array): Promise<string[]> {
@@ -232,6 +233,9 @@ export class FountainWasmEncoder {
       const partData = originalData.slice(partStartByte, partEndByte)
       checksums.push(crc32(partData))
     }
+
+    // Store checksums in the WASM encoder
+    this.wasmEncoder.setPartChecksums(checksums)
 
     return checksums
   }
