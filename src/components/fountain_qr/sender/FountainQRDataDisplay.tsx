@@ -525,8 +525,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
         // Guardrail test for worst-case data QR size (dev-only)
         if (import.meta.env.DEV) {
-          const maxExpectedSize = partInfo.partBasedMode ? 1212 : 1204 // 8 extra bytes for part metadata
-          console.assert(expectedSize <= maxExpectedSize, `QR size ${expectedSize} exceeds limit ${maxExpectedSize} for blockSize=400, maxDegree<=40`)
+          const maxExpectedSize = partInfo.partBasedMode ? 1098 : 1090 // 8 extra bytes for part metadata
+          console.assert(expectedSize <= maxExpectedSize, `QR size ${expectedSize} exceeds limit ${maxExpectedSize} for blockSize=1000, maxDegree<=40`)
         }
 
         // Pre-check: Skip chunks that are too large before attempting QR generation

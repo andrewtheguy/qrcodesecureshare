@@ -1,4 +1,4 @@
-export const DEFAULT_BLOCK_SIZE = 400
+export const DEFAULT_BLOCK_SIZE = 1000
 
 // Targeted mode activation threshold - triggers when ≤10 blocks remain missing.
 // Used only for the final cleanup phase in part-based transfers.
