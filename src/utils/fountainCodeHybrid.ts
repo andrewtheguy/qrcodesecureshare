@@ -102,12 +102,11 @@ export class FountainEncoder {
 
 /**
  * Fountain Decoder
- * REQUIRES WASM for computation (except part-based mode), uses JavaScript for coordination
+ * REQUIRES WASM for computation (including part-based mode), uses JavaScript for coordination
  */
 export class FountainDecoder {
   private jsDecoder: JSFountainDecoder
-  private wasmDecoder: FountainWasmDecoder | null = null
-  private partBasedMode: boolean
+  private wasmDecoder: FountainWasmDecoder
   private metadata: FountainMetadata
 
   constructor(
@@ -116,161 +115,109 @@ export class FountainDecoder {
     partSize: number = 0
   ) {
     this.metadata = metadata
-    this.partBasedMode = partBasedMode
 
     // Always create JS decoder for coordination
     this.jsDecoder = new JSFountainDecoder(metadata, partBasedMode, partSize)
 
-    // WASM doesn't support part-based mode yet, so only use it for regular mode
-    if (!partBasedMode) {
-      try {
-        this.wasmDecoder = new FountainWasmDecoder({
+    // Create WASM decoder for computation (required for both regular and part-based mode)
+    try {
+      this.wasmDecoder = new FountainWasmDecoder(
+        {
           name: metadata.name,
           size: metadata.size,
           fileType: metadata.type,
           timestamp: metadata.timestamp,
           totalSourceBlocks: metadata.totalSourceBlocks,
           blockSize: metadata.blockSize,
-        })
-      } catch (err) {
-        throw new Error(`Failed to initialize WASM decoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
-      }
+        },
+        partBasedMode,
+        partSize
+      )
+    } catch (err) {
+      throw new Error(`Failed to initialize WASM decoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
     }
   }
 
   /**
-   * Add a chunk and decode (REQUIRES WASM in regular mode, uses JS in part-based mode)
+   * Add a chunk and decode (REQUIRES WASM)
    */
   addChunk(chunk: FountainChunk): boolean {
-    if (this.partBasedMode) {
-      // Part-based mode uses JS decoder
-      return this.jsDecoder.addChunk(chunk)
-    }
-
-    // Regular mode requires WASM
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
-    // Add to both decoders for coordination
+    // Add to both decoders (WASM for computation, JS for coordination)
     this.jsDecoder.addChunk(chunk)
     return this.wasmDecoder.addChunk(chunk)
   }
 
   /**
-   * Get decoded data (REQUIRES WASM in regular mode, uses JS in part-based mode)
+   * Get decoded data (REQUIRES WASM)
    */
   getDecodedData(): Uint8Array | null {
-    if (this.partBasedMode) {
-      return this.jsDecoder.getDecodedData()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.getDecodedData()
   }
 
   /**
-   * Get progress (REQUIRES WASM in regular mode, uses JS in part-based mode)
+   * Get progress (REQUIRES WASM)
    */
   getProgress(): number {
-    if (this.partBasedMode) {
-      return this.jsDecoder.getProgress()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.getProgress()
   }
 
   /**
-   * Check if complete (REQUIRES WASM in regular mode, uses JS in part-based mode)
+   * Check if complete (REQUIRES WASM)
    */
   isComplete(): boolean {
-    if (this.partBasedMode) {
-      return this.jsDecoder.isComplete()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.isComplete()
   }
 
   getReceivedChunkCount(): number {
-    if (this.partBasedMode) {
-      return this.jsDecoder.getReceivedChunkCount()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.getReceivedChunkCount()
   }
 
   getDecodedBlockCount(): number {
-    if (this.partBasedMode) {
-      return this.jsDecoder.getDecodedBlockCount()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.getDecodedBlockCount()
   }
 
   getDecodedBlockIndices(): number[] {
-    if (this.partBasedMode) {
-      return this.jsDecoder.getDecodedBlockIndices()
-    }
-
-    if (!this.wasmDecoder) {
-      throw new Error('WASM decoder not initialized')
-    }
-
     return this.wasmDecoder.getDecodedBlockIndices()
   }
 
   // ========================================
-  // Coordination methods (use JavaScript)
+  // Part-based mode methods (use WASM)
   // ========================================
 
   isCurrentPartComplete(): boolean {
-    return this.jsDecoder.isCurrentPartComplete()
+    return this.wasmDecoder.isCurrentPartComplete()
   }
 
   getCurrentPartData(): Uint8Array | null {
-    return this.jsDecoder.getCurrentPartData()
+    return this.wasmDecoder.getCurrentPartData()
   }
 
   getPartInfo() {
-    return this.jsDecoder.getPartInfo()
+    return this.wasmDecoder.getPartInfo()
   }
 
   moveToNextPart(): boolean {
-    return this.jsDecoder.moveToNextPart()
+    // Update both decoders for coordination
+    this.jsDecoder.moveToNextPart()
+    return this.wasmDecoder.moveToNextPart()
   }
 
   markPartCompleted(partIndex: number): void {
-    return this.jsDecoder.markPartCompleted(partIndex)
+    // Update both decoders for coordination
+    this.jsDecoder.markPartCompleted(partIndex)
+    this.wasmDecoder.markPartCompleted(partIndex)
   }
 
   getCurrentPartDecodedBlockCount(): number {
-    return this.jsDecoder.getCurrentPartDecodedBlockCount()
+    return this.wasmDecoder.getCurrentPartDecodedBlockCount()
   }
 
   getCurrentPartTotalBlockCount(): number {
-    return this.jsDecoder.getCurrentPartTotalBlockCount()
+    return this.wasmDecoder.getCurrentPartTotalBlockCount()
   }
 
   getMetadata(): FountainMetadata {
+    // Get metadata from JS decoder (has all fields including checksum and checksumAlg)
     return this.jsDecoder.getMetadata()
   }
 

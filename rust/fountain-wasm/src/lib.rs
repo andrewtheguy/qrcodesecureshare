@@ -102,13 +102,24 @@ impl WasmFountainDecoder {
     ///
     /// # Arguments
     /// * `metadata` - Metadata object from encoder (as JS object)
+    /// * `part_based_mode` - Optional: enable part-based mode
+    /// * `part_size` - Optional: size of each part in bytes (required if part_based_mode is true)
     #[wasm_bindgen(constructor)]
-    pub fn new(metadata: JsValue) -> Result<WasmFountainDecoder, JsValue> {
+    pub fn new(
+        metadata: JsValue,
+        part_based_mode: Option<bool>,
+        part_size: Option<usize>,
+    ) -> Result<WasmFountainDecoder, JsValue> {
         // Deserialize metadata from JS
         let metadata: FountainMetadata = serde_wasm_bindgen::from_value(metadata)
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
-        let decoder = decoder::FountainDecoder::new(metadata);
+        let decoder = if part_based_mode == Some(true) {
+            let size = part_size.ok_or_else(|| JsValue::from_str("part_size is required when part_based_mode is true"))?;
+            decoder::FountainDecoder::with_part_mode(metadata, size)
+        } else {
+            decoder::FountainDecoder::new(metadata)
+        };
 
         Ok(WasmFountainDecoder { decoder })
     }
@@ -180,5 +191,63 @@ impl WasmFountainDecoder {
         let metadata = self.decoder.get_metadata();
         serde_wasm_bindgen::to_value(&metadata)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+    }
+
+    // Part-based mode methods
+
+    /// Check if the current part is complete
+    #[wasm_bindgen(js_name = isCurrentPartComplete)]
+    pub fn is_current_part_complete(&self) -> bool {
+        self.decoder.is_current_part_complete()
+    }
+
+    /// Get the current part data (returns null if not complete)
+    #[wasm_bindgen(js_name = getCurrentPartData)]
+    pub fn get_current_part_data(&self) -> Option<Uint8Array> {
+        self.decoder.get_current_part_data().map(|data| {
+            let array = Uint8Array::new_with_length(data.len() as u32);
+            array.copy_from(&data);
+            array
+        })
+    }
+
+    /// Move to the next part
+    /// Returns true if moved, false if already at last part
+    #[wasm_bindgen(js_name = moveToNextPart)]
+    pub fn move_to_next_part(&mut self) -> bool {
+        self.decoder.move_to_next_part()
+    }
+
+    /// Mark a part as completed
+    #[wasm_bindgen(js_name = markPartCompleted)]
+    pub fn mark_part_completed(&mut self, part_index: usize) {
+        self.decoder.mark_part_completed(part_index);
+    }
+
+    /// Get the number of decoded blocks in the current part
+    #[wasm_bindgen(js_name = getCurrentPartDecodedBlockCount)]
+    pub fn get_current_part_decoded_block_count(&self) -> usize {
+        self.decoder.get_current_part_decoded_block_count()
+    }
+
+    /// Get the total number of blocks in the current part
+    #[wasm_bindgen(js_name = getCurrentPartTotalBlockCount)]
+    pub fn get_current_part_total_block_count(&self) -> usize {
+        self.decoder.get_current_part_total_block_count()
+    }
+
+    /// Get part info as a JS object
+    /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
+    #[wasm_bindgen(js_name = getPartInfo)]
+    pub fn get_part_info(&self) -> JsValue {
+        let (part_based_mode, current_part_index, total_parts, part_size) = self.decoder.get_part_info();
+
+        let obj = js_sys::Object::new();
+        js_sys::Reflect::set(&obj, &"partBasedMode".into(), &JsValue::from(part_based_mode)).ok();
+        js_sys::Reflect::set(&obj, &"currentPartIndex".into(), &JsValue::from(current_part_index as u32)).ok();
+        js_sys::Reflect::set(&obj, &"totalParts".into(), &JsValue::from(total_parts as u32)).ok();
+        js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
+
+        obj.into()
     }
 }

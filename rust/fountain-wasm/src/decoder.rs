@@ -18,6 +18,20 @@ pub struct FountainDecoder {
     chunks: Vec<DecodingChunk>,
     /// Number of chunks received
     received_chunk_count: usize,
+
+    // Part-based mode fields
+    /// Whether part-based mode is enabled
+    part_based_mode: bool,
+    /// Size of each part in bytes
+    part_size: usize,
+    /// Total number of parts
+    total_parts: usize,
+    /// Current part index being decoded
+    current_part_index: usize,
+    /// Set of completed part indices
+    completed_parts: HashSet<usize>,
+    /// Stored reconstructed part data (part_index -> data)
+    stored_part_data: HashMap<usize, Vec<u8>>,
 }
 
 impl FountainDecoder {
@@ -27,6 +41,29 @@ impl FountainDecoder {
             decoded_blocks: HashMap::new(),
             chunks: Vec::new(),
             received_chunk_count: 0,
+            part_based_mode: false,
+            part_size: 0,
+            total_parts: 0,
+            current_part_index: 0,
+            completed_parts: HashSet::new(),
+            stored_part_data: HashMap::new(),
+        }
+    }
+
+    /// Create a new decoder with part-based mode
+    pub fn with_part_mode(metadata: FountainMetadata, part_size: usize) -> Self {
+        let total_parts = (metadata.size + part_size - 1) / part_size; // ceil division
+        Self {
+            metadata,
+            decoded_blocks: HashMap::new(),
+            chunks: Vec::new(),
+            received_chunk_count: 0,
+            part_based_mode: true,
+            part_size,
+            total_parts,
+            current_part_index: 0,
+            completed_parts: HashSet::new(),
+            stored_part_data: HashMap::new(),
         }
     }
 
@@ -108,7 +145,13 @@ impl FountainDecoder {
 
     /// Check if decoding is complete
     pub fn is_complete(&self) -> bool {
-        self.decoded_blocks.len() == self.metadata.total_source_blocks
+        if self.part_based_mode {
+            // In part-based mode, complete when all parts are stored
+            self.stored_part_data.len() == self.total_parts
+        } else {
+            // Regular mode: complete when all blocks are decoded
+            self.decoded_blocks.len() == self.metadata.total_source_blocks
+        }
     }
 
     /// Get decode progress as a fraction (0.0 to 1.0)
@@ -135,6 +178,10 @@ impl FountainDecoder {
 
     /// Get the decoded data (returns None if not complete)
     pub fn get_decoded_data(&self) -> Option<Vec<u8>> {
+        if self.part_based_mode {
+            return self.get_decoded_data_from_parts();
+        }
+
         if !self.is_complete() {
             return None;
         }
@@ -155,9 +202,167 @@ impl FountainDecoder {
         Some(result)
     }
 
+    /// Reconstruct the final file from stored part data
+    fn get_decoded_data_from_parts(&self) -> Option<Vec<u8>> {
+        if !self.part_based_mode || self.stored_part_data.len() != self.total_parts {
+            return None;
+        }
+
+        // Check that all parts are present
+        for i in 0..self.total_parts {
+            if !self.stored_part_data.contains_key(&i) {
+                return None;
+            }
+        }
+
+        // Concatenate all parts in order
+        let mut result = Vec::with_capacity(self.metadata.size);
+        for i in 0..self.total_parts {
+            if let Some(part_data) = self.stored_part_data.get(&i) {
+                result.extend_from_slice(part_data);
+            } else {
+                return None;
+            }
+        }
+
+        Some(result)
+    }
+
     /// Get metadata
     pub fn get_metadata(&self) -> FountainMetadata {
         self.metadata.clone()
+    }
+
+    // Part-based mode methods
+
+    /// Check if the current part is complete (all blocks in part decoded)
+    pub fn is_current_part_complete(&self) -> bool {
+        if !self.part_based_mode {
+            return self.is_complete();
+        }
+
+        let (start_block, end_block) = self.get_current_part_block_range();
+
+        for i in start_block..end_block {
+            if !self.decoded_blocks.contains_key(&i) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Get the data for the current part (for checksum validation)
+    /// Returns None if part is not complete
+    pub fn get_current_part_data(&self) -> Option<Vec<u8>> {
+        if !self.part_based_mode || !self.is_current_part_complete() {
+            return None;
+        }
+
+        let part_start_byte = self.current_part_index * self.part_size;
+        let part_end_byte = ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
+        let part_data_size = part_end_byte - part_start_byte;
+
+        let mut result = Vec::with_capacity(part_data_size);
+        let (start_block, end_block) = self.get_current_part_block_range();
+
+        for i in start_block..end_block {
+            if let Some(block) = self.decoded_blocks.get(&i) {
+                result.extend_from_slice(block);
+            } else {
+                return None;
+            }
+        }
+
+        // Trim to exact part size
+        result.truncate(part_data_size);
+        Some(result)
+    }
+
+    /// Move to the next part
+    /// Returns true if moved to next part, false if already at last part
+    pub fn move_to_next_part(&mut self) -> bool {
+        if !self.part_based_mode || self.current_part_index >= self.total_parts - 1 {
+            return false;
+        }
+
+        self.current_part_index += 1;
+        // Clear decoded blocks and chunks for the new part
+        self.decoded_blocks.clear();
+        self.chunks.clear();
+
+        true
+    }
+
+    /// Mark a part as completed and store its data
+    /// This clears the decoded blocks for that part to save memory
+    pub fn mark_part_completed(&mut self, part_index: usize) {
+        if !self.part_based_mode || part_index >= self.total_parts {
+            return;
+        }
+
+        // Get the current part data before clearing
+        if part_index == self.current_part_index {
+            if let Some(part_data) = self.get_current_part_data() {
+                self.stored_part_data.insert(part_index, part_data);
+                self.completed_parts.insert(part_index);
+
+                // Clear decoded blocks for this part to save memory
+                let (start_block, end_block) = self.get_current_part_block_range();
+                for i in start_block..end_block {
+                    self.decoded_blocks.remove(&i);
+                }
+            }
+        }
+    }
+
+    /// Get the number of decoded blocks in the current part
+    pub fn get_current_part_decoded_block_count(&self) -> usize {
+        if !self.part_based_mode {
+            return self.decoded_blocks.len();
+        }
+
+        let (start_block, end_block) = self.get_current_part_block_range();
+        let mut count = 0;
+        for i in start_block..end_block {
+            if self.decoded_blocks.contains_key(&i) {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Get the total number of blocks in the current part
+    pub fn get_current_part_total_block_count(&self) -> usize {
+        if !self.part_based_mode {
+            return self.metadata.total_source_blocks;
+        }
+
+        let (start_block, end_block) = self.get_current_part_block_range();
+        end_block - start_block
+    }
+
+    /// Get part info
+    pub fn get_part_info(&self) -> (bool, usize, usize, usize) {
+        // Returns: (part_based_mode, current_part_index, total_parts, part_size)
+        (
+            self.part_based_mode,
+            self.current_part_index,
+            self.total_parts,
+            self.part_size,
+        )
+    }
+
+    /// Helper: Get the block range for the current part
+    fn get_current_part_block_range(&self) -> (usize, usize) {
+        let part_start_byte = self.current_part_index * self.part_size;
+        let part_end_byte = ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
+
+        let start_block = part_start_byte / self.metadata.block_size;
+        let end_block = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size; // ceil division
+        let end_block = end_block.min(self.metadata.total_source_blocks);
+
+        (start_block, end_block)
     }
 }
 

@@ -9,8 +9,8 @@
  *
  * COMPUTATION LOGIC HAS BEEN MOVED TO RUST WASM:
  *  - Chunk generation (XOR operations, degree sampling) - handled by WASM encoder
- *  - Belief propagation decoding - handled by WASM decoder (except part-based mode)
- *  - For part-based mode, JavaScript decoder is still used (WASM doesn't support it yet)
+ *  - Belief propagation decoding - handled by WASM decoder (including part-based mode)
+ *  - Part-based mode - fully supported in WASM for better performance
  */
 
 // XOR two Uint8Arrays (used by decoder in part-based mode)

@@ -80,8 +80,12 @@ export class FountainWasmEncoder {
 export class FountainWasmDecoder {
   private wasmDecoder: WasmFountainDecoder
 
-  constructor(metadata: FountainMetadata) {
-    this.wasmDecoder = new WasmFountainDecoder(metadata)
+  constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+    this.wasmDecoder = new WasmFountainDecoder(
+      metadata,
+      partBasedMode ? true : undefined,
+      partBasedMode && partSize > 0 ? partSize : undefined
+    )
   }
 
   /**
@@ -140,5 +144,58 @@ export class FountainWasmDecoder {
    */
   getMetadata(): FountainMetadata {
     return this.wasmDecoder.getMetadata() as FountainMetadata
+  }
+
+  // Part-based mode methods
+
+  /**
+   * Check if the current part is complete
+   */
+  isCurrentPartComplete(): boolean {
+    return this.wasmDecoder.isCurrentPartComplete()
+  }
+
+  /**
+   * Get the current part data (returns null if not complete)
+   */
+  getCurrentPartData(): Uint8Array | null {
+    return this.wasmDecoder.getCurrentPartData() || null
+  }
+
+  /**
+   * Move to the next part
+   * Returns true if moved, false if already at last part
+   */
+  moveToNextPart(): boolean {
+    return this.wasmDecoder.moveToNextPart()
+  }
+
+  /**
+   * Mark a part as completed
+   */
+  markPartCompleted(partIndex: number): void {
+    this.wasmDecoder.markPartCompleted(partIndex)
+  }
+
+  /**
+   * Get the number of decoded blocks in the current part
+   */
+  getCurrentPartDecodedBlockCount(): number {
+    return this.wasmDecoder.getCurrentPartDecodedBlockCount()
+  }
+
+  /**
+   * Get the total number of blocks in the current part
+   */
+  getCurrentPartTotalBlockCount(): number {
+    return this.wasmDecoder.getCurrentPartTotalBlockCount()
+  }
+
+  /**
+   * Get part info
+   */
+  getPartInfo(): { partBasedMode: boolean; currentPartIndex: number; totalParts: number; partSize: number } {
+    const partInfo = this.wasmDecoder.getPartInfo()
+    return partInfo as { partBasedMode: boolean; currentPartIndex: number; totalParts: number; partSize: number }
   }
 }
