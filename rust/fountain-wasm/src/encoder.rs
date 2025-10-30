@@ -1,5 +1,5 @@
 use crate::distribution::{build_robust_soliton, calculate_max_degree, sample_degree_with_doping};
-use crate::rng::{create_rng, select_indices};
+use crate::rng::{create_rng, select_indices_with_rng};
 use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
 use crate::xor::xor_blocks;
 
@@ -105,8 +105,8 @@ impl FountainEncoder {
         .min(self.max_degree)
         .min(self.blocks.len());
 
-        // Select indices
-        let indices = select_indices(seed, degree, self.blocks.len());
+        // Select indices using the same RNG instance (no reseeding)
+        let indices = select_indices_with_rng(&mut rng, degree, self.blocks.len());
 
         // XOR selected blocks
         let block_refs: Vec<&[u8]> = indices.iter().map(|&i| self.blocks[i].as_slice()).collect();

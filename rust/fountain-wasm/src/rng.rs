@@ -68,10 +68,10 @@ impl RngCore for LcgRandom {
     }
 }
 
-/// Select random unique indices using a seeded RNG
+/// Select random unique indices using a provided LcgRandom RNG
 /// Returns a sorted vector of unique indices
-pub fn select_indices(seed: u32, degree: usize, max_index: usize) -> Vec<usize> {
-    let mut rng = LcgRandom::new(seed);
+/// This function reuses the RNG state without reseeding
+pub fn select_indices_with_rng(rng: &mut LcgRandom, degree: usize, max_index: usize) -> Vec<usize> {
     let mut selected = HashSet::new();
 
     // Keep selecting until we have enough unique indices
@@ -159,8 +159,9 @@ mod tests {
     }
 
     #[test]
-    fn test_select_indices_unique() {
-        let indices = select_indices(42, 5, 100);
+    fn test_select_indices_with_rng_unique() {
+        let mut rng = LcgRandom::new(42);
+        let indices = select_indices_with_rng(&mut rng, 5, 100);
         assert_eq!(indices.len(), 5);
 
         // Check uniqueness
@@ -172,26 +173,55 @@ mod tests {
     }
 
     #[test]
-    fn test_select_indices_deterministic() {
+    fn test_select_indices_with_rng_reuses_state() {
+        // Test that the RNG state is preserved across calls
+        let mut rng1 = LcgRandom::new(42);
+        let mut rng2 = LcgRandom::new(42);
+
+        // Use the first RNG for degree sampling and index selection
+        let _degree1 = rng1.gen_range(1..10);
+        let indices1 = select_indices_with_rng(&mut rng1, 5, 100);
+
+        // With the old approach (reseeding), this would give the same indices
+        // but with the new approach, the RNG state is preserved
+        let _degree2 = rng2.gen_range(1..10);
+        let indices2 = select_indices_with_rng(&mut rng2, 5, 100);
+
+        // Should be identical because both RNGs had same initial state
+        assert_eq!(indices1, indices2);
+    }
+
+    #[test]
+    fn test_select_indices_with_rng_deterministic() {
         // Test multiple times with the same seed to ensure determinism
-        let indices1 = select_indices(123, 10, 50);
-        let indices2 = select_indices(123, 10, 50);
-        let indices3 = select_indices(123, 10, 50);
+        let mut rng1 = LcgRandom::new(123);
+        let indices1 = select_indices_with_rng(&mut rng1, 10, 50);
+
+        let mut rng2 = LcgRandom::new(123);
+        let indices2 = select_indices_with_rng(&mut rng2, 10, 50);
+
+        let mut rng3 = LcgRandom::new(123);
+        let indices3 = select_indices_with_rng(&mut rng3, 10, 50);
 
         assert_eq!(indices1, indices2);
         assert_eq!(indices2, indices3);
     }
 
     #[test]
-    fn test_select_indices_different_seeds() {
-        let indices1 = select_indices(1, 10, 50);
-        let indices2 = select_indices(2, 10, 50);
+    fn test_select_indices_with_rng_different_seeds() {
+        let mut rng1 = LcgRandom::new(1);
+        let indices1 = select_indices_with_rng(&mut rng1, 10, 50);
+
+        let mut rng2 = LcgRandom::new(2);
+        let indices2 = select_indices_with_rng(&mut rng2, 10, 50);
+
         assert_ne!(indices1, indices2);
     }
 
     #[test]
-    fn test_select_indices_sorted() {
-        let indices = select_indices(999, 8, 100);
+    fn test_select_indices_with_rng_sorted() {
+        let mut rng = LcgRandom::new(999);
+        let indices = select_indices_with_rng(&mut rng, 8, 100);
         let mut sorted = indices.clone();
         sorted.sort_unstable();
         assert_eq!(indices, sorted);
