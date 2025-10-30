@@ -74,11 +74,8 @@ impl FountainEncoder {
             block_size,
         );
 
-        // Use provided seed offset or generate a random one based on timestamp
-        let offset = seed_offset.unwrap_or_else(|| {
-            // Use timestamp as seed for randomization
-            (timestamp as u64 % (u32::MAX as u64)) as u32
-        });
+        // Use provided seed offset (default 0 to match legacy JS behavior)
+        let offset = seed_offset.unwrap_or(0);
 
         Self {
             blocks,
@@ -202,6 +199,27 @@ mod tests {
         for (i, chunk) in chunks.iter().enumerate() {
             assert_eq!(chunk.seed, i as u32);
         }
+    }
+
+    #[test]
+    fn test_default_seed_offset_matches_js_behavior() {
+        // Even with a large timestamp, seeds should start at 0 unless an explicit offset is provided.
+        let data = vec![0u8; 800];
+        let options = FountainEncoderOptions::default().with_block_size(400);
+        let mut encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            1_700_000_000.0,
+            options,
+            None,
+        );
+
+        let chunk_first = encoder.generate_chunk();
+        let chunk_second = encoder.generate_chunk();
+
+        assert_eq!(chunk_first.seed, 0);
+        assert_eq!(chunk_second.seed, 1);
     }
 
     #[test]

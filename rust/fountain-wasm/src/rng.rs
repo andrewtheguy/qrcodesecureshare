@@ -17,7 +17,10 @@ impl LcgRandom {
     /// Internal method to advance the state
     /// Implements: state = (state * 9301 + 49297) % 233280
     fn advance_state(&mut self) -> u32 {
-        self.state = (self.state.wrapping_mul(9301).wrapping_add(49297)) % 233280;
+        // Use u64 math to match the JavaScript implementation exactly – JS numbers stay
+        // precise for these ranges, while u32 wrapping would distort the sequence.
+        let next = ((self.state as u64) * 9301 + 49297) % 233_280;
+        self.state = next as u32;
         self.state
     }
 
@@ -138,6 +141,24 @@ mod tests {
         let expected_val3 = 0.3520061728395062;
         assert_eq!(rng.state, expected_state3);
         assert!((val3 - expected_val3).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_lcg_matches_typescript_large_seed() {
+        // Ensure large seeds (e.g. timestamp-based) match JS behavior and do not overflow
+        let mut rng = LcgRandom::new(1_700_000_000);
+
+        let val1 = rng.next();
+        assert_eq!(rng.state, 78_417);
+        assert!((val1 - 0.336_149_691_358_024_7).abs() < 1e-12);
+
+        let val2 = rng.next();
+        assert_eq!(rng.state, 172_534);
+        assert!((val2 - 0.739_600_480_109_739_3).abs() < 1e-12);
+
+        let val3 = rng.next();
+        assert_eq!(rng.state, 54_911);
+        assert!((val3 - 0.235_386_659_807_956_12).abs() < 1e-12);
     }
 
     #[test]

@@ -75,7 +75,7 @@ fn sample_from_distribution_lcg(rng: &mut crate::rng::LcgRandom, distribution: &
 
     for (i, &prob) in distribution.iter().enumerate() {
         cumulative += prob;
-        if roll < cumulative {
+        if roll <= cumulative {
             return i + 1; // degree is 1-indexed
         }
     }
