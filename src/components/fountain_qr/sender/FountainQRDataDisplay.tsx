@@ -15,7 +15,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCode'
 import { computeChecksum } from '@/utils/checksum'
-import { deriveQRCapacity } from '@/constants'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 interface FountainQRDataDisplayProps {
@@ -31,6 +30,7 @@ interface FountainQRDataDisplayProps {
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
+  maxQRDataSize: number
 }
 
 const DEFAULT_FPS = 25
@@ -45,7 +45,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     activationToken,
     onChunkGenerated,
     onBufferUpdate,
-    onError
+    onError,
+    maxQRDataSize
   } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -147,14 +148,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
-  // Dynamically compute max QR data size based on error correction level
-  const MAX_QR_DATA_SIZE = useMemo(() => {
-    const capacity = deriveQRCapacity(currentQROptions.errorCorrectionLevel, 400)
+  // Log QR capacity in dev mode (value comes from parent)
+  useEffect(() => {
     if (import.meta.env.DEV) {
-      console.log(`[FountainQRDataDisplay] Dynamic QR capacity for ECC ${currentQROptions.errorCorrectionLevel}: ${capacity} bytes`)
+      console.log(`[FountainQRDataDisplay] QR capacity for ECC ${currentQROptions.errorCorrectionLevel}: ${maxQRDataSize} bytes`)
     }
-    return capacity
-  }, [currentQROptions.errorCorrectionLevel])
+  }, [currentQROptions.errorCorrectionLevel, maxQRDataSize])
 
   // Initialize encoder state
   useEffect(() => {
@@ -164,10 +163,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       // Log QR capacity and max degree info for debugging
       if (import.meta.env.DEV) {
-        console.log(`[FountainQRDataDisplay] QR capacity: ${MAX_QR_DATA_SIZE} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)
+        console.log(`[FountainQRDataDisplay] QR capacity: ${maxQRDataSize} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)
       }
     }
-  }, [encoder, MAX_QR_DATA_SIZE, currentQROptions.errorCorrectionLevel])
+  }, [encoder, maxQRDataSize, currentQROptions.errorCorrectionLevel])
 
   // Auto-start playback once encoder is ready and activation token changes
   // This prevents auto-start during mode transitions in the parent component
@@ -389,10 +388,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
 
               // Track oversized chunks but continue with generation
-              if (expectedSize > MAX_QR_DATA_SIZE) {
+              if (expectedSize > maxQRDataSize) {
                 setOversizedChunkCount(prev => prev + 1)
                 if (import.meta.env.DEV) {
-                  console.info(`[Buffer] Chunk size ${expectedSize} > ${MAX_QR_DATA_SIZE} (generating anyway)`)
+                  console.info(`[Buffer] Chunk size ${expectedSize} > ${maxQRDataSize} (generating anyway)`)
                 }
               }
 
@@ -500,7 +499,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -532,10 +531,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
 
         // Track oversized chunks but continue with generation
-        if (expectedSize > MAX_QR_DATA_SIZE) {
+        if (expectedSize > maxQRDataSize) {
           setOversizedChunkCount(prev => prev + 1)
           if (import.meta.env.DEV) {
-            console.info(`[Direct] Chunk size ${expectedSize} > ${MAX_QR_DATA_SIZE} (generating anyway)`)
+            console.info(`[Direct] Chunk size ${expectedSize} > ${maxQRDataSize} (generating anyway)`)
           }
         }
 

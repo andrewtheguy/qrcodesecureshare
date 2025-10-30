@@ -19,34 +19,3 @@ export const NON_DATA_QR_OPTIONS = {
     light: '#FFF'
   }
 }
-
-// QR Code capacity mapping based on error correction level
-// These base values correspond to QR version 40 (177x177 modules) byte-mode capacities
-// Capacity is determined by QR version and error correction level, independent of rendering size
-// Note: Rendering size only affects visual size and scanability, not data capacity
-export const QR_CAPACITY_MAP: Record<'L' | 'M' | 'Q' | 'H', { base: number, safetyMargin: number }> = {
-  'L': { base: 2953, safetyMargin: 0.6 }, // Low ECC (7% recovery) - ~1772 bytes usable
-  'M': { base: 2331, safetyMargin: 0.6 }, // Medium ECC (15% recovery) - ~1399 bytes usable
-  'Q': { base: 1663, safetyMargin: 0.6 }, // Quartile ECC (25% recovery) - ~998 bytes usable
-  'H': { base: 1273, safetyMargin: 0.6 }  // High ECC (30% recovery) - ~764 bytes usable
-}
-
-/**
- * Derives dynamic QR capacity based on error correction level
- * @param eccLevel - Error correction level (L, M, Q, H)
- * @param canvasWidth - QR code canvas width in pixels (default 400)
- * @returns Maximum safe data size in bytes
- */
-export const deriveQRCapacity = (eccLevel: 'L' | 'M' | 'Q' | 'H', canvasWidth: number = 400): number => {
-  const capacityInfo = QR_CAPACITY_MAP[eccLevel]
-
-  // Scale capacity based on canvas width (linear approximation)
-  // 400px is our baseline; adjust if different canvas size
-  const scaleFactor = canvasWidth / 400
-  const scaledBase = Math.floor(capacityInfo.base * scaleFactor)
-
-  // Apply safety margin to ensure reliable encoding
-  const safeCapacity = Math.floor(scaledBase * capacityInfo.safetyMargin)
-
-  return safeCapacity
-}

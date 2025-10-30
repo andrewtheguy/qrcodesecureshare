@@ -14,7 +14,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { FountainEncoder } from '@/utils/fountainCode'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
-import { deriveQRCapacity } from '@/constants'
+import { getQRCapacity } from '@/utils/qrCapacity'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
 import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
 import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput'
@@ -45,6 +45,11 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
+  // Calculate max QR data size once - used by both encoder and display component
+  const maxQRDataSize = useMemo(() => {
+    return getQRCapacity(currentQROptions.errorCorrectionLevel)
+  }, [currentQROptions.errorCorrectionLevel])
+
   // Initialize fountain encoder when file is loaded
   useEffect(() => {
     const reader = new FileReader()
@@ -61,9 +66,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           checksum,
           checksumAlg
         }
-
-        // Derive QR capacity based on error correction level
-        const maxQRDataSize = deriveQRCapacity(currentQROptions.errorCorrectionLevel)
 
         // Enable part-based mode for feedback-enabled transfers
         const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
@@ -108,7 +110,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     }
 
     reader.readAsArrayBuffer(file)
-  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption])
+  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption, maxQRDataSize])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   useEffect(() => {
@@ -241,6 +243,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           onChunkGenerated={handleChunkGenerated}
           onBufferUpdate={handleBufferUpdate}
           onError={handleDataDisplayError}
+          maxQRDataSize={maxQRDataSize}
         />
       )}
 
