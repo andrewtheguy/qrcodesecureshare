@@ -1,0 +1,212 @@
+use crate::distribution::{build_robust_soliton, calculate_max_degree, sample_degree_with_doping};
+use crate::rng::{create_rng, select_indices};
+use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
+use crate::xor::xor_blocks;
+
+pub struct FountainEncoder {
+    /// Source data split into blocks
+    blocks: Vec<Vec<u8>>,
+    /// Metadata about the encoding
+    metadata: FountainMetadata,
+    /// Degree distribution for chunk generation
+    degree_distribution: Vec<f64>,
+    /// Maximum degree for this encoder
+    max_degree: usize,
+    /// Options for encoding
+    options: FountainEncoderOptions,
+    /// Current seed for chunk generation
+    current_seed: u32,
+}
+
+impl FountainEncoder {
+    pub fn new(
+        data: Vec<u8>,
+        name: String,
+        file_type: String,
+        timestamp: f64,
+        options: FountainEncoderOptions,
+    ) -> Self {
+        let block_size = options.block_size;
+        let total_size = data.len();
+
+        // Split data into blocks
+        let mut blocks = Vec::new();
+        for chunk in data.chunks(block_size) {
+            let mut block = chunk.to_vec();
+            // Pad last block if necessary
+            if block.len() < block_size {
+                block.resize(block_size, 0);
+            }
+            blocks.push(block);
+        }
+
+        let total_source_blocks = blocks.len();
+
+        // Calculate max degree
+        let max_degree = options.max_degree.unwrap_or_else(|| {
+            calculate_max_degree(total_source_blocks, options.max_qr_data_size, block_size)
+        });
+
+        // Build degree distribution
+        let degree_distribution =
+            build_robust_soliton(total_source_blocks, options.c, options.delta, max_degree);
+
+        let metadata = FountainMetadata::new(
+            name,
+            total_size,
+            file_type,
+            timestamp,
+            total_source_blocks,
+            block_size,
+        );
+
+        Self {
+            blocks,
+            metadata,
+            degree_distribution,
+            max_degree,
+            options,
+            current_seed: 0,
+        }
+    }
+
+    /// Generate a single fountain chunk
+    pub fn generate_chunk(&mut self) -> FountainChunk {
+        let seed = self.current_seed;
+        self.current_seed = self.current_seed.wrapping_add(1);
+
+        // Create RNG from seed
+        let mut rng = create_rng(seed);
+
+        // Sample degree
+        let degree = sample_degree_with_doping(
+            &mut rng,
+            &self.degree_distribution,
+            self.options.degree1_rate,
+            self.options.low_degree_rate,
+        )
+        .min(self.max_degree)
+        .min(self.blocks.len());
+
+        // Select indices
+        let indices = select_indices(seed, degree, self.blocks.len());
+
+        // XOR selected blocks
+        let block_refs: Vec<&[u8]> = indices.iter().map(|&i| self.blocks[i].as_slice()).collect();
+        let data = xor_blocks(&block_refs);
+
+        FountainChunk::new(seed, degree, indices, data)
+    }
+
+    /// Generate multiple chunks at once
+    pub fn generate_chunks(&mut self, count: usize) -> Vec<FountainChunk> {
+        (0..count).map(|_| self.generate_chunk()).collect()
+    }
+
+    /// Get the metadata
+    pub fn get_metadata(&self) -> FountainMetadata {
+        self.metadata.clone()
+    }
+
+    /// Get the number of source blocks
+    pub fn block_count(&self) -> usize {
+        self.blocks.len()
+    }
+
+    /// Get the block size
+    pub fn block_size(&self) -> usize {
+        self.metadata.block_size
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_encoder_creation() {
+        let data = vec![0u8; 1000];
+        let options = FountainEncoderOptions::default();
+        let encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+        );
+
+        assert_eq!(encoder.block_count(), 3); // 1000 bytes / 400 bytes per block = 3 blocks
+        assert_eq!(encoder.block_size(), 400);
+    }
+
+    #[test]
+    fn test_generate_chunk() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let options = FountainEncoderOptions::default().with_block_size(5);
+        let mut encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+        );
+
+        let chunk = encoder.generate_chunk();
+        assert!(chunk.degree >= 1);
+        assert!(chunk.degree <= encoder.block_count());
+        assert_eq!(chunk.indices.len(), chunk.degree);
+        assert_eq!(chunk.data.len(), 5);
+    }
+
+    #[test]
+    fn test_generate_multiple_chunks() {
+        let data = vec![0u8; 1000];
+        let options = FountainEncoderOptions::default();
+        let mut encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+        );
+
+        let chunks = encoder.generate_chunks(10);
+        assert_eq!(chunks.len(), 10);
+
+        // Check that seeds are unique and sequential
+        for (i, chunk) in chunks.iter().enumerate() {
+            assert_eq!(chunk.seed, i as u32);
+        }
+    }
+
+    #[test]
+    fn test_chunk_determinism() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder1 = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options.clone(),
+        );
+
+        let mut encoder2 = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+        );
+
+        let chunk1 = encoder1.generate_chunk();
+        let chunk2 = encoder2.generate_chunk();
+
+        // Chunks with same seed should be identical
+        assert_eq!(chunk1.seed, chunk2.seed);
+        assert_eq!(chunk1.degree, chunk2.degree);
+        assert_eq!(chunk1.indices, chunk2.indices);
+        assert_eq!(chunk1.data, chunk2.data);
+    }
+}
