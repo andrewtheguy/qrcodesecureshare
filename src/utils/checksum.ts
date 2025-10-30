@@ -1,10 +1,35 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
-import { crc32 as wasmCrc32 } from '@/wasm/fountain_wasm'
+import wasmInit from '@/wasm/fountain_wasm'
 
 // Checksum utilities using Rust WASM for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
+
+// WASM initialization state
+let wasmInitialized = false
+let wasmInitPromise: Promise<void> | null = null
+
+/**
+ * Ensures WASM module is initialized before use
+ */
+async function ensureWasmInit(): Promise<void> {
+  if (wasmInitialized) return
+
+  if (!wasmInitPromise) {
+    wasmInitPromise = (async () => {
+      try {
+        await wasmInit()
+        wasmInitialized = true
+      } catch (err) {
+        console.error('[WASM Init] Failed to initialize checksum WASM:', err)
+        throw new Error('Failed to initialize WASM module for checksums')
+      }
+    })()
+  }
+
+  await wasmInitPromise
+}
 
 export async function computeChecksum(
   dataInput: Uint8Array | ArrayBuffer,
@@ -12,7 +37,10 @@ export async function computeChecksum(
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
   if (algorithm === 'crc32') {
-    return wasmCrc32(data)
+    // Ensure WASM is initialized before calling crc32
+    await ensureWasmInit()
+    const { crc32 } = await import('@/wasm/fountain_wasm')
+    return crc32(data)
   }
   // SHA-256 path using browser WebCrypto
   const copy = new Uint8Array(data) // fresh ArrayBuffer
@@ -75,7 +103,9 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   const data = encoder.encode(canonicalString)
 
   // Compute CRC32 checksum using Rust WASM
-  const checksum = wasmCrc32(data)
+  await ensureWasmInit()
+  const { crc32 } = await import('@/wasm/fountain_wasm')
+  const checksum = crc32(data)
 
   // Format as user-friendly code: uppercase hex with hyphen
   const upperChecksum = checksum.toUpperCase()
