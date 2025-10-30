@@ -14,8 +14,8 @@ pub struct FountainDecoder {
     metadata: FountainMetadata,
     /// Decoded blocks (block_index -> data)
     decoded_blocks: HashMap<usize, Vec<u8>>,
-    /// Original received chunks (never modified, used to recreate working set)
-    received_chunks: Vec<FountainChunk>,
+    /// Chunks being processed
+    chunks: Vec<DecodingChunk>,
     /// Number of chunks received
     received_chunk_count: usize,
 
@@ -39,7 +39,7 @@ impl FountainDecoder {
         Self {
             metadata,
             decoded_blocks: HashMap::new(),
-            received_chunks: Vec::new(),
+            chunks: Vec::new(),
             received_chunk_count: 0,
             part_based_mode: false,
             part_size: 0,
@@ -56,7 +56,7 @@ impl FountainDecoder {
         Self {
             metadata,
             decoded_blocks: HashMap::new(),
-            received_chunks: Vec::new(),
+            chunks: Vec::new(),
             received_chunk_count: 0,
             part_based_mode: true,
             part_size,
@@ -67,76 +67,81 @@ impl FountainDecoder {
         }
     }
 
+
     /// Add a chunk and attempt to decode
     /// Returns true if any new blocks were decoded
     pub fn add_chunk(&mut self, chunk: FountainChunk) -> bool {
         self.received_chunk_count += 1;
 
-        // Store the original chunk (never modified)
-        self.received_chunks.push(chunk);
+        // Convert to internal format
+        let mut decoding_chunk = DecodingChunk {
+            indices: chunk.indices.into_iter().collect(),
+            data: chunk.data,
+        };
 
-        // Recreate working set and run belief propagation
-        self.attempt_decode()
-    }
-
-    /// Attempt to decode by recreating working set from original chunks
-    /// This matches the JavaScript implementation's behavior
-    /// Returns true if decoding is now complete
-    fn attempt_decode(&mut self) -> bool {
-        // Recreate working chunks from original received chunks (like JavaScript)
-        let mut working_chunks: Vec<DecodingChunk> = self
-            .received_chunks
-            .iter()
-            .map(|chunk| DecodingChunk {
-                indices: chunk.indices.iter().copied().collect(),
-                data: chunk.data.clone(),
-            })
-            .collect();
-
-        let mut decoded = HashMap::new();
-
-        // Iteratively decode using belief propagation (peeling decoder)
-        let mut made_progress = true;
-        while made_progress {
-            made_progress = false;
-
-            for i in 0..working_chunks.len() {
-                if working_chunks[i].indices.len() != 1 {
-                    continue;
-                }
-
-                let block_idx = *working_chunks[i].indices.iter().next().unwrap();
-
-                if decoded.contains_key(&block_idx) {
-                    continue;
-                }
-
-                let decoded_block = working_chunks[i].data.clone();
-                made_progress = true;
-
-                // XOR this newly decoded block out of all other chunks that reference it
-                for j in 0..working_chunks.len() {
-                    if j == i {
-                        continue;
-                    }
-
-                    if working_chunks[j].indices.remove(&block_idx) {
-                        xor_into(&mut working_chunks[j].data, &decoded_block);
-                    }
-                }
-
-                // Remove the decoded index from the current chunk as well
-                working_chunks[i].indices.remove(&block_idx);
-
-                decoded.insert(block_idx, decoded_block);
+        // Remove already-decoded blocks from this chunk
+        for &decoded_idx in self.decoded_blocks.keys() {
+            if decoding_chunk.indices.contains(&decoded_idx) {
+                xor_into(&mut decoding_chunk.data, &self.decoded_blocks[&decoded_idx]);
+                decoding_chunk.indices.remove(&decoded_idx);
             }
         }
 
-        // Update decoded blocks
-        self.decoded_blocks = decoded;
+        // If chunk is now empty, discard it
+        if decoding_chunk.indices.is_empty() {
+            return false;
+        }
 
-        // Return true if decoding made progress
-        self.decoded_blocks.len() == self.metadata.total_source_blocks
+        self.chunks.push(decoding_chunk);
+
+        // Run belief propagation
+        self.belief_propagation()
+    }
+
+    /// Belief propagation (peeling) decoder
+    /// Returns true if any new blocks were decoded in this iteration
+    fn belief_propagation(&mut self) -> bool {
+        let mut decoded_any = false;
+
+        loop {
+            let mut decoded_this_round = false;
+
+            // Find chunks with exactly one undecoded block
+            let mut to_decode = Vec::new();
+            for (chunk_idx, chunk) in self.chunks.iter().enumerate() {
+                if chunk.indices.len() == 1 {
+                    let block_idx = *chunk.indices.iter().next().unwrap();
+                    to_decode.push((chunk_idx, block_idx, chunk.data.clone()));
+                }
+            }
+
+            // Decode discovered blocks
+            for (_chunk_idx, block_idx, data) in to_decode {
+                if !self.decoded_blocks.contains_key(&block_idx) {
+                    self.decoded_blocks.insert(block_idx, data.clone());
+                    decoded_this_round = true;
+                    decoded_any = true;
+
+                    // XOR this block out of all other chunks
+                    for chunk in self.chunks.iter_mut() {
+                        if chunk.indices.contains(&block_idx) {
+                            xor_into(&mut chunk.data, &data);
+                            chunk.indices.remove(&block_idx);
+                        }
+                    }
+                }
+            }
+
+            // Remove empty chunks
+            self.chunks.retain(|c| !c.indices.is_empty());
+
+            // Stop if no progress this round
+            if !decoded_this_round {
+                break;
+            }
+        }
+
+        decoded_any
     }
 
     /// Check if decoding is complete
@@ -301,7 +306,7 @@ impl FountainDecoder {
         self.current_part_index += 1;
         // Clear decoded blocks and received chunks for the new part
         self.decoded_blocks.clear();
-        self.received_chunks.clear();
+        self.chunks.clear();
 
         true
     }
