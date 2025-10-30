@@ -393,10 +393,13 @@ impl WasmFountainDecoder {
 ///
 /// # Returns
 /// Lowercase hexadecimal string representation of the CRC32 checksum (e.g., "0d4a1185")
+///
+/// Note: The internal crc32 function returns bytes. This wrapper converts to hex for JavaScript.
 #[wasm_bindgen]
 pub fn crc32(data: Uint8Array) -> String {
     let data_vec = data.to_vec();
-    checksum::crc32(&data_vec)
+    let checksum_bytes = checksum::crc32(&data_vec);
+    checksum::crc32_to_hex(&checksum_bytes)
 }
 
 // ========================================
