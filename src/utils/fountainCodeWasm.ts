@@ -333,14 +333,6 @@ export class FountainWasmDecoder {
   }
 
   /**
-   * Convenience method: Get overall decode progress (0.0 to 1.0)
-   * Same as decoder.wasm.getProgress()
-   */
-  getProgress(): number {
-    return this.wasm.getProgress()
-  }
-
-  /**
    * Convenience method: Get the decoded data
    * Same as decoder.wasm.getDecodedData()
    */
@@ -357,8 +349,8 @@ export class FountainWasmDecoder {
   }
 
   /**
-   * Convenience method: Get part info
-   * Same as decoder.wasm.getPartInfo()
+   * Convenience method: Get part info (transforms data to match PartInfo type)
+   * For direct access without transformation: decoder.wasm.getPartInfo()
    */
   getPartInfo(): PartInfo {
     const info = this.wasm.getPartInfo() as {
@@ -389,69 +381,17 @@ export class FountainWasmDecoder {
   }
 
   /**
-   * Convenience method: Get number of decoded blocks
-   * Same as decoder.wasm.getDecodedBlockCount()
+   * For other decoder methods, use decoder.wasm directly:
+   * - decoder.wasm.getProgress() - Get overall decode progress (0.0 to 1.0)
+   * - decoder.wasm.getDecodedBlockCount() - Get number of decoded blocks
+   * - decoder.wasm.getDecodedBlockIndices() - Get decoded block indices
+   * - decoder.wasm.isCurrentPartComplete() - Check if current part is complete
+   * - decoder.wasm.getCurrentPartData() - Get current part data
+   * - decoder.wasm.markPartCompleted(partIndex) - Mark part as completed
+   * - decoder.wasm.getCurrentPartDecodedBlockCount() - Get current part decoded block count
+   * - decoder.wasm.getCurrentPartTotalBlockCount() - Get current part total block count
+   * - decoder.wasm.moveToNextPart() - Move to next part
    */
-  getDecodedBlockCount(): number {
-    return this.wasm.getDecodedBlockCount()
-  }
-
-  /**
-   * Convenience method: Get decoded block indices
-   * Same as decoder.wasm.getDecodedBlockIndices()
-   */
-  getDecodedBlockIndices(): number[] {
-    const indices = this.wasm.getDecodedBlockIndices()
-    return Array.from(indices) as number[]
-  }
-
-  /**
-   * Convenience method: Check if current part is complete
-   * Same as decoder.wasm.isCurrentPartComplete()
-   */
-  isCurrentPartComplete(): boolean {
-    return this.wasm.isCurrentPartComplete()
-  }
-
-  /**
-   * Convenience method: Get current part data
-   * Same as decoder.wasm.getCurrentPartData()
-   */
-  getCurrentPartData(): Uint8Array | null {
-    return this.wasm.getCurrentPartData() || null
-  }
-
-  /**
-   * Convenience method: Mark part as completed
-   * Same as decoder.wasm.markPartCompleted()
-   */
-  markPartCompleted(partIndex: number): void {
-    this.wasm.markPartCompleted(partIndex)
-  }
-
-  /**
-   * Convenience method: Get current part decoded block count
-   * Same as decoder.wasm.getCurrentPartDecodedBlockCount()
-   */
-  getCurrentPartDecodedBlockCount(): number {
-    return this.wasm.getCurrentPartDecodedBlockCount()
-  }
-
-  /**
-   * Convenience method: Get current part total block count
-   * Same as decoder.wasm.getCurrentPartTotalBlockCount()
-   */
-  getCurrentPartTotalBlockCount(): number {
-    return this.wasm.getCurrentPartTotalBlockCount()
-  }
-
-  /**
-   * Convenience method: Move to next part
-   * Same as decoder.wasm.moveToNextPart()
-   */
-  moveToNextPart(): boolean {
-    return this.wasm.moveToNextPart()
-  }
 }
 
 // Re-export with simplified names for backward compatibility with fountainCodeHybrid

@@ -169,7 +169,7 @@ self.onmessage = async (event: MessageEvent) => {
                     processedSeeds.clear();
                     expectedPartChecksums.clear(); // Clear any previous part checksums
                     lastDecodeAttemptTime = Date.now();
-                    lastDecodedBlockCount = decoder.getDecodedBlockCount();
+                    lastDecodedBlockCount = decoder.wasm.getDecodedBlockCount();
                     lastPartCompleteCheck = 0;
                     self.postMessage({ type: 'initialized', id, metadata });
                 } catch (err) {
@@ -233,7 +233,7 @@ self.onmessage = async (event: MessageEvent) => {
 
                 // Only attempt full decode check every 500ms or if new blocks were decoded
                 const now = Date.now();
-                const decodedBlockCount = decoder!.getDecodedBlockCount();
+                const decodedBlockCount = decoder!.wasm.getDecodedBlockCount();
                 const hasNewBlocks = decodedBlockCount !== lastDecodedBlockCount;
                 const shouldAttemptDecode = (now - lastDecodeAttemptTime >= 500) || hasNewBlocks;
 
@@ -241,8 +241,8 @@ self.onmessage = async (event: MessageEvent) => {
                 let partCompleteInfo: { partComplete: boolean; partChecksumMatch: boolean; computedChecksum: string; currentPart: number; totalParts: number } | undefined;
                 if (partBasedMode && (now - lastPartCompleteCheck >= 1000)) {
                     lastPartCompleteCheck = now;
-                    if (decoder!.isCurrentPartComplete()) {
-                        const partData = decoder!.getCurrentPartData();
+                    if (decoder!.wasm.isCurrentPartComplete()) {
+                        const partData = decoder!.wasm.getCurrentPartData();
                         if (partData) {
                             const computedChecksum = await computeChecksum(partData, 'crc32');
                             const partInfo = decoder!.getPartInfo();
@@ -261,7 +261,7 @@ self.onmessage = async (event: MessageEvent) => {
 
                             // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
                             if (checksumMatch) {
-                                decoder!.markPartCompleted(partInfo.currentPartIndex);
+                                decoder!.wasm.markPartCompleted(partInfo.currentPartIndex);
                                 console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
 
                                 // Clean up the checksum from the map since this part is completed
@@ -283,9 +283,9 @@ self.onmessage = async (event: MessageEvent) => {
                     lastDecodedBlockCount = decodedBlockCount;
 
                     // Get overall progress (fraction of total blocks decoded across entire file)
-                    const overallProgress = decoder!.getProgress();
+                    const overallProgress = decoder!.wasm.getProgress();
                     const isComplete = decoder!.isComplete();
-                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+                    const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific progress
                     let partProgress: number;
@@ -295,8 +295,8 @@ self.onmessage = async (event: MessageEvent) => {
                     let totalParts: number | undefined;
                     if (partBasedMode) {
                         const partInfo = decoder!.getPartInfo();
-                        currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
+                        currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
+                        currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
                         partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
                         currentPartIndex = partInfo.currentPartIndex;
                         totalParts = partInfo.totalParts;
@@ -341,8 +341,8 @@ self.onmessage = async (event: MessageEvent) => {
                     }
                 } else {
                     // Queue chunk and send current state without full decode check
-                    const overallProgress = decoder!.getProgress();
-                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+                    const overallProgress = decoder!.wasm.getProgress();
+                    const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific info
                     let partProgress: number;
@@ -354,8 +354,8 @@ self.onmessage = async (event: MessageEvent) => {
                         const partInfo = decoder!.getPartInfo();
                         currentPartIndex = partInfo.currentPartIndex;
                         totalParts = partInfo.totalParts;
-                        currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
+                        currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
+                        currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
                         partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
                     } else {
                         // In non-part mode, part progress equals overall progress
@@ -385,16 +385,16 @@ self.onmessage = async (event: MessageEvent) => {
 
             case 'getStatus': {
                 ensureDecoder();
-                const decodedBlockCount__ = decoder!.getDecodedBlockCount();
-                const overallProgress_ = decoder!.getProgress();
+                const decodedBlockCount__ = decoder!.wasm.getDecodedBlockCount();
+                const overallProgress_ = decoder!.wasm.getProgress();
                 const isComplete_ = decoder!.isComplete();
-                const decodedBlockIndices__ = decoder!.getDecodedBlockIndices();
+                const decodedBlockIndices__ = decoder!.wasm.getDecodedBlockIndices();
 
                 // Calculate part progress
                 let partProgress_: number;
                 if (partBasedMode) {
-                    const currentPartDecodedBlocks_ = decoder!.getCurrentPartDecodedBlockCount();
-                    const currentPartTotalBlocks_ = decoder!.getCurrentPartTotalBlockCount();
+                    const currentPartDecodedBlocks_ = decoder!.wasm.getCurrentPartDecodedBlockCount();
+                    const currentPartTotalBlocks_ = decoder!.wasm.getCurrentPartTotalBlockCount();
                     partProgress_ = currentPartTotalBlocks_ > 0 ? currentPartDecodedBlocks_ / currentPartTotalBlocks_ : 0;
                 } else {
                     partProgress_ = overallProgress_;
@@ -419,7 +419,7 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                const moved = decoder!.moveToNextPart();
+                const moved = decoder!.wasm.moveToNextPart();
                 if (moved) {
                     const partInfo = decoder!.getPartInfo();
                     self.postMessage({
