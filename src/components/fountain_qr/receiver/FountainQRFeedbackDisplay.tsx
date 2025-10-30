@@ -14,38 +14,10 @@ import { Badge } from '@/components/ui/badge'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import type { FountainFeedback, FountainFeedbackTargeted, SenderFeedback } from '@/types/fountainFeedback'
+import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
-import { getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
-
-/**
- * Formats an array of missing block indices into a human-readable range string.
- * Compresses consecutive blocks into ranges (e.g., "1-5, 8, 10-12").
- * @param blocks - Sorted array of missing block indices
- * @returns Formatted string or "None" if empty
- */
-const formatMissingBlocksAsRanges = (blocks: number[]): string => {
-  if (blocks.length === 0) return 'None'
-
-  const ranges: string[] = []
-  let start = blocks[0]
-  let end = blocks[0]
-
-  for (let i = 1; i < blocks.length; i++) {
-    if (blocks[i] === end + 1) {
-      end = blocks[i]
-    } else {
-      ranges.push(start === end ? start.toString() : `${start}-${end}`)
-      start = blocks[i]
-      end = blocks[i]
-    }
-  }
-  ranges.push(start === end ? start.toString() : `${start}-${end}`)
-
-  return ranges.join(', ')
-}
 
 interface FountainQRFeedbackDisplayProps {
   fountainMetadata: FountainMetadata
@@ -56,14 +28,12 @@ interface FountainQRFeedbackDisplayProps {
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
-  onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete' | 'targeted', sequence: number) => void
+  onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete', sequence: number) => void
   onAckReceived: (acknowledgedSequence: number, message: string) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
   onSequenceIncrement: () => void
   onSenderSequenceUpdate: (sequence: number) => void
-  skipTargetedModeForSession: boolean
-  onSkipTargetedMode: () => void
   lastAckTransitionSuccessful: boolean
   onAckTransitionStatus: (successful: boolean) => void
   partCompleteInfo: {
@@ -90,14 +60,11 @@ export function FountainQRFeedbackDisplay({
   onError,
   onSequenceIncrement,
   onSenderSequenceUpdate,
-  skipTargetedModeForSession,
-  onSkipTargetedMode,
   lastAckTransitionSuccessful,
   onAckTransitionStatus,
   partCompleteInfo
 }: FountainQRFeedbackDisplayProps) {
   const [feedbackQRUrl, setFeedbackQRUrl] = useState<string>('')
-  const [feedbackMode, setFeedbackMode] = useState<'part-complete' | 'targeted'>('part-complete')
   const [feedbackData, setFeedbackData] = useState<FountainFeedback | null>(null)
   const [confirmationCode, setConfirmationCode] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -129,8 +96,6 @@ export function FountainQRFeedbackDisplay({
       console.log('[FountainQRFeedbackDisplay] Starting new feedback generation cycle')
 
       // Read from refs for stable values
-      const decodedBlockIndices = decodedBlockIndicesRef.current
-      const fountainMetadata = fountainMetadataRef.current
       const sessionId = sessionIdRef.current
       // Use prop directly - parent owns this value
       const seq = feedbackSequence
@@ -149,101 +114,27 @@ export function FountainQRFeedbackDisplay({
         return
       }
 
-      const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlockIndices.length
-      const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
-      let feedback: FountainFeedback
-
-      if (missingBlocksCount > targetedModeThreshold || skipTargetedModeForSession || !ENABLE_TARGETED_MODE) {
-        // Part-complete mode - simplified feedback with minimal details
-        //
-        // SYNC REQUIREMENT: These fields MUST match exactly with:
-        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
-        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
-        // 3. checksum.ts - generateFeedbackConfirmationCode()
-        //
-        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields like computedChecksum.
-        // Optional fields break confirmation code validation and cause manual input mismatches.
-        feedback = {
-          type: 'FOUNTAIN_FEEDBACK',
-          mode: 'part-complete',
-          sessionId: sessionId,
-          sequence: seq,
-          currentPart: partCompleteInfo.currentPart,
-          totalParts: partCompleteInfo.totalParts,
-          partChecksumMatch: partCompleteInfo.partChecksumMatch,
-        }
-      } else {
-        // Targeted feedback with missing block indices - for final stage
-        // Short-circuit: construct missing blocks by iterating over decoded indices instead of all blocks
-        // This is more efficient when missingBlocksCount is small (≤ targetedModeThreshold)
-        const missingBlocks: number[] = []
-
-        // Optimization: iterate over decoded indices to construct missing indices
-        // Since we know missingBlocksCount <= targetedModeThreshold (small), this is faster
-        // than iterating over all totalSourceBlocks
-        let lastDecoded = -1
-        for (const idx of decodedBlockIndices) {
-          // Add all missing blocks between lastDecoded and current idx
-          for (let i = lastDecoded + 1; i < idx; i++) {
-            missingBlocks.push(i)
-            // Short-circuit: stop if we exceed the threshold (shouldn't happen, but defensive)
-            if (missingBlocks.length > targetedModeThreshold) {
-              break
-            }
-          }
-          lastDecoded = idx
-
-          // Short-circuit: stop if we exceed the threshold
-          if (missingBlocks.length > targetedModeThreshold) {
-            break
-          }
-        }
-
-        // Add any remaining missing blocks after the last decoded index
-        if (missingBlocks.length <= targetedModeThreshold) {
-          for (let i = lastDecoded + 1; i < fountainMetadata.totalSourceBlocks; i++) {
-            missingBlocks.push(i)
-            // Short-circuit: stop if we exceed the threshold
-            if (missingBlocks.length > targetedModeThreshold) {
-              break
-            }
-          }
-        }
-
-        // Targeted mode - includes specific missing block indices for final cleanup
-        //
-        // SYNC REQUIREMENT: These fields MUST match exactly with:
-        // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
-        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields for targeted mode
-        // 3. checksum.ts - generateFeedbackConfirmationCode() for targeted mode
-        //
-        // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields.
-        const feedbackBase = {
-          type: 'FOUNTAIN_FEEDBACK' as const,
-          mode: 'targeted' as const,
-          sessionId: sessionId,
-          sequence: seq,
-          currentPart: partCompleteInfo.currentPart,
-          totalParts: partCompleteInfo.totalParts,
-        }
-
-        const targetedFeedback = { ...feedbackBase, missingBlocks }
-        const targetedJson = JSON.stringify(targetedFeedback)
-
-        // Check if targeted version fits (rough estimate: QR capacity ~3KB for version 40)
-        if (targetedJson.length <= 2500) {
-          feedback = targetedFeedback
-        } else {
-          // Since threshold is so small, disable fallback to statistics mode
-          // Debug logging moved to subcomponent
-          feedback = targetedFeedback // No fallback - threshold is small enough
-        }
+      // Part-complete mode - simplified feedback with minimal details
+      //
+      // SYNC REQUIREMENT: These fields MUST match exactly with:
+      // 1. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
+      // 3. checksum.ts - generateFeedbackConfirmationCode()
+      //
+      // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields like computedChecksum.
+      // Optional fields break confirmation code validation and cause manual input mismatches.
+      const feedback: FountainFeedback = {
+        type: 'FOUNTAIN_FEEDBACK',
+        mode: 'part-complete',
+        sessionId: sessionId,
+        sequence: seq,
+        currentPart: partCompleteInfo.currentPart,
+        totalParts: partCompleteInfo.totalParts,
+        partChecksumMatch: partCompleteInfo.partChecksumMatch,
       }
-
 
       let dataUrl: string
       try {
-        //TODO: need to limit targeted mode maximum block earlier to avoid data too large errors
         dataUrl = await generateNonDataQR(feedback)
       } catch(err) {
         console.error('[FountainQRFeedbackDisplay] Feedback QR generation error:', err)
@@ -251,7 +142,6 @@ export function FountainQRFeedbackDisplay({
         return
       }
       setFeedbackQRUrl(dataUrl)
-      setFeedbackMode(feedback.mode)
       setFeedbackData(feedback)
       pendingAckSequenceRef.current = feedback.sequence
 
@@ -262,11 +152,11 @@ export function FountainQRFeedbackDisplay({
       // Mark this sequence as generated atomically
       lastGeneratedSequenceRef.current = seq
 
-      onFeedbackGenerated(dataUrl, feedback.mode, seq)
+      onFeedbackGenerated(dataUrl, 'part-complete', seq)
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange, skipTargetedModeForSession])
+  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
@@ -422,14 +312,7 @@ export function FountainQRFeedbackDisplay({
   if (receiverMode === 'feedback-display' && feedbackQRUrl) {
     const totalBlocks = fountainMetadata.totalSourceBlocks
     const decodedPercent = totalBlocks > 0 ? Math.round((decodedBlocks / totalBlocks) * 100) : 0
-    const missingBlocksCount = fountainMetadata.totalSourceBlocks - decodedBlocks
-    const modeMessage = skipTargetedModeForSession
-      ? 'Part-complete mode locked for this session to keep QR payloads compact.'
-      : missingBlocksCount > getTargetedModeMaxMissingBlocks()
-        ? 'Part-complete mode: signaling part completion and checksum validation.'
-        : feedbackMode === 'targeted'
-          ? 'Targeted mode: sharing precise missing block ranges for final cleanup.'
-          : 'Part-complete mode: compact payload for easy scanning.'
+    const modeMessage = 'Part-complete mode: signaling part completion and checksum validation.'
 
     return (
       <div className="space-y-4">
@@ -478,28 +361,9 @@ export function FountainQRFeedbackDisplay({
                 <p>• After they process it, tap <span className="font-semibold text-amber-100">Scan ACK Next</span> to capture their confirmation.</p>
                 <p>• Confirmation code below helps them verify manual entry.</p>
               </div>
-              {feedbackMode === 'targeted' && !skipTargetedModeForSession && (
-                <Button
-                  onClick={onSkipTargetedMode}
-                  variant="secondary"
-                  className="w-full border border-amber-400/70 bg-amber-500 text-amber-950 font-semibold hover:bg-amber-400 focus-visible:ring-amber-300"
-                >
-                  Disable Targeted Mode for This Session
-                </Button>
-              )}
             </div>
           </CardContent>
         </Card>
-        {skipTargetedModeForSession && (
-          <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-950">
-            <AlertDescription>
-              <p className="font-medium text-amber-900">ℹ️ Targeted Mode Disabled</p>
-              <p className="text-sm text-amber-900/80">
-                This session stays in statistics mode to keep QR codes smaller. It may take a few more feedback cycles near the end.
-              </p>
-            </AlertDescription>
-          </Alert>
-        )}
         {feedbackData && (
           <Card>
             <CardHeader>
@@ -520,38 +384,17 @@ export function FountainQRFeedbackDisplay({
                     Do NOT display optional fields - they are not included in feedback QR or confirmation code */}
 
                 <span className="text-muted-foreground font-medium text-sm">Mode:</span>
-                <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.mode === 'part-complete' ? 'Part Complete' : 'Targeted'}
-                </span>
+                <span className="font-mono text-sm cursor-text select-all">Part Complete</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Current Part:</span>
                 <span className="font-mono text-sm cursor-text select-all">
-                  {(feedbackData.mode === 'part-complete' ? feedbackData.currentPart : feedbackData.currentPart) + 1} / {feedbackData.mode === 'part-complete' ? feedbackData.totalParts : feedbackData.totalParts}
+                  {feedbackData.currentPart + 1} / {feedbackData.totalParts}
                 </span>
 
-                {feedbackData.mode === 'part-complete' && (
-                  <>
-                    <span className="text-muted-foreground font-medium text-sm">Checksum Match:</span>
-                    <span className="font-mono text-sm cursor-text select-all">
-                      {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
-                    </span>
-                  </>
-                )}
-
-                {feedbackData.mode === 'targeted' && (
-                  <>
-                    <span className="text-muted-foreground font-medium text-sm">Missing Blocks:</span>
-                    <span className="font-mono text-sm cursor-text select-all break-all">
-                      {(() => {
-                        const formatted = formatMissingBlocksAsRanges((feedbackData as FountainFeedbackTargeted).missingBlocks)
-                        return formatted.length > 100 ? formatted.substring(0, 100) + '...' : formatted
-                      })()}
-                      {(feedbackData as FountainFeedbackTargeted).missingBlocks.length > 0 && formatMissingBlocksAsRanges((feedbackData as FountainFeedbackTargeted).missingBlocks).length > 100 && (
-                        <span className="text-xs text-muted-foreground block">(showing first blocks)</span>
-                      )}
-                    </span>
-                  </>
-                )}
+                <span className="text-muted-foreground font-medium text-sm">Checksum Match:</span>
+                <span className="font-mono text-sm cursor-text select-all">
+                  {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
+                </span>
 
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>

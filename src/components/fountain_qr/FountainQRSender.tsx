@@ -378,7 +378,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             onAckGenerated={handleAckGenerated}
             onModeChange={handleFeedbackModeChange}
             onError={handleFeedbackError}
-            skipTargetedModeForSession={false}
           />
         )
       )}

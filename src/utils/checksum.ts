@@ -44,9 +44,7 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   //console.log('[generateFeedbackConfirmationCode] Input feedback:', JSON.stringify(feedback, null, 2));
 
   // Check for unexpected extra fields
-  const knownFields = feedback.mode === 'part-complete'
-    ? ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'partChecksumMatch']
-    : ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'missingBlocks'];
+  const knownFields = ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'partChecksumMatch']
 
   const actualFields = Object.keys(feedback);
   const extraFields = actualFields.filter(f => !knownFields.includes(f));
@@ -64,26 +62,10 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
     { mode: feedback.mode },
     { sessionId: feedback.sessionId.toString() },
     { sequence: feedback.sequence.toString() },
+    { currentPart: feedback.currentPart.toString() },
+    { totalParts: feedback.totalParts.toString() },
+    { partChecksumMatch: feedback.partChecksumMatch.toString() }
   ]
-
-  // Add mode-specific fields
-  if (feedback.mode === 'part-complete') {
-    // Part-complete required fields: currentPart, totalParts, partChecksumMatch
-    // Do NOT include computedChecksum (optional field)
-    fields.push(
-      { currentPart: feedback.currentPart.toString() },
-      { totalParts: feedback.totalParts.toString() },
-      { partChecksumMatch: feedback.partChecksumMatch.toString() }
-    )
-  } else if (feedback.mode === 'targeted') {
-    // Targeted required fields: currentPart, totalParts, missingBlocks
-    fields.push(
-      { currentPart: feedback.currentPart.toString() },
-      { totalParts: feedback.totalParts.toString() }
-    )
-    const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
-    fields.push({ missingBlocks: sortedMissingBlocks.join(',') })
-  }
 
   // Create canonical string representation
   const canonicalString = JSON.stringify(fields)

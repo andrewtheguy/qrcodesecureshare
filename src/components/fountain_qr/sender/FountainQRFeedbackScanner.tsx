@@ -167,47 +167,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
       onModeChange('ack-display');
       setProcessingRef(false);
-    } else if (data.mode === 'targeted') {
-      // SYNC REQUIREMENT: Validate these fields match exactly with:
-      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
-      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for targeted mode
-      // 3. checksum.ts - generateFeedbackConfirmationCode()
-      //
-      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
-      // Do NOT expect optional fields
-      if (!data.missingBlocks || !Array.isArray(data.missingBlocks)) {
-        onError('Invalid targeted feedback: missingBlocks must be an array.');
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
-      }
-      const missingBlocks = data.missingBlocks;
-      console.log(`[FountainQRFeedbackScanner] Processing targeted feedback for part ${data.currentPart + 1}/${data.totalParts}`);
-      console.log(`[FountainQRFeedbackScanner] Missing blocks: ${missingBlocks.length}`);
-      encoder?.setMissingBlocks(missingBlocks);
-
-      // Generate ACK for targeted mode (final cleanup)
-      const ackFeedback: SenderFeedbackAcknowledge = {
-        type: 'SENDER_FEEDBACK',
-        sessionId,
-        sequence: senderFeedbackSequence,
-        command: 'acknowledge',
-        acknowledgedSequence: data.sequence,
-        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
-      };
-
-      await generateSenderFeedbackQR(ackFeedback);
-      setCurrentMode('idle');
-
-      onFeedbackProcessed({
-        sequence: data.sequence,
-        mode: 'targeted',
-        receivedBlocks: new Set(),
-        message: ackFeedback.message,
-      });
-
-      onModeChange('ack-display');
-      setProcessingRef(false);
     }
     setProcessingRef(false);
 

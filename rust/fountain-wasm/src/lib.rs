@@ -139,22 +139,6 @@ impl WasmFountainEncoder {
     }
 
     // ========================================
-    // Targeted Mode Methods
-    // ========================================
-
-    /// Set which blocks the receiver has already decoded
-    #[wasm_bindgen(js_name = setReceivedBlocks)]
-    pub fn set_received_blocks(&mut self, block_indices: Vec<usize>) {
-        self.encoder.set_received_blocks(block_indices);
-    }
-
-    /// Set which blocks the receiver still needs (missing blocks)
-    #[wasm_bindgen(js_name = setMissingBlocks)]
-    pub fn set_missing_blocks(&mut self, missing_indices: Vec<usize>) {
-        self.encoder.set_missing_blocks(missing_indices);
-    }
-
-    // ========================================
     // Part-Based Mode Methods
     // ========================================
 

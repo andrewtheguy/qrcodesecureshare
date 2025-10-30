@@ -9,7 +9,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import { DEFAULT_BLOCK_SIZE, getTargetedModeMaxMissingBlocks, ENABLE_TARGETED_MODE } from '@/utils/fountainConfig'
+import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
 import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
 import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
@@ -57,8 +57,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [downloadUrl, setDownloadUrl] = useState<string>('')
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
-    const [isTargetedModeActive, setIsTargetedModeActive] = useState(false)
-   const [skipTargetedModeForSession, setSkipTargetedModeForSession] = useState(false)
 
   // Window mode removed - no window logic
 
@@ -94,9 +92,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Refs for worker onmessage handler to avoid stale closures
   const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
-  const isTargetedModeActiveRef = useRef(isTargetedModeActive)
   const triggeredFeedbackRef = useRef(false)
-  const skipTargetedModeForSessionRef = useRef<boolean>(skipTargetedModeForSession)
 
   // Worker initialization and cleanup
   useEffect(() => {
@@ -306,20 +302,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setLastAckTransitionSuccessful(successful)
   }, [])
 
-  const handleSkipTargetedMode = useCallback(() => {
-    console.log('[FountainQRReceiver] User requested to skip targeted mode for session')
-    setSkipTargetedModeForSession(true)
-    setIsTargetedModeActive(false)
-    // Transition back to data-scanning mode
-    setReceiverMode('data-scanning')
-    setIsScanning(true)
-    setIsAwaitingFeedback(false)
-    triggeredFeedbackRef.current = false
-  }, [])
-
-
-
-
 
 
 
@@ -335,14 +317,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   useEffect(() => {
     isAwaitingFeedbackRef.current = isAwaitingFeedback
   }, [isAwaitingFeedback])
-
-  useEffect(() => {
-    isTargetedModeActiveRef.current = isTargetedModeActive
-  }, [isTargetedModeActive])
-
-  useEffect(() => {
-    skipTargetedModeForSessionRef.current = skipTargetedModeForSession
-  }, [skipTargetedModeForSession])
 
   // Auto-start scanning moved to subcomponent
 
@@ -388,41 +362,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Skip all feedback logic if feedback is disabled
     if (!feedbackEnabled) return
 
-    // Priority 0: Skip ALL feedback for very small files
-    // Files smaller than 5x the targeted mode threshold don't benefit from feedback
-    const targetedModeThreshold = getTargetedModeMaxMissingBlocks()
-    const minBlocksForFeedback = targetedModeThreshold * 5 // ~50 blocks minimum
-    const isFileLargeEnoughForFeedback = fountainMetadata.totalSourceBlocks >= minBlocksForFeedback && feedbackEnabled
-    if (!isFileLargeEnoughForFeedback) {
-      // No feedback QR needed for very small files - they decode quickly without it
-      return
-    }
-
-    const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
-
     // Add guard to prevent feedback when all blocks are decoded
     if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
 
-    // Priority 2: Check for targeted mode threshold (only if enabled)
-    const crossedToTargeted = prevMissingBlocksRef.current > targetedModeThreshold && currentMissingBlocks <= targetedModeThreshold && !skipTargetedModeForSession
-    if (crossedToTargeted && ENABLE_TARGETED_MODE) {
-      // Debug logging moved to subcomponent
-      setReceiverMode('feedback-display')
-      setIsScanning(false)
-      setIsAwaitingFeedback(true)
-      setIsTargetedModeActive(true)
-      prevMissingBlocksRef.current = currentMissingBlocks
-      return
-    }
-
-    // Part-based mode ensures proper progression without needing to switch back
-    // Targeted mode only activates at the very end for final cleanup
-    // NOTE: This check was causing erroneous mode switches due to stale ref reads
-    // Removed to prevent unpredictable feedback mode transitions
-
-
+    const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
     prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize, success, isAwaitingFeedback, fountainMetadata.type, initialMeta])
+  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, success, isAwaitingFeedback, feedbackEnabled])
 
   // handleStartScan, handleStopScan moved to subcomponent
 
@@ -443,9 +388,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setFeedbackSequence(0)
     setLastSenderFeedbackSequence(-1)
     setInvalidChecksumCount(0)
-    setIsTargetedModeActive(false)
     triggeredFeedbackRef.current = false
-    setSkipTargetedModeForSession(false)
     setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
     setSenderFeedbackMessage('') // Clear sender feedback message on reset
     // Reinitialize worker state without recreating the worker instance
@@ -502,8 +445,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           onError={handleFeedbackError}
           onSequenceIncrement={handleSequenceIncrement}
           onSenderSequenceUpdate={handleSenderSequenceUpdate}
-          skipTargetedModeForSession={skipTargetedModeForSession}
-          onSkipTargetedMode={handleSkipTargetedMode}
           lastAckTransitionSuccessful={lastAckTransitionSuccessful}
           onAckTransitionStatus={handleAckTransitionStatus}
           partCompleteInfo={partCompleteInfo}
@@ -560,7 +501,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         success={success}
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
-        isTargetedModeActive={isTargetedModeActive}
         senderFeedbackMessage={senderFeedbackMessage}
         decodedBlockIndices={decodedBlockIndicesRef.current}
         currentPartIndex={currentPartIndex}

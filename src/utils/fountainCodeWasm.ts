@@ -166,26 +166,6 @@ export class FountainWasmEncoder {
   }
 
   // ========================================
-  // Targeted Mode Methods
-  // ========================================
-
-  /**
-   * Set which blocks the receiver has already decoded
-   * This enables targeted encoding that focuses on missing blocks
-   */
-  setReceivedBlocks(blockIndices: number[]): void {
-    this.wasmEncoder.setReceivedBlocks(new Uint32Array(blockIndices))
-  }
-
-  /**
-   * Set which blocks the receiver still needs (missing blocks)
-   * This enables targeted encoding that focuses on missing blocks
-   */
-  setMissingBlocks(missingIndices: number[]): void {
-    this.wasmEncoder.setMissingBlocks(new Uint32Array(missingIndices))
-  }
-
-  // ========================================
   // Part-Based Mode Methods
   // ========================================
 

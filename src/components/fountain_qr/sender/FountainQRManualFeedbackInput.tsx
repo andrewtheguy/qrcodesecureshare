@@ -22,7 +22,7 @@ import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/u
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'part-complete' | 'targeted';
+  mode: 'part-complete';
   receivedBlocks?: Set<number>;
   message: string;
 }
@@ -36,7 +36,6 @@ interface FountainQRManualFeedbackInputProps {
   onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
   onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
   onError: (error: string) => void;
-  skipTargetedModeForSession: boolean;
 }
 
 export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInputProps> = ({
@@ -47,20 +46,17 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   onAckGenerated,
   onModeChange,
   onError,
-  skipTargetedModeForSession,
 }) => {
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
 
   // Form field states
   const [inputSessionId] = useState(sessionId.toString());
   const [inputSequence, setInputSequence] = useState((lastProcessedSequence + 1).toString());
-  const [inputMode, setInputMode] = useState<'part-complete' | 'targeted'>('part-complete');
   // Note: User enters 1-indexed values (what they see on display), but we store as strings for UI
   // Conversion to 0-indexed happens in validateInputs before checksum generation
   const [inputCurrentPart, setInputCurrentPart] = useState('1');
   const [inputTotalParts, setInputTotalParts] = useState('1');
   const [inputPartChecksumMatch, setInputPartChecksumMatch] = useState<'true' | 'false'>('true');
-  const [inputMissingBlocks, setInputMissingBlocks] = useState('');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
   const validationErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -110,7 +106,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
   const resetInputFields = useCallback(() => {
     setInputSequence((lastProcessedSequence + 1).toString());
-    setInputMode('part-complete');
     // Set current part to the next expected part from encoder (1-indexed)
     if (encoder) {
       const partInfo = encoder.getPartInfo();
@@ -120,7 +115,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
     // Note: inputTotalParts is not reset here as it's auto-populated from encoder
     setInputPartChecksumMatch('true');
-    setInputMissingBlocks('');
     setInputConfirmationCode('');
   }, [lastProcessedSequence, encoder]);
 
@@ -142,89 +136,42 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       return { valid: false, error: 'Confirmation code required: Please enter the confirmation code shown in receiver\'s Feedback Details card to verify input accuracy.', feedback: null };
     }
 
-    let feedback: FountainFeedback;
+    // SYNC REQUIREMENT: These fields MUST match exactly with:
+    // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
+    // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
+    // 3. checksum.ts - generateFeedbackConfirmationCode()
+    //
+    // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
+    // Do NOT include optional fields like computedChecksum
 
-    if (inputMode === 'part-complete') {
-      // SYNC REQUIREMENT: These fields MUST match exactly with:
-      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
-      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
-      // 3. checksum.ts - generateFeedbackConfirmationCode()
-      //
-      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
-      // Do NOT include optional fields like computedChecksum
-
-      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
-      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
-      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
-        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
-      }
-
-      // Parse and validate totalParts
-      const parsedTotalParts = parseInt(inputTotalParts);
-      if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
-        return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
-      }
-
-      if (parsedCurrentPartDisplay > parsedTotalParts) {
-        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
-      }
-
-      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
-      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
-
-      feedback = {
-        type: 'FOUNTAIN_FEEDBACK',
-        mode: 'part-complete',
-        sessionId: parsedSessionId,
-        sequence: parsedSequence,
-        currentPart: parsedCurrentPart,
-        totalParts: parsedTotalParts,
-        partChecksumMatch: inputPartChecksumMatch === 'true',
-      };
-    } else {
-      // SYNC REQUIREMENT: These fields MUST match exactly with:
-      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
-      // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation for targeted mode
-      // 3. checksum.ts - generateFeedbackConfirmationCode()
-      //
-      // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
-      // Do NOT include optional fields
-
-      // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
-      const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
-      if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
-        return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
-      }
-
-      const parsedTotalParts = parseInt(inputTotalParts);
-      if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
-        return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
-      }
-
-      if (parsedCurrentPartDisplay > parsedTotalParts) {
-        return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
-      }
-
-      // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
-      const parsedCurrentPart = parsedCurrentPartDisplay - 1;
-
-      let missingBlocks: number[];
-      try {
-        missingBlocks = parseMissingBlocks(inputMissingBlocks);
-      } catch (error) {
-        return { valid: false, error: `Invalid missing blocks format: ${(error as Error).message}. Expected format: comma-separated numbers or ranges (e.g., "1-5, 8, 10-12"). Please verify and correct the input.`, feedback: null };
-      }
-
-      feedback = {
-        type: 'FOUNTAIN_FEEDBACK',
-        mode: 'targeted',
-        sessionId: parsedSessionId,
-        sequence: parsedSequence,
-        currentPart: parsedCurrentPart,
-        totalParts: parsedTotalParts,
-        missingBlocks,
-      };
+    // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
+    const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
+    if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+      return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
+
+    // Parse and validate totalParts
+    const parsedTotalParts = parseInt(inputTotalParts);
+    if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
+      return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
+    }
+
+    if (parsedCurrentPartDisplay > parsedTotalParts) {
+      return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+    }
+
+    // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
+    const parsedCurrentPart = parsedCurrentPartDisplay - 1;
+
+    const feedback: FountainFeedback = {
+      type: 'FOUNTAIN_FEEDBACK',
+      mode: 'part-complete',
+      sessionId: parsedSessionId,
+      sequence: parsedSequence,
+      currentPart: parsedCurrentPart,
+      totalParts: parsedTotalParts,
+      partChecksumMatch: inputPartChecksumMatch === 'true',
+    };
 
     // Validate confirmation code against expected value
     const expectedCode = await generateFeedbackConfirmationCode(feedback);
@@ -240,42 +187,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputMode, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputMissingBlocks, inputConfirmationCode, sessionId, lastProcessedSequence]);
-
-  const parseMissingBlocks = (input: string): number[] => {
-    const trimmedInput = input.trim();
-    if (trimmedInput === '') {
-      return [];
-    }
-
-    const segments = trimmedInput.split(',').map(s => s.trim());
-    const blocks: number[] = [];
-
-    for (const segment of segments) {
-      if (segment === '') continue; // Skip empty segments
-      if (segment.includes('-')) {
-        const [start, end] = segment.split('-').map(s => parseInt(s.trim()));
-        if (isNaN(start) || isNaN(end) || start > end) {
-          throw new Error(`Invalid range: ${segment}`);
-        }
-        for (let i = start; i <= end; i++) {
-          blocks.push(i);
-        }
-      } else {
-        const block = parseInt(segment);
-        if (isNaN(block)) {
-          throw new Error(`Invalid block number: ${segment}`);
-        }
-        blocks.push(block);
-      }
-    }
-
-    const deduplicated = [...new Set(blocks)].sort((a, b) => a - b);
-    if (deduplicated.length < blocks.length) {
-      throw new Error('Duplicate block indices detected. Please remove duplicates from the input.');
-    }
-    return deduplicated;
-  };
+  }, [inputSessionId, inputSequence, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
     try {
@@ -358,33 +270,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       });
 
       onModeChange('ack-display');
-    } else if (feedback.mode === 'targeted') {
-      const missingBlocks = feedback.missingBlocks || [];
-      console.log(`[FountainQRManualFeedbackInput] Processing targeted feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`);
-      console.log(`[FountainQRManualFeedbackInput] Missing blocks: ${missingBlocks.length}`);
-      encoder?.setMissingBlocks(missingBlocks);
-
-      // Generate ACK for targeted mode (final cleanup)
-      const ackFeedback: SenderFeedbackAcknowledge = {
-        type: 'SENDER_FEEDBACK',
-        sessionId,
-        sequence: senderFeedbackSequence,
-        command: 'acknowledge',
-        acknowledgedSequence: feedback.sequence,
-        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
-      };
-
-      await generateSenderFeedbackQR(ackFeedback);
-      resetInputFields();
-
-      onFeedbackProcessed({
-        sequence: feedback.sequence,
-        mode: 'targeted',
-        receivedBlocks: new Set(),
-        message: ackFeedback.message,
-      });
-
-      onModeChange('ack-display');
     }
   }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR]);
 
@@ -420,14 +305,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         <CardTitle>Manual Feedback Input</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {skipTargetedModeForSession && (
-          <Alert>
-            <AlertDescription>
-              <p className="font-medium">ℹ️ Targeted Mode Disabled</p>
-              <p className="text-sm">Part-complete mode will be used for all feedback this session.</p>
-            </AlertDescription>
-          </Alert>
-        )}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label htmlFor="sessionId" className="text-xs">Session ID (Auto)</Label>
@@ -457,22 +334,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             3. checksum.ts - generateFeedbackConfirmationCode()
 
             Part-complete mode: currentPart, totalParts, partChecksumMatch
-            Targeted mode: currentPart, totalParts, missingBlocks
             Do NOT include optional fields like computedChecksum */}
-
-        <div>
-          <Label className="text-xs">Feedback Mode</Label>
-          <RadioGroup value={inputMode} onValueChange={(value: 'part-complete' | 'targeted') => setInputMode(value)}>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="part-complete" id="part-complete" />
-              <Label htmlFor="part-complete" className="text-sm">Part Complete</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="targeted" id="targeted" />
-              <Label htmlFor="targeted" className="text-sm">Targeted</Label>
-            </div>
-          </RadioGroup>
-        </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -500,37 +362,19 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           </div>
         </div>
 
-        {inputMode === 'part-complete' && (
-          <div>
-            <Label className="text-xs">Part Checksum Match</Label>
-            <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="true" id="checksum-yes" />
-                <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="false" id="checksum-no" />
-                <Label htmlFor="checksum-no" className="text-sm">No</Label>
-              </div>
-            </RadioGroup>
-          </div>
-        )}
-
-        {inputMode === 'targeted' && (
-          <div>
-            <Label htmlFor="missingBlocks" className="text-xs">Missing Blocks</Label>
-            <Input
-              id="missingBlocks"
-              type="text"
-              value={inputMissingBlocks}
-              onChange={(e) => setInputMissingBlocks(e.target.value)}
-              placeholder="e.g., 1-5, 8, 10-12 or 1,2,3,4,5"
-            />
-            <p className="text-xs text-muted-foreground mt-1">
-              Enter comma-separated block indices or ranges
-            </p>
-          </div>
-        )}
+        <div>
+          <Label className="text-xs">Part Checksum Match</Label>
+          <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="true" id="checksum-yes" />
+              <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <RadioGroupItem value="false" id="checksum-no" />
+              <Label htmlFor="checksum-no" className="text-sm">No</Label>
+            </div>
+          </RadioGroup>
+        </div>
 
         <div>
           <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
@@ -571,7 +415,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter the Current Part number exactly as displayed (e.g., if it shows "Part 1", enter 1), Total Parts, and the Confirmation Code. For part-complete mode, also enter Checksum Match (Yes/No). For targeted mode, enter the Missing Blocks. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter the Current Part number exactly as displayed (e.g., if it shows "Part 1", enter 1), Total Parts, Checksum Match (Yes/No), and the Confirmation Code. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
           </AlertDescription>
         </Alert>
 

@@ -4,7 +4,6 @@ use crate::distribution::{
 use crate::rng::{create_rng, select_indices_with_rng};
 use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
 use crate::xor::xor_blocks;
-use std::collections::HashSet;
 
 pub struct FountainEncoder {
     /// Source data split into blocks
@@ -23,12 +22,6 @@ pub struct FountainEncoder {
     current_seed: u32,
     /// Initial seed offset (for session-specific randomization)
     seed_offset: u32,
-
-    // Targeted mode fields
-    /// Set of block indices that have been received (for targeted encoding)
-    received_blocks: HashSet<usize>,
-    /// Whether targeted mode is active
-    targeted_mode: bool,
 
     // Part-based mode fields
     /// Whether part-based mode is enabled
@@ -120,8 +113,6 @@ impl FountainEncoder {
             options,
             current_seed: 0,
             seed_offset: offset,
-            received_blocks: HashSet::new(),
-            targeted_mode: false,
             part_based_mode,
             part_size,
             total_parts,
@@ -192,38 +183,10 @@ impl FountainEncoder {
         self.metadata.block_size
     }
 
-    // ========================================
-    // Targeted Mode Methods
-    // ========================================
-
-    /// Set which blocks the receiver has already decoded
-    /// This enables targeted encoding that focuses on missing blocks
-    pub fn set_received_blocks(&mut self, block_indices: Vec<usize>) {
-        self.received_blocks = block_indices.into_iter().collect();
-        self.targeted_mode = !self.received_blocks.is_empty();
-    }
-
-    /// Set which blocks the receiver still needs (missing blocks)
-    /// This enables targeted encoding that focuses on missing blocks
-    pub fn set_missing_blocks(&mut self, missing_indices: Vec<usize>) {
-        let total_blocks = self.blocks.len();
-        self.received_blocks.clear();
-
-        // Create a set of all blocks, then remove the missing ones
-        for i in 0..total_blocks {
-            if !missing_indices.contains(&i) {
-                self.received_blocks.insert(i);
-            }
-        }
-
-        self.targeted_mode = !self.received_blocks.is_empty();
-    }
-
     /// Get available blocks for chunk generation
-    /// In targeted mode, excludes received blocks
     /// In part-based mode, restricts to current part
     fn get_available_blocks(&self) -> Vec<usize> {
-        let mut available: Vec<usize> = if self.part_based_mode {
+        if self.part_based_mode {
             // Calculate blocks for current part
             let part_start_byte = self.current_part_index * self.part_size;
             let part_end_byte = std::cmp::min(
@@ -237,14 +200,7 @@ impl FountainEncoder {
         } else {
             // All blocks
             (0..self.blocks.len()).collect()
-        };
-
-        // Filter out received blocks in targeted mode
-        if self.targeted_mode {
-            available.retain(|&i| !self.received_blocks.contains(&i));
         }
-
-        available
     }
 
     // ========================================
@@ -272,10 +228,6 @@ impl FountainEncoder {
         }
 
         self.current_part_index += 1;
-
-        // Reset targeted mode for new part
-        self.targeted_mode = false;
-        self.received_blocks.clear();
 
         true
     }

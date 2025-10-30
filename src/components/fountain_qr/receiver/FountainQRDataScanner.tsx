@@ -13,9 +13,6 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
-// Optional: Extract ignored block list to a top-level constant or env for easier test control.
-const TARGETED_TEST_IGNORE_BLOCKS: number[] = [190, 197]
-
 // Grid layout constants
 const GRID_COLUMNS = 20
 const GRID_MAX_ROWS = 12
@@ -31,7 +28,6 @@ interface FountainQRDataScannerProps {
   success: boolean
   decodedBlocks: number
   invalidChecksumCount: number
-  isTargetedModeActive: boolean
   senderFeedbackMessage: string
   decodedBlockIndices?: number[]
   currentPartIndex?: number
@@ -57,7 +53,6 @@ export function FountainQRDataScanner({
   success,
   decodedBlocks,
   invalidChecksumCount,
-  isTargetedModeActive,
   senderFeedbackMessage,
   decodedBlockIndices = [],
   currentPartIndex = 0,
@@ -95,33 +90,6 @@ export function FountainQRDataScanner({
     // ════════════════════════════════════════════════════════════════════════════
     // ════════════════════════════════════════════════════════════════════════════
 
-    const ENABLE_TARGETED_MODE_TEST = false
-
-    const isTargetedModeTestActive = ENABLE_TARGETED_MODE_TEST && !isTargetedModeActive
-
-    if (isTargetedModeTestActive) {
-      // Parse just enough to check indices
-      let offset = 2 // Skip magic bytes
-      const seed = (bytes[offset++] << 8) | bytes[offset++]
-      offset++ // Skip degree
-      const numIndices = bytes[offset++]
-      const indices: number[] = []
-      for (let i = 0; i < numIndices; i++) {
-        const idx = (bytes[offset++] << 8) | bytes[offset++]
-        indices.push(idx)
-      }
-
-      if (TARGETED_TEST_IGNORE_BLOCKS.length > 0) {
-        const containsIgnoredBlock = indices.some(i => TARGETED_TEST_IGNORE_BLOCKS.includes(i))
-        if (containsIgnoredBlock) {
-          addDebugLog(`🎯 [TARGETED MODE TEST] Ignoring chunk #${seed} because it contains a blocked index.`)
-          return
-        }
-      }
-    } else if (process.env.NODE_ENV === 'development' && isTargetedModeActive) {
-      addDebugLog(`🎯 [TARGETED MODE TEST] Test disabled due to targeted mode activation.`)
-    }
-
     // Parse seed from bytes (big-endian from bytes[2] and bytes[3])
     const seed = (bytes[2] << 8) | bytes[3]
 
@@ -140,7 +108,7 @@ export function FountainQRDataScanner({
 
     // Invoke callback with parsed seed
     onChunkScanned(seed)
-  }, [addDebugLog, onChunkScanned, isTargetedModeActive, workerRef, messageIdCounterRef])
+  }, [addDebugLog, onChunkScanned, workerRef, messageIdCounterRef])
 
   const handleScan = useCallback((qrCodes: Uint8Array[]) => {
     if (qrCodes.length === 0) return
