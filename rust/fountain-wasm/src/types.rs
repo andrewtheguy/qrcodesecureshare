@@ -168,8 +168,9 @@ pub struct ParsedPartMetadata {
     pub current_part: u16,
     /// Total number of parts
     pub total_parts: u16,
-    /// Checksum of this part as hex string
-    pub part_checksum: String,
+    /// Checksum of this part as 4 bytes (big-endian CRC32)
+    #[serde(with = "serde_bytes")]
+    pub part_checksum: [u8; 4],
 }
 
 /// Metadata about the original file and fountain encoding parameters

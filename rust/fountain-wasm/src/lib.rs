@@ -425,7 +425,7 @@ pub fn crc32(data: Uint8Array) -> String {
 ///   partMetadata?: {
 ///     currentPart: number,
 ///     totalParts: number,
-///     partChecksum: string
+///     partChecksum: Uint8Array
 ///   }
 /// }
 /// ```

@@ -9,7 +9,7 @@
 
 #[cfg(test)]
 mod integration_tests {
-    use crate::checksum::{crc32, crc32_to_hex};
+    use crate::checksum::crc32;
     use crate::decoder::FountainDecoder;
     use crate::encoder::FountainEncoder;
     use crate::types::FountainEncoderOptions;
@@ -17,12 +17,6 @@ mod integration_tests {
     /// Generate test data with a predictable pattern
     fn generate_test_data(size: usize) -> Vec<u8> {
         (0..size).map(|i| (i % 256) as u8).collect()
-    }
-
-    /// Helper to convert crc32 bytes to hex string for comparisons in tests
-    fn crc32_hex(data: &[u8]) -> String {
-        let bytes = crc32(data);
-        crc32_to_hex(&bytes)
     }
 
     /// Create a test encoder with sensible defaults for non-part-based mode
@@ -69,7 +63,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_small_file_with_checksum() {
         let data = generate_test_data(100);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(25);
         let mut encoder = make_test_encoder(data.clone(), "test.dat", options);
@@ -101,12 +95,8 @@ mod integration_tests {
         assert_eq!(decoded.len(), data.len(), "Decoded data length mismatch");
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
-        assert_eq!(
-            decoded_checksum, original_checksum,
-            "Checksum mismatch: expected {}, got {}",
-            original_checksum, decoded_checksum
-        );
+        let decoded_checksum = crc32(&decoded);
+        assert_eq!(decoded_checksum, original_checksum, "Checksum mismatch");
 
         // Validate data integrity
         assert_eq!(decoded, data, "Decoded data does not match original");
@@ -115,7 +105,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_medium_file_with_checksum() {
         let data = generate_test_data(5000);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "medium.dat", options);
@@ -135,7 +125,7 @@ mod integration_tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -143,7 +133,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_large_file_with_checksum() {
         let data = generate_test_data(50000);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(1000);
         let mut encoder = make_test_encoder(data.clone(), "large.dat", options);
@@ -163,7 +153,7 @@ mod integration_tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -179,7 +169,7 @@ mod integration_tests {
             .map(|_| (rng.next_u32() % 256) as u8)
             .collect();
 
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(250);
         let mut encoder = make_test_encoder(data.clone(), "random.dat", options);
@@ -199,7 +189,7 @@ mod integration_tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -207,7 +197,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_all_zeros_with_checksum() {
         let data = vec![0u8; 2000];
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(500);
         let mut encoder = make_test_encoder(data.clone(), "zeros.dat", options);
@@ -227,7 +217,7 @@ mod integration_tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -235,7 +225,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_all_ones_with_checksum() {
         let data = vec![0xFFu8; 2000];
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(500);
         let mut encoder = make_test_encoder(data.clone(), "ones.dat", options);
@@ -255,7 +245,7 @@ mod integration_tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Validate checksum
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -281,7 +271,7 @@ mod integration_tests {
     fn test_e2e_with_packet_loss_simulation() {
         // Use larger data to ensure we need enough chunks to simulate packet loss
         let data = generate_test_data(5000);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "lossy.dat", options);
@@ -325,7 +315,7 @@ mod integration_tests {
         );
 
         let decoded = decoder.get_decoded_data().unwrap();
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -333,7 +323,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_incremental_progress_with_checksums() {
         let data = generate_test_data(2000);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "progress.dat", options);
@@ -367,7 +357,7 @@ mod integration_tests {
         assert_eq!(decoder.get_progress(), 1.0);
 
         let decoded = decoder.get_decoded_data().unwrap();
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -375,7 +365,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_part_based_mode_with_checksums() {
         let data = generate_test_data(10000);
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
         let part_size = 2500;
 
         let options = FountainEncoderOptions::default().with_block_size(400);
@@ -405,15 +395,8 @@ mod integration_tests {
 
             let part_data = decoder.get_current_part_data().unwrap();
 
-            // Validate part checksum format (CRC32 produces 8-character hex string)
-            let part_checksum = crc32_hex(&part_data);
-            assert_eq!(
-                part_checksum.len(),
-                8,
-                "Part {} checksum should be 8 hex characters (CRC32 format), got: {}",
-                part_idx,
-                part_checksum
-            );
+            // Validate part checksum (CRC32 produces 4 bytes)
+            let _part_checksum = crc32(&part_data);
 
             all_parts_data.extend_from_slice(&part_data);
 
@@ -424,7 +407,7 @@ mod integration_tests {
         }
 
         // Validate complete file checksum
-        let reconstructed_checksum = crc32_hex(&all_parts_data);
+        let reconstructed_checksum = crc32(&all_parts_data);
         assert_eq!(reconstructed_checksum, original_checksum);
         assert_eq!(all_parts_data, data);
     }
@@ -440,7 +423,7 @@ mod integration_tests {
             let start = i * part_size;
             let end = std::cmp::min(start + part_size, data.len());
             let part_data = &data[start..end];
-            expected_part_checksums.push(crc32_hex(part_data));
+            expected_part_checksums.push(crc32(part_data));
         }
 
         let options = FountainEncoderOptions::default().with_block_size(400);
@@ -461,7 +444,7 @@ mod integration_tests {
 
             assert!(decoder.is_current_part_complete());
             let part_data = decoder.get_current_part_data().unwrap();
-            let part_checksum = crc32_hex(&part_data);
+            let part_checksum = crc32(&part_data);
 
             assert_eq!(
                 part_checksum, *expected_checksum,
@@ -478,7 +461,7 @@ mod integration_tests {
     #[test]
     fn test_e2e_single_byte_with_checksum() {
         let data = vec![42u8];
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(10);
         let mut encoder = make_test_encoder(data.clone(), "single.dat", options);
@@ -497,7 +480,7 @@ mod integration_tests {
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().unwrap();
 
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
         assert_eq!(decoded_checksum, original_checksum);
         assert_eq!(decoded, data);
     }
@@ -509,17 +492,11 @@ mod wasm_refactoring_tests {
     //! These tests verify that the refactored methods produce correct results
     //! without requiring WASM compilation.
 
-    use crate::checksum::{crc32, crc32_to_hex};
+    use crate::checksum::crc32;
     use crate::encoder::FountainEncoder;
     use crate::decoder::FountainDecoder;
     use crate::parser::{parse_binary_chunk, create_chunk_key};
     use crate::types::{FountainEncoderOptions, PartInfo};
-
-    /// Helper to convert crc32 bytes to hex string for comparisons
-    fn crc32_hex(data: &[u8]) -> String {
-        let bytes = crc32(data);
-        crc32_to_hex(&bytes)
-    }
 
     /// Helper to create a test encoder
     fn make_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
@@ -749,7 +726,7 @@ mod wasm_refactoring_tests {
         let part_meta = parsed.part_metadata.unwrap();
         assert_eq!(part_meta.current_part, 0);
         assert_eq!(part_meta.total_parts, 5);
-        assert_eq!(part_meta.part_checksum, "aabbccdd");
+        assert_eq!(part_meta.part_checksum, [0xAA, 0xBB, 0xCC, 0xDD]);
     }
 
     #[test]
@@ -892,7 +869,7 @@ mod wasm_refactoring_tests {
     #[test]
     fn test_full_roundtrip_with_checksums() {
         let data = vec![42u8; 1000];
-        let _original_checksum = crc32_hex(&data);
+        let _original_checksum = crc32(&data);
 
         // Create encoder and generate chunks
         let mut encoder = make_encoder(1000, true, 250);
@@ -953,13 +930,7 @@ mod wasm_lib_tests {
     use crate::encoder::FountainEncoder;
     use crate::decoder::FountainDecoder;
     use crate::types::FountainEncoderOptions;
-    use crate::checksum::{crc32, crc32_to_hex};
-
-    /// Helper to convert crc32 bytes to hex string for comparisons
-    fn crc32_hex(data: &[u8]) -> String {
-        let bytes = crc32(data);
-        crc32_to_hex(&bytes)
-    }
+    use crate::checksum::crc32;
 
     /// Helper to create a test encoder
     fn make_test_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
@@ -1451,7 +1422,7 @@ mod wasm_lib_tests {
     #[test]
     fn test_single_part_small_data_encode_decode_with_checksum() {
         let data: Vec<u8> = (0..10).map(|i| i as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1467,7 +1438,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
 
         assert_eq!(decoded_checksum, original_checksum, "Single-part checksum mismatch");
         assert_eq!(decoded, data);
@@ -1476,7 +1447,7 @@ mod wasm_lib_tests {
     #[test]
     fn test_single_part_medium_data_encode_decode_with_checksum() {
         let data: Vec<u8> = (0..2500).map(|i| (i % 256) as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1492,7 +1463,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
 
         assert_eq!(decoded_checksum, original_checksum, "Medium data checksum mismatch");
         assert_eq!(decoded, data);
@@ -1501,7 +1472,7 @@ mod wasm_lib_tests {
     #[test]
     fn test_single_part_large_data_encode_decode_with_checksum() {
         let data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1517,7 +1488,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
 
         assert_eq!(decoded_checksum, original_checksum, "Large data checksum mismatch");
         assert_eq!(decoded, data);
@@ -1527,7 +1498,7 @@ mod wasm_lib_tests {
     fn test_single_part_binary_data_encode_decode_with_checksum() {
         // Use same pattern as helper to ensure consistency
         let data: Vec<u8> = (0..8).map(|i| (i % 256) as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1543,7 +1514,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
-        let decoded_checksum = crc32_hex(&decoded);
+        let decoded_checksum = crc32(&decoded);
 
         assert_eq!(decoded_checksum, original_checksum, "Binary data checksum mismatch");
         assert_eq!(decoded, data);
@@ -1560,9 +1531,9 @@ mod wasm_lib_tests {
         let part_1_data = &total_data[0..2000];
         let part_2_data = &total_data[2000..4000];
 
-        let part_1_checksum = crc32_hex(part_1_data);
-        let part_2_checksum = crc32_hex(part_2_data);
-        let full_checksum = crc32_hex(&total_data);
+        let part_1_checksum = crc32(part_1_data);
+        let part_2_checksum = crc32(part_2_data);
+        let full_checksum = crc32(&total_data);
 
         let mut encoder = make_test_encoder(total_data.len(), true, part_size);
         let mut decoder = make_test_decoder(total_data.len(), true, part_size);
@@ -1578,7 +1549,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_current_part_complete(), "Part 1 should be complete");
         let decoded_part_1 = decoder.get_current_part_data().expect("Failed to get part 1");
-        let decoded_part_1_checksum = crc32_hex(&decoded_part_1);
+        let decoded_part_1_checksum = crc32(&decoded_part_1);
 
         assert_eq!(decoded_part_1_checksum, part_1_checksum, "Part 1 checksum mismatch");
         assert_eq!(decoded_part_1, part_1_data);
@@ -1598,7 +1569,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_current_part_complete(), "Part 2 should be complete");
         let decoded_part_2 = decoder.get_current_part_data().expect("Failed to get part 2");
-        let decoded_part_2_checksum = crc32_hex(&decoded_part_2);
+        let decoded_part_2_checksum = crc32(&decoded_part_2);
 
         assert_eq!(decoded_part_2_checksum, part_2_checksum, "Part 2 checksum mismatch");
         assert_eq!(decoded_part_2, part_2_data);
@@ -1606,7 +1577,7 @@ mod wasm_lib_tests {
         // Verify full data integrity if possible
         let mut full_decoded = decoded_part_1;
         full_decoded.extend_from_slice(&decoded_part_2);
-        let full_decoded_checksum = crc32_hex(&full_decoded);
+        let full_decoded_checksum = crc32(&full_decoded);
         assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
     }
 
@@ -1621,8 +1592,8 @@ mod wasm_lib_tests {
             &total_data[2000..4000],
             &total_data[4000..6000],
         ];
-        let part_checksums: Vec<String> = parts_data.iter().map(|p| crc32_hex(p)).collect();
-        let full_checksum = crc32_hex(&total_data);
+        let part_checksums: Vec<[u8; 4]> = parts_data.iter().map(|p| crc32(p)).collect();
+        let full_checksum = crc32(&total_data);
 
         let mut encoder = make_test_encoder(total_data.len(), true, part_size);
         let mut decoder = make_test_decoder(total_data.len(), true, part_size);
@@ -1647,7 +1618,7 @@ mod wasm_lib_tests {
             );
 
             let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
-            let decoded_part_checksum = crc32_hex(&decoded_part);
+            let decoded_part_checksum = crc32(&decoded_part);
 
             assert_eq!(
                 decoded_part_checksum, part_checksums[part_idx],
@@ -1666,7 +1637,7 @@ mod wasm_lib_tests {
         }
 
         // Verify full file checksum
-        let full_decoded_checksum = crc32_hex(&all_parts_decoded);
+        let full_decoded_checksum = crc32(&all_parts_decoded);
         assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
         assert_eq!(all_parts_decoded, total_data, "Full data mismatch");
     }
@@ -1682,9 +1653,9 @@ mod wasm_lib_tests {
             let start = i * part_size;
             let end = (i + 1) * part_size;
             let part = &total_data[start..end];
-            expected_checksums.push(crc32_hex(part));
+            expected_checksums.push(crc32(part));
         }
-        let full_checksum = crc32_hex(&total_data);
+        let full_checksum = crc32(&total_data);
 
         let mut encoder = make_test_encoder(total_data.len(), true, part_size);
         let mut decoder = make_test_decoder(total_data.len(), true, part_size);
@@ -1709,7 +1680,7 @@ mod wasm_lib_tests {
             );
 
             let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
-            let decoded_checksum = crc32_hex(&decoded_part);
+            let decoded_checksum = crc32(&decoded_part);
 
             assert_eq!(
                 decoded_checksum, expected_checksums[part_idx],
@@ -1732,7 +1703,7 @@ mod wasm_lib_tests {
         }
 
         // Verify full file
-        let full_decoded_checksum = crc32_hex(&all_decoded_parts);
+        let full_decoded_checksum = crc32(&all_decoded_parts);
         assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
         assert_eq!(all_decoded_parts, total_data, "Full file data mismatch");
     }
@@ -1745,7 +1716,7 @@ mod wasm_lib_tests {
     fn test_single_part_repetitive_pattern_with_checksum() {
         // Use same pattern as helper to ensure consistency
         let data: Vec<u8> = (0..300).map(|i| (i % 256) as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1761,14 +1732,14 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to decode");
-        assert_eq!(crc32_hex(&decoded), original_checksum);
+        assert_eq!(crc32(&decoded), original_checksum);
         assert_eq!(decoded, data);
     }
 
     #[test]
     fn test_single_part_incremental_data_with_checksum() {
         let data: Vec<u8> = (0..256).map(|i| i as u8).collect(); // 0-255 pattern
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1784,7 +1755,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_complete());
         let decoded = decoder.get_decoded_data().expect("Failed to decode");
-        assert_eq!(crc32_hex(&decoded), original_checksum);
+        assert_eq!(crc32(&decoded), original_checksum);
         assert_eq!(decoded, data);
     }
 
@@ -1800,8 +1771,8 @@ mod wasm_lib_tests {
             &total_data[1000..2000],
             &total_data[2000..3000],
         ];
-        let expected_checksums: Vec<String> = parts_data.iter().map(|p| crc32_hex(p)).collect();
-        let full_checksum = crc32_hex(&total_data);
+        let expected_checksums: Vec<[u8; 4]> = parts_data.iter().map(|p| crc32(p)).collect();
+        let full_checksum = crc32(&total_data);
 
         let mut encoder = make_test_encoder(total_data.len(), true, part_size);
         let mut decoder = make_test_decoder(total_data.len(), true, part_size);
@@ -1819,7 +1790,7 @@ mod wasm_lib_tests {
 
             assert!(decoder.is_current_part_complete());
             let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
-            let decoded_checksum = crc32_hex(&decoded_part);
+            let decoded_checksum = crc32(&decoded_part);
 
             assert_eq!(
                 decoded_checksum, expected_checksums[part_idx],
@@ -1835,7 +1806,7 @@ mod wasm_lib_tests {
             }
         }
 
-        let full_decoded_checksum = crc32_hex(&all_decoded);
+        let full_decoded_checksum = crc32(&all_decoded);
         assert_eq!(full_decoded_checksum, full_checksum);
         assert_eq!(all_decoded, total_data);
     }
@@ -1847,7 +1818,7 @@ mod wasm_lib_tests {
     #[test]
     fn test_progress_tracking_during_single_part_decode_with_checksum() {
         let data: Vec<u8> = (0..5000).map(|i| (i % 256) as u8).collect();
-        let original_checksum = crc32_hex(&data);
+        let original_checksum = crc32(&data);
 
         let mut encoder = make_test_encoder(data.len(), false, 0);
         let mut decoder = make_test_decoder(data.len(), false, 0);
@@ -1878,15 +1849,15 @@ mod wasm_lib_tests {
 
         // Verify checksum
         let decoded = decoder.get_decoded_data().expect("Failed to decode");
-        assert_eq!(crc32_hex(&decoded), original_checksum);
+        assert_eq!(crc32(&decoded), original_checksum);
     }
 
     #[test]
     fn test_progress_tracking_during_multi_part_decode_with_checksum() {
         let total_data: Vec<u8> = (0..4000).map(|i| (i % 256) as u8).collect();
         let part_size = 2000;
-        let part_1_checksum = crc32_hex(&total_data[0..2000]);
-        let part_2_checksum = crc32_hex(&total_data[2000..4000]);
+        let part_1_checksum = crc32(&total_data[0..2000]);
+        let part_2_checksum = crc32(&total_data[2000..4000]);
 
         let mut encoder = make_test_encoder(total_data.len(), true, part_size);
         let mut decoder = make_test_decoder(total_data.len(), true, part_size);
@@ -1905,7 +1876,7 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_current_part_complete());
         let part_1_data = decoder.get_current_part_data().expect("Failed to get part 1");
-        assert_eq!(crc32_hex(&part_1_data), part_1_checksum);
+        assert_eq!(crc32(&part_1_data), part_1_checksum);
 
         // Move to part 2
         encoder.move_to_next_part();
@@ -1925,6 +1896,6 @@ mod wasm_lib_tests {
 
         assert!(decoder.is_current_part_complete());
         let part_2_data = decoder.get_current_part_data().expect("Failed to get part 2");
-        assert_eq!(crc32_hex(&part_2_data), part_2_checksum);
+        assert_eq!(crc32(&part_2_data), part_2_checksum);
     }
 }

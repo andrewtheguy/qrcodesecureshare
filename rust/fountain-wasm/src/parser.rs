@@ -7,7 +7,9 @@ use serde::{Deserialize, Serialize};
 pub struct PartMetadata {
     pub current_part: u16,
     pub total_parts: u16,
-    pub part_checksum: String,
+    /// Part checksum as 4 bytes (big-endian CRC32)
+    #[serde(with = "serde_bytes")]
+    pub part_checksum: [u8; 4],
 }
 
 /// Result of parsing a binary chunk
@@ -30,7 +32,7 @@ pub struct ParsedChunk {
 /// [next-next+7]:  Optional part metadata (if present):
 ///                 - Current part (u16, big-endian)
 ///                 - Total parts (u16, big-endian)
-///                 - Part checksum (4 bytes as hex string when converted)
+///                 - Part checksum (4 bytes, big-endian)
 /// [before_checksum-end-4]: Chunk data
 /// [end-4-end]:  CRC32 checksum (4 bytes)
 /// ```
@@ -127,17 +129,17 @@ pub fn parse_binary_chunk(
             let total_parts = ((bytes[offset] as u16) << 8) | (bytes[offset + 1] as u16);
             offset += 2;
 
-            // Extract part checksum (4 bytes as hex string)
-            let mut part_checksum_hex = String::new();
+            // Extract part checksum (4 bytes, big-endian)
+            let mut part_checksum = [0u8; 4];
             for i in 0..4 {
-                part_checksum_hex.push_str(&format!("{:02x}", bytes[offset + i]));
+                part_checksum[i] = bytes[offset + i];
             }
             offset += 4;
 
             part_metadata = Some(PartMetadata {
                 current_part,
                 total_parts,
-                part_checksum: part_checksum_hex,
+                part_checksum,
             });
         }
     }
@@ -364,6 +366,6 @@ mod tests {
         let pm = parsed.part_metadata.unwrap();
         assert_eq!(pm.current_part, 0);
         assert_eq!(pm.total_parts, 5);
-        assert_eq!(pm.part_checksum, "aabbccdd");
+        assert_eq!(pm.part_checksum, [0xAA, 0xBB, 0xCC, 0xDD]);
     }
 }
