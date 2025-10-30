@@ -105,15 +105,14 @@ impl FountainChunk {
     /// Get the encoded data (XOR of selected source blocks).
     ///
     /// ⚠️ **Performance Note:** This method clones the entire `data` Vec on every call.
-    /// This is required by wasm-bindgen for WASM interop (JavaScript receives a copy, not
-    /// a reference to internal Rust memory). For large payloads (typical chunks are 400+ bytes),
-    /// repeated calls can be expensive and may trigger garbage collection pressure.
+    /// For large payloads (typical chunks are 400+ bytes), repeated calls can be expensive
+    /// and may trigger memory allocation overhead.
     ///
-    /// **Alternatives to Consider:**
+    /// **Note:** This method is internal to Rust and not exposed to JavaScript.
+    /// If exposed to WASM/JavaScript in the future, callers should:
     /// - Cache the result on the JavaScript side after the first call
     /// - Use streaming/chunked processing to avoid keeping multiple data copies in memory
     /// - Consider processing chunks immediately after generation before accessing data multiple times
-    #[wasm_bindgen(getter)]
     pub fn data(&self) -> Vec<u8> {
         self.data.clone()
     }
