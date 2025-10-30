@@ -148,23 +148,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
-  // Log QR capacity in dev mode (value comes from parent)
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      console.log(`[FountainQRDataDisplay] QR capacity for ECC ${currentQROptions.errorCorrectionLevel}: ${maxQRDataSize} bytes`)
-    }
-  }, [currentQROptions.errorCorrectionLevel, maxQRDataSize])
-
   // Initialize encoder state
   useEffect(() => {
     if (encoder) {
       const meta = encoder.getMetadata()
       setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
-
-      // Log QR capacity and max degree info for debugging
-      if (import.meta.env.DEV) {
-        console.log(`[FountainQRDataDisplay] QR capacity: ${maxQRDataSize} bytes for ECC ${currentQROptions.errorCorrectionLevel}`)
-      }
     }
   }, [encoder, maxQRDataSize, currentQROptions.errorCorrectionLevel])
 
@@ -390,9 +378,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               // Track oversized chunks but continue with generation
               if (expectedSize > maxQRDataSize) {
                 setOversizedChunkCount(prev => prev + 1)
-                if (import.meta.env.DEV) {
-                  console.info(`[Buffer] Chunk size ${expectedSize} > ${maxQRDataSize} (generating anyway)`)
-                }
               }
 
               const binaryData = new Uint8Array(expectedSize)
@@ -428,15 +413,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
                 // Part checksum (4 bytes) - stored as hex string, convert to bytes
                 const partChecksumHex = partInfo.currentPartChecksum || '00000000'
-                if (import.meta.env.DEV) {
-                  console.log(`[Sender] Part checksum hex: "${partChecksumHex}", length: ${partChecksumHex.length}, offset before part checksum: ${offset}`)
-                }
                 for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
                   const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
                   binaryData[offset++] = byte
-                }
-                if (import.meta.env.DEV) {
-                  console.log(`[Sender] Offset after part checksum: ${offset}`)
                 }
               }
 
@@ -448,18 +427,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
               const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
               const checksumHex = await computeChecksum(checksumPayload, 'crc32')
-              if (import.meta.env.DEV) {
-                console.log(`[Sender] Computed checksum: ${checksumHex}, payload length: ${checksumPayload.length}, offset before: ${offset}, expectedSize: ${expectedSize}, partBasedMode: ${partInfo.partBasedMode}`)
-              }
-              // Convert hex string to 4 bytes (big-endian)
-              const checksumStartOffset = offset
               for (let i = 0; i < 8; i += 2) {
                 const byte = parseInt(checksumHex.slice(i, i + 2), 16)
                 binaryData[offset++] = byte
-              }
-              if (import.meta.env.DEV) {
-                console.log(`[Sender] Wrote checksum bytes at offset ${checksumStartOffset}-${offset - 1}: ${Array.from(binaryData.slice(checksumStartOffset, offset)).map(b => b.toString(16).padStart(2, '0')).join('')}`)
-                console.log(`[Sender] Final binaryData length: ${binaryData.length}, final offset: ${offset}`)
               }
 
               const binaryString = String.fromCharCode(...binaryData)
@@ -533,9 +503,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Track oversized chunks but continue with generation
         if (expectedSize > maxQRDataSize) {
           setOversizedChunkCount(prev => prev + 1)
-          if (import.meta.env.DEV) {
-            console.info(`[Direct] Chunk size ${expectedSize} > ${maxQRDataSize} (generating anyway)`)
-          }
         }
 
         const binaryData = new Uint8Array(expectedSize)

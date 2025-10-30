@@ -70,7 +70,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Enable part-based mode for feedback-enabled transfers
         const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
 
-        const fountainEncoder = new FountainEncoder(bytes, metadata, {
+        const fountainEncoder = await FountainEncoder.create(bytes, metadata, {
            blockSize: DEFAULT_BLOCK_SIZE,
            c: 0.2,
            delta: 0.01,

@@ -138,7 +138,7 @@ self.onmessage = async (event: MessageEvent) => {
                 partBasedMode = data.partBasedMode || false;
                 partSize = data.partSize || 0;
                 console.log(`[Worker] Initialized with partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
-                decoder = new FountainDecoder(metadata, partBasedMode, partSize);
+                decoder = await FountainDecoder.create(metadata, partBasedMode, partSize);
                 receivedSeeds = new Set();
                 processedSeeds.clear();
                 expectedPartChecksums.clear(); // Clear any previous part checksums

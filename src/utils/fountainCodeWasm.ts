@@ -1,4 +1,23 @@
-import { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import init, { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+
+// WASM initialization state
+let wasmInitialized = false
+let wasmInitPromise: Promise<void> | null = null
+
+/**
+ * Ensures WASM module is initialized before use
+ */
+async function ensureWasmInit(): Promise<void> {
+  if (wasmInitialized) return
+
+  if (!wasmInitPromise) {
+    wasmInitPromise = init().then(() => {
+      wasmInitialized = true
+    })
+  }
+
+  await wasmInitPromise
+}
 
 // Re-export types for convenience
 export interface FountainChunk {
@@ -29,7 +48,7 @@ export interface FountainEncoderOptions {
 export class FountainWasmEncoder {
   private wasmEncoder: WasmFountainEncoder
 
-  constructor(
+  private constructor(
     data: Uint8Array,
     metadata: { name: string; type: string; timestamp?: number },
     options?: FountainEncoderOptions
@@ -43,6 +62,18 @@ export class FountainWasmEncoder {
       options?.c,
       options?.delta
     )
+  }
+
+  /**
+   * Create a new encoder (ensures WASM is initialized first)
+   */
+  static async create(
+    data: Uint8Array,
+    metadata: { name: string; type: string; timestamp?: number },
+    options?: FountainEncoderOptions
+  ): Promise<FountainWasmEncoder> {
+    await ensureWasmInit()
+    return new FountainWasmEncoder(data, metadata, options)
   }
 
   /**
@@ -80,12 +111,20 @@ export class FountainWasmEncoder {
 export class FountainWasmDecoder {
   private wasmDecoder: WasmFountainDecoder
 
-  constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+  private constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
     this.wasmDecoder = new WasmFountainDecoder(
       metadata,
       partBasedMode ? true : undefined,
       partBasedMode && partSize > 0 ? partSize : undefined
     )
+  }
+
+  /**
+   * Create a new decoder (ensures WASM is initialized first)
+   */
+  static async create(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0): Promise<FountainWasmDecoder> {
+    await ensureWasmInit()
+    return new FountainWasmDecoder(metadata, partBasedMode, partSize)
   }
 
   /**

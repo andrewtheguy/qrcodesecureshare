@@ -29,7 +29,7 @@ export class FountainEncoder {
   private jsEncoder: JSFountainEncoder
   private wasmEncoder: FountainWasmEncoder
 
-  constructor(
+  private constructor(
     data: Uint8Array,
     metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
     opts: FountainEncoderOptions = {}
@@ -37,9 +37,23 @@ export class FountainEncoder {
     // Create JS encoder for coordination logic only
     this.jsEncoder = new JSFountainEncoder(data, metadata, opts)
 
+    // Note: wasmEncoder is set by the static create method
+    this.wasmEncoder = null as unknown as FountainWasmEncoder
+  }
+
+  /**
+   * Create a new encoder (ensures WASM is initialized first)
+   */
+  static async create(
+    data: Uint8Array,
+    metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
+    opts: FountainEncoderOptions = {}
+  ): Promise<FountainEncoder> {
+    const encoder = new FountainEncoder(data, metadata, opts)
+
     // Create WASM encoder for computation (REQUIRED)
     try {
-      this.wasmEncoder = new FountainWasmEncoder(
+      encoder.wasmEncoder = await FountainWasmEncoder.create(
         data,
         { name: metadata.name, type: metadata.type, timestamp: metadata.timestamp },
         { blockSize: opts.blockSize, c: opts.c, delta: opts.delta }
@@ -47,6 +61,8 @@ export class FountainEncoder {
     } catch (err) {
       throw new Error(`Failed to initialize WASM encoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
     }
+
+    return encoder
   }
 
   /**
@@ -109,7 +125,7 @@ export class FountainDecoder {
   private wasmDecoder: FountainWasmDecoder
   private metadata: FountainMetadata
 
-  constructor(
+  private constructor(
     metadata: FountainMetadata,
     partBasedMode: boolean = false,
     partSize: number = 0
@@ -119,9 +135,23 @@ export class FountainDecoder {
     // Always create JS decoder for coordination
     this.jsDecoder = new JSFountainDecoder(metadata, partBasedMode, partSize)
 
+    // Note: wasmDecoder is set by the static create method
+    this.wasmDecoder = null as unknown as FountainWasmDecoder
+  }
+
+  /**
+   * Create a new decoder (ensures WASM is initialized first)
+   */
+  static async create(
+    metadata: FountainMetadata,
+    partBasedMode: boolean = false,
+    partSize: number = 0
+  ): Promise<FountainDecoder> {
+    const decoder = new FountainDecoder(metadata, partBasedMode, partSize)
+
     // Create WASM decoder for computation (required for both regular and part-based mode)
     try {
-      this.wasmDecoder = new FountainWasmDecoder(
+      decoder.wasmDecoder = await FountainWasmDecoder.create(
         {
           name: metadata.name,
           size: metadata.size,
@@ -136,6 +166,8 @@ export class FountainDecoder {
     } catch (err) {
       throw new Error(`Failed to initialize WASM decoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
     }
+
+    return decoder
   }
 
   /**

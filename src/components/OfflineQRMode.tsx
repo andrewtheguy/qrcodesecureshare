@@ -161,15 +161,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             partBasedMode: feedbackEnabled, // Enable part-based mode for feedback transfers
             partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
           }
-          if (import.meta.env.DEV) {
-            console.log('[OfflineQRMode] Metadata generation:', {
-              transferMode,
-              feedbackEnabled,
-              partBasedMode: feedbackEnabled,
-              partSizeOption,
-              partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
-            })
-          }
           if (cancelled) return
             const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
             const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
