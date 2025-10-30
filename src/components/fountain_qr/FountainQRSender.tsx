@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FountainEncoder } from '@/utils/fountainCodeWasm'
+import { FountainEncoder, DEFAULT_FOUNTAIN_ENCODER_OPTIONS, type PartBasedModeConfig } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { getQRCapacity } from '@/utils/qrCapacity'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
@@ -70,16 +70,19 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Enable part-based mode for feedback-enabled transfers
         const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
 
-        const fountainEncoder = await FountainEncoder.create(bytes, metadata, {
-           blockSize: DEFAULT_BLOCK_SIZE,
-           c: 0.2,
-           delta: 0.01,
-           // Optional: override doping rates here if experimenting
-           degree1Rate: 0.08,
-           maxQRDataSize, // Pass QR capacity to encoder for degree tuning
-           partBasedMode: feedbackEnabled, // Enable part-based mode in feedback mode
-           partSize // Part size for part-based transfer
-          })
+        // Part-based mode configuration (session-level settings)
+        const partConfig: PartBasedModeConfig = {
+          enabled: feedbackEnabled,
+          partSize
+        }
+
+        // Use default options with maxQRDataSize override for degree tuning
+        const encoderOptions = {
+          ...DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
+          maxQRDataSize // Pass QR capacity to encoder for degree tuning
+        }
+
+        const fountainEncoder = await FountainEncoder.create(bytes, metadata, encoderOptions, partConfig)
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
          const encoderBlockSize = fountainEncoder.getMetadata().blockSize

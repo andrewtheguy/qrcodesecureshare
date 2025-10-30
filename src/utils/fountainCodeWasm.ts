@@ -81,25 +81,17 @@ export interface FountainMetadata extends WasmFountainMetadata {
 }
 
 /**
- * Fountain encoder options input (all fields optional)
- * Users provide these partial options, defaults will be applied
+ * Part-based mode configuration (session-level settings)
+ * Separate from encoding algorithm parameters
  */
-export interface FountainEncoderOptionsInput {
-  blockSize?: number
-  c?: number
-  delta?: number
-  maxDegree?: number | null
-  degree1Rate?: number
-  lowDegreeRate?: number
-  maxQRDataSize?: number
-  fixedOverhead?: number
-  partOverhead?: number
-  partBasedMode?: boolean
-  partSize?: number
+export interface PartBasedModeConfig {
+  enabled: boolean
+  partSize: number
 }
 
 /**
  * Fountain encoder options (all fields required)
+ * These are algorithm parameters, not session settings
  * Matches the Rust FountainEncoderOptions structure
  */
 export interface FountainEncoderOptions {
@@ -112,28 +104,22 @@ export interface FountainEncoderOptions {
   maxQRDataSize: number
   fixedOverhead: number
   partOverhead: number
-  partBasedMode: boolean
-  partSize: number
 }
 
 /**
- * Build complete FountainEncoderOptions with defaults
- * All fields are required by WASM, so we apply defaults here
+ * Default fountain encoder options
+ * Single source of truth for default values
  */
-function buildCompleteOptions(input?: FountainEncoderOptionsInput): FountainEncoderOptions {
-  return {
-    blockSize: input?.blockSize ?? 400,
-    c: input?.c ?? 0.2,
-    delta: input?.delta ?? 0.01,
-    maxDegree: input?.maxDegree ?? null,
-    degree1Rate: input?.degree1Rate ?? 0.08,
-    lowDegreeRate: input?.lowDegreeRate ?? 0.18,
-    maxQRDataSize: input?.maxQRDataSize ?? 1000,
-    fixedOverhead: input?.fixedOverhead ?? 10,
-    partOverhead: input?.partOverhead ?? 0,
-    partBasedMode: input?.partBasedMode ?? false,
-    partSize: input?.partSize ?? 0,
-  }
+export const DEFAULT_FOUNTAIN_ENCODER_OPTIONS: FountainEncoderOptions = {
+  blockSize: 400,
+  c: 0.2,
+  delta: 0.01,
+  maxDegree: null,
+  degree1Rate: 0.08,
+  lowDegreeRate: 0.18,
+  maxQRDataSize: 1000,
+  fixedOverhead: 10,
+  partOverhead: 0,
 }
 
 /**
@@ -151,33 +137,40 @@ export class FountainWasmEncoder {
   private constructor(
     data: Uint8Array,
     metadata: { name: string; type: string; timestamp?: number },
-    options?: FountainEncoderOptionsInput,
+    options: FountainEncoderOptions,
+    partConfig: PartBasedModeConfig,
     seedOffset?: number
   ) {
-    // Build complete options object with defaults, then pass to WASM
-    const completeOptions = buildCompleteOptions(options)
-
     this.wasm = new WasmFountainEncoder(
       data,
       metadata.name,
       metadata.type,
       metadata.timestamp || Date.now(),
-      completeOptions,
+      options,
+      partConfig.enabled,
+      partConfig.partSize,
       seedOffset
     )
   }
 
   /**
    * Create a new encoder (ensures WASM is initialized first)
+   *
+   * @param data - Data to encode
+   * @param metadata - File metadata
+   * @param options - Encoding algorithm options (defaults to DEFAULT_FOUNTAIN_ENCODER_OPTIONS)
+   * @param partConfig - Part-based mode configuration (defaults to disabled)
+   * @param seedOffset - Optional seed offset for session-specific randomization
    */
   static async create(
     data: Uint8Array,
     metadata: { name: string; type: string; timestamp?: number },
-    options?: FountainEncoderOptionsInput,
+    options: FountainEncoderOptions = DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
+    partConfig: PartBasedModeConfig = { enabled: false, partSize: 0 },
     seedOffset?: number
   ): Promise<FountainWasmEncoder> {
     await ensureWasmInit()
-    return new FountainWasmEncoder(data, metadata, options, seedOffset)
+    return new FountainWasmEncoder(data, metadata, options, partConfig, seedOffset)
   }
 
   /**

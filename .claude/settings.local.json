@@ -30,7 +30,9 @@
       "Bash(/Users/it3/codes/andrew/qrcodesecureshare/src/workers/fountainDecoder.worker.ts)",
       "Bash(do)",
       "Bash(done)",
-      "Bash(npm run build:js:*)"
+      "Bash(npm run build:js:*)",
+      "Bash(perl -i -pe:*)",
+      "Bash(cargo clean:*)"
     ],
     "deny": [],
     "ask": []

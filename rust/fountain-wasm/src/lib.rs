@@ -30,6 +30,8 @@ impl WasmFountainEncoder {
     /// * `file_type` - MIME type
     /// * `timestamp` - Unix timestamp
     /// * `options_js` - Complete encoder options object (all fields required from TypeScript)
+    /// * `part_based_mode` - Whether part-based mode is enabled (session setting)
+    /// * `part_size` - Size of each part in bytes (session setting)
     /// * `seed_offset` - Optional seed offset for session-specific randomization
     #[wasm_bindgen(constructor)]
     pub fn new(
@@ -38,6 +40,8 @@ impl WasmFountainEncoder {
         file_type: String,
         timestamp: f64,
         options_js: JsValue,
+        part_based_mode: bool,
+        part_size: usize,
         seed_offset: Option<u32>,
     ) -> Result<WasmFountainEncoder, JsValue> {
         // Convert Uint8Array to Vec<u8>
@@ -53,6 +57,8 @@ impl WasmFountainEncoder {
             file_type,
             timestamp,
             options,
+            part_based_mode,
+            part_size,
             seed_offset,
         );
 

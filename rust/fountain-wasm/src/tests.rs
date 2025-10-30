@@ -32,7 +32,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -77,7 +77,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -112,7 +112,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -155,7 +155,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -190,7 +190,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -225,7 +225,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -278,7 +278,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -335,7 +335,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -384,7 +384,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -454,7 +454,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();
@@ -507,7 +507,7 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            None,
+            false, 0, None,
         );
 
         let metadata = encoder.get_metadata();

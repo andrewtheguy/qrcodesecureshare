@@ -43,6 +43,8 @@ impl FountainEncoder {
         file_type: String,
         timestamp: f64,
         options: FountainEncoderOptions,
+        part_based_mode: bool,
+        part_size: usize,
         seed_offset: Option<u32>,
     ) -> Self {
         let block_size = options.block_size;
@@ -97,8 +99,6 @@ impl FountainEncoder {
         });
 
         // Initialize part-based mode if configured
-        let part_based_mode = options.part_based_mode;
-        let part_size = options.part_size;
         let (total_parts, current_part_index) = if part_based_mode && part_size > 0 {
             let total = (total_size + part_size - 1) / part_size;
             (total, 0)
@@ -312,6 +312,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
 
@@ -329,6 +331,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
 
@@ -349,6 +353,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
 
@@ -372,6 +378,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options.clone(),
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
 
@@ -381,6 +389,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
 
@@ -405,6 +415,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false, // part_based_mode
+            0,     // part_size
             None,
         );
     }
@@ -434,6 +446,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            false,   // part_based_mode
+            0,       // part_size
             Some(0), // seed_offset = 0 for testing
         );
 

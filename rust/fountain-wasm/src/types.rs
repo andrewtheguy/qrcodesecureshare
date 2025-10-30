@@ -96,6 +96,7 @@ impl FountainMetadata {
 
 /// Configuration options for the fountain encoder
 /// All fields are required - defaults should be provided by TypeScript layer
+/// These are algorithm parameters, not session settings
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FountainEncoderOptions {
@@ -117,10 +118,6 @@ pub struct FountainEncoderOptions {
     pub fixed_overhead: usize,
     /// Part-based mode overhead in bytes: currentPart(2) + totalParts(2) + partChecksum(4) = 8
     pub part_overhead: usize,
-    /// Whether part-based mode is enabled
-    pub part_based_mode: bool,
-    /// Size of each part in bytes (for part-based mode)
-    pub part_size: usize,
 }
 
 impl Default for FountainEncoderOptions {
@@ -135,8 +132,6 @@ impl Default for FountainEncoderOptions {
             max_qr_data_size: 1000,
             fixed_overhead: 10, // magic(2) + seed(2) + degree(1) + numIndices(1) + checksum(4)
             part_overhead: 0,   // 0 for non-part mode, 8 for part-based mode
-            part_based_mode: false,
-            part_size: 0,
         }
     }
 }
@@ -184,16 +179,6 @@ impl FountainEncoderOptions {
 
     pub fn with_part_overhead(mut self, part_overhead: usize) -> Self {
         self.part_overhead = part_overhead;
-        self
-    }
-
-    pub fn with_part_based_mode(mut self, part_based_mode: bool) -> Self {
-        self.part_based_mode = part_based_mode;
-        self
-    }
-
-    pub fn with_part_size(mut self, part_size: usize) -> Self {
-        self.part_size = part_size;
         self
     }
 }
