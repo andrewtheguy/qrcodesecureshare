@@ -34,6 +34,10 @@ interface FountainQRDataScannerProps {
   isTargetedModeActive: boolean
   senderFeedbackMessage: string
   decodedBlockIndices?: number[]
+  currentPartIndex?: number
+  totalParts?: number
+  currentPartDecodedBlocks?: number
+  currentPartTotalBlocks?: number
   onChunkScanned: (seed: number) => void
   onScanError: (error: string) => void
   onScanStart: () => void
@@ -56,6 +60,10 @@ export function FountainQRDataScanner({
   isTargetedModeActive,
   senderFeedbackMessage,
   decodedBlockIndices = [],
+  currentPartIndex = 0,
+  totalParts = 1,
+  currentPartDecodedBlocks = 0,
+  currentPartTotalBlocks = 0,
   onChunkScanned,
   onScanError,
   onScanStart,
@@ -237,19 +245,38 @@ export function FountainQRDataScanner({
     }
   }, [receiverMode, success, isAwaitingFeedback, isScanning, hasAutoStarted, handleStartScan])
 
-  const progress = (decodedBlocks / fountainMetadata.totalSourceBlocks) * 100
+  // Determine if we're in multi-part mode
+  const isMultiPartMode = fountainMetadata.partBasedMode && totalParts > 1
+
+  // Use part-specific values when in multi-part mode, otherwise use total blocks
+  const displayDecodedBlocks = isMultiPartMode ? currentPartDecodedBlocks : decodedBlocks
+  const displayTotalBlocks = isMultiPartMode ? currentPartTotalBlocks : fountainMetadata.totalSourceBlocks
+  const progress = displayTotalBlocks > 0 ? (displayDecodedBlocks / displayTotalBlocks) * 100 : 0
+
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
   // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
-  const k = fountainMetadata.totalSourceBlocks
+  const k = displayTotalBlocks
   const c = 0.2
   const delta = 0.01
   const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
   const dopingOverhead = 1.05 // Account for forced low-degree chunks
   const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
+  // Calculate block range for the current part in multi-part mode
+  let partStartBlock = 0
+  let partEndBlock = fountainMetadata.totalSourceBlocks
+  if (isMultiPartMode && fountainMetadata.partSize && fountainMetadata.blockSize) {
+    const partStartByte = currentPartIndex * fountainMetadata.partSize
+    const partEndByte = Math.min((currentPartIndex + 1) * fountainMetadata.partSize, fountainMetadata.size)
+    partStartBlock = Math.floor(partStartByte / fountainMetadata.blockSize)
+    partEndBlock = Math.ceil(partEndByte / fountainMetadata.blockSize)
+  }
+
   // Calculate compressed rectangle grid layout
-  const totalRectangles = Math.min(fountainMetadata.totalSourceBlocks, GRID_MAX_RECTANGLES)
-  const blocksPerRect = Math.ceil(fountainMetadata.totalSourceBlocks / totalRectangles)
+  // In multi-part mode, use the number of blocks in the current part
+  const gridBlockCount = isMultiPartMode ? (partEndBlock - partStartBlock) : fountainMetadata.totalSourceBlocks
+  const totalRectangles = Math.min(gridBlockCount, GRID_MAX_RECTANGLES)
+  const blocksPerRect = Math.ceil(gridBlockCount / totalRectangles)
 
   // Get color for rectangle based on decoded blocks in range
   function getRectangleColor(decodedInRange: number, totalInRange: number) {
@@ -327,7 +354,13 @@ export function FountainQRDataScanner({
       {!success && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span>Decoded {decodedBlocks} of {fountainMetadata.totalSourceBlocks} blocks</span>
+            <span>
+              {isMultiPartMode ? (
+                <>Part {currentPartIndex + 1}/{totalParts}: Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
+              ) : (
+                <>Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
+              )}
+            </span>
             <span>{Math.round(progress)}%</span>
           </div>
           <Progress value={progress} />
@@ -346,18 +379,25 @@ export function FountainQRDataScanner({
       {!success && fountainMetadata.totalSourceBlocks > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-medium">Block Progress</div>
+            <div className="text-sm font-medium">
+              {isMultiPartMode ? `Block Progress (Part ${currentPartIndex + 1}/${totalParts})` : 'Block Progress'}
+            </div>
             <div className="text-xs text-muted-foreground">
-              {decodedBlocks} / {fountainMetadata.totalSourceBlocks} blocks decoded
+              {displayDecodedBlocks} / {displayTotalBlocks} blocks decoded
             </div>
           </div>
           <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))` }}>
             {Array.from({ length: totalRectangles }, (_, i) => {
-              const startBlock = i * blocksPerRect
-              const endBlock = Math.min(startBlock + blocksPerRect, fountainMetadata.totalSourceBlocks)
+              // Calculate block range relative to the part's starting block
+              const relativeStartBlock = i * blocksPerRect
+              const relativeEndBlock = Math.min(relativeStartBlock + blocksPerRect, gridBlockCount)
+
+              // Convert to absolute block indices
+              const absoluteStartBlock = partStartBlock + relativeStartBlock
+              const absoluteEndBlock = partStartBlock + relativeEndBlock
 
               // Hide rectangles that don't contain any blocks
-              if (startBlock >= fountainMetadata.totalSourceBlocks) {
+              if (relativeStartBlock >= gridBlockCount) {
                 return (
                   <div
                     key={i}
@@ -366,17 +406,16 @@ export function FountainQRDataScanner({
                 )
               }
 
-              const rangeBlocks = Array.from({ length: endBlock - startBlock }, (_, j) => startBlock + j)
+              const rangeBlocks = Array.from({ length: absoluteEndBlock - absoluteStartBlock }, (_, j) => absoluteStartBlock + j)
               const decodedInRange = rangeBlocks.filter(block => decodedBlockIndices.includes(block)).length
 
-              // Window logic removed - no window-specific styling
               const colorClass = getRectangleColor(decodedInRange, rangeBlocks.length)
 
               return (
                 <div
                   key={i}
                   className="aspect-square p-0.5 bg-transparent"
-                  title={`Blocks ${startBlock + 1}-${endBlock}: ${decodedInRange}/${rangeBlocks.length} decoded`}
+                  title={`Blocks ${absoluteStartBlock + 1}-${absoluteEndBlock}: ${decodedInRange}/${rangeBlocks.length} decoded`}
                 >
                   <div className={`w-full h-full rounded-full ${colorClass}`} />
                 </div>

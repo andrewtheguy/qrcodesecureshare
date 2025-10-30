@@ -79,6 +79,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     currentPart: number
     totalParts: number
   } | null>(null)
+  const [currentPartIndex, setCurrentPartIndex] = useState<number>(0)
+  const [totalParts, setTotalParts] = useState<number>(1)
+  const [currentPartDecodedBlocks, setCurrentPartDecodedBlocks] = useState<number>(0)
+  const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(0)
 
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
@@ -114,7 +118,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
 
         case 'chunkProcessed': {
-          const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo } = data
+          const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
           if (duplicate) {
             // Debug logging moved to subcomponent
             return
@@ -122,6 +126,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // setReceivedFountainChunks moved to subcomponent
           setDecodedBlocks(decodedBlockCount)
           decodedBlockIndicesRef.current = decodedBlockIndices
+
+          // Update part-specific state if in part-based mode
+          if (partIndex !== undefined && numParts !== undefined) {
+            setCurrentPartIndex(partIndex)
+            setTotalParts(numParts)
+          }
+          if (partDecodedBlocks !== undefined && partTotalBlocks !== undefined) {
+            setCurrentPartDecodedBlocks(partDecodedBlocks)
+            setCurrentPartTotalBlocks(partTotalBlocks)
+          }
           // Debug logging moved to subcomponent
 
           // Handle part completion if in part-based mode
@@ -546,6 +560,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         isTargetedModeActive={isTargetedModeActive}
         senderFeedbackMessage={senderFeedbackMessage}
         decodedBlockIndices={decodedBlockIndicesRef.current}
+        currentPartIndex={currentPartIndex}
+        totalParts={totalParts}
+        currentPartDecodedBlocks={currentPartDecodedBlocks}
+        currentPartTotalBlocks={currentPartTotalBlocks}
         onChunkScanned={() => {
           // Optional: handle chunk scanned callback if needed
         }}

@@ -243,10 +243,15 @@ self.onmessage = async (event: MessageEvent) => {
                     let partProgress: number | undefined;
                     let currentPartDecodedBlocks: number | undefined;
                     let currentPartTotalBlocks: number | undefined;
+                    let currentPartIndex: number | undefined;
+                    let totalParts: number | undefined;
                     if (partBasedMode) {
+                        const partInfo = decoder!.getPartInfo();
                         currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
                         currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
                         partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
+                        currentPartIndex = partInfo.currentPartIndex;
+                        totalParts = partInfo.totalParts;
                     }
 
                     self.postMessage({
@@ -260,6 +265,8 @@ self.onmessage = async (event: MessageEvent) => {
                         partProgress,
                         currentPartDecodedBlocks,
                         currentPartTotalBlocks,
+                        currentPartIndex,
+                        totalParts,
                         partCompleteInfo
                     });
 
@@ -286,6 +293,19 @@ self.onmessage = async (event: MessageEvent) => {
                     const progress = decoder!.getProgress();
                     const decodedBlockIndices = decoder!.getDecodedBlockIndices();
 
+                    // Get part-specific info if in part-based mode
+                    let currentPartIndex: number | undefined;
+                    let totalParts: number | undefined;
+                    let currentPartDecodedBlocks: number | undefined;
+                    let currentPartTotalBlocks: number | undefined;
+                    if (partBasedMode) {
+                        const partInfo = decoder!.getPartInfo();
+                        currentPartIndex = partInfo.currentPartIndex;
+                        totalParts = partInfo.totalParts;
+                        currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
+                        currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
+                    }
+
                     self.postMessage({
                         type: 'chunkProcessed',
                         id,
@@ -295,6 +315,10 @@ self.onmessage = async (event: MessageEvent) => {
                         progress,
                         isComplete: false,
                         decodedBlockIndices,
+                        currentPartIndex,
+                        totalParts,
+                        currentPartDecodedBlocks,
+                        currentPartTotalBlocks,
                         partCompleteInfo
                     });
                 }
