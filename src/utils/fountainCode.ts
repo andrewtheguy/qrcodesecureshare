@@ -13,18 +13,6 @@
  *  - Part-based mode - fully supported in WASM for better performance
  */
 
-// XOR two Uint8Arrays (used by decoder in part-based mode)
-function xorArrays(a: Uint8Array, b: Uint8Array): Uint8Array {
-  const result = new Uint8Array(Math.max(a.length, b.length))
-  for (let i = 0; i < a.length; i++) {
-    result[i] = a[i]
-  }
-  for (let i = 0; i < b.length; i++) {
-    result[i] ^= b[i]
-  }
-  return result
-}
-
 export interface FountainChunk {
   seed: number           // Seed for this chunk's random generation
   degree: number         // Number of source blocks combined
@@ -257,20 +245,12 @@ export class FountainEncoder {
 
 export class FountainDecoder {
   private metadata: FountainMetadata
-  private decodedBlocks: Map<number, Uint8Array> = new Map()
-  private receivedChunks: FountainChunk[] = []
-  private isDecoded: boolean = false
-
-  // Part-based transfer fields
   private partBasedMode: boolean = false
   private partSize: number = 0
   private totalParts: number = 0
   private currentPartIndex: number = 0
-  private completedParts: Set<number> = new Set()
-  private storedPartData: Map<number, Uint8Array> = new Map() // Store reconstructed part data
 
   constructor(metadata: FountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
-    // Validate part-based mode parameters
     if (partBasedMode && partSize <= 0) {
       throw new Error('partSize must be > 0 when partBasedMode is enabled')
     }
@@ -285,339 +265,42 @@ export class FountainDecoder {
     }
   }
 
-  // Add a received chunk and try to decode
-  addChunk(chunk: FountainChunk): boolean {
-    if (this.isDecoded) return true
-
-    this.receivedChunks.push(chunk)
-    return this.attemptDecode()
-  }
-
-  private attemptDecode(): boolean {
-    // Keep original chunks and track which indices are still active
-    interface WorkingChunk {
-      data: Uint8Array
-      activeIndices: Set<number>
-    }
-
-    const workingChunks: WorkingChunk[] = this.receivedChunks.map(chunk => ({
-      data: new Uint8Array(chunk.data),
-      activeIndices: new Set(chunk.indices)
-    }))
-
-    const decoded = new Map<number, Uint8Array>()
-
-    // Iteratively decode using belief propagation (peeling decoder)
-    let madeProgress = true
-    while (madeProgress) {
-      madeProgress = false
-
-      for (let i = 0; i < workingChunks.length; i++) {
-        const chunk = workingChunks[i]
-
-        // If this chunk has exactly one active (undecoded) index, we can decode it
-        if (chunk.activeIndices.size === 1) {
-          const blockIdx = Array.from(chunk.activeIndices)[0]
-
-          if (!decoded.has(blockIdx)) {
-            // The chunk data now equals the undecoded block (after all previous XORs)
-            decoded.set(blockIdx, new Uint8Array(chunk.data))
-            madeProgress = true
-
-            // XOR this newly decoded block out of all other chunks
-            for (let j = 0; j < workingChunks.length; j++) {
-              if (j !== i && workingChunks[j].activeIndices.has(blockIdx)) {
-                // XOR the decoded block out of this chunk
-                workingChunks[j].data = xorArrays(workingChunks[j].data, chunk.data)
-                // Remove this block from active indices
-                workingChunks[j].activeIndices.delete(blockIdx)
-              }
-            }
-
-            // Mark this block as inactive in the current chunk
-            chunk.activeIndices.delete(blockIdx)
-          }
-        }
-      }
-    }
-
-    this.decodedBlocks = decoded
-    this.isDecoded = decoded.size === this.metadata.totalSourceBlocks
-
-    return this.isDecoded
-  }
-
-  getProgress(): number {
-    return this.decodedBlocks.size / this.metadata.totalSourceBlocks
-  }
-
-  isComplete(): boolean {
-    if (this.partBasedMode) {
-      // In part-based mode, complete when all parts are stored
-      return this.storedPartData.size === this.totalParts
-    }
-    return this.isDecoded
+  /**
+   * Add chunk (stub - actual decoding in WASM)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  addChunk(_chunk: FountainChunk): boolean {
+    return false
   }
 
   getMetadata(): FountainMetadata {
     return this.metadata
   }
 
-  // Reconstruct the original data
-  getDecodedData(): Uint8Array | null {
-    // In part-based mode, check if all parts are completed
-    if (this.partBasedMode) {
-      return this.getDecodedDataFromParts()
-    }
-
-    if (!this.isDecoded) return null
-
-    // Reassemble blocks in order
-    const result = new Uint8Array(this.metadata.size)
-    let offset = 0
-
-    for (let i = 0; i < this.metadata.totalSourceBlocks; i++) {
-      const block = this.decodedBlocks.get(i)
-      if (!block) return null
-
-      const bytesToCopy = Math.min(this.metadata.blockSize, this.metadata.size - offset)
-      result.set(block.slice(0, bytesToCopy), offset)
-      offset += bytesToCopy
-    }
-
-    return result
-  }
-
   /**
-   * Reconstruct the final file from stored part data
+   * Get contiguous blocks data (stub - not used)
    */
-  private getDecodedDataFromParts(): Uint8Array | null {
-    if (!this.partBasedMode) return null
-    if (this.storedPartData.size !== this.totalParts) return null
-
-    // Check that all parts are present
-    for (let i = 0; i < this.totalParts; i++) {
-      if (!this.storedPartData.has(i)) return null
-    }
-
-    // Concatenate all parts in order
-    const result = new Uint8Array(this.metadata.size)
-    let offset = 0
-
-    for (let i = 0; i < this.totalParts; i++) {
-      const partData = this.storedPartData.get(i)
-      if (!partData) return null
-
-      result.set(partData, offset)
-      offset += partData.length
-    }
-
-    console.log(`Final file reconstructed from ${this.totalParts} parts (${result.length} bytes)`)
-    return result
-  }
-
-  getReceivedChunkCount(): number {
-    return this.receivedChunks.length
-  }
-
-  getDecodedBlockCount(): number {
-    return this.decodedBlocks.size
-  }
-
-  getDecodedBlockIndices(): number[] {
-    return Array.from(this.decodedBlocks.keys()).sort((a, b) => a - b)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  getContiguousBlocksData(_startIdx: number, _endIdx: number): Uint8Array | null {
+    return null
   }
 
   /**
-   * Get contiguous blocks data for checksum computation
-   */
-  getContiguousBlocksData(startIdx: number, endIdx: number): Uint8Array | null {
-    if (startIdx < 0 || endIdx > this.metadata.totalSourceBlocks || startIdx >= endIdx) {
-      return null
-    }
-
-    // Check that all blocks in range are decoded
-    for (let i = startIdx; i < endIdx; i++) {
-      if (!this.decodedBlocks.has(i)) {
-        return null
-      }
-    }
-
-    const totalSize = (endIdx - startIdx) * this.metadata.blockSize
-    const result = new Uint8Array(totalSize)
-    let offset = 0
-
-    for (let i = startIdx; i < endIdx; i++) {
-      const block = this.decodedBlocks.get(i)!
-      result.set(block, offset)
-      offset += this.metadata.blockSize
-    }
-
-    return result
-  }
-
-  /**
-   * Check if the current part is complete (all blocks in part decoded)
-   */
-  isCurrentPartComplete(): boolean {
-    if (!this.partBasedMode) return this.isDecoded
-
-    const partStartByte = this.currentPartIndex * this.partSize
-    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
-
-    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
-    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
-
-    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
-      if (!this.decodedBlocks.has(i)) {
-        return false
-      }
-    }
-
-    return true
-  }
-
-  /**
-   * Get the data for the current part (for checksum validation)
-   * Returns null if part is not complete
-   */
-  getCurrentPartData(): Uint8Array | null {
-    if (!this.partBasedMode || !this.isCurrentPartComplete()) return null
-
-    const partStartByte = this.currentPartIndex * this.partSize
-    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
-    const partDataSize = partEndByte - partStartByte
-
-    const result = new Uint8Array(partDataSize)
-    let resultOffset = 0
-
-    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
-    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
-
-    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
-      const block = this.decodedBlocks.get(i)
-      if (!block) return null
-
-      const blockStartInPart = Math.max(0, partStartByte - i * this.metadata.blockSize)
-      const blockEndInPart = Math.min(this.metadata.blockSize, partEndByte - i * this.metadata.blockSize)
-      const bytesToCopy = blockEndInPart - blockStartInPart
-
-      result.set(block.slice(blockStartInPart, blockEndInPart), resultOffset)
-      resultOffset += bytesToCopy
-    }
-
-    return result
-  }
-
-  /**
-   * Get part information
-   */
-  getPartInfo(): {
-    partBasedMode: boolean
-    currentPartIndex: number
-    totalParts: number
-    partSize: number
-    completedParts: number[]
-  } {
-    return {
-      partBasedMode: this.partBasedMode,
-      currentPartIndex: this.currentPartIndex,
-      totalParts: this.totalParts,
-      partSize: this.partSize,
-      completedParts: Array.from(this.completedParts).sort((a, b) => a - b)
-    }
-  }
-
-  /**
-   * Mark a part as completed and clean up its decoded blocks to save memory
-   */
-  markPartCompleted(partIndex: number): void {
-    if (!this.partBasedMode) return
-    if (partIndex < 0 || partIndex >= this.totalParts) return
-
-    // First, reconstruct and store the part data before cleanup
-    const partData = this.getCurrentPartData()
-    if (partData) {
-      this.storedPartData.set(partIndex, partData)
-      console.log(`Part ${partIndex + 1}/${this.totalParts} reconstructed and stored (${partData.length} bytes)`)
-    }
-
-    this.completedParts.add(partIndex)
-
-    const partStartByte = partIndex * this.partSize
-    const partEndByte = Math.min((partIndex + 1) * this.partSize, this.metadata.size)
-
-    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
-    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
-
-    // Clear decoded blocks for this part to save memory
-    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
-      this.decodedBlocks.delete(i)
-    }
-
-    // Clear received chunks that only contain blocks from completed parts
-    this.receivedChunks = this.receivedChunks.filter(chunk => {
-      return chunk.indices.some(idx => {
-        const blockPartIndex = Math.floor((idx * this.metadata.blockSize) / this.partSize)
-        return !this.completedParts.has(blockPartIndex)
-      })
-    })
-
-    console.log(`Part ${partIndex + 1} memory cleaned up. Active blocks: ${this.decodedBlocks.size}, Active chunks: ${this.receivedChunks.length}`)
-  }
-
-  /**
-   * Move to the next part
-   * Returns true if moved to next part, false if already at last part
+   * Move to next part
    */
   moveToNextPart(): boolean {
-    if (!this.partBasedMode) return false
-    if (this.currentPartIndex >= this.totalParts - 1) return false
-
-    // Mark current part as completed before moving
-    if (this.isCurrentPartComplete()) {
-      this.markPartCompleted(this.currentPartIndex)
+    if (!this.partBasedMode || this.currentPartIndex >= this.totalParts - 1) {
+      return false
     }
-
     this.currentPartIndex++
     return true
   }
 
   /**
-   * Get the number of decoded blocks in the current part
+   * Mark part completed (stub - actual state in WASM)
    */
-  getCurrentPartDecodedBlockCount(): number {
-    if (!this.partBasedMode) return this.decodedBlocks.size
-
-    const partStartByte = this.currentPartIndex * this.partSize
-    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
-
-    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
-    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
-
-    let count = 0
-    for (let i = startBlockIndex; i < endBlockIndex && i < this.metadata.totalSourceBlocks; i++) {
-      if (this.decodedBlocks.has(i)) {
-        count++
-      }
-    }
-
-    return count
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  markPartCompleted(_partIndex: number): void {
+    // Stub - actual state managed in WASM
   }
-
-  /**
-   * Get the total number of blocks in the current part
-   */
-  getCurrentPartTotalBlockCount(): number {
-    if (!this.partBasedMode) return this.metadata.totalSourceBlocks
-
-    const partStartByte = this.currentPartIndex * this.partSize
-    const partEndByte = Math.min((this.currentPartIndex + 1) * this.partSize, this.metadata.size)
-
-    const startBlockIndex = Math.floor(partStartByte / this.metadata.blockSize)
-    const endBlockIndex = Math.ceil(partEndByte / this.metadata.blockSize)
-
-    return Math.min(endBlockIndex - startBlockIndex, this.metadata.totalSourceBlocks - startBlockIndex)
-  }
-
 }
