@@ -54,13 +54,8 @@ impl WasmFountainEncoder {
             if part_size == 0 {
                 return Err(JsValue::from_str("part_size must be > 0"));
             }
-            if part_size > data_vec.len() {
-                return Err(JsValue::from_str(&format!(
-                    "part_size ({}) must not exceed data length ({})",
-                    part_size,
-                    data_vec.len()
-                )));
-            }
+            // Note: part_size can be larger than data length - it will result in a single part
+            // The encoder correctly handles this with ceiling division: total_parts = (total_size + part_size - 1) / part_size
         }
 
         // Deserialize options from JS (all fields required, TypeScript must provide complete object)

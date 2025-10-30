@@ -757,6 +757,48 @@ mod tests {
     }
 
     #[test]
+    fn test_part_based_mode_uneven_last_part() {
+        // Test with uneven split: 1,300,000 bytes with 512,000 byte parts
+        // Expected: 3 parts with last part being 276,000 bytes (1,300,000 % 512,000)
+        let total_bytes = 1_300_000;
+        let part_size = 512_000;
+
+        // Create data
+        let data: Vec<u8> = (0..total_bytes).map(|i| (i % 256) as u8).collect();
+
+        let options = FountainEncoderOptions::default().with_block_size(1000);
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "large_file.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            true,  // part_based_mode
+            part_size,
+            None,
+        );
+
+        let (_, _, total_parts, _) = encoder.get_part_info();
+        // Ceiling division: (1,300,000 + 512,000 - 1) / 512,000 = 3
+        assert_eq!(total_parts, 3, "Should have 3 parts for uneven split");
+
+        // Verify we can process all 3 parts
+        for part_idx in 0..3 {
+            // Should be able to generate chunks from this part
+            let chunk = encoder.generate_chunk().expect(&format!("Should generate chunk for part {}", part_idx));
+            assert!(!chunk.data.is_empty(), "Part {} should have data", part_idx);
+
+            // Move to next part if not the last
+            if part_idx < 2 {
+                assert!(encoder.move_to_next_part(), "Should move to next part");
+            }
+        }
+
+        // Try to move beyond last part (should fail)
+        assert!(!encoder.move_to_next_part(), "Should not move past last part");
+    }
+
+    #[test]
     fn test_part_based_mode_move_to_next_part_updates_available_blocks() {
         let data = vec![0u8; 1000];
         let options = FountainEncoderOptions::default();
