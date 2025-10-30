@@ -10,7 +10,7 @@ let wasmInitPromise: Promise<void> | null = null
  * Includes bounded retry (2 attempts) with short delay
  * @throws Error with code 'WASM_INIT_FAILED' if initialization fails
  */
-async function ensureWasmInit(): Promise<void> {
+export async function ensureWasmInit(): Promise<void> {
   if (wasmInitialized) return
 
   if (!wasmInitPromise) {

@@ -402,6 +402,20 @@ pub fn crc32(data: Uint8Array) -> String {
     checksum::crc32_to_hex(&checksum_bytes)
 }
 
+/// Compute CRC32 checksum and return as raw bytes (4 bytes, big-endian)
+///
+/// # Arguments
+/// * `data` - The data to checksum as a Uint8Array
+///
+/// # Returns
+/// A Uint8Array containing the 4 bytes of the CRC32 checksum in big-endian format
+#[wasm_bindgen]
+pub fn crc32_bytes(data: Uint8Array) -> Uint8Array {
+    let data_vec = data.to_vec();
+    let checksum_bytes = checksum::crc32(&data_vec);
+    Uint8Array::from(&checksum_bytes[..])
+}
+
 // ========================================
 // Binary Chunk Parsing Functions
 // ========================================

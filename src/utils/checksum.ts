@@ -1,5 +1,5 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
-import { crc32 } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import { ensureWasmInit } from './fountainCodeWasm'
 
 // Checksum utilities using Rust WASM for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
@@ -12,7 +12,10 @@ export async function computeChecksum(
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
   if (algorithm === 'crc32') {
-    // Use Rust WASM function
+    // Ensure WASM is initialized before using it
+    await ensureWasmInit()
+    // Use Rust WASM function - import here after init to ensure binding is available
+    const { crc32 } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
     return crc32(data)
   }
   // SHA-256 path using browser WebCrypto
@@ -22,6 +25,19 @@ export async function computeChecksum(
   let hex = ''
   for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
   return hex
+}
+
+/**
+ * Compute CRC32 checksum and return as raw bytes (4 bytes, big-endian)
+ * For use in binary data formats where raw bytes are needed instead of hex strings
+ */
+export async function computeChecksumBytes(dataInput: Uint8Array | ArrayBuffer): Promise<Uint8Array> {
+  const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
+  // Ensure WASM is initialized before using it
+  await ensureWasmInit()
+  // Use Rust WASM function - import here after init to ensure binding is available
+  const { crc32_bytes } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
+  return crc32_bytes(data)
 }
 
 export function normalizeConfirmationCode(code: string): string {
