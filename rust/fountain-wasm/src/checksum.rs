@@ -1,6 +1,12 @@
 use crc32fast::Hasher;
 
-/// Compute CRC32 checksum and return as lowercase hex string
+/// Compute CRC32 checksum and return as lowercase hex string (8 characters)
+///
+/// # Arguments
+/// * `data` - The data to checksum
+///
+/// # Returns
+/// Lowercase hexadecimal string representation of CRC32 (e.g., "0d4a1185")
 pub fn crc32(data: &[u8]) -> String {
     let mut hasher = Hasher::new();
     hasher.update(data);

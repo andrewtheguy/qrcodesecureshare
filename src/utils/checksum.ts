@@ -1,38 +1,10 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
-import wasmInit from '@/wasm/fountain_wasm'
+import { crc32 } from '../../rust/fountain-wasm/pkg/fountain_wasm'
 
 // Checksum utilities using Rust WASM for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
-
-// WASM initialization state
-let wasmInitialized = false
-let wasmInitPromise: Promise<void> | undefined = undefined
-
-/**
- * Ensures WASM module is initialized before use
- */
-async function ensureWasmInit(): Promise<void> {
-  if (wasmInitialized) return
-
-  if (!wasmInitPromise) {
-    wasmInitPromise = (async () => {
-      try {
-        await wasmInit()
-        wasmInitialized = true
-      } catch (err) {
-        console.error('[WASM Init] Failed to initialize checksum WASM:', err)
-        // Reset the promise to allow retries on subsequent calls
-        wasmInitPromise = undefined
-        wasmInitialized = false
-        throw new Error('Failed to initialize WASM module for checksums')
-      }
-    })()
-  }
-
-  await wasmInitPromise
-}
 
 export async function computeChecksum(
   dataInput: Uint8Array | ArrayBuffer,
@@ -40,9 +12,7 @@ export async function computeChecksum(
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
   if (algorithm === 'crc32') {
-    // Ensure WASM is initialized before calling crc32
-    await ensureWasmInit()
-    const { crc32 } = await import('@/wasm/fountain_wasm')
+    // Use Rust WASM function
     return crc32(data)
   }
   // SHA-256 path using browser WebCrypto

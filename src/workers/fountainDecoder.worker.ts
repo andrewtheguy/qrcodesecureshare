@@ -3,6 +3,7 @@
 import { FountainDecoder } from '../utils/fountainCodeWasm';
 import type { FountainMetadata, FountainChunk } from '../utils/fountainCodeWasm';
 import { computeChecksum, type ChecksumAlgorithm } from '../utils/checksum';
+import { parseBinaryChunk, createChunkKey, validateChunkChecksum, crc32 } from '../../rust/fountain-wasm/pkg/fountain_wasm';
 
 /**
  * Ensures the decoder is initialized before use
@@ -11,17 +12,6 @@ function ensureDecoder(): void {
     if (!decoder) {
         throw new Error('Decoder not initialized');
     }
-}
-
-/**
- * Creates a composite dedup key for chunk identification
- * Combines seed, degree, first index, and last index to prevent false positives
- * from seed rollover or long sessions
- */
-function createChunkKey(chunk: { seed: number; degree: number; indices: number[] }): string {
-    const firstIdx = chunk.indices.length > 0 ? chunk.indices[0] : -1;
-    const lastIdx = chunk.indices.length > 0 ? chunk.indices[chunk.indices.length - 1] : -1;
-    return `${chunk.seed}:${chunk.degree}:${firstIdx}:${lastIdx}`;
 }
 
 /**
@@ -55,106 +45,6 @@ let partBasedMode = false;
 let partSize = 0;
 const expectedPartChecksums = new Map<number, string>(); // Per-part checksums from sender, keyed by part index
 let lastPartCompleteCheck = 0; // Throttle part completion checks
-
-/**
- * Parses binary chunk data into a FountainChunk object
- */
-function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: number; partInfo?: { currentPart: number; totalParts: number; partChecksum: string } } {
-    // Check minimum length for header (magic 2, seed 2, degree 1, numIndices 1)
-    if (bytes.length < 6) {
-        throw new Error('Chunk too short: missing header');
-    }
-
-    // Validate magic bytes [0xFF][0xFD]
-    if (bytes[0] !== 0xFF || bytes[1] !== 0xFD) {
-        throw new Error('Invalid magic bytes');
-    }
-
-    // Extract seed (2 bytes, big-endian)
-    const seed = (bytes[2] << 8) | bytes[3];
-
-    // Extract degree (1 byte)
-    const degree = bytes[4];
-
-    // Extract numIndices (1 byte)
-    const numIndices = bytes[5];
-
-    // Validate numIndices
-    if (numIndices < 0 || numIndices > 1000) {
-        throw new Error('Invalid numIndices: ' + numIndices);
-    }
-
-    // Ensure metadata is initialized and validate against total source blocks
-    if (!metadata) throw new Error('Decoder metadata not initialized');
-    if (numIndices > metadata.totalSourceBlocks) throw new Error('Invalid numIndices: exceeds total source blocks');
-
-    // Check length for indices and checksum
-    const expectedMinLength = 6 + numIndices * 2 + 4;
-    if (bytes.length < expectedMinLength) {
-        throw new Error('Chunk too short: missing indices or checksum');
-    }
-
-    // Extract indices (2 bytes each, big-endian)
-    const indices: number[] = [];
-    let offset = 6;
-    for (let i = 0; i < numIndices; i++) {
-        if (offset + 1 >= bytes.length) {
-            throw new Error('Unexpected end of data while reading indices');
-        }
-        const index = (bytes[offset] << 8) | bytes[offset + 1];
-        indices.push(index);
-        offset += 2;
-    }
-
-    // Try to parse part metadata if present
-    // Part metadata format: currentPart(2) + totalParts(2) + partChecksum(4) = 8 bytes
-    let partInfo: { currentPart: number; totalParts: number; partChecksum: string } | undefined;
-    const remainingBytes = bytes.length - offset - 4; // Subtract 4 for final checksum
-
-    // Check if there's at least 8 bytes for part metadata
-    // (part metadata comes before chunk data)
-    if (partBasedMode && remainingBytes >= 8) {
-        // Extract part metadata
-        const currentPart = (bytes[offset] << 8) | bytes[offset + 1];
-        offset += 2;
-
-        const totalParts = (bytes[offset] << 8) | bytes[offset + 1];
-        offset += 2;
-
-        // Extract part checksum (4 bytes as hex string)
-        let partChecksumHex = '';
-        for (let i = 0; i < 4; i++) {
-            partChecksumHex += bytes[offset++].toString(16).padStart(2, '0');
-        }
-
-        partInfo = {
-            currentPart,
-            totalParts,
-            partChecksum: partChecksumHex
-        };
-
-        // Store expected checksum for this part (indexed by part number)
-        expectedPartChecksums.set(currentPart, partChecksumHex);
-
-        console.log(`[Worker] Parsed part metadata: part ${currentPart + 1}/${totalParts}, checksum: ${partChecksumHex}`);
-    }
-
-    // Extract data (between current offset and checksum)
-    const checksumStart = bytes.length - 4;
-    if (checksumStart < offset) {
-        throw new Error('Invalid checksum position: checksumStart < offset');
-    }
-    const data = bytes.slice(offset, checksumStart);
-
-    return {
-        seed,
-        degree,
-        indices,
-        data,
-        checksumStart,
-        partInfo
-    };
-}
 
 // Message handler
 self.onmessage = async (event: MessageEvent) => {
@@ -216,10 +106,21 @@ self.onmessage = async (event: MessageEvent) => {
             case 'processChunk': {
                 ensureDecoder();
                 const { binaryData } = data as { binaryData: Uint8Array };
-                const chunk = parseBinaryChunk(binaryData);
 
-                // Check for duplicate chunk using composite key
-                const chunkKey = createChunkKey(chunk);
+                // Parse binary chunk in Rust (includes automatic part metadata extraction)
+                let parsedChunk: FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: string } };
+                try {
+                    parsedChunk = parseBinaryChunk(binaryData, partBasedMode, metadata.totalSourceBlocks) as FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: string } };
+                } catch (err) {
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    self.postMessage({ type: 'error', id, error: `Parse error: ${errorMessage}` });
+                    break;
+                }
+
+                const chunk = parsedChunk;
+
+                // Check for duplicate chunk using Rust-generated key
+                const chunkKey = createChunkKey(chunk.seed, chunk.degree, chunk.indices);
                 if (receivedChunks.has(chunkKey)) {
                     self.postMessage({ type: 'chunkProcessed', id, duplicate: true, seed: chunk.seed });
                     break;
@@ -228,22 +129,33 @@ self.onmessage = async (event: MessageEvent) => {
                 // Validate checksum over complete chunk: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
                 // This is everything except magic bytes (first 2 bytes) and checksum itself (last 4 bytes)
                 const checksumPayload = binaryData.slice(2, chunk.checksumStart);
-                const expectedChecksumStr = Array.from(binaryData.slice(chunk.checksumStart))
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
-                const computedChecksum = await computeChecksum(checksumPayload, 'crc32');
-                const ok = computedChecksum === expectedChecksumStr;
-                if (!ok) {
-                    console.error(`[Worker] Checksum mismatch! Expected: ${expectedChecksumStr}, Got: ${computedChecksum}`);
-                    console.error(`[Worker] Payload length: ${checksumPayload.length}, checksumStart: ${chunk.checksumStart}, total: ${binaryData.length}`);
-                    console.error(`[Worker] partBasedMode: ${partBasedMode}, partInfo:`, chunk.partInfo);
-                    self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
+                const computedChecksum = crc32(checksumPayload);
+
+                // Validate using Rust function
+                try {
+                    const checksumValid = validateChunkChecksum(binaryData, chunk.checksumStart, computedChecksum);
+                    if (!checksumValid) {
+                        console.error(`[Worker] Checksum mismatch! Computed: ${computedChecksum}, checksumStart: ${chunk.checksumStart}`);
+                        console.error(`[Worker] Payload length: ${checksumPayload.length}, total: ${binaryData.length}`);
+                        console.error(`[Worker] partBasedMode: ${partBasedMode}, partMetadata:`, chunk.partMetadata);
+                        self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
+                        break;
+                    }
+                } catch (err) {
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    self.postMessage({ type: 'error', id, error: `Checksum validation error: ${errorMessage}` });
                     break;
                 }
 
                 // Add to received chunks using composite key
                 receivedChunks.add(chunkKey);
                 processedSeeds.add(chunk.seed);
+
+                // Store part checksum if present
+                if (chunk.partMetadata) {
+                    expectedPartChecksums.set(chunk.partMetadata.currentPart, chunk.partMetadata.partChecksum);
+                    console.log(`[Worker] Parsed part metadata: part ${chunk.partMetadata.currentPart + 1}/${chunk.partMetadata.totalParts}, checksum: ${chunk.partMetadata.partChecksum}`);
+                }
 
                 // Add chunk to decoder
                 decoder!.addChunk(chunk);
@@ -305,7 +217,7 @@ self.onmessage = async (event: MessageEvent) => {
                     const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific progress
-                    let partProgress = calculatePartProgress(decoder!, partBasedMode);
+                    const partProgress = calculatePartProgress(decoder!, partBasedMode);
                     let currentPartDecodedBlocks: number | undefined;
                     let currentPartTotalBlocks: number | undefined;
                     let currentPartIndex: number | undefined;
@@ -358,7 +270,7 @@ self.onmessage = async (event: MessageEvent) => {
                     const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific info
-                    let partProgress = calculatePartProgress(decoder!, partBasedMode);
+                    const partProgress = calculatePartProgress(decoder!, partBasedMode);
                     let currentPartIndex: number | undefined;
                     let totalParts: number | undefined;
                     let currentPartDecodedBlocks: number | undefined;

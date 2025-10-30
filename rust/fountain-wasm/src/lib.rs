@@ -2,6 +2,7 @@ mod checksum;
 mod decoder;
 mod distribution;
 mod encoder;
+mod parser;
 mod rng;
 mod types;
 mod xor;
@@ -13,6 +14,7 @@ use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
 pub use types::{FountainChunk, FountainMetadata};
+pub use parser::PartMetadata;
 
 /// WASM-exported Fountain Encoder
 #[wasm_bindgen]
@@ -425,4 +427,122 @@ impl WasmFountainDecoder {
 pub fn crc32(data: Uint8Array) -> String {
     let data_vec = data.to_vec();
     checksum::crc32(&data_vec)
+}
+
+// ========================================
+// Binary Chunk Parsing Functions
+// ========================================
+
+/// Parse binary chunk data into a FountainChunk with metadata
+///
+/// # Arguments
+/// * `bytes` - The binary chunk data as Uint8Array
+/// * `part_based_mode` - Whether part-based mode is enabled
+/// * `total_source_blocks` - Total number of source blocks (for validation)
+///
+/// # Returns
+/// A JS object with structure:
+/// ```javascript
+/// {
+///   seed: number,
+///   degree: number,
+///   indices: number[],
+///   data: Uint8Array,
+///   checksumStart: number,
+///   partMetadata?: {
+///     currentPart: number,
+///     totalParts: number,
+///     partChecksum: string
+///   }
+/// }
+/// ```
+///
+/// # Errors
+/// Returns JS error if parsing fails
+#[wasm_bindgen(js_name = parseBinaryChunk)]
+pub fn parse_binary_chunk_wasm(
+    bytes: Uint8Array,
+    part_based_mode: bool,
+    total_source_blocks: usize,
+) -> Result<JsValue, JsValue> {
+    let bytes_vec = bytes.to_vec();
+    let parsed = parser::parse_binary_chunk(&bytes_vec, part_based_mode, total_source_blocks)
+        .map_err(|e| JsValue::from_str(&e))?;
+
+    // Create JS object with chunk data
+    let obj = js_sys::Object::new();
+
+    // Add chunk fields
+    js_sys::Reflect::set(&obj, &"seed".into(), &JsValue::from(parsed.chunk.seed)).ok();
+    js_sys::Reflect::set(&obj, &"degree".into(), &JsValue::from(parsed.chunk.degree as u32)).ok();
+
+    // Add indices as array
+    let indices_array = Array::new();
+    for &idx in &parsed.chunk.indices {
+        indices_array.push(&JsValue::from(idx as u32));
+    }
+    js_sys::Reflect::set(&obj, &"indices".into(), &indices_array).ok();
+
+    // Add data as Uint8Array
+    let data_array = Uint8Array::new_with_length(parsed.chunk.data.len() as u32);
+    data_array.copy_from(&parsed.chunk.data);
+    js_sys::Reflect::set(&obj, &"data".into(), &data_array).ok();
+
+    // Add checksum position
+    js_sys::Reflect::set(&obj, &"checksumStart".into(), &JsValue::from(parsed.checksum_start as u32)).ok();
+
+    // Add part metadata if present
+    if let Some(part_meta) = parsed.part_metadata {
+        let part_obj = js_sys::Object::new();
+        js_sys::Reflect::set(&part_obj, &"currentPart".into(), &JsValue::from(part_meta.current_part)).ok();
+        js_sys::Reflect::set(&part_obj, &"totalParts".into(), &JsValue::from(part_meta.total_parts)).ok();
+        js_sys::Reflect::set(&part_obj, &"partChecksum".into(), &JsValue::from_str(&part_meta.part_checksum)).ok();
+        js_sys::Reflect::set(&obj, &"partMetadata".into(), &part_obj).ok();
+    }
+
+    Ok(obj.into())
+}
+
+/// Create a composite dedup key for chunk identification
+///
+/// # Arguments
+/// * `seed` - Chunk seed
+/// * `degree` - Chunk degree
+/// * `indices` - Chunk indices as array
+///
+/// # Returns
+/// A string key in format "seed:degree:firstIdx:lastIdx"
+#[wasm_bindgen(js_name = createChunkKey)]
+pub fn create_chunk_key_wasm(seed: u32, degree: u32, indices: Array) -> Result<String, JsValue> {
+    let mut indices_vec = Vec::new();
+    for i in 0..indices.length() {
+        let val = indices.get(i);
+        let num = val.as_f64().ok_or_else(|| JsValue::from_str("Invalid index value"))?;
+        indices_vec.push(num as usize);
+    }
+
+    Ok(parser::create_chunk_key(seed, degree as usize, &indices_vec))
+}
+
+/// Validate a CRC32 checksum within binary chunk data
+///
+/// # Arguments
+/// * `bytes` - The full binary chunk data as Uint8Array
+/// * `checksum_start` - Byte offset where the checksum begins
+/// * `computed_checksum` - The computed checksum as a hex string (8 characters, lowercase)
+///
+/// # Returns
+/// `true` if checksums match, `false` if they don't
+///
+/// # Errors
+/// Returns JS error if validation setup fails
+#[wasm_bindgen(js_name = validateChunkChecksum)]
+pub fn validate_chunk_checksum_wasm(
+    bytes: Uint8Array,
+    checksum_start: usize,
+    computed_checksum: String,
+) -> Result<bool, JsValue> {
+    let bytes_vec = bytes.to_vec();
+    parser::validate_chunk_checksum(&bytes_vec, checksum_start, &computed_checksum)
+        .map_err(|e| JsValue::from_str(&e))
 }
