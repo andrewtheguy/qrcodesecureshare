@@ -18,7 +18,8 @@
       "Bash(python3:*)",
       "Read(//Users/it3/codes/**)",
       "Bash(cat:*)",
-      "Bash(wasm-pack build:*)"
+      "Bash(wasm-pack build:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

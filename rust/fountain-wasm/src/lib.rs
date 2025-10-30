@@ -6,6 +6,9 @@ mod rng;
 mod types;
 mod xor;
 
+#[cfg(test)]
+mod tests;
+
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
