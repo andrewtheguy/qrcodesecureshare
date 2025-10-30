@@ -55,6 +55,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [bufferLength, setBufferLength] = useState(0) // Separate state for UI display
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
   const [workerFallbackHint, setWorkerFallbackHint] = useState('')
+  const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
@@ -111,6 +112,26 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onBufferUpdate(0)
   }, [onBufferUpdate])
 
+  // Helper function to calculate expected chunk size
+  const calculateExpectedChunkSize = useCallback((
+    chunk: FountainChunk,
+    partInfo: { partBasedMode: boolean }
+  ): number => {
+    const numIndices = chunk.indices.length
+    const partMetadataSize = partInfo.partBasedMode ? 8 : 0 // currentPart(2) + totalParts(2) + partChecksum(4)
+
+    return (
+      2 + // magic bytes
+      2 + // seed
+      1 + // degree
+      1 + // numIndices
+      (numIndices * 2) + // indices (2 bytes each)
+      partMetadataSize + // part metadata (if enabled)
+      chunk.data.length + // chunk data
+      4 // CRC32 checksum (4 bytes)
+    )
+  }, [])
+
   // Sync the actual chunk count ref to state periodically (every 500ms / half second) to avoid excessive re-renders
   useEffect(() => {
     const interval = setInterval(() => {
@@ -164,6 +185,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // Reset on session change
   useEffect(() => {
     setChunkCount(0)
+    setOversizedChunkCount(0)
     clearBuffer()
   }, [sessionId, clearBuffer])
 
@@ -361,23 +383,17 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             try {
               const chunk = encoder.generateChunk()
               const partInfo = encoder.getPartInfo()
-
               const numIndices = chunk.indices.length
-              // Calculate expected size with optional part metadata
-              const partMetadataSize = partInfo.partBasedMode ? (2 + 2 + 4) : 0 // currentPart(2) + totalParts(2) + partChecksum(4)
-              const expectedSize =
-                2 + // magic bytes
-                2 + // seed
-                1 + // degree
-                1 + // numIndices
-                (numIndices * 2) + // indices (2 bytes each)
-                partMetadataSize + // part metadata (if enabled)
-                chunk.data.length + // chunk data
-                4 // CRC32 checksum (4 bytes)
 
+              // Calculate expected size using shared helper
+              const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
+
+              // Track oversized chunks but continue with generation
               if (expectedSize > MAX_QR_DATA_SIZE) {
-                attempt++
-                continue
+                setOversizedChunkCount(prev => prev + 1)
+                if (import.meta.env.DEV) {
+                  console.info(`[Buffer] Chunk size ${expectedSize} > ${MAX_QR_DATA_SIZE} (generating anyway)`)
+                }
               }
 
               const binaryData = new Uint8Array(expectedSize)
@@ -484,7 +500,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, MAX_QR_DATA_SIZE, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -498,6 +514,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Generate next fountain-coded chunk (internally tuned distribution + doping)
         const chunk = encoder.generateChunk()
         const partInfo = encoder.getPartInfo()
+        const numIndices = chunk.indices.length
 
         // Binary format for fountain chunk:
         // [0xFF][0xFD] - magic bytes for fountain chunk
@@ -511,29 +528,15 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // [chunk data...]
         // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+partMetadata+data
 
-        const numIndices = chunk.indices.length
-        const partMetadataSize = partInfo.partBasedMode ? (2 + 2 + 4) : 0 // currentPart(2) + totalParts(2) + partChecksum(4)
-        const expectedSize =
-          2 + // magic bytes
-          2 + // seed
-          1 + // degree
-          1 + // numIndices
-          (numIndices * 2) + // indices (2 bytes each)
-          partMetadataSize + // part metadata (if enabled)
-          chunk.data.length + // chunk data
-          4 // CRC32 checksum (4 bytes)
+        // Calculate expected size using shared helper
+        const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
 
-        // Guardrail test for worst-case data QR size (dev-only)
-        if (import.meta.env.DEV) {
-          const maxExpectedSize = partInfo.partBasedMode ? 1098 : 1090 // 8 extra bytes for part metadata
-          console.assert(expectedSize <= maxExpectedSize, `QR size ${expectedSize} exceeds limit ${maxExpectedSize} for blockSize=1000, maxDegree<=40`)
-        }
-
-        // Pre-check: Skip chunks that are too large before attempting QR generation
+        // Track oversized chunks but continue with generation
         if (expectedSize > MAX_QR_DATA_SIZE) {
-          console.warn(`Pre-check: Chunk size ${expectedSize} bytes exceeds limit ${MAX_QR_DATA_SIZE}, skipping (attempt ${attempt + 1}/${maxRetries})`)
-          attempt++
-          continue
+          setOversizedChunkCount(prev => prev + 1)
+          if (import.meta.env.DEV) {
+            console.info(`[Direct] Chunk size ${expectedSize} > ${MAX_QR_DATA_SIZE} (generating anyway)`)
+          }
         }
 
         const binaryData = new Uint8Array(expectedSize)
@@ -761,6 +764,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 {chunkCount >= estimatedChunksNeeded
                   ? '✅ Receiver should now be able to decode'
                   : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
+              </p>
+            )}
+            {oversizedChunkCount > 0 && (
+              <p className="text-muted-foreground">
+                ℹ️ {oversizedChunkCount} chunk{oversizedChunkCount === 1 ? '' : 's'} exceeded theoretical size limit
               </p>
             )}
           </div>
