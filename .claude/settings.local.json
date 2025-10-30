@@ -15,7 +15,10 @@
       "Bash(curl:*)",
       "Bash(npm run build:wasm:*)",
       "Bash(cargo test:*)",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Read(//Users/it3/codes/**)",
+      "Bash(cat:*)",
+      "Bash(wasm-pack build:*)"
     ],
     "deny": [],
     "ask": []
