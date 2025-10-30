@@ -29,7 +29,8 @@ interface OfflineQRModeProps {
 }
 
 export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
-export const MAX_FILE_SIZE_FOUNTAIN = 2 * 1024 * 1024
+export const MAX_FILE_SIZE_FOUNTAIN_FEEDBACK = 5 * 1024 * 1024  // 5MB for feedback mode
+export const MAX_FILE_SIZE_FOUNTAIN_SIMPLE = 2 * 1024 * 1024    // 2MB for simple mode
 
 type TransferMode = 'sequential' | 'fountain-feedback' | 'fountain-simple'
 
@@ -203,9 +204,12 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
      if (mode === 'sequential') {
        maxSize = MAX_FILE_SIZE_SEQUENTIAL
        modeName = 'Sequential'
+     } else if (mode === 'fountain-feedback') {
+       maxSize = MAX_FILE_SIZE_FOUNTAIN_FEEDBACK
+       modeName = 'Fountain (Recommended)'
      } else {
-       maxSize = MAX_FILE_SIZE_FOUNTAIN
-       modeName = 'Fountain'
+       maxSize = MAX_FILE_SIZE_FOUNTAIN_SIMPLE
+       modeName = 'Fountain (Basic)'
      }
 
      if (file.size > maxSize) {
@@ -218,6 +222,12 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
     if (mode === 'fountain-feedback') {
       setFeedbackEnabled(true)
+      // Set adaptive default part size based on file size
+      if (file.size > 1024 * 1024) {
+        setPartSizeOption('LARGE')  // Files > 1MB default to 1MB part size
+      } else {
+        setPartSizeOption('MEDIUM') // Files <= 1MB default to 512KB part size
+      }
       // Go to part size configuration step instead of metadata
       setStep('partSize')
     } else if (mode === 'fountain-simple') {
@@ -353,7 +363,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               • Generates random coded chunks with windowing<br/>
               • Receiver needs ~105-115% of source blocks<br/>
               • Best for reliable communication<br/>
-              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN)}
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}
             </div>
           </Button>
 
@@ -368,6 +378,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               • Uses pure random chunk generation (no feedback)<br/>
               • Transfer completes by one-way communication without feedback from receiver to sender<br/>
               • Might be slow for large files<br/>
+              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN_SIMPLE)}
             </div>
           </Button>
 
@@ -399,12 +410,15 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
   // Part Size Configuration screen (for fountain-feedback mode)
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
+    const isLargeFile = file && file.size > 1024 * 1024
+    const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
+
     return (
       <Card>
         <CardHeader>
           <CardTitle>Part Size Configuration</CardTitle>
           <p className="text-sm text-muted-foreground mt-2">
-            Files are split into parts for efficient transfer with checksum validation. Choose a part size based on your file size and connection stability.
+            Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel} based on your file size.</strong>
           </p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -420,21 +434,21 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
               <RadioGroupItem value="SMALL" id="part-size-small" className="mt-1" />
               <div className="flex flex-col flex-1">
                 <Label htmlFor="part-size-small" className="text-sm font-medium cursor-pointer">256 KB</Label>
-                <p className="text-xs text-muted-foreground">Best for smaller files or slower connections</p>
+                <p className="text-xs text-muted-foreground">For very slow devices or poor camera quality</p>
               </div>
             </div>
             <div className="flex items-start space-x-2">
               <RadioGroupItem value="MEDIUM" id="part-size-medium" className="mt-1" />
               <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB (Default)</Label>
-                <p className="text-xs text-muted-foreground">Balanced performance for most files</p>
+                <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB{!isLargeFile ? ' (Default for your file)' : ''}</Label>
+                <p className="text-xs text-muted-foreground">Balanced performance for moderate devices</p>
               </div>
             </div>
             <div className="flex items-start space-x-2">
               <RadioGroupItem value="LARGE" id="part-size-large" className="mt-1" />
               <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-large" className="text-sm font-medium cursor-pointer">1024 KB (1 MB)</Label>
-                <p className="text-xs text-muted-foreground">Best for large files with stable connections</p>
+                <Label htmlFor="part-size-large" className="text-sm font-medium cursor-pointer">1024 KB (1 MB){isLargeFile ? ' (Default for your file)' : ''}</Label>
+                <p className="text-xs text-muted-foreground">For devices with good QR decoding speed</p>
               </div>
             </div>
           </RadioGroup>
