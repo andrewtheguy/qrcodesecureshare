@@ -8,6 +8,7 @@
     "build:js": "tsc -b && vite build",
     "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
     "build": "npm run build:wasm && npm run build:js",
+    "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
@@ -53,6 +54,7 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
-    "vite-plugin-eslint": "^1.8.1"
+    "vite-plugin-eslint": "^1.8.1",
+    "wasm-pack": "^0.13.1"
   }
 }
