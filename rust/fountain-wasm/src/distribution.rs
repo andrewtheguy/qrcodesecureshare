@@ -1,5 +1,3 @@
-use rand::Rng;
-
 /// Build a robust soliton distribution for fountain codes
 /// Returns a vector of probabilities for each degree (index 0 = degree 1)
 pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> Vec<f64> {
@@ -43,32 +41,6 @@ pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> 
     mu
 }
 
-/// Sample a degree from the distribution with doping for low degrees
-pub fn sample_degree_with_doping<R: Rng>(
-    rng: &mut R,
-    distribution: &[f64],
-    degree1_rate: f64,
-    low_degree_rate: f64,
-) -> usize {
-    let roll = rng.gen::<f64>();
-
-    // Force degree 1 with probability degree1_rate
-    if roll < degree1_rate {
-        return 1;
-    }
-
-    // Force degree 2-3 with probability low_degree_rate (favor degree 2)
-    if roll < degree1_rate + low_degree_rate {
-        if distribution.len() >= 2 {
-            return if rng.gen::<f64>() < 0.6 { 2 } else { 3 };
-        }
-        return 2;
-    }
-
-    // Sample from robust soliton
-    sample_from_distribution(rng, distribution)
-}
-
 /// Sample a degree from the distribution with doping for low degrees using LCG's next() method
 /// This matches the TypeScript sequence exactly by using rng.next() for all random rolls
 pub fn sample_degree_with_doping_lcg(
@@ -94,22 +66,6 @@ pub fn sample_degree_with_doping_lcg(
 
     // Sample from robust soliton using LCG's next()
     sample_from_distribution_lcg(rng, distribution)
-}
-
-/// Sample from a discrete probability distribution
-fn sample_from_distribution<R: Rng>(rng: &mut R, distribution: &[f64]) -> usize {
-    let roll = rng.gen::<f64>();
-    let mut cumulative = 0.0;
-
-    for (i, &prob) in distribution.iter().enumerate() {
-        cumulative += prob;
-        if roll < cumulative {
-            return i + 1; // degree is 1-indexed
-        }
-    }
-
-    // Fallback to last degree if we somehow exceed cumulative
-    distribution.len()
 }
 
 /// Sample from a discrete probability distribution using LCG's next() method
@@ -176,7 +132,7 @@ mod tests {
         let mut rng = LcgRandom::new(42);
 
         for _ in 0..100 {
-            let degree = sample_degree_with_doping(&mut rng, &dist, 0.08, 0.18);
+            let degree = sample_degree_with_doping_lcg(&mut rng, &dist, 0.08, 0.18);
             assert!(degree >= 1 && degree <= 20);
         }
     }

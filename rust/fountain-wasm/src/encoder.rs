@@ -32,6 +32,11 @@ impl FountainEncoder {
         let block_size = options.block_size;
         let total_size = data.len();
 
+        // Validate input: reject empty data to ensure at least one block is created
+        if total_size == 0 {
+            panic!("Cannot create FountainEncoder with empty data: at least one byte is required");
+        }
+
         // Split data into blocks
         let mut blocks = Vec::new();
         for chunk in data.chunks(block_size) {
@@ -230,6 +235,21 @@ mod tests {
         assert_eq!(chunk1.degree, chunk2.degree);
         assert_eq!(chunk1.indices, chunk2.indices);
         assert_eq!(chunk1.data, chunk2.data);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot create FountainEncoder with empty data")]
+    fn test_empty_data_rejected() {
+        let data = vec![];
+        let options = FountainEncoderOptions::default();
+        FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            None,
+        );
     }
 
     #[test]
