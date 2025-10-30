@@ -97,7 +97,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           console.log('[FountainQRSender] Computing part checksums...')
           await fountainEncoder.computePartChecksums(bytes)
           const partInfo = fountainEncoder.getPartInfo()
-          console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+          if (partInfo.partBasedMode) {
+            console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+          }
         }
 
         setEncoder(fountainEncoder)

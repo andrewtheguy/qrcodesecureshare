@@ -90,6 +90,27 @@ export interface PartBasedModeConfig {
 }
 
 /**
+ * Part info type (discriminated union based on partBasedMode)
+ * - When part-based mode is disabled: checksums don't exist
+ * - When part-based mode is enabled: checksums are always present (may be empty)
+ */
+export type PartInfo =
+  | {
+      partBasedMode: false
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+    }
+  | {
+      partBasedMode: true
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+      currentPartChecksum: string | undefined
+      partChecksums: string[]
+    }
+
+/**
  * Fountain encoder options (all fields required)
  * These are algorithm parameters, not session settings
  * Matches the Rust FountainEncoderOptions structure
@@ -193,21 +214,33 @@ export class FountainWasmEncoder {
    * Convenience method: Get part information
    * Same as encoder.wasm.getPartInfo()
    */
-  getPartInfo(): {
-    partBasedMode: boolean;
-    currentPartIndex: number;
-    totalParts: number;
-    partSize: number;
-    currentPartChecksum?: string;
-    partChecksums?: string[];
-  } {
-    return this.wasm.getPartInfo() as {
-      partBasedMode: boolean;
-      currentPartIndex: number;
-      totalParts: number;
-      partSize: number;
-      currentPartChecksum?: string;
-      partChecksums?: string[];
+  getPartInfo(): PartInfo {
+    const info = this.wasm.getPartInfo() as {
+      partBasedMode: boolean
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+      currentPartChecksum?: string
+      partChecksums?: string[]
+    }
+
+    // Ensure checksums are always arrays in part-based mode
+    if (info.partBasedMode) {
+      return {
+        partBasedMode: true,
+        currentPartIndex: info.currentPartIndex,
+        totalParts: info.totalParts,
+        partSize: info.partSize,
+        currentPartChecksum: info.currentPartChecksum,
+        partChecksums: info.partChecksums || []
+      }
+    }
+
+    return {
+      partBasedMode: false,
+      currentPartIndex: info.currentPartIndex,
+      totalParts: info.totalParts,
+      partSize: info.partSize
     }
   }
 
@@ -327,22 +360,31 @@ export class FountainWasmDecoder {
    * Convenience method: Get part info
    * Same as decoder.wasm.getPartInfo()
    */
-  getPartInfo(): {
-    partBasedMode: boolean;
-    currentPartIndex: number;
-    totalParts: number;
-    partSize: number;
-    currentPartChecksum?: string;
-    partChecksums?: string[];
-  } {
-    const partInfo = this.wasm.getPartInfo()
-    return partInfo as {
-      partBasedMode: boolean;
-      currentPartIndex: number;
-      totalParts: number;
-      partSize: number;
-      currentPartChecksum?: string;
-      partChecksums?: string[];
+  getPartInfo(): PartInfo {
+    const info = this.wasm.getPartInfo() as {
+      partBasedMode: boolean
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+    }
+
+    // Decoder doesn't have checksums, only encoder does
+    if (info.partBasedMode) {
+      return {
+        partBasedMode: true,
+        currentPartIndex: info.currentPartIndex,
+        totalParts: info.totalParts,
+        partSize: info.partSize,
+        currentPartChecksum: undefined,
+        partChecksums: []
+      }
+    }
+
+    return {
+      partBasedMode: false,
+      currentPartIndex: info.currentPartIndex,
+      totalParts: info.totalParts,
+      partSize: info.partSize
     }
   }
 
