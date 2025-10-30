@@ -1,4 +1,6 @@
-use crate::distribution::{build_robust_soliton, calculate_max_degree, sample_degree_with_doping_lcg};
+use crate::distribution::{
+    build_robust_soliton, calculate_max_degree, sample_degree_with_doping_lcg,
+};
 use crate::rng::{create_rng, select_indices_with_rng};
 use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
 use crate::xor::xor_blocks;
@@ -313,11 +315,7 @@ mod tests {
             let chunk = encoder.generate_chunk();
 
             // Validate seed
-            assert_eq!(
-                chunk.seed, seed,
-                "Seed mismatch for test seed {}",
-                seed
-            );
+            assert_eq!(chunk.seed, seed, "Seed mismatch for test seed {}", seed);
 
             // Validate degree
             assert_eq!(

@@ -259,7 +259,8 @@ impl FountainDecoder {
         }
 
         let part_start_byte = self.current_part_index * self.part_size;
-        let part_end_byte = ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
+        let part_end_byte =
+            ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
         let part_data_size = part_end_byte - part_start_byte;
 
         let mut result = Vec::with_capacity(part_data_size);
@@ -367,7 +368,8 @@ impl FountainDecoder {
     /// Helper: Get the block range for the current part
     fn get_current_part_block_range(&self) -> (usize, usize) {
         let part_start_byte = self.current_part_index * self.part_size;
-        let part_end_byte = ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
+        let part_end_byte =
+            ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
 
         let start_block = part_start_byte / self.metadata.block_size;
         let end_block = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size; // ceil division
@@ -538,8 +540,15 @@ mod tests {
         let decoded = decoder.get_decoded_data().unwrap();
 
         // Verify exact length matches original (not padded)
-        assert_eq!(decoded.len(), 7, "Decoded data should be exactly 7 bytes, not padded to block size");
-        assert_eq!(decoded, data, "Decoded data should exactly match original data");
+        assert_eq!(
+            decoded.len(),
+            7,
+            "Decoded data should be exactly 7 bytes, not padded to block size"
+        );
+        assert_eq!(
+            decoded, data,
+            "Decoded data should exactly match original data"
+        );
     }
 
     #[test]
@@ -590,7 +599,11 @@ mod tests {
 
                 // Verify part size (last part may be smaller)
                 if part_idx < total_parts - 1 {
-                    assert_eq!(part_data.len(), part_size, "Non-final part should be exactly part_size");
+                    assert_eq!(
+                        part_data.len(),
+                        part_size,
+                        "Non-final part should be exactly part_size"
+                    );
                 } else {
                     let expected_last_part_size = file_size - (part_idx * part_size);
                     assert_eq!(
@@ -620,6 +633,9 @@ mod tests {
             "Decoded data should be exactly {} bytes (original size), not padded",
             file_size
         );
-        assert_eq!(decoded, data, "Decoded data should exactly match original data");
+        assert_eq!(
+            decoded, data,
+            "Decoded data should exactly match original data"
+        );
     }
 }

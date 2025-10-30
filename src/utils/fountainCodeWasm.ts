@@ -87,6 +87,10 @@ export interface FountainEncoderOptions {
   seedOffset?: number
   fixedOverhead?: number
   partOverhead?: number
+  maxDegree?: number
+  degree1Rate?: number
+  lowDegreeRate?: number
+  maxQRDataSize?: number
 }
 
 /**
@@ -110,7 +114,11 @@ export class FountainWasmEncoder {
       options?.delta,
       options?.seedOffset,
       options?.fixedOverhead,
-      options?.partOverhead
+      options?.partOverhead,
+      options?.maxDegree,
+      options?.degree1Rate,
+      options?.lowDegreeRate,
+      options?.maxQRDataSize
     )
   }
 

@@ -80,7 +80,11 @@ export class FountainEncoder {
           delta: opts.delta,
           seedOffset: opts.seedOffset,
           fixedOverhead: opts.fixedOverhead,
-          partOverhead: opts.partOverhead
+          partOverhead: opts.partOverhead,
+          maxDegree: opts.maxDegree,
+          degree1Rate: opts.degree1Rate,
+          lowDegreeRate: opts.lowDegreeRate,
+          maxQRDataSize: opts.maxQRDataSize
         }
       )
     } catch (err) {

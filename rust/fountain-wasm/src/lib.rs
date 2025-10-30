@@ -5,8 +5,8 @@ mod rng;
 mod types;
 mod xor;
 
-use wasm_bindgen::prelude::*;
 use js_sys::{Array, Uint8Array};
+use wasm_bindgen::prelude::*;
 
 pub use types::{FountainChunk, FountainMetadata};
 
@@ -43,6 +43,10 @@ impl WasmFountainEncoder {
         seed_offset: Option<u32>,
         fixed_overhead: Option<usize>,
         part_overhead: Option<usize>,
+        max_degree: Option<usize>,
+        degree1_rate: Option<f64>,
+        low_degree_rate: Option<f64>,
+        max_qr_data_size: Option<usize>,
     ) -> Result<WasmFountainEncoder, JsValue> {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
@@ -64,8 +68,27 @@ impl WasmFountainEncoder {
         if let Some(po) = part_overhead {
             options = options.with_part_overhead(po);
         }
+        if let Some(md) = max_degree {
+            options = options.with_max_degree(md);
+        }
+        if let Some(d1) = degree1_rate {
+            options = options.with_degree1_rate(d1);
+        }
+        if let Some(lr) = low_degree_rate {
+            options = options.with_low_degree_rate(lr);
+        }
+        if let Some(max_qr) = max_qr_data_size {
+            options = options.with_max_qr_data_size(max_qr);
+        }
 
-        let encoder = encoder::FountainEncoder::new(data_vec, name, file_type, timestamp, options, seed_offset);
+        let encoder = encoder::FountainEncoder::new(
+            data_vec,
+            name,
+            file_type,
+            timestamp,
+            options,
+            seed_offset,
+        );
 
         Ok(WasmFountainEncoder { encoder })
     }
@@ -127,7 +150,9 @@ impl WasmFountainDecoder {
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
 
         let decoder = if part_based_mode == Some(true) {
-            let size = part_size.ok_or_else(|| JsValue::from_str("part_size is required when part_based_mode is true"))?;
+            let size = part_size.ok_or_else(|| {
+                JsValue::from_str("part_size is required when part_based_mode is true")
+            })?;
             decoder::FountainDecoder::with_part_mode(metadata, size)
         } else {
             decoder::FountainDecoder::new(metadata)
@@ -252,12 +277,28 @@ impl WasmFountainDecoder {
     /// Returns { partBasedMode, currentPartIndex, totalParts, partSize }
     #[wasm_bindgen(js_name = getPartInfo)]
     pub fn get_part_info(&self) -> JsValue {
-        let (part_based_mode, current_part_index, total_parts, part_size) = self.decoder.get_part_info();
+        let (part_based_mode, current_part_index, total_parts, part_size) =
+            self.decoder.get_part_info();
 
         let obj = js_sys::Object::new();
-        js_sys::Reflect::set(&obj, &"partBasedMode".into(), &JsValue::from(part_based_mode)).ok();
-        js_sys::Reflect::set(&obj, &"currentPartIndex".into(), &JsValue::from(current_part_index as u32)).ok();
-        js_sys::Reflect::set(&obj, &"totalParts".into(), &JsValue::from(total_parts as u32)).ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"partBasedMode".into(),
+            &JsValue::from(part_based_mode),
+        )
+        .ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"currentPartIndex".into(),
+            &JsValue::from(current_part_index as u32),
+        )
+        .ok();
+        js_sys::Reflect::set(
+            &obj,
+            &"totalParts".into(),
+            &JsValue::from(total_parts as u32),
+        )
+        .ok();
         js_sys::Reflect::set(&obj, &"partSize".into(), &JsValue::from(part_size as u32)).ok();
 
         obj.into()

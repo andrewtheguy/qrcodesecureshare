@@ -25,11 +25,7 @@ pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> 
     }
 
     // Combine and normalize
-    let mut mu: Vec<f64> = rho
-        .iter()
-        .zip(tau.iter())
-        .map(|(r, t)| r + t)
-        .collect();
+    let mut mu: Vec<f64> = rho.iter().zip(tau.iter()).map(|(r, t)| r + t).collect();
 
     let sum: f64 = mu.iter().sum();
     if sum > 0.0 {
@@ -98,7 +94,8 @@ pub fn calculate_max_degree(
     // Hard ceiling based on QR capacity constraints
     // Total size = fixed_overhead + part_overhead + (degree * 2) + block_size
     // Solve for degree: degree <= (max_qr_data_size - fixed_overhead - part_overhead - block_size) / 2
-    let available_space = max_qr_data_size.saturating_sub(fixed_overhead + part_overhead + block_size);
+    let available_space =
+        max_qr_data_size.saturating_sub(fixed_overhead + part_overhead + block_size);
     let qr_max = available_space / 2; // Each index costs 2 bytes
 
     // Adaptive ceiling based on k
@@ -143,10 +140,16 @@ mod tests {
         let part_overhead = 0; // non-part mode
 
         // Small k should give degree 8
-        assert_eq!(calculate_max_degree(10, 1000, 100, fixed_overhead, part_overhead), 8);
+        assert_eq!(
+            calculate_max_degree(10, 1000, 100, fixed_overhead, part_overhead),
+            8
+        );
 
         // Large k should be capped at 40
-        assert_eq!(calculate_max_degree(1000, 10000, 100, fixed_overhead, part_overhead), 40);
+        assert_eq!(
+            calculate_max_degree(1000, 10000, 100, fixed_overhead, part_overhead),
+            40
+        );
 
         // QR capacity should limit
         // Available space: 500 - 10 - 0 - 100 = 390, degree = 390 / 2 = 195
@@ -168,7 +171,12 @@ mod tests {
 
         // Verify formula: degree * 2 + block_size + fixed + part <= maxQR
         let total_size = (degree * 2) + 400 + fixed_overhead + part_overhead;
-        assert!(total_size <= 1000, "Generated degree {} produces size {} > 1000", degree, total_size);
+        assert!(
+            total_size <= 1000,
+            "Generated degree {} produces size {} > 1000",
+            degree,
+            total_size
+        );
     }
 
     #[test]
@@ -180,7 +188,8 @@ mod tests {
         let max_qr_size = 2953; // Typical QR code capacity
         let k = 100;
 
-        let degree = calculate_max_degree(k, max_qr_size, block_size, fixed_overhead, part_overhead);
+        let degree =
+            calculate_max_degree(k, max_qr_size, block_size, fixed_overhead, part_overhead);
 
         // Verify the generated degree respects the sender packing formula
         let packed_size = fixed_overhead + part_overhead + (degree * 2) + block_size;
@@ -193,7 +202,8 @@ mod tests {
         );
 
         // Calculate what the limits are
-        let available_space = max_qr_size.saturating_sub(fixed_overhead + part_overhead + block_size);
+        let available_space =
+            max_qr_size.saturating_sub(fixed_overhead + part_overhead + block_size);
         let qr_max = available_space / 2;
         let adaptive_max = ((2.5 * (k as f64).sqrt()).round() as usize).clamp(8, 40);
         let expected_degree = qr_max.min(adaptive_max).min(k).max(1);
