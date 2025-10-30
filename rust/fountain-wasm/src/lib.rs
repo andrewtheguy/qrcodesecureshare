@@ -29,71 +29,23 @@ impl WasmFountainEncoder {
     /// * `name` - Filename
     /// * `file_type` - MIME type
     /// * `timestamp` - Unix timestamp
-    /// * `block_size` - Optional block size (default: 400)
-    /// * `c` - Optional robustness parameter (default: 0.2)
-    /// * `delta` - Optional failure probability (default: 0.01)
+    /// * `options_js` - Complete encoder options object (all fields required from TypeScript)
     /// * `seed_offset` - Optional seed offset for session-specific randomization
-    /// * `fixed_overhead` - Optional fixed overhead in bytes (default: 10)
-    /// * `part_overhead` - Optional part-based mode overhead in bytes (default: 0)
-    /// * `part_based_mode` - Optional enable part-based mode (default: false)
-    /// * `part_size` - Optional part size in bytes (default: 0)
     #[wasm_bindgen(constructor)]
     pub fn new(
         data: Uint8Array,
         name: String,
         file_type: String,
         timestamp: f64,
-        block_size: Option<usize>,
-        c: Option<f64>,
-        delta: Option<f64>,
+        options_js: JsValue,
         seed_offset: Option<u32>,
-        fixed_overhead: Option<usize>,
-        part_overhead: Option<usize>,
-        max_degree: Option<usize>,
-        degree1_rate: Option<f64>,
-        low_degree_rate: Option<f64>,
-        max_qr_data_size: Option<usize>,
-        part_based_mode: Option<bool>,
-        part_size: Option<usize>,
     ) -> Result<WasmFountainEncoder, JsValue> {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
 
-        // Build options
-        let mut options = types::FountainEncoderOptions::default();
-        if let Some(bs) = block_size {
-            options = options.with_block_size(bs);
-        }
-        if let Some(c_val) = c {
-            options = options.with_c(c_val);
-        }
-        if let Some(d_val) = delta {
-            options = options.with_delta(d_val);
-        }
-        if let Some(fo) = fixed_overhead {
-            options = options.with_fixed_overhead(fo);
-        }
-        if let Some(po) = part_overhead {
-            options = options.with_part_overhead(po);
-        }
-        if let Some(md) = max_degree {
-            options = options.with_max_degree(md);
-        }
-        if let Some(d1) = degree1_rate {
-            options = options.with_degree1_rate(d1);
-        }
-        if let Some(lr) = low_degree_rate {
-            options = options.with_low_degree_rate(lr);
-        }
-        if let Some(max_qr) = max_qr_data_size {
-            options = options.with_max_qr_data_size(max_qr);
-        }
-        if let Some(pbm) = part_based_mode {
-            options = options.with_part_based_mode(pbm);
-        }
-        if let Some(ps) = part_size {
-            options = options.with_part_size(ps);
-        }
+        // Deserialize options from JS (all fields required, TypeScript must provide complete object)
+        let options: types::FountainEncoderOptions = serde_wasm_bindgen::from_value(options_js)
+            .map_err(|e| JsValue::from_str(&format!("Invalid options: {}", e)))?;
 
         let encoder = encoder::FountainEncoder::new(
             data_vec,

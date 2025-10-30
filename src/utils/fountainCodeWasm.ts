@@ -79,50 +79,72 @@ export interface FountainMetadata extends WasmFountainMetadata {
   checksumAlg?: string
 }
 
+/**
+ * Fountain encoder options (all fields required)
+ * Matches the Rust FountainEncoderOptions structure
+ */
 export interface FountainEncoderOptions {
-  blockSize?: number
-  c?: number
-  delta?: number
-  seedOffset?: number
-  fixedOverhead?: number
-  partOverhead?: number
-  maxDegree?: number
-  degree1Rate?: number
-  lowDegreeRate?: number
-  maxQRDataSize?: number
-  partBasedMode?: boolean
-  partSize?: number
+  blockSize: number
+  c: number
+  delta: number
+  maxDegree: number | null
+  degree1Rate: number
+  lowDegreeRate: number
+  maxQRDataSize: number
+  fixedOverhead: number
+  partOverhead: number
+  partBasedMode: boolean
+  partSize: number
+}
+
+/**
+ * Build complete FountainEncoderOptions with defaults
+ * All fields are required by WASM, so we apply defaults here
+ */
+function buildCompleteOptions(partial?: Partial<FountainEncoderOptions>): FountainEncoderOptions {
+  return {
+    blockSize: partial?.blockSize ?? 400,
+    c: partial?.c ?? 0.2,
+    delta: partial?.delta ?? 0.01,
+    maxDegree: partial?.maxDegree ?? null,
+    degree1Rate: partial?.degree1Rate ?? 0.08,
+    lowDegreeRate: partial?.lowDegreeRate ?? 0.18,
+    maxQRDataSize: partial?.maxQRDataSize ?? 1000,
+    fixedOverhead: partial?.fixedOverhead ?? 10,
+    partOverhead: partial?.partOverhead ?? 0,
+    partBasedMode: partial?.partBasedMode ?? false,
+    partSize: partial?.partSize ?? 0,
+  }
 }
 
 /**
  * TypeScript wrapper for Rust WASM Fountain Encoder
+ * Provides WASM initialization and a few convenience methods
+ * Access underlying WASM encoder directly via the `wasm` property for all other methods
  */
 export class FountainWasmEncoder {
-  private wasmEncoder: WasmFountainEncoder
+  /**
+   * Direct access to the underlying WASM encoder
+   * Use this to call any WASM methods directly without delegation boilerplate
+   */
+  readonly wasm: WasmFountainEncoder
 
   private constructor(
     data: Uint8Array,
     metadata: { name: string; type: string; timestamp?: number },
-    options?: FountainEncoderOptions
+    options?: Partial<FountainEncoderOptions>,
+    seedOffset?: number
   ) {
-    // All parameters explicitly passed to prevent missing parameter bugs
-    this.wasmEncoder = new WasmFountainEncoder(
+    // Build complete options object with defaults, then pass to WASM
+    const completeOptions = buildCompleteOptions(options)
+
+    this.wasm = new WasmFountainEncoder(
       data,
       metadata.name,
       metadata.type,
       metadata.timestamp || Date.now(),
-      options?.blockSize,
-      options?.c,
-      options?.delta,
-      options?.seedOffset,
-      options?.fixedOverhead,
-      options?.partOverhead,
-      options?.maxDegree,
-      options?.degree1Rate,
-      options?.lowDegreeRate,
-      options?.maxQRDataSize,
-      options?.partBasedMode,
-      options?.partSize
+      completeOptions,
+      seedOffset
     )
   }
 
@@ -132,46 +154,32 @@ export class FountainWasmEncoder {
   static async create(
     data: Uint8Array,
     metadata: { name: string; type: string; timestamp?: number },
-    options?: FountainEncoderOptions
+    options?: Partial<FountainEncoderOptions>,
+    seedOffset?: number
   ): Promise<FountainWasmEncoder> {
     await ensureWasmInit()
-    return new FountainWasmEncoder(data, metadata, options)
+    return new FountainWasmEncoder(data, metadata, options, seedOffset)
   }
 
   /**
-   * Generate a single fountain chunk
+   * Convenience method: Generate a single fountain chunk
+   * Same as encoder.wasm.generateChunk()
    */
   generateChunk(): FountainChunk {
-    return this.wasmEncoder.generateChunk() as FountainChunk
+    return this.wasm.generateChunk() as FountainChunk
   }
 
   /**
-   * Get metadata about the encoding
+   * Convenience method: Get metadata
+   * Same as encoder.wasm.getMetadata()
    */
   getMetadata(): WasmFountainMetadata {
-    return this.wasmEncoder.getMetadata() as WasmFountainMetadata
+    return this.wasm.getMetadata() as WasmFountainMetadata
   }
 
   /**
-   * Get the number of source blocks
-   */
-  blockCount(): number {
-    return this.wasmEncoder.blockCount()
-  }
-
-  /**
-   * Get the block size
-   */
-  blockSize(): number {
-    return this.wasmEncoder.blockSize()
-  }
-
-  // ========================================
-  // Part-Based Mode Methods
-  // ========================================
-
-  /**
-   * Get part information
+   * Convenience method: Get part information
+   * Same as encoder.wasm.getPartInfo()
    */
   getPartInfo(): {
     partBasedMode: boolean;
@@ -181,7 +189,7 @@ export class FountainWasmEncoder {
     currentPartChecksum?: string;
     partChecksums?: string[];
   } {
-    return this.wasmEncoder.getPartInfo() as {
+    return this.wasm.getPartInfo() as {
       partBasedMode: boolean;
       currentPartIndex: number;
       totalParts: number;
@@ -192,25 +200,19 @@ export class FountainWasmEncoder {
   }
 
   /**
-   * Move to the next part
-   * Returns true if moved, false if already at last part
+   * Convenience method: Move to next part
+   * Same as encoder.wasm.moveToNextPart()
    */
   moveToNextPart(): boolean {
-    return this.wasmEncoder.moveToNextPart()
+    return this.wasm.moveToNextPart()
   }
 
   /**
-   * Mark a part as completed
+   * Convenience method: Mark part as completed
+   * Same as encoder.wasm.markPartCompleted()
    */
   markPartCompleted(partIndex: number): void {
-    this.wasmEncoder.markPartCompleted(partIndex)
-  }
-
-  /**
-   * Get contiguous blocks data
-   */
-  getContiguousBlocksData(startIdx: number, endIdx: number): Uint8Array | null {
-    return this.wasmEncoder.getContiguousBlocksData(startIdx, endIdx) || null
+    this.wasm.markPartCompleted(partIndex)
   }
 
   /**
@@ -235,7 +237,7 @@ export class FountainWasmEncoder {
     }
 
     // Store checksums in the WASM encoder
-    this.wasmEncoder.setPartChecksums(checksums)
+    this.wasm.setPartChecksums(checksums)
 
     return checksums
   }
@@ -243,12 +245,18 @@ export class FountainWasmEncoder {
 
 /**
  * TypeScript wrapper for Rust WASM Fountain Decoder
+ * Provides WASM initialization and convenience methods
+ * Access underlying WASM decoder directly via the `wasm` property for all other methods
  */
 export class FountainWasmDecoder {
-  private wasmDecoder: WasmFountainDecoder
+  /**
+   * Direct access to the underlying WASM decoder
+   * Use this to call any WASM methods directly without delegation boilerplate
+   */
+  readonly wasm: WasmFountainDecoder
 
   private constructor(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
-    this.wasmDecoder = new WasmFountainDecoder(
+    this.wasm = new WasmFountainDecoder(
       metadata,
       partBasedMode ? true : undefined,
       partBasedMode && partSize > 0 ? partSize : undefined
@@ -264,113 +272,48 @@ export class FountainWasmDecoder {
   }
 
   /**
-   * Add a chunk and attempt to decode
-   * Returns true if any new blocks were decoded
+   * Convenience method: Add a chunk and attempt to decode
+   * Same as decoder.wasm.addChunk(chunk)
    */
   addChunk(chunk: FountainChunk): boolean {
-    return this.wasmDecoder.addChunk(chunk)
+    return this.wasm.addChunk(chunk)
   }
 
   /**
-   * Check if decoding is complete
+   * Convenience method: Check if decoding is complete
+   * Same as decoder.wasm.isComplete()
    */
   isComplete(): boolean {
-    return this.wasmDecoder.isComplete()
+    return this.wasm.isComplete()
   }
 
   /**
-   * Get overall decode progress (0.0 to 1.0)
-   * Returns the fraction of total blocks decoded across the entire file.
-   * In part-based mode, this represents overall file progress, not current part progress.
-   * Use getCurrentPartDecodedBlockCount() / getCurrentPartTotalBlockCount() for part-specific progress.
+   * Convenience method: Get overall decode progress (0.0 to 1.0)
+   * Same as decoder.wasm.getProgress()
    */
   getProgress(): number {
-    return this.wasmDecoder.getProgress()
+    return this.wasm.getProgress()
   }
 
   /**
-   * Get number of decoded blocks
-   */
-  getDecodedBlockCount(): number {
-    return this.wasmDecoder.getDecodedBlockCount()
-  }
-
-  /**
-   * Get number of received chunks
-   */
-  getReceivedChunkCount(): number {
-    return this.wasmDecoder.getReceivedChunkCount()
-  }
-
-  /**
-   * Get sorted list of decoded block indices
-   */
-  getDecodedBlockIndices(): number[] {
-    const indices = this.wasmDecoder.getDecodedBlockIndices()
-    return Array.from(indices) as number[]
-  }
-
-  /**
-   * Get the decoded data (returns null if not complete)
+   * Convenience method: Get the decoded data
+   * Same as decoder.wasm.getDecodedData()
    */
   getDecodedData(): Uint8Array | null {
-    return this.wasmDecoder.getDecodedData() || null
+    return this.wasm.getDecodedData() || null
   }
 
   /**
-   * Get metadata
+   * Convenience method: Get metadata
+   * Same as decoder.wasm.getMetadata()
    */
   getMetadata(): WasmFountainMetadata {
-    return this.wasmDecoder.getMetadata() as WasmFountainMetadata
-  }
-
-  // Part-based mode methods
-
-  /**
-   * Check if the current part is complete
-   */
-  isCurrentPartComplete(): boolean {
-    return this.wasmDecoder.isCurrentPartComplete()
+    return this.wasm.getMetadata() as WasmFountainMetadata
   }
 
   /**
-   * Get the current part data (returns null if not complete)
-   */
-  getCurrentPartData(): Uint8Array | null {
-    return this.wasmDecoder.getCurrentPartData() || null
-  }
-
-  /**
-   * Move to the next part
-   * Returns true if moved, false if already at last part
-   */
-  moveToNextPart(): boolean {
-    return this.wasmDecoder.moveToNextPart()
-  }
-
-  /**
-   * Mark a part as completed
-   */
-  markPartCompleted(partIndex: number): void {
-    this.wasmDecoder.markPartCompleted(partIndex)
-  }
-
-  /**
-   * Get the number of decoded blocks in the current part
-   */
-  getCurrentPartDecodedBlockCount(): number {
-    return this.wasmDecoder.getCurrentPartDecodedBlockCount()
-  }
-
-  /**
-   * Get the total number of blocks in the current part
-   */
-  getCurrentPartTotalBlockCount(): number {
-    return this.wasmDecoder.getCurrentPartTotalBlockCount()
-  }
-
-  /**
-   * Get part info
+   * Convenience method: Get part info
+   * Same as decoder.wasm.getPartInfo()
    */
   getPartInfo(): {
     partBasedMode: boolean;
@@ -380,7 +323,7 @@ export class FountainWasmDecoder {
     currentPartChecksum?: string;
     partChecksums?: string[];
   } {
-    const partInfo = this.wasmDecoder.getPartInfo()
+    const partInfo = this.wasm.getPartInfo()
     return partInfo as {
       partBasedMode: boolean;
       currentPartIndex: number;
@@ -389,6 +332,71 @@ export class FountainWasmDecoder {
       currentPartChecksum?: string;
       partChecksums?: string[];
     }
+  }
+
+  /**
+   * Convenience method: Get number of decoded blocks
+   * Same as decoder.wasm.getDecodedBlockCount()
+   */
+  getDecodedBlockCount(): number {
+    return this.wasm.getDecodedBlockCount()
+  }
+
+  /**
+   * Convenience method: Get decoded block indices
+   * Same as decoder.wasm.getDecodedBlockIndices()
+   */
+  getDecodedBlockIndices(): number[] {
+    const indices = this.wasm.getDecodedBlockIndices()
+    return Array.from(indices) as number[]
+  }
+
+  /**
+   * Convenience method: Check if current part is complete
+   * Same as decoder.wasm.isCurrentPartComplete()
+   */
+  isCurrentPartComplete(): boolean {
+    return this.wasm.isCurrentPartComplete()
+  }
+
+  /**
+   * Convenience method: Get current part data
+   * Same as decoder.wasm.getCurrentPartData()
+   */
+  getCurrentPartData(): Uint8Array | null {
+    return this.wasm.getCurrentPartData() || null
+  }
+
+  /**
+   * Convenience method: Mark part as completed
+   * Same as decoder.wasm.markPartCompleted()
+   */
+  markPartCompleted(partIndex: number): void {
+    this.wasm.markPartCompleted(partIndex)
+  }
+
+  /**
+   * Convenience method: Get current part decoded block count
+   * Same as decoder.wasm.getCurrentPartDecodedBlockCount()
+   */
+  getCurrentPartDecodedBlockCount(): number {
+    return this.wasm.getCurrentPartDecodedBlockCount()
+  }
+
+  /**
+   * Convenience method: Get current part total block count
+   * Same as decoder.wasm.getCurrentPartTotalBlockCount()
+   */
+  getCurrentPartTotalBlockCount(): number {
+    return this.wasm.getCurrentPartTotalBlockCount()
+  }
+
+  /**
+   * Convenience method: Move to next part
+   * Same as decoder.wasm.moveToNextPart()
+   */
+  moveToNextPart(): boolean {
+    return this.wasm.moveToNextPart()
   }
 }
 

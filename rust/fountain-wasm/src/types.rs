@@ -95,7 +95,9 @@ impl FountainMetadata {
 }
 
 /// Configuration options for the fountain encoder
-#[derive(Clone, Debug)]
+/// All fields are required - defaults should be provided by TypeScript layer
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FountainEncoderOptions {
     /// Size of each source block (default: 400 bytes)
     pub block_size: usize,
