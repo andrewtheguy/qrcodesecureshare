@@ -446,6 +446,8 @@ export function FountainQRFeedbackDisplay({
               <video
                 ref={ackVideoRefFromHook}
                 className="w-full max-h-[420px] object-cover"
+                playsInline
+                muted
               />
               <canvas ref={ackCanvasRef} style={{ display: 'none' }} />
               <div className="pointer-events-none absolute inset-0">
