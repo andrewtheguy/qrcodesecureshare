@@ -76,10 +76,10 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           partSize
         }
 
-        // Use default options with maxQRDataSize override for degree tuning
+        // Use default options with maxQrDataSize override for degree tuning
         const encoderOptions = {
           ...DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
-          maxQRDataSize // Pass QR capacity to encoder for degree tuning
+          maxQrDataSize: maxQRDataSize // Pass QR capacity to encoder for degree tuning (camelCase)
         }
 
         const fountainEncoder = await FountainEncoder.create(bytes, metadata, encoderOptions, partConfig)

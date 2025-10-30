@@ -122,7 +122,7 @@ export interface FountainEncoderOptions {
   maxDegree: number | null
   degree1Rate: number
   lowDegreeRate: number
-  maxQRDataSize: number
+  maxQrDataSize: number  // camelCase to match Rust serde
   fixedOverhead: number
   partOverhead: number
 }
@@ -138,7 +138,7 @@ export const DEFAULT_FOUNTAIN_ENCODER_OPTIONS: FountainEncoderOptions = {
   maxDegree: null,
   degree1Rate: 0.08,
   lowDegreeRate: 0.18,
-  maxQRDataSize: 1000,
+  maxQrDataSize: 1000,  // camelCase to match Rust serde
   fixedOverhead: 10,
   partOverhead: 0,
 }
