@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:wasm": "cd rust/hello-wasm && wasm-pack build --target web",
+    "build:full": "npm run build:wasm && npm run build",
     "lint": "tsc --noEmit && eslint .",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",

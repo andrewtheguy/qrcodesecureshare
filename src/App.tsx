@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
+import { RustWasmDemo } from './components/RustWasmDemo'
 import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ function App() {
     { value: "upload", label: "Upload File", icon: "📤" },
     { value: "scan", label: "Scan QR", icon: "📸" },
     { value: "offline", label: "Offline Transfer", icon: "🔄" },
+    { value: "rustwasm", label: "Rust WASM Demo", icon: "🦀" },
   ]
 
   const activeTabInfo = tabs.find(tab => tab.value === activeTab)
@@ -118,6 +120,7 @@ function App() {
         {activeTab === "upload" && <Upload mode="file" />}
         {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
         {activeTab === "offline" && <OfflineTransfer />}
+        {activeTab === "rustwasm" && <RustWasmDemo />}
       </main>
     </div>
   )

@@ -28,3 +28,7 @@ PRIVATE_KEY.md
 *.private.json
 *.pem
 tmp/
+
+# Rust/WASM build artifacts
+rust/**/target/
+rust/**/Cargo.lock
