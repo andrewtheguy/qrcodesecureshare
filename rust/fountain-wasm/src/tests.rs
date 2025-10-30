@@ -492,6 +492,42 @@ mod integration_tests {
 
         // Empty checksum should be consistent
         assert_eq!(original_checksum, "00000000");
+
+        // Perform full encode-decode cycle with empty data
+        let options = FountainEncoderOptions::default().with_block_size(10);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "empty.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false,
+            0,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        let mut chunks_sent = 0;
+        while !decoder.is_complete() && chunks_sent < 50 {
+            let chunk = encoder.generate_chunk();
+            decoder.add_chunk(chunk);
+            chunks_sent += 1;
+        }
+
+        // Empty data should complete immediately or very quickly
+        assert!(decoder.is_complete(), "Decoder should complete for empty data");
+        let decoded = decoder
+            .get_decoded_data()
+            .expect("Should have decoded data for empty file");
+
+        // Verify decoded data is empty and checksums match
+        assert_eq!(decoded, data, "Decoded data should match original empty vec");
+        let decoded_checksum = crc32(&decoded);
+        assert_eq!(decoded_checksum, original_checksum, "Checksums should match");
+        assert_eq!(decoded_checksum, "00000000", "Empty data checksum should be 00000000");
     }
 
     #[test]

@@ -31,10 +31,25 @@ impl LcgRandom {
     }
 
     /// Generate a random value in the given range [start, end)
+    ///
+    /// # Panics
+    /// Panics if range.start >= range.end (empty or reversed range)
     pub fn gen_range(&mut self, range: Range<usize>) -> usize {
-        let random_float = self.next();
-        let range_size = (range.end - range.start) as f64;
-        range.start + (random_float * range_size).floor() as usize
+        if range.start >= range.end {
+            panic!(
+                "gen_range: invalid range [start={}, end={}), start must be less than end",
+                range.start, range.end
+            );
+        }
+
+        let range_len = range.end - range.start;
+
+        // For better precision with large ranges, use integer arithmetic
+        // Generate a value in [0, range_len) using unbiased scaling
+        let random_int = self.advance_state() as usize;
+        let scaled = random_int % range_len;
+
+        range.start + scaled
     }
 }
 
@@ -74,7 +89,17 @@ impl RngCore for LcgRandom {
 /// Select random unique indices using a provided LcgRandom RNG
 /// Returns a sorted vector of unique indices
 /// This function reuses the RNG state without reseeding
+///
+/// # Panics
+/// Panics if degree > max_index, as it's impossible to select more unique indices than available
 pub fn select_indices_with_rng(rng: &mut LcgRandom, degree: usize, max_index: usize) -> Vec<usize> {
+    if degree > max_index {
+        panic!(
+            "select_indices_with_rng: degree ({}) cannot exceed max_index ({})",
+            degree, max_index
+        );
+    }
+
     let mut selected = HashSet::new();
 
     // Keep selecting until we have enough unique indices

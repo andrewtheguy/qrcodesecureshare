@@ -1,6 +1,11 @@
 /// Build a robust soliton distribution for fountain codes
 /// Returns a vector of probabilities for each degree (index 0 = degree 1)
 pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> Vec<f64> {
+    assert!(k > 0, "k must be positive");
+    assert!(c > 0.0, "c must be positive");
+    assert!(delta > 0.0 && delta < 1.0, "delta must be in (0, 1)");
+    assert!(max_degree > 0, "max_degree must be positive");
+
     // Calculate spike location
     let r_val = c * ((k as f64) / delta).ln() * (k as f64).sqrt();
     let spike_loc = (k as f64 / r_val).floor() as usize;
@@ -20,7 +25,7 @@ pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> 
     for d in 1..spike_loc.min(max_degree) {
         tau[d - 1] = r_val / (d * k) as f64;
     }
-    if spike_loc <= max_degree {
+    if spike_loc >= 1 && spike_loc <= max_degree {
         tau[spike_loc - 1] = r_val * (r_val / delta).ln() / k as f64;
     }
 
@@ -39,12 +44,36 @@ pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> 
 
 /// Sample a degree from the distribution with doping for low degrees using LCG's next() method
 /// This matches the TypeScript sequence exactly by using rng.next() for all random rolls
+///
+/// # Panics
+/// Panics if degree1_rate or low_degree_rate are non-finite, outside [0.0, 1.0], or if their sum exceeds 1.0
 pub fn sample_degree_with_doping_lcg(
     rng: &mut crate::rng::LcgRandom,
     distribution: &[f64],
     degree1_rate: f64,
     low_degree_rate: f64,
 ) -> usize {
+    // Validate probabilities are finite and within valid range
+    if !degree1_rate.is_finite() || degree1_rate < 0.0 || degree1_rate > 1.0 {
+        panic!(
+            "sample_degree_with_doping_lcg: degree1_rate must be finite in [0.0, 1.0], got {}",
+            degree1_rate
+        );
+    }
+    if !low_degree_rate.is_finite() || low_degree_rate < 0.0 || low_degree_rate > 1.0 {
+        panic!(
+            "sample_degree_with_doping_lcg: low_degree_rate must be finite in [0.0, 1.0], got {}",
+            low_degree_rate
+        );
+    }
+    let sum = degree1_rate + low_degree_rate;
+    if sum > 1.0 {
+        panic!(
+            "sample_degree_with_doping_lcg: degree1_rate + low_degree_rate must be <= 1.0, got {}",
+            sum
+        );
+    }
+
     let roll = rng.next();
 
     // Force degree 1 with probability degree1_rate
@@ -57,7 +86,8 @@ pub fn sample_degree_with_doping_lcg(
         if distribution.len() >= 2 {
             return if rng.next() < 0.6 { 2 } else { 3 };
         }
-        return 2;
+        // Clamp to maximum supported degree
+        return distribution.len().max(1);
     }
 
     // Sample from robust soliton using LCG's next()
@@ -66,6 +96,10 @@ pub fn sample_degree_with_doping_lcg(
 
 /// Sample from a discrete probability distribution using LCG's next() method
 fn sample_from_distribution_lcg(rng: &mut crate::rng::LcgRandom, distribution: &[f64]) -> usize {
+    if distribution.is_empty() {
+        panic!("sample_from_distribution_lcg: empty distribution");
+    }
+
     let roll = rng.next();
     let mut cumulative = 0.0;
 
@@ -154,7 +188,10 @@ mod tests {
         // QR capacity should limit
         // Available space: 500 - 10 - 0 - 100 = 390, degree = 390 / 2 = 195
         // But adaptive max for k=100 is ~25, so result should be 25
-        assert!(calculate_max_degree(100, 500, 100, fixed_overhead, part_overhead) <= 100);
+        assert_eq!(
+            calculate_max_degree(100, 500, 100, fixed_overhead, part_overhead),
+            25
+        );
     }
 
     #[test]

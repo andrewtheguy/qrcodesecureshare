@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//Users/it3/codes/andrew/qrcodesecureshare/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

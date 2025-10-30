@@ -47,6 +47,20 @@ impl WasmFountainEncoder {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
 
+        // Validate part_size when part_based_mode is enabled
+        if part_based_mode {
+            if part_size == 0 {
+                return Err(JsValue::from_str("part_size must be > 0"));
+            }
+            if part_size > data_vec.len() {
+                return Err(JsValue::from_str(&format!(
+                    "part_size ({}) must not exceed data length ({})",
+                    part_size,
+                    data_vec.len()
+                )));
+            }
+        }
+
         // Deserialize options from JS (all fields required, TypeScript must provide complete object)
         let options: types::FountainEncoderOptions = serde_wasm_bindgen::from_value(options_js)
             .map_err(|e| JsValue::from_str(&format!("Invalid options: {}", e)))?;
@@ -106,6 +120,14 @@ impl WasmFountainEncoder {
     pub fn get_part_info(&self) -> JsValue {
         let (part_based_mode, current_part_index, total_parts, part_size) =
             self.encoder.get_part_info();
+
+        // Validate that values fit in u32
+        if current_part_index > u32::MAX as usize
+            || total_parts > u32::MAX as usize
+            || part_size > u32::MAX as usize
+        {
+            web_sys::console::error_1(&"Part info values exceed u32::MAX".into());
+        }
 
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(
@@ -211,6 +233,9 @@ impl WasmFountainDecoder {
             let size = part_size.ok_or_else(|| {
                 JsValue::from_str("part_size is required when part_based_mode is true")
             })?;
+            if size == 0 {
+                return Err(JsValue::from_str("part_size must be > 0"));
+            }
             decoder::FountainDecoder::with_part_mode(metadata, size)
         } else {
             decoder::FountainDecoder::new(metadata)
@@ -261,13 +286,19 @@ impl WasmFountainDecoder {
 
     /// Get decoded block indices as an array
     #[wasm_bindgen(js_name = getDecodedBlockIndices)]
-    pub fn get_decoded_block_indices(&self) -> Array {
+    pub fn get_decoded_block_indices(&self) -> Result<Array, JsValue> {
         let indices = self.decoder.get_decoded_block_indices();
         let array = Array::new();
         for idx in indices {
-            array.push(&JsValue::from(idx as u32));
+            let idx_u32: u32 = idx.try_into().map_err(|_| {
+                JsValue::from_str(&format!(
+                    "Block index {} exceeds u32 maximum (4,294,967,295)",
+                    idx
+                ))
+            })?;
+            array.push(&JsValue::from(idx_u32));
         }
-        array
+        Ok(array)
     }
 
     /// Get the decoded data (returns null if not complete)
@@ -337,6 +368,14 @@ impl WasmFountainDecoder {
     pub fn get_part_info(&self) -> JsValue {
         let (part_based_mode, current_part_index, total_parts, part_size) =
             self.decoder.get_part_info();
+
+        // Validate that values fit in u32
+        if current_part_index > u32::MAX as usize
+            || total_parts > u32::MAX as usize
+            || part_size > u32::MAX as usize
+        {
+            web_sys::console::error_1(&"Part info values exceed u32::MAX".into());
+        }
 
         let obj = js_sys::Object::new();
         js_sys::Reflect::set(

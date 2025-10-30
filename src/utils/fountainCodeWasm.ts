@@ -27,7 +27,8 @@ async function ensureWasmInit(): Promise<void> {
           console.error(`[WASM Init] Attempt ${attempt}/${MAX_RETRIES} failed:`, err)
 
           if (attempt === MAX_RETRIES) {
-            // Final attempt failed - throw specific error
+            // Final attempt failed - reset promise cache before throwing so future retries can be attempted
+            wasmInitPromise = null
             const error = new Error(
               `WASM_INIT_FAILED: Failed to initialize WASM module after ${MAX_RETRIES} attempts. ` +
               `The WASM bundle may not be loaded. Please refresh the page and try again. ` +
@@ -267,7 +268,7 @@ export class FountainWasmEncoder {
    * Returns array of CRC32 checksums (one per part)
    */
   async computePartChecksums(originalData: Uint8Array): Promise<string[]> {
-    const { crc32 } = await import('../wasm/fountain_wasm')
+    const { crc32 } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
     const { partBasedMode, totalParts, partSize } = this.getPartInfo()
 
     if (!partBasedMode || totalParts === 0) {

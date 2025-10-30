@@ -33,13 +33,21 @@ pub fn xor_into(dest: &mut [u8], src: &[u8]) {
 /// XOR a block into a destination starting at a specific offset
 pub fn xor_into_offset(dest: &mut [u8], src: &[u8], offset: usize) {
     let len = src.len();
-    assert!(
-        offset + len <= dest.len(),
-        "Source block doesn't fit in destination at offset"
+
+    // Use checked arithmetic to prevent overflow in bounds check
+    let end = offset.checked_add(len).expect(
+        "Source block doesn't fit in destination at offset (overflow: offset + len exceeds usize::MAX)"
     );
 
-    for (i, &byte) in src.iter().enumerate() {
-        dest[offset + i] ^= byte;
+    assert!(
+        end <= dest.len(),
+        "Source block doesn't fit in destination at offset (end={} exceeds dest.len()={})",
+        end,
+        dest.len()
+    );
+
+    for i in 0..len {
+        dest[offset + i] ^= src[i];
     }
 }
 
