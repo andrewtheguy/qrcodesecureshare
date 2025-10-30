@@ -65,6 +65,11 @@ impl WasmFountainEncoder {
         let options: types::FountainEncoderOptions = serde_wasm_bindgen::from_value(options_js)
             .map_err(|e| JsValue::from_str(&format!("Invalid options: {}", e)))?;
 
+        // Validate all algorithm parameters before proceeding
+        options
+            .validate()
+            .map_err(|e| JsValue::from_str(&format!("Invalid encoder options: {}", e)))?;
+
         let encoder = encoder::FountainEncoder::new(
             data_vec,
             name,

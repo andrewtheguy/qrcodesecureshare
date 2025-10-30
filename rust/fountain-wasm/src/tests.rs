@@ -19,23 +19,59 @@ mod integration_tests {
         (0..size).map(|i| (i % 256) as u8).collect()
     }
 
+    /// Create a test encoder with sensible defaults for non-part-based mode
+    ///
+    /// Sets:
+    /// - part_based_mode: false (disabled for standard encoding)
+    /// - part_size: 0 (not used when part-based mode is disabled)
+    /// - seed_offset: None (use default seed behavior)
+    ///
+    /// # Arguments
+    /// * `data` - Data to encode
+    /// * `filename` - Name of the file being encoded
+    /// * `options` - Encoder algorithm options
+    fn make_test_encoder(
+        data: Vec<u8>,
+        filename: &str,
+        options: FountainEncoderOptions,
+    ) -> FountainEncoder {
+        FountainEncoder::new(
+            data,
+            filename.to_string(),
+            "application/octet-stream".to_string(),
+            0.0, // timestamp
+            options,
+            false,              // part_based_mode
+            0,                  // part_size
+            None,               // seed_offset
+        )
+    }
+
+    /// Calculate the maximum expected chunks needed to decode, based on fountain code theory
+    ///
+    /// Fountain codes (LT codes) with robust soliton distribution require approximately:
+    /// `k + O(sqrt(k))` chunks to decode k source blocks, where O(sqrt(k)) is the overhead.
+    /// For small k, we add a fixed overhead factor of 1.1x to account for decoder convergence.
+    ///
+    /// # Arguments
+    /// * `total_source_blocks` - Number of blocks the data was encoded into
+    /// * `overhead_factor` - Multiplier for expected overhead (typical: 1.1x to 1.3x)
+    fn max_expected_chunks(total_source_blocks: usize, overhead_factor: f64) -> usize {
+        ((total_source_blocks as f64) * overhead_factor).ceil() as usize
+    }
+
     #[test]
     fn test_e2e_small_file_with_checksum() {
         let data = generate_test_data(100);
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(25);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "test.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "test.dat", options);
 
         let metadata = encoder.get_metadata();
+        // Fountain codes require k + overhead chunks, where k is the number of source blocks.
+        // We use 1.1x multiplier as typical overhead for robust soliton distribution.
+        let max_allowed_chunks = max_expected_chunks(metadata.total_source_blocks, 1.1);
         let mut decoder = FountainDecoder::new(metadata);
 
         // Encode and decode
@@ -48,7 +84,12 @@ mod integration_tests {
         }
 
         assert!(decoder.is_complete(), "Decoder should be complete");
-        assert!(chunks_sent < 20, "Should decode with reasonable overhead");
+        assert!(
+            chunks_sent <= max_allowed_chunks,
+            "Should decode with reasonable overhead: {} chunks <= {} max",
+            chunks_sent,
+            max_allowed_chunks
+        );
 
         let decoded = decoder.get_decoded_data().unwrap();
         assert_eq!(decoded.len(), data.len(), "Decoded data length mismatch");
@@ -71,15 +112,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "medium.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "medium.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -107,15 +140,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(1000);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "large.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "large.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -151,15 +176,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(250);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "random.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "random.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -187,15 +204,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(500);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "zeros.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "zeros.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -223,15 +232,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(500);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "ones.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "ones.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -277,15 +278,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "lossy.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "lossy.dat", options);
 
         let metadata = encoder.get_metadata();
         let total_source_blocks = metadata.total_source_blocks;
@@ -337,15 +330,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(400);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "progress.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "progress.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);
@@ -387,17 +372,8 @@ mod integration_tests {
         let original_checksum = crc32(&data);
         let part_size = 2500;
 
-        let options = FountainEncoderOptions::default()
-            .with_block_size(400);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "parts.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let options = FountainEncoderOptions::default().with_block_size(400);
+        let mut encoder = make_test_encoder(data.clone(), "parts.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
@@ -458,17 +434,8 @@ mod integration_tests {
             expected_part_checksums.push(crc32(part_data));
         }
 
-        let options = FountainEncoderOptions::default()
-            .with_block_size(400);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "parts_check.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let options = FountainEncoderOptions::default().with_block_size(400);
+        let mut encoder = make_test_encoder(data.clone(), "parts_check.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
@@ -505,15 +472,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
 
         let options = FountainEncoderOptions::default().with_block_size(10);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "single.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false, 0, None,
-        );
+        let mut encoder = make_test_encoder(data.clone(), "single.dat", options);
 
         let metadata = encoder.get_metadata();
         let mut decoder = FountainDecoder::new(metadata);

@@ -205,25 +205,21 @@ impl FountainDecoder {
 
     /// Reconstruct the final file from stored part data
     fn get_decoded_data_from_parts(&self) -> Option<Vec<u8>> {
+        // Precondition: part_based_mode enabled and all parts stored
         if !self.part_based_mode || self.stored_part_data.len() != self.total_parts {
             return None;
         }
 
-        // Check that all parts are present
-        for i in 0..self.total_parts {
-            if !self.stored_part_data.contains_key(&i) {
-                return None;
-            }
-        }
-
         // Concatenate all parts in order
+        // The length precondition above guarantees all parts 0..total_parts are present
         let mut result = Vec::with_capacity(self.metadata.size);
         for i in 0..self.total_parts {
-            if let Some(part_data) = self.stored_part_data.get(&i) {
-                result.extend_from_slice(part_data);
-            } else {
-                return None;
-            }
+            // Safe to unwrap: length check above guarantees presence of all indices
+            let part_data = self
+                .stored_part_data
+                .get(&i)
+                .expect("part index guaranteed by length precondition");
+            result.extend_from_slice(part_data);
         }
 
         // Truncate to exact file size (handles last part padding)

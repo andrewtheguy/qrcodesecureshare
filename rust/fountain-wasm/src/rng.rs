@@ -69,14 +69,12 @@ impl RngCore for LcgRandom {
 
     fn fill_bytes(&mut self, dest: &mut [u8]) {
         // Fill buffer with random bytes
+        // Each chunk is at most 4 bytes, so we can safely copy from the 4-byte array
         for chunk in dest.chunks_mut(4) {
             let val = self.next_u32();
             let bytes = val.to_le_bytes();
-            for (i, b) in chunk.iter_mut().enumerate() {
-                if i < bytes.len() {
-                    *b = bytes[i];
-                }
-            }
+            // Copy only the needed prefix of bytes into this chunk
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
         }
     }
 
@@ -281,5 +279,21 @@ mod tests {
         let val1 = rng1.next();
         let val2 = rng2.next();
         assert_eq!(val1, val2);
+    }
+
+    #[test]
+    #[should_panic(expected = "gen_range: invalid range [start=10, end=10), start must be less than end")]
+    fn test_gen_range_empty_range_panics() {
+        let mut rng = LcgRandom::new(42);
+        // This should panic because start >= end (empty range)
+        rng.gen_range(10..10);
+    }
+
+    #[test]
+    #[should_panic(expected = "select_indices_with_rng: degree (10) cannot exceed max_index (5)")]
+    fn test_select_indices_degree_exceeds_max_index_panics() {
+        let mut rng = LcgRandom::new(42);
+        // This should panic because degree > max_index
+        select_indices_with_rng(&mut rng, 10, 5);
     }
 }

@@ -84,7 +84,12 @@ impl FountainEncoder {
         let degree_distribution =
             build_robust_soliton(total_source_blocks, options.c, options.delta, max_degree);
 
-        let metadata = FountainMetadata::new(
+        // Use unchecked constructor since we know the values are valid:
+        // - total_size >= 1 (ensured by data validation)
+        // - total_source_blocks >= 1 (calculated from data)
+        // - block_size > 0 (from options)
+        // - timestamp is provided by caller
+        let metadata = FountainMetadata::new_unchecked(
             name,
             total_size,
             file_type,

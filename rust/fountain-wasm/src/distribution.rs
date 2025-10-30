@@ -1,3 +1,20 @@
+// ========================================
+// Constants for adaptive degree calculation
+// ========================================
+
+/// Multiplier for adaptive max degree calculation based on block count
+/// Formula: ADAPTIVE_MULTIPLIER * sqrt(k)
+/// This controls how aggressively the degree scales with block count
+const ADAPTIVE_MULTIPLIER: f64 = 2.5;
+
+/// Minimum adaptive degree to support small files
+/// Prevents degree from being too low when k is small
+const MIN_ADAPTIVE_DEGREE: usize = 8;
+
+/// Maximum adaptive degree to prevent large QR codes
+/// Caps degree growth with block count to maintain reasonable QR sizes
+const MAX_ADAPTIVE_DEGREE: usize = 40;
+
 /// Build a robust soliton distribution for fountain codes
 /// Returns a vector of probabilities for each degree (index 0 = degree 1)
 pub fn build_robust_soliton(k: usize, c: f64, delta: f64, max_degree: usize) -> Vec<f64> {
@@ -133,7 +150,9 @@ pub fn calculate_max_degree(
     let qr_max = available_space / 2; // Each index costs 2 bytes
 
     // Adaptive ceiling based on k
-    let adaptive_max = ((2.5 * (k as f64).sqrt()).round() as usize).clamp(8, 40);
+    // Formula: clamp(ADAPTIVE_MULTIPLIER * sqrt(k), MIN_ADAPTIVE_DEGREE, MAX_ADAPTIVE_DEGREE)
+    let adaptive_max = ((ADAPTIVE_MULTIPLIER * (k as f64).sqrt()).round() as usize)
+        .clamp(MIN_ADAPTIVE_DEGREE, MAX_ADAPTIVE_DEGREE);
 
     // Return the minimum of the three constraints
     qr_max.min(adaptive_max).min(k).max(1) // Ensure at least degree 1
@@ -242,7 +261,8 @@ mod tests {
         let available_space =
             max_qr_size.saturating_sub(fixed_overhead + part_overhead + block_size);
         let qr_max = available_space / 2;
-        let adaptive_max = ((2.5 * (k as f64).sqrt()).round() as usize).clamp(8, 40);
+        let adaptive_max = ((ADAPTIVE_MULTIPLIER * (k as f64).sqrt()).round() as usize)
+            .clamp(MIN_ADAPTIVE_DEGREE, MAX_ADAPTIVE_DEGREE);
         let expected_degree = qr_max.min(adaptive_max).min(k).max(1);
 
         // Verify we got the expected degree

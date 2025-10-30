@@ -305,7 +305,7 @@ export class FountainWasmDecoder {
   private constructor(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
     this.wasm = new WasmFountainDecoder(
       metadata,
-      partBasedMode ? true : undefined,
+      partBasedMode || undefined,
       partBasedMode && partSize > 0 ? partSize : undefined
     )
   }
