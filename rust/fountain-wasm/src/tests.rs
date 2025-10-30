@@ -941,6 +941,7 @@ mod wasm_lib_tests {
     use crate::encoder::FountainEncoder;
     use crate::decoder::FountainDecoder;
     use crate::types::FountainEncoderOptions;
+    use crate::checksum::crc32;
 
     /// Helper to create a test encoder
     fn make_test_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
@@ -1423,5 +1424,489 @@ mod wasm_lib_tests {
         for i in 0..part_indices.len() - 1 {
             assert_eq!(part_indices[i + 1], part_indices[i] + 1);
         }
+    }
+
+    // ============================================================
+    // Single-Part Encoding/Decoding with Checksum Validation
+    // ============================================================
+
+    #[test]
+    fn test_single_part_small_data_encode_decode_with_checksum() {
+        let data: Vec<u8> = (0..10).map(|i| i as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks_count = 0;
+        while !decoder.is_complete() && chunks_count < 100 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_count += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded_checksum = crc32(&decoded);
+
+        assert_eq!(decoded_checksum, original_checksum, "Single-part checksum mismatch");
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_single_part_medium_data_encode_decode_with_checksum() {
+        let data: Vec<u8> = (0..2500).map(|i| (i % 256) as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks_count = 0;
+        while !decoder.is_complete() && chunks_count < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_count += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded_checksum = crc32(&decoded);
+
+        assert_eq!(decoded_checksum, original_checksum, "Medium data checksum mismatch");
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_single_part_large_data_encode_decode_with_checksum() {
+        let data: Vec<u8> = (0..10000).map(|i| (i % 256) as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks_count = 0;
+        while !decoder.is_complete() && chunks_count < 1000 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_count += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded_checksum = crc32(&decoded);
+
+        assert_eq!(decoded_checksum, original_checksum, "Large data checksum mismatch");
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_single_part_binary_data_encode_decode_with_checksum() {
+        // Use same pattern as helper to ensure consistency
+        let data: Vec<u8> = (0..8).map(|i| (i % 256) as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks_count = 0;
+        while !decoder.is_complete() && chunks_count < 100 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_count += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded_checksum = crc32(&decoded);
+
+        assert_eq!(decoded_checksum, original_checksum, "Binary data checksum mismatch");
+        assert_eq!(decoded, data);
+    }
+
+    // ============================================================
+    // Multi-Part Encoding/Decoding with Per-Part Checksums
+    // ============================================================
+
+    #[test]
+    fn test_two_part_encode_decode_with_part_checksums() {
+        let total_data: Vec<u8> = (0..4000).map(|i| (i % 256) as u8).collect();
+        let part_size = 2000;
+        let part_1_data = &total_data[0..2000];
+        let part_2_data = &total_data[2000..4000];
+
+        let part_1_checksum = crc32(part_1_data);
+        let part_2_checksum = crc32(part_2_data);
+        let full_checksum = crc32(&total_data);
+
+        let mut encoder = make_test_encoder(total_data.len(), true, part_size);
+        let mut decoder = make_test_decoder(total_data.len(), true, part_size);
+
+        // Encode and decode part 1
+        let mut chunks_for_part_1 = 0;
+        while !decoder.is_current_part_complete() && chunks_for_part_1 < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_for_part_1 += 1;
+        }
+
+        assert!(decoder.is_current_part_complete(), "Part 1 should be complete");
+        let decoded_part_1 = decoder.get_current_part_data().expect("Failed to get part 1");
+        let decoded_part_1_checksum = crc32(&decoded_part_1);
+
+        assert_eq!(decoded_part_1_checksum, part_1_checksum, "Part 1 checksum mismatch");
+        assert_eq!(decoded_part_1, part_1_data);
+
+        // Move to part 2
+        encoder.move_to_next_part();
+        decoder.move_to_next_part();
+
+        // Encode and decode part 2
+        let mut chunks_for_part_2 = 0;
+        while !decoder.is_current_part_complete() && chunks_for_part_2 < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks_for_part_2 += 1;
+        }
+
+        assert!(decoder.is_current_part_complete(), "Part 2 should be complete");
+        let decoded_part_2 = decoder.get_current_part_data().expect("Failed to get part 2");
+        let decoded_part_2_checksum = crc32(&decoded_part_2);
+
+        assert_eq!(decoded_part_2_checksum, part_2_checksum, "Part 2 checksum mismatch");
+        assert_eq!(decoded_part_2, part_2_data);
+
+        // Verify full data integrity if possible
+        let mut full_decoded = decoded_part_1;
+        full_decoded.extend_from_slice(&decoded_part_2);
+        let full_decoded_checksum = crc32(&full_decoded);
+        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+    }
+
+    #[test]
+    fn test_three_part_encode_decode_with_part_checksums() {
+        let total_data: Vec<u8> = (0..6000).map(|i| (i % 256) as u8).collect();
+        let part_size = 2000;
+
+        // Pre-compute expected checksums for each part
+        let parts_data: Vec<&[u8]> = vec![
+            &total_data[0..2000],
+            &total_data[2000..4000],
+            &total_data[4000..6000],
+        ];
+        let part_checksums: Vec<String> = parts_data.iter().map(|p| crc32(p)).collect();
+        let full_checksum = crc32(&total_data);
+
+        let mut encoder = make_test_encoder(total_data.len(), true, part_size);
+        let mut decoder = make_test_decoder(total_data.len(), true, part_size);
+
+        let mut all_parts_decoded = Vec::new();
+
+        // Process each part
+        for part_idx in 0..3 {
+            // Encode and decode current part
+            let mut chunks_for_part = 0;
+            while !decoder.is_current_part_complete() && chunks_for_part < 500 {
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
+                chunks_for_part += 1;
+            }
+
+            assert!(
+                decoder.is_current_part_complete(),
+                "Part {} should be complete",
+                part_idx
+            );
+
+            let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
+            let decoded_part_checksum = crc32(&decoded_part);
+
+            assert_eq!(
+                decoded_part_checksum, part_checksums[part_idx],
+                "Part {} checksum mismatch",
+                part_idx
+            );
+            assert_eq!(decoded_part, parts_data[part_idx], "Part {} data mismatch", part_idx);
+
+            all_parts_decoded.extend_from_slice(&decoded_part);
+
+            // Move to next part if not the last one
+            if part_idx < 2 {
+                encoder.move_to_next_part();
+                decoder.move_to_next_part();
+            }
+        }
+
+        // Verify full file checksum
+        let full_decoded_checksum = crc32(&all_parts_decoded);
+        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(all_parts_decoded, total_data, "Full data mismatch");
+    }
+
+    #[test]
+    fn test_four_part_encode_decode_with_sequential_checksums() {
+        let total_data: Vec<u8> = (0..8000).map(|i| (i % 256) as u8).collect();
+        let part_size = 2000;
+
+        // Pre-compute checksums
+        let mut expected_checksums = Vec::new();
+        for i in 0..4 {
+            let start = i * part_size;
+            let end = (i + 1) * part_size;
+            let part = &total_data[start..end];
+            expected_checksums.push(crc32(part));
+        }
+        let full_checksum = crc32(&total_data);
+
+        let mut encoder = make_test_encoder(total_data.len(), true, part_size);
+        let mut decoder = make_test_decoder(total_data.len(), true, part_size);
+
+        let mut all_decoded_parts = Vec::new();
+
+        for part_idx in 0..4 {
+            // Encode and decode current part
+            let mut chunks_sent = 0;
+            while !decoder.is_current_part_complete() && chunks_sent < 500 {
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
+                chunks_sent += 1;
+            }
+
+            assert!(
+                decoder.is_current_part_complete(),
+                "Part {} should be complete after {} chunks",
+                part_idx,
+                chunks_sent
+            );
+
+            let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
+            let decoded_checksum = crc32(&decoded_part);
+
+            assert_eq!(
+                decoded_checksum, expected_checksums[part_idx],
+                "Part {} checksum mismatch",
+                part_idx
+            );
+
+            let expected_part_start = part_idx * part_size;
+            let expected_part_end = (part_idx + 1) * part_size;
+            let expected_part = &total_data[expected_part_start..expected_part_end];
+            assert_eq!(decoded_part, expected_part, "Part {} data mismatch", part_idx);
+
+            all_decoded_parts.extend_from_slice(&decoded_part);
+
+            // Move to next part if not the last one
+            if part_idx < 3 {
+                encoder.move_to_next_part();
+                decoder.move_to_next_part();
+            }
+        }
+
+        // Verify full file
+        let full_decoded_checksum = crc32(&all_decoded_parts);
+        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(all_decoded_parts, total_data, "Full file data mismatch");
+    }
+
+    // ============================================================
+    // Partial Data Patterns with Checksums
+    // ============================================================
+
+    #[test]
+    fn test_single_part_repetitive_pattern_with_checksum() {
+        // Use same pattern as helper to ensure consistency
+        let data: Vec<u8> = (0..300).map(|i| (i % 256) as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks = 0;
+        while !decoder.is_complete() && chunks < 200 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to decode");
+        assert_eq!(crc32(&decoded), original_checksum);
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_single_part_incremental_data_with_checksum() {
+        let data: Vec<u8> = (0..256).map(|i| i as u8).collect(); // 0-255 pattern
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        // Encode and decode
+        let mut chunks = 0;
+        while !decoder.is_complete() && chunks < 300 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
+            chunks += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().expect("Failed to decode");
+        assert_eq!(crc32(&decoded), original_checksum);
+        assert_eq!(decoded, data);
+    }
+
+    #[test]
+    fn test_multi_part_mixed_patterns_with_checksums() {
+        // Use consistent data pattern with helper function (0..N).map(|i| (i % 256) as u8)
+        let total_data: Vec<u8> = (0..3000).map(|i| (i % 256) as u8).collect();
+        let part_size = 1000;
+
+        // Pre-compute expected checksums for each part
+        let parts_data: Vec<&[u8]> = vec![
+            &total_data[0..1000],
+            &total_data[1000..2000],
+            &total_data[2000..3000],
+        ];
+        let expected_checksums: Vec<String> = parts_data.iter().map(|p| crc32(p)).collect();
+        let full_checksum = crc32(&total_data);
+
+        let mut encoder = make_test_encoder(total_data.len(), true, part_size);
+        let mut decoder = make_test_decoder(total_data.len(), true, part_size);
+
+        let mut all_decoded = Vec::new();
+
+        for part_idx in 0..3 {
+            let mut chunks = 0;
+            while !decoder.is_current_part_complete() && chunks < 400 {
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
+                chunks += 1;
+            }
+
+            assert!(decoder.is_current_part_complete());
+            let decoded_part = decoder.get_current_part_data().expect("Failed to get part");
+            let decoded_checksum = crc32(&decoded_part);
+
+            assert_eq!(
+                decoded_checksum, expected_checksums[part_idx],
+                "Part {} checksum mismatch",
+                part_idx
+            );
+
+            all_decoded.extend_from_slice(&decoded_part);
+
+            if part_idx < 2 {
+                encoder.move_to_next_part();
+                decoder.move_to_next_part();
+            }
+        }
+
+        let full_decoded_checksum = crc32(&all_decoded);
+        assert_eq!(full_decoded_checksum, full_checksum);
+        assert_eq!(all_decoded, total_data);
+    }
+
+    // ============================================================
+    // Progress Tracking with Checksums
+    // ============================================================
+
+    #[test]
+    fn test_progress_tracking_during_single_part_decode_with_checksum() {
+        let data: Vec<u8> = (0..5000).map(|i| (i % 256) as u8).collect();
+        let original_checksum = crc32(&data);
+
+        let mut encoder = make_test_encoder(data.len(), false, 0);
+        let mut decoder = make_test_decoder(data.len(), false, 0);
+
+        let mut progress_values = vec![decoder.get_progress()];
+        let mut chunk_count = 0;
+
+        while !decoder.is_complete() && chunk_count < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                progress_values.push(decoder.get_progress());
+            }
+            chunk_count += 1;
+        }
+
+        assert!(decoder.is_complete());
+
+        // Progress should generally increase or stay same (monotonic)
+        for i in 1..progress_values.len() {
+            assert!(
+                progress_values[i] >= progress_values[i - 1],
+                "Progress should be monotonic"
+            );
+        }
+
+        // Final progress should be close to 1.0
+        assert!(progress_values.last().copied().unwrap_or(0.0) > 0.9);
+
+        // Verify checksum
+        let decoded = decoder.get_decoded_data().expect("Failed to decode");
+        assert_eq!(crc32(&decoded), original_checksum);
+    }
+
+    #[test]
+    fn test_progress_tracking_during_multi_part_decode_with_checksum() {
+        let total_data: Vec<u8> = (0..4000).map(|i| (i % 256) as u8).collect();
+        let part_size = 2000;
+        let part_1_checksum = crc32(&total_data[0..2000]);
+        let part_2_checksum = crc32(&total_data[2000..4000]);
+
+        let mut encoder = make_test_encoder(total_data.len(), true, part_size);
+        let mut decoder = make_test_decoder(total_data.len(), true, part_size);
+
+        // Part 1
+        let mut progress_values = Vec::new();
+        let mut chunk_count = 0;
+
+        while !decoder.is_current_part_complete() && chunk_count < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                progress_values.push(decoder.get_progress());
+            }
+            chunk_count += 1;
+        }
+
+        assert!(decoder.is_current_part_complete());
+        let part_1_data = decoder.get_current_part_data().expect("Failed to get part 1");
+        assert_eq!(crc32(&part_1_data), part_1_checksum);
+
+        // Move to part 2
+        encoder.move_to_next_part();
+        decoder.move_to_next_part();
+
+        // Part 2 - progress should restart
+        progress_values.clear();
+        chunk_count = 0;
+
+        while !decoder.is_current_part_complete() && chunk_count < 500 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                progress_values.push(decoder.get_progress());
+            }
+            chunk_count += 1;
+        }
+
+        assert!(decoder.is_current_part_complete());
+        let part_2_data = decoder.get_current_part_data().expect("Failed to get part 2");
+        assert_eq!(crc32(&part_2_data), part_2_checksum);
     }
 }
