@@ -17,6 +17,8 @@ import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
 import { computeChecksum } from '@/utils/checksum'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
+const DEFAULT_PART_CHECKSUM = '00000000'
+
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
   sessionId: number
@@ -412,7 +414,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 binaryData[offset++] = partInfo.totalParts & 0xFF
 
                 // Part checksum (4 bytes) - stored as hex string, convert to bytes
-                const partChecksumHex = partInfo.currentPartChecksum || '00000000'
+                const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
                 for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
                   const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
                   binaryData[offset++] = byte
@@ -538,7 +540,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           binaryData[offset++] = partInfo.totalParts & 0xFF
 
           // Part checksum (4 bytes) - stored as hex string, convert to bytes
-          const partChecksumHex = partInfo.currentPartChecksum || '00000000'
+          const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
           for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
             const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
             binaryData[offset++] = byte

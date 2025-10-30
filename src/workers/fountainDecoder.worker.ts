@@ -24,6 +24,23 @@ function createChunkKey(chunk: { seed: number; degree: number; indices: number[]
     return `${chunk.seed}:${chunk.degree}:${firstIdx}:${lastIdx}`;
 }
 
+/**
+ * Calculates progress for the current part in part-based mode or overall progress in normal mode
+ * @param decoder - The fountain decoder instance
+ * @param isPartBasedMode - Whether part-based mode is enabled
+ * @returns Progress value as a fraction (0 to 1), or 0 if total blocks is 0
+ */
+function calculatePartProgress(decoder: FountainDecoder, isPartBasedMode: boolean): number {
+    if (isPartBasedMode) {
+        const currentPartDecodedBlocks = decoder.wasm.getCurrentPartDecodedBlockCount();
+        const currentPartTotalBlocks = decoder.wasm.getCurrentPartTotalBlockCount();
+        return currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
+    } else {
+        // In non-part mode, part progress equals overall progress
+        return decoder.wasm.getProgress();
+    }
+}
+
 // Worker state
 let decoder: FountainDecoder | null = null;
 const receivedChunks: Set<string> = new Set(); // Composite key: "seed:degree:firstIdx:lastIdx"
@@ -288,7 +305,7 @@ self.onmessage = async (event: MessageEvent) => {
                     const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific progress
-                    let partProgress: number;
+                    let partProgress = calculatePartProgress(decoder!, partBasedMode);
                     let currentPartDecodedBlocks: number | undefined;
                     let currentPartTotalBlocks: number | undefined;
                     let currentPartIndex: number | undefined;
@@ -297,12 +314,8 @@ self.onmessage = async (event: MessageEvent) => {
                         const partInfo = decoder!.getPartInfo();
                         currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
                         currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
-                        partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
                         currentPartIndex = partInfo.currentPartIndex;
                         totalParts = partInfo.totalParts;
-                    } else {
-                        // In non-part mode, part progress equals overall progress
-                        partProgress = overallProgress;
                     }
 
                     self.postMessage({
@@ -345,7 +358,7 @@ self.onmessage = async (event: MessageEvent) => {
                     const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                     // Get part-specific info
-                    let partProgress: number;
+                    let partProgress = calculatePartProgress(decoder!, partBasedMode);
                     let currentPartIndex: number | undefined;
                     let totalParts: number | undefined;
                     let currentPartDecodedBlocks: number | undefined;
@@ -356,10 +369,6 @@ self.onmessage = async (event: MessageEvent) => {
                         totalParts = partInfo.totalParts;
                         currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
                         currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
-                        partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
-                    } else {
-                        // In non-part mode, part progress equals overall progress
-                        partProgress = overallProgress;
                     }
 
                     self.postMessage({
@@ -391,14 +400,7 @@ self.onmessage = async (event: MessageEvent) => {
                 const decodedBlockIndices__ = decoder!.wasm.getDecodedBlockIndices();
 
                 // Calculate part progress
-                let partProgress_: number;
-                if (partBasedMode) {
-                    const currentPartDecodedBlocks_ = decoder!.wasm.getCurrentPartDecodedBlockCount();
-                    const currentPartTotalBlocks_ = decoder!.wasm.getCurrentPartTotalBlockCount();
-                    partProgress_ = currentPartTotalBlocks_ > 0 ? currentPartDecodedBlocks_ / currentPartTotalBlocks_ : 0;
-                } else {
-                    partProgress_ = overallProgress_;
-                }
+                const partProgress_ = calculatePartProgress(decoder!, partBasedMode);
 
                 self.postMessage({
                     type: 'status',

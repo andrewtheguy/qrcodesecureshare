@@ -38,7 +38,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     name: initialMetadata.name,
     size: initialMetadata.size,
     fileType: initialMetadata.type,
-    type: initialMetadata.type, // Backward compatibility alias
     timestamp: Date.now(),
     totalSourceBlocks: initialMetadata.totalSourceBlocks,
     blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
@@ -64,7 +63,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
   const feedbackSequenceRef = useRef<number>(0)
   const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] = useState(-1)
-  const prevMissingBlocksRef = useRef<number>(Infinity)
   const sessionId = initialMetadata.sessionId
   const [error, setError] = useState<string>('')
   const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
@@ -175,7 +173,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
         case 'complete': {
           const { data: reconstructedData, integrityOk, calculatedChecksum } = data
-          const blob = new Blob([reconstructedData], { type: fountainMetadata.type || 'application/octet-stream' })
+          const blob = new Blob([reconstructedData], { type: fountainMetadata.fileType || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           setDownloadUrl(url)
@@ -355,19 +353,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   //     5. Test that only ONE trigger fires in edge cases
   //
   // ═══════════════════════════════════════════════════════════════════════════════
-  useEffect(() => {
-    // Skip all checks if already showing feedback, transfer complete, or awaiting feedback
-    if (success || isAwaitingFeedback) return
-
-    // Skip all feedback logic if feedback is disabled
-    if (!feedbackEnabled) return
-
-    // Add guard to prevent feedback when all blocks are decoded
-    if (decodedBlocks >= fountainMetadata.totalSourceBlocks) return
-
-    const currentMissingBlocks = fountainMetadata.totalSourceBlocks - decodedBlocks
-    prevMissingBlocksRef.current = currentMissingBlocks
-  }, [decodedBlocks, fountainMetadata.totalSourceBlocks, success, isAwaitingFeedback, feedbackEnabled])
 
   // handleStartScan, handleStopScan moved to subcomponent
 

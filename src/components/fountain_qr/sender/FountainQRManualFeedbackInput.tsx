@@ -23,7 +23,6 @@ import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/u
 interface ProcessedFeedbackData {
   sequence: number;
   mode: 'part-complete';
-  receivedBlocks?: Set<number>;
   message: string;
 }
 

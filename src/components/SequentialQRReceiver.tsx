@@ -9,7 +9,7 @@ interface ChunkData {
   meta: {
     name: string
     size: number
-    type: string
+    fileType: string
     timestamp: number
   }
   index: number
@@ -35,7 +35,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
   const initialMeta: ChunkData['meta'] = {
     name: initialMetadata.name,
     size: initialMetadata.size,
-    type: initialMetadata.type,
+    fileType: initialMetadata.type,
     timestamp: Date.now()
   }
 
@@ -167,7 +167,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
           setActualChecksum(calc)
 
           // Create blob and download URL
-          const blob = new Blob([bytes], { type: metadata.type || 'application/octet-stream' })
+          const blob = new Blob([bytes], { type: metadata.fileType || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           setDownloadUrl(url)
@@ -180,7 +180,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
         }
       })()
     }
-  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.type])
+  }, [receivedChunks.size, totalChunks, success, addDebugLog, initialMetadata.checksum, metadata.fileType])
 
 
   const handleStartScan = () => {

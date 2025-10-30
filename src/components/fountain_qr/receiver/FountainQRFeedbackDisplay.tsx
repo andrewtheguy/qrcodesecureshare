@@ -156,7 +156,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout

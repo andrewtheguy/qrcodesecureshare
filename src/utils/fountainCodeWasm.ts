@@ -75,7 +75,6 @@ export interface WasmFountainMetadata {
  * All fields are required
  */
 export interface FountainMetadata extends WasmFountainMetadata {
-  type: string  // Alias for fileType for backward compatibility
   partBasedMode: boolean
   partSize: number
   checksum: string
@@ -159,7 +158,7 @@ export class FountainWasmEncoder {
 
   private constructor(
     data: Uint8Array,
-    metadata: { name: string; type: string; timestamp?: number },
+    metadata: { name: string; fileType: string; timestamp?: number },
     options: FountainEncoderOptions,
     partConfig: PartBasedModeConfig,
     seedOffset?: number
@@ -167,7 +166,7 @@ export class FountainWasmEncoder {
     this.wasm = new WasmFountainEncoder(
       data,
       metadata.name,
-      metadata.type,
+      metadata.fileType,
       metadata.timestamp || Date.now(),
       options,
       partConfig.enabled,
@@ -187,7 +186,7 @@ export class FountainWasmEncoder {
    */
   static async create(
     data: Uint8Array,
-    metadata: { name: string; type: string; timestamp?: number },
+    metadata: { name: string; fileType: string; timestamp?: number },
     options: FountainEncoderOptions = DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
     partConfig: PartBasedModeConfig = { enabled: false, partSize: 0 },
     seedOffset?: number

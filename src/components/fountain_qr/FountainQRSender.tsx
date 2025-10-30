@@ -61,7 +61,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         const metadata = {
           name: file.name,
           size: file.size,
-          type: file.type,
+          fileType: file.type,
           timestamp: Date.now(),
           checksum,
           checksumAlg
