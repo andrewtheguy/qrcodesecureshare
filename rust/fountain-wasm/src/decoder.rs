@@ -268,14 +268,31 @@ impl FountainDecoder {
 
         for i in start_block..end_block {
             if let Some(block) = self.decoded_blocks.get(&i) {
-                result.extend_from_slice(block);
+                // Calculate which bytes from this block belong to this part
+                let block_start_byte = i * self.metadata.block_size;
+                let block_end_byte = block_start_byte + self.metadata.block_size;
+
+                // Calculate the offset within the block where this part starts
+                let block_start_in_part = if part_start_byte > block_start_byte {
+                    part_start_byte - block_start_byte
+                } else {
+                    0
+                };
+
+                // Calculate the offset within the block where this part ends
+                let block_end_in_part = if part_end_byte < block_end_byte {
+                    part_end_byte - block_start_byte
+                } else {
+                    self.metadata.block_size
+                };
+
+                // Only copy the bytes that belong to this part
+                result.extend_from_slice(&block[block_start_in_part..block_end_in_part]);
             } else {
                 return None;
             }
         }
 
-        // Trim to exact part size
-        result.truncate(part_data_size);
         Some(result)
     }
 
