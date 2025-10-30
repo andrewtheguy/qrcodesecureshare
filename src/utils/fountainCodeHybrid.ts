@@ -1,5 +1,5 @@
 /**
- * Hybrid Fountain Code Implementation
+ * WASM-Required Fountain Code Implementation
  *
  * Uses Rust WASM for computation-heavy operations:
  * - generateChunk() - Chunk generation with XOR operations
@@ -22,25 +22,22 @@ import type {
 } from './fountainCode'
 
 /**
- * Hybrid Fountain Encoder
- * Delegates computation-heavy chunk generation to WASM,
- * keeps coordination logic in JavaScript
+ * Fountain Encoder
+ * REQUIRES WASM for computation, uses JavaScript for coordination
  */
 export class FountainEncoder {
   private jsEncoder: JSFountainEncoder
-  private wasmEncoder: FountainWasmEncoder | null = null
-  private useWasm: boolean
+  private wasmEncoder: FountainWasmEncoder
 
   constructor(
     data: Uint8Array,
     metadata: Omit<FountainMetadata, 'totalSourceBlocks' | 'blockSize'>,
     opts: FountainEncoderOptions = {}
   ) {
-    // Always create JS encoder for coordination
+    // Create JS encoder for coordination logic only
     this.jsEncoder = new JSFountainEncoder(data, metadata, opts)
 
-    // Try to create WASM encoder for computation
-    this.useWasm = true
+    // Create WASM encoder for computation (REQUIRED)
     try {
       this.wasmEncoder = new FountainWasmEncoder(
         data,
@@ -48,24 +45,15 @@ export class FountainEncoder {
         { blockSize: opts.blockSize, c: opts.c, delta: opts.delta }
       )
     } catch (err) {
-      console.warn('Failed to initialize WASM encoder, falling back to JavaScript:', err)
-      this.useWasm = false
+      throw new Error(`Failed to initialize WASM encoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
     }
   }
 
   /**
-   * Generate a fountain chunk (COMPUTATION-HEAVY - uses WASM)
+   * Generate a fountain chunk (REQUIRES WASM)
    */
   generateChunk(): FountainChunk {
-    if (this.useWasm && this.wasmEncoder) {
-      try {
-        return this.wasmEncoder.generateChunk()
-      } catch (err) {
-        console.warn('WASM generateChunk failed, falling back to JS:', err)
-        this.useWasm = false
-      }
-    }
-    return this.jsEncoder.generateChunk()
+    return this.wasmEncoder.generateChunk()
   }
 
   /**
@@ -113,14 +101,13 @@ export class FountainEncoder {
 }
 
 /**
- * Hybrid Fountain Decoder
- * Delegates computation-heavy belief propagation to WASM,
- * keeps coordination logic in JavaScript
+ * Fountain Decoder
+ * REQUIRES WASM for computation (except part-based mode), uses JavaScript for coordination
  */
 export class FountainDecoder {
   private jsDecoder: JSFountainDecoder
   private wasmDecoder: FountainWasmDecoder | null = null
-  private useWasm: boolean
+  private partBasedMode: boolean
   private metadata: FountainMetadata
 
   constructor(
@@ -129,14 +116,13 @@ export class FountainDecoder {
     partSize: number = 0
   ) {
     this.metadata = metadata
+    this.partBasedMode = partBasedMode
 
     // Always create JS decoder for coordination
     this.jsDecoder = new JSFountainDecoder(metadata, partBasedMode, partSize)
 
-    // Only use WASM if NOT in part-based mode (WASM doesn't support it yet)
-    this.useWasm = !partBasedMode
-
-    if (this.useWasm) {
+    // WASM doesn't support part-based mode yet, so only use it for regular mode
+    if (!partBasedMode) {
       try {
         this.wasmDecoder = new FountainWasmDecoder({
           name: metadata.name,
@@ -147,108 +133,109 @@ export class FountainDecoder {
           blockSize: metadata.blockSize,
         })
       } catch (err) {
-        console.warn('Failed to initialize WASM decoder, falling back to JavaScript:', err)
-        this.useWasm = false
+        throw new Error(`Failed to initialize WASM decoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
       }
     }
   }
 
   /**
-   * Add a chunk and decode (COMPUTATION-HEAVY - uses WASM when possible)
+   * Add a chunk and decode (REQUIRES WASM in regular mode, uses JS in part-based mode)
    */
   addChunk(chunk: FountainChunk): boolean {
-    // Always add to JS decoder for coordination
-    const jsResult = this.jsDecoder.addChunk(chunk)
-
-    // Also add to WASM decoder if available
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        this.wasmDecoder.addChunk(chunk)
-      } catch (err) {
-        console.warn('WASM addChunk failed, falling back to JS:', err)
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      // Part-based mode uses JS decoder
+      return this.jsDecoder.addChunk(chunk)
     }
 
-    return jsResult
+    // Regular mode requires WASM
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    // Add to both decoders for coordination
+    this.jsDecoder.addChunk(chunk)
+    return this.wasmDecoder.addChunk(chunk)
   }
 
   /**
-   * Get decoded data (COMPUTATION-HEAVY - uses WASM when possible)
+   * Get decoded data (REQUIRES WASM in regular mode, uses JS in part-based mode)
    */
   getDecodedData(): Uint8Array | null {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.getDecodedData()
-      } catch (err) {
-        console.warn('WASM getDecodedData failed, falling back to JS:', err)
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.getDecodedData()
     }
-    return this.jsDecoder.getDecodedData()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.getDecodedData()
   }
 
   /**
-   * Get progress (uses WASM when available for consistency)
+   * Get progress (REQUIRES WASM in regular mode, uses JS in part-based mode)
    */
   getProgress(): number {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.getProgress()
-      } catch (err) {
-        console.warn('WASM getProgress failed, falling back to JS:', err)
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.getProgress()
     }
-    return this.jsDecoder.getProgress()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.getProgress()
   }
 
   /**
-   * Check if complete (uses WASM when available for consistency)
+   * Check if complete (REQUIRES WASM in regular mode, uses JS in part-based mode)
    */
   isComplete(): boolean {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.isComplete()
-      } catch (err) {
-        console.warn('WASM isComplete failed, falling back to JS:', err)
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.isComplete()
     }
-    return this.jsDecoder.isComplete()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.isComplete()
   }
 
   getReceivedChunkCount(): number {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.getReceivedChunkCount()
-      } catch {
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.getReceivedChunkCount()
     }
-    return this.jsDecoder.getReceivedChunkCount()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.getReceivedChunkCount()
   }
 
   getDecodedBlockCount(): number {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.getDecodedBlockCount()
-      } catch {
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.getDecodedBlockCount()
     }
-    return this.jsDecoder.getDecodedBlockCount()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.getDecodedBlockCount()
   }
 
   getDecodedBlockIndices(): number[] {
-    if (this.useWasm && this.wasmDecoder) {
-      try {
-        return this.wasmDecoder.getDecodedBlockIndices()
-      } catch {
-        this.useWasm = false
-      }
+    if (this.partBasedMode) {
+      return this.jsDecoder.getDecodedBlockIndices()
     }
-    return this.jsDecoder.getDecodedBlockIndices()
+
+    if (!this.wasmDecoder) {
+      throw new Error('WASM decoder not initialized')
+    }
+
+    return this.wasmDecoder.getDecodedBlockIndices()
   }
 
   // ========================================

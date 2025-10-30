@@ -1,93 +1,19 @@
 /**
- * Fountain (LT) Code Implementation – Tuned Version (NOT backward compatible)
+ * Fountain (LT) Code Implementation – Coordination Layer
  *
- * Key changes vs previous version:
- *  - Uses configurable robust soliton with tighter failure probability (delta=0.01)
- *  - Adds degree "doping" (forced low-degree symbols) to maintain healthy ripple
- *  - Adaptive max degree: min(40, max(8, round(2.5 * sqrt(k))))
- *  - Renormalizes distribution when truncated by max degree
- *  - Exposes tuning + runtime stats (avg degree, produced chunks, unique indices coverage)
- *  - Simplified generateChunk(): no parameter – encoder owns all tuning
+ * This file provides coordination logic for fountain encoding/decoding:
  *  - Part-based transfer for large files: splits files into fixed-size parts (256KB/512KB/1024KB)
  *    with independent checksum validation and memory cleanup
+ *  - State management for encoder/decoder
+ *  - Metadata handling
  *
- * Recommended single-session max file size with default blockSize=400 bytes:
- *   Green zone: ≤ ~200 KB (k ≲ 500)
- *   Yellow zone: 200–250 KB (k 500–625) – still fine
- *   For larger files: Use part-based transfer mode
+ * COMPUTATION LOGIC HAS BEEN MOVED TO RUST WASM:
+ *  - Chunk generation (XOR operations, degree sampling) - handled by WASM encoder
+ *  - Belief propagation decoding - handled by WASM decoder (except part-based mode)
+ *  - For part-based mode, JavaScript decoder is still used (WASM doesn't support it yet)
  */
 
-// Pseudo-random number generator with seed (for reproducibility)
-class SeededRandom {
-  private seed: number
-
-  constructor(seed: number) {
-    this.seed = seed
-  }
-
-  next(): number {
-    this.seed = (this.seed * 9301 + 49297) % 233280
-    return this.seed / 233280
-  }
-}
-
-// Core Robust Soliton distribution (before truncation or doping)
-function robustSolitonDistribution(k: number, c: number, delta: number): number[] {
-  const R = c * Math.log(k / delta) * Math.sqrt(k)
-  const probs: number[] = new Array(k).fill(0)
-
-  // Ideal Soliton
-  probs[0] = 1 / k
-  for (let i = 2; i <= k; i++) probs[i - 1] = 1 / (i * (i - 1))
-
-  // Tau (robust component)
-  const tau: number[] = new Array(k).fill(0)
-  const threshold = Math.floor(k / R)
-  for (let i = 1; i < threshold; i++) tau[i - 1] = R / (i * k)
-  if (threshold - 1 >= 0 && threshold - 1 < k) {
-    tau[threshold - 1] = R * Math.log(R / delta) / k
-  }
-
-  const sumBase = probs.reduce((s, v) => s + v, 0)
-  const sumTau = tau.reduce((s, v) => s + v, 0)
-  const beta = sumBase + sumTau
-  for (let i = 0; i < k; i++) probs[i] = (probs[i] + tau[i]) / beta
-  return probs
-}
-
-// Build truncated + renormalized distribution subject to maxDegree
-function buildDegreeDistribution(k: number, c: number, delta: number, maxDegree: number): number[] {
-  const base = robustSolitonDistribution(k, c, delta)
-  const limit = Math.min(maxDegree, k)
-  const truncated = base.slice(0, limit)
-  const sum = truncated.reduce((s, v) => s + v, 0)
-  for (let i = 0; i < truncated.length; i++) truncated[i] /= sum
-  return truncated
-}
-
-interface DegreeSamplerOptions {
-  degree1Rate: number      // forced degree=1 probability
-  lowDegreeRate: number    // additional probability region for degree 2-3
-}
-
-function sampleDegree(rng: SeededRandom, dist: number[], opts: DegreeSamplerOptions): number {
-  const r = rng.next()
-  if (r < opts.degree1Rate) return 1
-  if (r < opts.degree1Rate + opts.lowDegreeRate) {
-    // degree 2 or 3 (favor 2 slightly)
-    return rng.next() < 0.6 ? 2 : 3
-  }
-  // sample from truncated robust soliton distribution
-  const r2 = rng.next()
-  let cumulative = 0
-  for (let i = 0; i < dist.length; i++) {
-    cumulative += dist[i]
-    if (r2 <= cumulative) return i + 1
-  }
-  return dist.length
-}
-
-// XOR two Uint8Arrays
+// XOR two Uint8Arrays (used by decoder in part-based mode)
 function xorArrays(a: Uint8Array, b: Uint8Array): Uint8Array {
   const result = new Uint8Array(Math.max(a.length, b.length))
   for (let i = 0; i < a.length; i++) {
@@ -121,32 +47,21 @@ export interface FountainMetadata {
 
 export interface FountainEncoderOptions {
   blockSize?: number
-  c?: number          // robust soliton parameter
-  delta?: number      // failure probability target
-  maxDegree?: number  // hard ceiling (auto chosen if omitted)
-  degree1Rate?: number
-  lowDegreeRate?: number
-  maxQRDataSize?: number  // maximum QR data size in bytes (for degree tuning)
+  c?: number          // robust soliton parameter (passed to WASM)
+  delta?: number      // failure probability target (passed to WASM)
+  maxDegree?: number  // hard ceiling (passed to WASM)
+  degree1Rate?: number  // (passed to WASM)
+  lowDegreeRate?: number  // (passed to WASM)
+  maxQRDataSize?: number  // maximum QR data size in bytes (passed to WASM)
   // Part-based transfer options
   partBasedMode?: boolean  // enable part-based transfer (feedback mode only)
   partSize?: number  // size of each part in bytes (256KB, 512KB, or 1024KB)
 }
 
-export interface FountainEncoderStats {
-  producedChunks: number
-  avgDegree: number
-  uniqueBlockCoverage: number  // fraction of source blocks appearing in at least one emitted chunk
-}
-
 export class FountainEncoder {
   private sourceBlocks: Uint8Array[] = []
   private blockSize: number
-  private degreeDist: number[]
   private metadata: FountainMetadata
-  private chunkCounter = 0
-  private sumDegrees = 0
-  private seenBlocks: Set<number> = new Set()
-  private samplerOpts: DegreeSamplerOptions
   private receivedBlocks: Set<number> = new Set()
   private targetedMode: boolean = false
 
@@ -189,37 +104,6 @@ export class FountainEncoder {
       const block = new Uint8Array(this.blockSize)
       block.set(data.slice(start, end))
       this.sourceBlocks.push(block)
-    }
-
-    // Calculate max degree based on QR capacity constraints
-    // QR chunk size = 2 (magic) + 2 (seed) + 1 (degree) + 1 (numIndices) + (degree * 2) + blockSize + 4 (checksum)
-    // Rearrange: degree * 2 <= maxQRDataSize - 2 - 2 - 1 - 1 - blockSize - 4
-    // degree <= (maxQRDataSize - blockSize - 10) / 2
-    const maxQRDataSize = opts.maxQRDataSize ?? 1000 // Conservative default
-    const maxDegreeFromQRCapacity = Math.floor((maxQRDataSize - this.blockSize - 10) / 2)
-    
-    // Validate and clamp maxDegreeFromQRCapacity to prevent zero or negative values
-    if (maxDegreeFromQRCapacity < 1) {
-      throw new Error(`maxQRDataSize (${maxQRDataSize}) is too small for blockSize (${this.blockSize}). Minimum required: ${this.blockSize + 10 + 2}`)
-    }
-    
-    // Validate opts.maxDegree if provided
-    if (opts.maxDegree !== undefined && opts.maxDegree <= 0) {
-      throw new Error(`opts.maxDegree must be > 0, got: ${opts.maxDegree}`)
-    }
-    
-    // Use formula-based adaptive degree with QR capacity constraint
-    const formulaMaxDegree = Math.min(40, Math.max(8, Math.round(2.5 * Math.sqrt(numBlocks))))
-    const adaptiveMaxDegree = opts.maxDegree !== undefined 
-      ? Math.min(opts.maxDegree, maxDegreeFromQRCapacity, formulaMaxDegree)
-      : Math.min(formulaMaxDegree, maxDegreeFromQRCapacity)
-    
-    const c = opts.c ?? 0.2
-    const delta = opts.delta ?? 0.01
-    this.degreeDist = buildDegreeDistribution(numBlocks, c, delta, adaptiveMaxDegree)
-    this.samplerOpts = {
-      degree1Rate: opts.degree1Rate ?? 0.08,
-      lowDegreeRate: opts.lowDegreeRate ?? 0.18
     }
 
     this.metadata = { ...metadata, totalSourceBlocks: numBlocks, blockSize: this.blockSize }
@@ -303,14 +187,6 @@ export class FountainEncoder {
 
   getMetadata(): FountainMetadata { return this.metadata }
 
-  getStats(): FountainEncoderStats {
-    return {
-      producedChunks: this.chunkCounter,
-      avgDegree: this.chunkCounter > 0 ? this.sumDegrees / this.chunkCounter : 0,
-      uniqueBlockCoverage: this.sourceBlocks.length > 0 ? this.seenBlocks.size / this.sourceBlocks.length : 0
-    }
-  }
-
   /**
    * Set which blocks the receiver has already decoded
    * This enables targeted encoding that focuses on missing blocks
@@ -356,82 +232,6 @@ export class FountainEncoder {
       // Return all blocks
       return Array.from({ length: this.sourceBlocks.length }, (_, i) => i)
     }
-  }
-
-  /**
-   * Get missing blocks that receiver still needs
-   */
-  private getMissingBlocks(): number[] {
-    const availableBlocks = this.getAvailableBlocks()
-
-    // Apply targeted mode filtering
-    if (!this.targetedMode) {
-      return availableBlocks
-    }
-
-    const missing: number[] = []
-    for (const blockIdx of availableBlocks) {
-      if (!this.receivedBlocks.has(blockIdx)) {
-        missing.push(blockIdx)
-      }
-    }
-    return missing
-  }
-
-  generateChunk(): FountainChunk {
-    const seed = this.chunkCounter++
-    const rng = new SeededRandom(seed)
-
-    // Get missing blocks (or all available blocks if not in targeted mode)
-    const missingBlocks = this.getMissingBlocks()
-    const availableBlocks = missingBlocks.length > 0 ? missingBlocks : this.getAvailableBlocks()
-
-    // Adjust degree based on how many blocks are left
-    let degree = sampleDegree(rng, this.degreeDist, this.samplerOpts)
-
-    // In targeted mode with few missing blocks, use lower degrees for efficiency
-    if (this.targetedMode && missingBlocks.length > 0 && missingBlocks.length < 10) {
-      degree = Math.min(degree, Math.max(1, Math.ceil(missingBlocks.length / 2)))
-    }
-
-    // Cap degree at available blocks
-    degree = Math.min(degree, availableBlocks.length)
-
-    const indices: number[] = []
-    const selected = new Set<number>()
-
-    // Sample from available (missing) blocks
-    while (selected.size < degree) {
-      const idx = availableBlocks[Math.floor(rng.next() * availableBlocks.length)]
-      if (!selected.has(idx)) {
-        selected.add(idx)
-        indices.push(idx)
-      }
-    }
-
-    // In-place XOR accumulation to avoid TypedArray generic variance issues
-    const encoded = new Uint8Array(this.blockSize)
-    for (const idx of indices) {
-      const block = this.sourceBlocks[idx]
-      for (let i = 0; i < this.blockSize; i++) {
-        encoded[i] ^= block[i]
-      }
-      this.seenBlocks.add(idx)
-    }
-
-    this.sumDegrees += degree
-    return {
-      seed,
-      degree,
-      indices: indices.sort((a, b) => a - b),
-      data: encoded
-    }
-  }
-
-  generateChunks(count: number): FountainChunk[] {
-    const out: FountainChunk[] = []
-    for (let i = 0; i < count; i++) out.push(this.generateChunk())
-    return out
   }
 
   /**
