@@ -44,8 +44,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
     checksum: initialMetadata.checksum,
     checksumAlg: initialMetadata.checksumAlg,
-    partBasedMode: initialMetadata.partBasedMode,
-    partSize: initialMetadata.partSize,
+    partBasedMode: initialMetadata.partBasedMode ?? false,
+    partSize: initialMetadata.partSize ?? 0,
   }
 
   // Metadata is immutable for this mount (component remounted per file)
