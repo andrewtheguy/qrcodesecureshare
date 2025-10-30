@@ -71,6 +71,18 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setInputSequence((lastProcessedSequence + 1).toString());
   }, [sessionId, lastProcessedSequence]);
 
+  // Set total parts and current part from encoder
+  useEffect(() => {
+    if (encoder) {
+      const partInfo = encoder.getPartInfo();
+      if (partInfo) {
+        setInputTotalParts(partInfo.totalParts.toString());
+        // Set current part to the part the receiver is expected to report on (1-indexed)
+        setInputCurrentPart((partInfo.currentPartIndex + 1).toString());
+      }
+    }
+  }, [encoder]);
+
   // Clean up timeout on unmount
   useEffect(() => {
     return () => {
@@ -99,12 +111,18 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const resetInputFields = useCallback(() => {
     setInputSequence((lastProcessedSequence + 1).toString());
     setInputMode('part-complete');
-    setInputCurrentPart('1'); // Reset to 1 (user enters 1-indexed values)
-    setInputTotalParts('1');
+    // Set current part to the next expected part from encoder (1-indexed)
+    if (encoder) {
+      const partInfo = encoder.getPartInfo();
+      if (partInfo) {
+        setInputCurrentPart((partInfo.currentPartIndex + 1).toString());
+      }
+    }
+    // Note: inputTotalParts is not reset here as it's auto-populated from encoder
     setInputPartChecksumMatch('true');
     setInputMissingBlocks('');
     setInputConfirmationCode('');
-  }, [lastProcessedSequence]);
+  }, [lastProcessedSequence, encoder]);
 
   const validateInputs = useCallback(async (): Promise<{ valid: boolean; error: string; feedback: FountainFeedback | null }> => {
     // Parse and validate sessionId
@@ -458,7 +476,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="currentPart" className="text-xs">Current Part (as shown on display)</Label>
+            <Label htmlFor="currentPart" className="text-xs">Current Part (Expected)</Label>
             <Input
               id="currentPart"
               type="number"
@@ -467,17 +485,17 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
               onChange={(e) => setInputCurrentPart(e.target.value)}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Enter the exact part number shown on receiver's display
+              Defaults to expected part. Verify with receiver's display.
             </p>
           </div>
           <div>
-            <Label htmlFor="totalParts" className="text-xs">Total Parts</Label>
+            <Label htmlFor="totalParts" className="text-xs">Total Parts (Auto)</Label>
             <Input
               id="totalParts"
               type="number"
-              min="1"
               value={inputTotalParts}
-              onChange={(e) => setInputTotalParts(e.target.value)}
+              readOnly
+              className="bg-gray-100"
             />
           </div>
         </div>
