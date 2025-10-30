@@ -2,7 +2,7 @@ use crate::types::FountainChunk;
 use serde::{Deserialize, Serialize};
 
 /// Part metadata extracted from binary chunk data
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PartMetadata {
     pub current_part: u16,

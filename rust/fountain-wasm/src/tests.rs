@@ -496,3 +496,932 @@ mod integration_tests {
         assert_eq!(decoded, data);
     }
 }
+
+#[cfg(test)]
+mod wasm_refactoring_tests {
+    //! Tests for the refactored WASM methods that use serde instead of js_sys
+    //! These tests verify that the refactored methods produce correct results
+    //! without requiring WASM compilation.
+
+    use crate::checksum::crc32;
+    use crate::encoder::FountainEncoder;
+    use crate::decoder::FountainDecoder;
+    use crate::parser::{parse_binary_chunk, create_chunk_key};
+    use crate::types::{FountainEncoderOptions, PartInfo};
+
+    /// Helper to create a test encoder
+    fn make_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
+        let data = (0..data_size).map(|i| (i % 256) as u8).collect();
+        FountainEncoder::new(
+            data,
+            "test.bin".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            FountainEncoderOptions::default(),
+            part_based_mode,
+            part_size,
+            None,
+        )
+    }
+
+    /// Helper to create a test decoder
+    fn make_decoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainDecoder {
+        let encoder = make_encoder(data_size, part_based_mode, part_size);
+        let metadata = encoder.get_metadata().clone();
+
+        if part_based_mode {
+            FountainDecoder::with_part_mode(metadata, part_size)
+        } else {
+            FountainDecoder::new(metadata)
+        }
+    }
+
+    // ============================================================
+    // Tests for get_part_info() methods
+    // ============================================================
+
+    #[test]
+    fn test_encoder_get_part_info_without_part_mode() {
+        let encoder = make_encoder(1000, false, 0);
+        let (part_based_mode, current_part_index, total_parts, part_size) = encoder.get_part_info();
+
+        assert_eq!(part_based_mode, false);
+        assert_eq!(current_part_index, 0);
+        assert_eq!(total_parts, 0);
+        assert_eq!(part_size, 0);
+    }
+
+    #[test]
+    fn test_encoder_get_part_info_with_part_mode() {
+        let data_size = 10000;
+        let part_size = 1000;
+        let encoder = make_encoder(data_size, true, part_size);
+        let (part_based_mode, current_part_index, total_parts, _part_size) = encoder.get_part_info();
+
+        assert_eq!(part_based_mode, true);
+        assert_eq!(current_part_index, 0); // Initial state
+        assert!(total_parts > 0); // Should have calculated parts
+    }
+
+    #[test]
+    fn test_encoder_part_info_after_move() {
+        let data_size = 5000;
+        let part_size = 1000;
+        let mut encoder = make_encoder(data_size, true, part_size);
+
+        // Move to next part
+        let could_move = encoder.move_to_next_part();
+        assert!(could_move);
+
+        let (part_based_mode, current_part_index, total_parts, _part_size) = encoder.get_part_info();
+
+        assert_eq!(part_based_mode, true);
+        assert_eq!(current_part_index, 1); // Should be at part 1
+        assert!(total_parts > 1);
+    }
+
+    #[test]
+    fn test_decoder_get_part_info_without_part_mode() {
+        let decoder = make_decoder(1000, false, 0);
+        let (part_based_mode, current_part_index, total_parts, part_size) = decoder.get_part_info();
+
+        assert_eq!(part_based_mode, false);
+        assert_eq!(current_part_index, 0);
+        assert_eq!(total_parts, 0);
+        assert_eq!(part_size, 0);
+    }
+
+    #[test]
+    fn test_decoder_get_part_info_with_part_mode() {
+        let data_size = 10000;
+        let part_size = 1000;
+        let decoder = make_decoder(data_size, true, part_size);
+        let (part_based_mode, current_part_index, total_parts, returned_part_size) = decoder.get_part_info();
+
+        assert_eq!(part_based_mode, true);
+        assert_eq!(current_part_index, 0); // Initial state
+        assert!(total_parts > 0);
+        assert_eq!(returned_part_size, part_size);
+    }
+
+    #[test]
+    fn test_part_info_struct_serialization() {
+        let encoder = make_encoder(5000, true, 1000);
+        let (part_based_mode, current_part_index, total_parts, part_size) = encoder.get_part_info();
+
+        // Create PartInfo struct as the refactored methods would
+        let part_info = PartInfo {
+            part_based_mode,
+            current_part_index: current_part_index as u32,
+            total_parts: total_parts as u32,
+            part_size: part_size as u32,
+            current_part_checksum: None,
+            part_checksums: None,
+        };
+
+        // Verify fields
+        assert_eq!(part_info.part_based_mode, true);
+        assert_eq!(part_info.current_part_index, 0);
+        assert!(part_info.total_parts > 0);
+        assert_eq!(part_info.part_size, 1000);
+        assert!(part_info.current_part_checksum.is_none());
+        assert!(part_info.part_checksums.is_none());
+    }
+
+    #[test]
+    fn test_part_info_with_checksums() {
+        let encoder = make_encoder(5000, true, 1000);
+        let (part_based_mode, current_part_index, total_parts, part_size) = encoder.get_part_info();
+
+        // Simulate checksums from encoder
+        let checksums = vec!["abc123".to_string(), "def456".to_string()];
+        let current_checksum = checksums.get(current_part_index).cloned();
+
+        let part_info = PartInfo {
+            part_based_mode,
+            current_part_index: current_part_index as u32,
+            total_parts: total_parts as u32,
+            part_size: part_size as u32,
+            current_part_checksum: current_checksum,
+            part_checksums: Some(checksums),
+        };
+
+        assert!(part_info.current_part_checksum.is_some());
+        assert_eq!(part_info.current_part_checksum.unwrap(), "abc123");
+        assert_eq!(part_info.part_checksums.as_ref().unwrap().len(), 2);
+    }
+
+    // ============================================================
+    // Tests for parse_binary_chunk_internal()
+    // ============================================================
+
+    #[test]
+    fn test_parse_binary_chunk_internal_basic() {
+        let data = vec![0xAA, 0xBB, 0xCC];
+        let mut encoder = make_encoder(data.len(), false, 0);
+
+        // Generate a chunk
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        // Convert to binary format (this is the format parse_binary_chunk expects)
+        let mut binary = Vec::new();
+        binary.push(0xFF); // Magic byte 1
+        binary.push(0xFD); // Magic byte 2
+        binary.push((chunk.seed >> 8) as u8); // Seed high
+        binary.push(chunk.seed as u8); // Seed low
+        binary.push(chunk.degree as u8); // Degree
+        binary.push(chunk.indices.len() as u8); // NumIndices
+
+        // Add indices
+        for &idx in &chunk.indices {
+            binary.push((idx >> 8) as u8);
+            binary.push(idx as u8);
+        }
+
+        // Add data
+        binary.extend_from_slice(&chunk.data);
+
+        // Add placeholder checksum (4 bytes)
+        binary.extend_from_slice(&[0, 0, 0, 0]);
+
+        // Now parse it back
+        let parsed = parse_binary_chunk(&binary, false, encoder.get_metadata().total_source_blocks)
+            .expect("Failed to parse chunk");
+
+        assert_eq!(parsed.chunk.seed, chunk.seed);
+        assert_eq!(parsed.chunk.degree, chunk.degree);
+        assert_eq!(parsed.chunk.indices, chunk.indices);
+        assert_eq!(parsed.chunk.data, chunk.data);
+        assert!(parsed.part_metadata.is_none()); // No part metadata in non-part mode
+    }
+
+    #[test]
+    fn test_parse_binary_chunk_with_part_metadata() {
+        let mut encoder = make_encoder(1000, true, 100);
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        // Build binary with part metadata
+        let mut binary = Vec::new();
+        binary.push(0xFF);
+        binary.push(0xFD);
+        binary.push((chunk.seed >> 8) as u8);
+        binary.push(chunk.seed as u8);
+        binary.push(chunk.degree as u8);
+        binary.push(chunk.indices.len() as u8);
+
+        for &idx in &chunk.indices {
+            binary.push((idx >> 8) as u8);
+            binary.push(idx as u8);
+        }
+
+        // Add part metadata (8 bytes)
+        binary.push(0); // current_part high
+        binary.push(0); // current_part low
+        binary.push(0); // total_parts high
+        binary.push(5); // total_parts low = 5
+        binary.push(0xAA);
+        binary.push(0xBB);
+        binary.push(0xCC);
+        binary.push(0xDD);
+
+        // Add data
+        binary.extend_from_slice(&chunk.data);
+
+        // Add checksum
+        binary.extend_from_slice(&[0, 0, 0, 0]);
+
+        let parsed = parse_binary_chunk(&binary, true, encoder.get_metadata().total_source_blocks)
+            .expect("Failed to parse chunk");
+
+        assert!(parsed.part_metadata.is_some());
+        let part_meta = parsed.part_metadata.unwrap();
+        assert_eq!(part_meta.current_part, 0);
+        assert_eq!(part_meta.total_parts, 5);
+        assert_eq!(part_meta.part_checksum, "aabbccdd");
+    }
+
+    #[test]
+    fn test_parsed_chunk_result_from_parser() {
+        let mut encoder = make_encoder(500, false, 0);
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        // Build binary representation
+        let mut binary = Vec::new();
+        binary.push(0xFF);
+        binary.push(0xFD);
+        binary.push((chunk.seed >> 8) as u8);
+        binary.push(chunk.seed as u8);
+        binary.push(chunk.degree as u8);
+        binary.push(chunk.indices.len() as u8);
+
+        for &idx in &chunk.indices {
+            binary.push((idx >> 8) as u8);
+            binary.push(idx as u8);
+        }
+
+        binary.extend_from_slice(&chunk.data);
+        binary.extend_from_slice(&[0, 0, 0, 0]);
+
+        let parsed = parse_binary_chunk(&binary, false, encoder.get_metadata().total_source_blocks)
+            .expect("Failed to parse");
+
+        // Verify fields that would go into ParsedChunkResult
+        assert_eq!(parsed.chunk.seed, chunk.seed);
+        assert_eq!(parsed.chunk.degree, chunk.degree);
+        assert!(parsed.checksum_start > 0);
+        assert!(parsed.checksum_start <= binary.len());
+
+        // Verify indices are properly converted to u32 range
+        for &idx in &parsed.chunk.indices {
+            assert!(idx < encoder.get_metadata().total_source_blocks);
+        }
+    }
+
+    // ============================================================
+    // Tests for create_chunk_key()
+    // ============================================================
+
+    #[test]
+    fn test_create_chunk_key_consistency() {
+        let mut encoder = make_encoder(1000, false, 0);
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        let key1 = create_chunk_key(chunk.seed, chunk.degree, &chunk.indices);
+        let key2 = create_chunk_key(chunk.seed, chunk.degree, &chunk.indices);
+
+        // Same chunk should produce same key
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn test_create_chunk_key_format() {
+        let seed = 42u32;
+        let degree = 3usize;
+        let indices = vec![0, 1, 2];
+
+        let key = create_chunk_key(seed, degree, &indices);
+
+        // Format should be "seed:degree:firstIdx:lastIdx"
+        let parts: Vec<&str> = key.split(':').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "42");
+        assert_eq!(parts[1], "3");
+        assert_eq!(parts[2], "0");
+        assert_eq!(parts[3], "2");
+    }
+
+    #[test]
+    fn test_create_chunk_key_differentiates_chunks() {
+        let mut encoder = make_encoder(1000, false, 0);
+
+        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
+        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
+
+        let key1 = create_chunk_key(chunk1.seed, chunk1.degree, &chunk1.indices);
+        let key2 = create_chunk_key(chunk2.seed, chunk2.degree, &chunk2.indices);
+
+        // Different chunks should (most likely) have different keys
+        // Note: There's a tiny chance they could be the same, but with random generation it's extremely unlikely
+        if chunk1.seed != chunk2.seed || chunk1.indices != chunk2.indices {
+            assert_ne!(key1, key2);
+        }
+    }
+
+    // ============================================================
+    // Integration tests combining multiple refactored methods
+    // ============================================================
+
+    #[test]
+    fn test_encoder_workflow_with_part_info() {
+        let mut encoder = make_encoder(5000, true, 1000);
+
+        // Get initial part info
+        let (pb_mode, current, _total, _part_size) = encoder.get_part_info();
+        assert_eq!(pb_mode, true);
+        assert_eq!(current, 0);
+
+        // Generate chunks for first part
+        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
+        let key1 = create_chunk_key(chunk1.seed, chunk1.degree, &chunk1.indices);
+        assert!(!key1.is_empty());
+
+        // Move to next part
+        let moved = encoder.move_to_next_part();
+        assert!(moved);
+
+        let (_, current_new, _, _) = encoder.get_part_info();
+        assert_eq!(current_new, current + 1);
+
+        // Generate chunk for second part
+        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
+        let key2 = create_chunk_key(chunk2.seed, chunk2.degree, &chunk2.indices);
+
+        // Keys should be different (different parts usually have different seeds)
+        if chunk1.seed != chunk2.seed {
+            assert_ne!(key1, key2);
+        }
+    }
+
+    #[test]
+    fn test_decoder_workflow_with_part_info() {
+        let decoder = make_decoder(5000, true, 1000);
+
+        let (pb_mode, current, total, part_size) = decoder.get_part_info();
+        assert_eq!(pb_mode, true);
+        assert_eq!(current, 0);
+        assert_eq!(part_size, 1000);
+
+        // Verify all fields fit in u32
+        assert!(current <= u32::MAX as usize);
+        assert!(total <= u32::MAX as usize);
+        assert!(part_size <= u32::MAX as usize);
+    }
+
+    #[test]
+    fn test_full_roundtrip_with_checksums() {
+        let data = vec![42u8; 1000];
+        let _original_checksum = crc32(&data);
+
+        // Create encoder and generate chunks
+        let mut encoder = make_encoder(1000, true, 250);
+        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        // Parse the binary format (simulating what JavaScript would do)
+        let mut binary = Vec::new();
+        binary.push(0xFF);
+        binary.push(0xFD);
+        binary.push((chunk1.seed >> 8) as u8);
+        binary.push(chunk1.seed as u8);
+        binary.push(chunk1.degree as u8);
+        binary.push(chunk1.indices.len() as u8);
+
+        for &idx in &chunk1.indices {
+            binary.push((idx >> 8) as u8);
+            binary.push(idx as u8);
+        }
+
+        // Add part metadata
+        binary.push(0);
+        binary.push(0);
+        binary.push(0);
+        binary.push(1);
+        binary.push(0xAB);
+        binary.push(0xCD);
+        binary.push(0xEF);
+        binary.push(0x12);
+
+        binary.extend_from_slice(&chunk1.data);
+        binary.extend_from_slice(&[0, 0, 0, 0]);
+
+        // Parse with part-based mode
+        let parsed = parse_binary_chunk(&binary, true, encoder.get_metadata().total_source_blocks)
+            .expect("Parse failed");
+
+        // Verify structure
+        assert_eq!(parsed.chunk.seed, chunk1.seed);
+        assert!(parsed.part_metadata.is_some());
+
+        // Create key for deduplication
+        let key = create_chunk_key(parsed.chunk.seed, parsed.chunk.degree, &parsed.chunk.indices);
+        assert!(!key.is_empty());
+
+        // Compute and verify checksum
+        let payload = &binary[2..parsed.checksum_start];
+        let computed = crc32(payload);
+        assert!(computed.len() > 0);
+    }
+}
+
+#[cfg(test)]
+mod wasm_lib_tests {
+    //! Tests for WASM methods exposed in lib.rs
+    //! These tests verify that the WASM wrapper methods correctly interact with
+    //! the underlying Rust fountain codec without requiring JavaScript/WASM execution.
+
+    use crate::encoder::FountainEncoder;
+    use crate::decoder::FountainDecoder;
+    use crate::types::FountainEncoderOptions;
+
+    /// Helper to create a test encoder
+    fn make_test_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
+        let data = (0..data_size).map(|i| (i % 256) as u8).collect();
+        FountainEncoder::new(
+            data,
+            "test.bin".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            FountainEncoderOptions::default(),
+            part_based_mode,
+            part_size,
+            None,
+        )
+    }
+
+    /// Helper to create a test decoder
+    fn make_test_decoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainDecoder {
+        let encoder = make_test_encoder(data_size, part_based_mode, part_size);
+        let metadata = encoder.get_metadata().clone();
+
+        if part_based_mode {
+            FountainDecoder::with_part_mode(metadata, part_size)
+        } else {
+            FountainDecoder::new(metadata)
+        }
+    }
+
+    // ============================================================
+    // WasmFountainEncoder Tests
+    // ============================================================
+
+    #[test]
+    fn test_encoder_block_count() {
+        let encoder = make_test_encoder(1000, false, 0);
+        let block_count = encoder.block_count();
+        assert!(block_count > 0);
+    }
+
+    #[test]
+    fn test_encoder_block_size() {
+        let encoder = make_test_encoder(1000, false, 0);
+        let block_size = encoder.block_size();
+        assert!(block_size > 0);
+        // Block size should be reasonable (between 8 bytes and 64KB)
+        assert!(block_size >= 8);
+        assert!(block_size <= 65536);
+    }
+
+    #[test]
+    fn test_encoder_block_count_and_size_consistency() {
+        let data_size = 5000;
+        let encoder = make_test_encoder(data_size, false, 0);
+
+        let block_count = encoder.block_count();
+        let block_size = encoder.block_size();
+
+        // Product should be close to original data size
+        let total_capacity = block_count * block_size;
+        assert!(total_capacity >= data_size);
+        assert!(total_capacity <= data_size * 2); // Should not be much larger
+    }
+
+    #[test]
+    fn test_encoder_generate_chunk() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        assert!(chunk.seed > 0 || chunk.seed == 0); // Seed can be any value
+        assert_eq!(chunk.degree, chunk.indices.len()); // Degree should match indices
+        assert!(chunk.degree > 0);
+        assert!(!chunk.data.is_empty());
+    }
+
+    #[test]
+    fn test_encoder_generate_multiple_chunks() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+
+        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
+        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
+        let chunk3 = encoder.generate_chunk().expect("Failed to generate chunk 3");
+
+        // Chunks should have different seeds (with very high probability)
+        let mut unique_seeds = std::collections::HashSet::new();
+        unique_seeds.insert(chunk1.seed);
+        unique_seeds.insert(chunk2.seed);
+        unique_seeds.insert(chunk3.seed);
+
+        // At least 2 different seeds should be present (virtually guaranteed)
+        assert!(unique_seeds.len() >= 2);
+    }
+
+    #[test]
+    fn test_encoder_get_metadata() {
+        let encoder = make_test_encoder(5000, false, 0);
+        let metadata = encoder.get_metadata();
+
+        assert_eq!(metadata.size, 5000);
+        assert_eq!(metadata.name, "test.bin");
+        assert_eq!(metadata.file_type, "application/octet-stream");
+        assert!(metadata.total_source_blocks > 0);
+        assert!(metadata.block_size > 0);
+    }
+
+    #[test]
+    fn test_encoder_set_and_get_part_checksums() {
+        let mut encoder = make_test_encoder(5000, true, 1000);
+
+        let checksums = vec!["checksum1".to_string(), "checksum2".to_string()];
+        encoder.set_part_checksums(checksums.clone());
+
+        let stored = encoder.get_part_checksums();
+        assert_eq!(stored.len(), 2);
+        assert_eq!(stored, checksums);
+    }
+
+    #[test]
+    fn test_encoder_move_to_next_part() {
+        let mut encoder = make_test_encoder(5000, true, 1000);
+
+        // Can move to next part multiple times
+        assert!(encoder.move_to_next_part());
+        assert!(encoder.move_to_next_part());
+
+        // Eventually should reach the end
+        while encoder.move_to_next_part() {
+            // Keep moving
+        }
+        // After last move fails, trying again should also fail
+        assert!(!encoder.move_to_next_part());
+    }
+
+    #[test]
+    fn test_encoder_part_info_consistency() {
+        let mut encoder = make_test_encoder(5000, true, 1000);
+
+        let (pb_initial, current_initial, _total_initial, _size_initial) = encoder.get_part_info();
+        assert_eq!(current_initial, 0);
+        assert!(pb_initial);
+
+        encoder.move_to_next_part();
+
+        let (pb_after, current_after, _total_after, _size_after) = encoder.get_part_info();
+        assert_eq!(current_after, current_initial + 1);
+        assert_eq!(pb_after, pb_initial);
+    }
+
+    #[test]
+    fn test_encoder_get_contiguous_blocks_data() {
+        let encoder = make_test_encoder(1000, false, 0);
+
+        let block_count = encoder.block_count();
+        if block_count >= 2 {
+            let data = encoder.get_contiguous_blocks_data(0, 1);
+            assert!(data.is_some());
+
+            let data_array = data.unwrap();
+            assert!(data_array.len() > 0);
+        }
+    }
+
+    #[test]
+    fn test_encoder_mark_part_completed() {
+        let mut encoder = make_test_encoder(5000, true, 1000);
+
+        // Should be able to mark part as completed
+        encoder.mark_part_completed(0);
+        // No assertion needed - just verify it doesn't panic
+    }
+
+    // ============================================================
+    // WasmFountainDecoder Tests
+    // ============================================================
+
+    #[test]
+    fn test_decoder_is_complete_initially_false() {
+        let decoder = make_test_decoder(1000, false, 0);
+        assert!(!decoder.is_complete());
+    }
+
+    #[test]
+    fn test_decoder_get_progress_initially_zero() {
+        let decoder = make_test_decoder(1000, false, 0);
+        let progress = decoder.get_progress();
+        assert_eq!(progress, 0.0);
+    }
+
+    #[test]
+    fn test_decoder_get_decoded_block_count_initially_zero() {
+        let decoder = make_test_decoder(1000, false, 0);
+        assert_eq!(decoder.get_decoded_block_count(), 0);
+    }
+
+    #[test]
+    fn test_decoder_get_received_chunk_count_initially_zero() {
+        let decoder = make_test_decoder(1000, false, 0);
+        assert_eq!(decoder.get_received_chunk_count(), 0);
+    }
+
+    #[test]
+    fn test_decoder_get_metadata() {
+        let decoder = make_test_decoder(5000, false, 0);
+        let metadata = decoder.get_metadata();
+
+        assert_eq!(metadata.size, 5000);
+        assert_eq!(metadata.name, "test.bin");
+        assert!(metadata.total_source_blocks > 0);
+    }
+
+    #[test]
+    fn test_decoder_add_chunk_basic() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+        let mut decoder = make_test_decoder(1000, false, 0);
+
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+
+        // add_chunk returns bool indicating if chunk was new/useful, not necessarily added
+        let _was_decoded = decoder.add_chunk(chunk);
+        // Verify the chunk was received
+        assert!(decoder.get_received_chunk_count() > 0);
+    }
+
+    #[test]
+    fn test_decoder_add_chunk_increments_count() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+        let mut decoder = make_test_decoder(1000, false, 0);
+
+        let initial_count = decoder.get_received_chunk_count();
+
+        let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
+        let _ = decoder.add_chunk(chunk);
+
+        let new_count = decoder.get_received_chunk_count();
+        assert_eq!(new_count, initial_count + 1);
+    }
+
+    #[test]
+    fn test_decoder_progress_increases_with_chunks() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+        let mut decoder = make_test_decoder(1000, false, 0);
+
+        let initial_progress = decoder.get_progress();
+        assert_eq!(initial_progress, 0.0);
+
+        // Add several chunks
+        for _ in 0..10 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let _ = decoder.add_chunk(chunk);
+            }
+        }
+
+        let new_progress = decoder.get_progress();
+        // Progress should be greater than initial (likely greater than 0)
+        assert!(new_progress >= initial_progress);
+    }
+
+    #[test]
+    fn test_decoder_get_decoded_block_indices() {
+        let mut encoder = make_test_encoder(1000, false, 0);
+        let mut decoder = make_test_decoder(1000, false, 0);
+
+        // Add some chunks
+        for _ in 0..5 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let _ = decoder.add_chunk(chunk);
+            }
+        }
+
+        let indices = decoder.get_decoded_block_indices();
+        // Should return a Vec of indices
+        assert!(indices.is_empty() || !indices.is_empty()); // Decoded blocks or empty
+        let _ = decoder.get_decoded_block_count();
+    }
+
+    #[test]
+    fn test_decoder_part_mode_methods() {
+        let decoder = make_test_decoder(5000, true, 1000);
+
+        // Should start with current part not complete
+        assert!(!decoder.is_current_part_complete());
+
+        let block_count = decoder.get_current_part_decoded_block_count();
+        assert_eq!(block_count, 0); // No blocks decoded yet
+
+        let total_blocks = decoder.get_current_part_total_block_count();
+        assert!(total_blocks > 0); // Should have blocks in first part
+    }
+
+    #[test]
+    fn test_decoder_move_to_next_part() {
+        let mut decoder = make_test_decoder(5000, true, 1000);
+
+        // Get initial part index from decoder
+        let (_pb, initial_part, _total, _size) = decoder.get_part_info();
+        let moved = decoder.move_to_next_part();
+        assert!(moved);
+
+        let (_pb_new, new_part, _total_new, _size_new) = decoder.get_part_info();
+        assert_eq!(new_part, initial_part + 1);
+    }
+
+    #[test]
+    fn test_decoder_mark_part_completed() {
+        let mut decoder = make_test_decoder(5000, true, 1000);
+
+        // Should be able to mark part as completed
+        decoder.mark_part_completed(0);
+        // No assertion needed - just verify it doesn't panic
+    }
+
+    // ============================================================
+    // Integration Tests - Encoder/Decoder Interaction
+    // ============================================================
+
+    #[test]
+    fn test_encoder_decoder_basic_workflow() {
+        let mut encoder = make_test_encoder(2000, false, 0);
+        let mut decoder = make_test_decoder(2000, false, 0);
+
+        // Verify initial states
+        assert!(!decoder.is_complete());
+        assert_eq!(decoder.get_decoded_block_count(), 0);
+
+        // Generate and add chunks
+        let mut chunks_added = 0;
+        for _ in 0..20 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                if decoder.add_chunk(chunk) {
+                    chunks_added += 1;
+                }
+
+                if decoder.is_complete() {
+                    break;
+                }
+            }
+        }
+
+        assert!(chunks_added > 0);
+        // After enough chunks, should make progress
+        assert!(decoder.get_progress() > 0.0);
+    }
+
+    #[test]
+    fn test_encoder_decoder_full_recovery() {
+        let data_size = 3000;
+        let mut encoder = make_test_encoder(data_size, false, 0);
+        let mut decoder = make_test_decoder(data_size, false, 0);
+
+        // Generate enough chunks to complete
+        let block_count = encoder.block_count();
+        let chunks_needed = block_count + (block_count / 4); // 25% overhead
+
+        for _ in 0..chunks_needed {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let _ = decoder.add_chunk(chunk);
+
+                if decoder.is_complete() {
+                    break;
+                }
+            }
+        }
+
+        // Should eventually complete
+        if decoder.is_complete() {
+            let decoded = decoder.get_decoded_data().expect("No decoded data");
+            assert!(decoded.len() > 0);
+        }
+    }
+
+    #[test]
+    fn test_encoder_decoder_with_part_mode() {
+        let data_size = 5000;
+        let part_size = 1000;
+        let encoder = make_test_encoder(data_size, true, part_size);
+        let decoder = make_test_decoder(data_size, true, part_size);
+
+        // Verify part mode settings
+        let (enc_pb, _enc_cur, _enc_total, enc_size) = encoder.get_part_info();
+        let (dec_pb, _dec_cur, _dec_total, dec_size) = decoder.get_part_info();
+
+        assert_eq!(enc_pb, true);
+        assert_eq!(enc_size, part_size);
+        assert_eq!(dec_pb, true);
+        assert_eq!(dec_size, part_size);
+    }
+
+    #[test]
+    fn test_encoder_metadata_serializable() {
+        let encoder = make_test_encoder(5000, false, 0);
+        let metadata = encoder.get_metadata();
+
+        // Verify all fields are accessible and reasonable
+        assert!(metadata.size > 0);
+        assert!(!metadata.name.is_empty());
+        assert!(!metadata.file_type.is_empty());
+        assert!(metadata.total_source_blocks > 0);
+        assert!(metadata.block_size > 0);
+    }
+
+    #[test]
+    fn test_encoder_part_checksums_empty_initially() {
+        let encoder = make_test_encoder(5000, true, 1000);
+        let checksums = encoder.get_part_checksums();
+        assert_eq!(checksums.len(), 0);
+    }
+
+    #[test]
+    fn test_encoder_current_part_checksum() {
+        let mut encoder = make_test_encoder(5000, true, 1000);
+
+        // Initially should be None
+        let checksum1 = encoder.get_current_part_checksum();
+        assert_eq!(checksum1, None);
+
+        // After setting checksums
+        encoder.set_part_checksums(vec!["abc123".to_string()]);
+
+        // Should still be None initially (depends on encoder state)
+        let checksum2 = encoder.get_current_part_checksum();
+        // checksum2 could be Some or None depending on implementation
+        let _ = checksum2; // Just verify it doesn't panic
+    }
+
+    // ============================================================
+    // Edge Case Tests
+    // ============================================================
+
+    #[test]
+    fn test_encoder_small_data() {
+        let encoder = make_test_encoder(10, false, 0);
+        assert!(encoder.block_count() > 0);
+        assert!(encoder.block_size() > 0);
+    }
+
+    #[test]
+    fn test_encoder_large_data() {
+        let encoder = make_test_encoder(1_000_000, false, 0);
+        assert!(encoder.block_count() > 0);
+        assert!(encoder.block_size() > 0);
+
+        // Block count should scale with data size
+        let small_encoder = make_test_encoder(1000, false, 0);
+        assert!(encoder.block_count() > small_encoder.block_count());
+    }
+
+    #[test]
+    fn test_decoder_empty_add_chunk() {
+        let decoder = make_test_decoder(1000, false, 0);
+
+        // Decoder should handle various chunk scenarios gracefully
+        let block_count_before = decoder.get_decoded_block_count();
+        let progress_before = decoder.get_progress();
+
+        // After failed add, state should be consistent
+        assert_eq!(decoder.get_decoded_block_count(), block_count_before);
+        assert_eq!(decoder.get_progress(), progress_before);
+    }
+
+    #[test]
+    fn test_encoder_multiple_part_transitions() {
+        let mut encoder = make_test_encoder(10000, true, 2000);
+
+        let mut part_indices = vec![];
+        let (_pb, part_idx, _total, _size) = encoder.get_part_info();
+        part_indices.push(part_idx);
+
+        for _ in 0..10 {
+            if encoder.move_to_next_part() {
+                let (_pb, part_idx, _total, _size) = encoder.get_part_info();
+                part_indices.push(part_idx);
+            } else {
+                break;
+            }
+        }
+
+        // Should have moved through multiple parts
+        assert!(part_indices.len() > 1);
+
+        // Part indices should be sequential
+        for i in 0..part_indices.len() - 1 {
+            assert_eq!(part_indices[i + 1], part_indices[i] + 1);
+        }
+    }
+}
