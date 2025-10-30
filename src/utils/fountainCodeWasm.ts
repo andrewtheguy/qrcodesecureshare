@@ -1,4 +1,5 @@
 import init, { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import { DEFAULT_BLOCK_SIZE } from './fountainConfig'
 
 // WASM initialization state
 let wasmInitialized = false
@@ -132,7 +133,7 @@ export interface FountainEncoderOptions {
  * Single source of truth for default values
  */
 export const DEFAULT_FOUNTAIN_ENCODER_OPTIONS: FountainEncoderOptions = {
-  blockSize: 400,
+  blockSize: DEFAULT_BLOCK_SIZE,  // Use system default (1000 bytes)
   c: 0.2,
   delta: 0.01,
   maxDegree: null,
