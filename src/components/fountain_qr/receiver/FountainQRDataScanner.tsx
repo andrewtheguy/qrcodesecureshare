@@ -168,7 +168,7 @@ export function FountainQRDataScanner({
   // Use 30 fps (33ms interval) for faster QR code decoding with zxing-wasm binary mode
   const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
-    isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback,
+    isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback && !success,
     onError: handleScanError,
     onCameraReady: () => {
       addDebugLog('✅ Data scanner started')
