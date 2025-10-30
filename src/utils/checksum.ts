@@ -1,7 +1,7 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
-import { crc32 as hashCrc32 } from 'hash-wasm'
+import { crc32 as wasmCrc32 } from '@/wasm/fountain_wasm'
 
-// Checksum utilities using hash-wasm for CRC32
+// Checksum utilities using Rust WASM for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
@@ -12,7 +12,7 @@ export async function computeChecksum(
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
   if (algorithm === 'crc32') {
-    return await hashCrc32(data)
+    return wasmCrc32(data)
   }
   // SHA-256 path using browser WebCrypto
   const copy = new Uint8Array(data) // fresh ArrayBuffer
@@ -92,8 +92,8 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   const encoder = new TextEncoder()
   const data = encoder.encode(canonicalString)
 
-  // Compute CRC32 checksum using hash-wasm
-  const checksum = await hashCrc32(data)
+  // Compute CRC32 checksum using Rust WASM
+  const checksum = wasmCrc32(data)
 
   // Format as user-friendly code: uppercase hex with hyphen
   const upperChecksum = checksum.toUpperCase()

@@ -1,3 +1,4 @@
+mod checksum;
 mod decoder;
 mod distribution;
 mod encoder;
@@ -303,4 +304,17 @@ impl WasmFountainDecoder {
 
         obj.into()
     }
+}
+
+/// Compute CRC32 checksum of the given data
+///
+/// # Arguments
+/// * `data` - The data to checksum as a Uint8Array
+///
+/// # Returns
+/// Lowercase hexadecimal string representation of the CRC32 checksum (e.g., "0d4a1185")
+#[wasm_bindgen]
+pub fn crc32(data: Uint8Array) -> String {
+    let data_vec = data.to_vec();
+    checksum::crc32(&data_vec)
 }
