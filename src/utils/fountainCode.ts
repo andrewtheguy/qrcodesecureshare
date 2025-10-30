@@ -41,6 +41,9 @@ export interface FountainEncoderOptions {
   degree1Rate?: number  // (passed to WASM)
   lowDegreeRate?: number  // (passed to WASM)
   maxQRDataSize?: number  // maximum QR data size in bytes (passed to WASM)
+  seedOffset?: number  // seed offset for session-specific randomization (passed to WASM)
+  fixedOverhead?: number  // fixed overhead bytes: magic(2)+seed(2)+degree(1)+numIndices(1)+checksum(4)=10 (passed to WASM)
+  partOverhead?: number  // part-based mode overhead bytes: currentPart(2)+totalParts(2)+partChecksum(4)=8 (passed to WASM)
   // Part-based transfer options
   partBasedMode?: boolean  // enable part-based transfer (feedback mode only)
   partSize?: number  // size of each part in bytes (256KB, 512KB, or 1024KB)

@@ -111,6 +111,10 @@ pub struct FountainEncoderOptions {
     pub low_degree_rate: f64,
     /// Maximum QR data size constraint (default: 1000 bytes)
     pub max_qr_data_size: usize,
+    /// Fixed overhead in bytes: magic(2) + seed(2) + degree(1) + numIndices(1) + checksum(4) = 10
+    pub fixed_overhead: usize,
+    /// Part-based mode overhead in bytes: currentPart(2) + totalParts(2) + partChecksum(4) = 8
+    pub part_overhead: usize,
 }
 
 impl Default for FountainEncoderOptions {
@@ -123,6 +127,8 @@ impl Default for FountainEncoderOptions {
             degree1_rate: 0.08,
             low_degree_rate: 0.18,
             max_qr_data_size: 1000,
+            fixed_overhead: 10, // magic(2) + seed(2) + degree(1) + numIndices(1) + checksum(4)
+            part_overhead: 0,   // 0 for non-part mode, 8 for part-based mode
         }
     }
 }
@@ -160,6 +166,16 @@ impl FountainEncoderOptions {
 
     pub fn with_max_qr_data_size(mut self, max_qr_data_size: usize) -> Self {
         self.max_qr_data_size = max_qr_data_size;
+        self
+    }
+
+    pub fn with_fixed_overhead(mut self, fixed_overhead: usize) -> Self {
+        self.fixed_overhead = fixed_overhead;
+        self
+    }
+
+    pub fn with_part_overhead(mut self, part_overhead: usize) -> Self {
+        self.part_overhead = part_overhead;
         self
     }
 }

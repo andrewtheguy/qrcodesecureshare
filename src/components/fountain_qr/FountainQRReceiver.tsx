@@ -225,7 +225,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       id: messageIdCounterRef.current++,
       metadata: initialMeta,
       partBasedMode: initialMeta.partBasedMode || false,
-      partSize: initialMeta.partSize || 0
+      partSize: initialMeta.partSize || 0,
+      sessionId: sessionId
     })
     // Debug logging moved to subcomponent
     } catch {
@@ -452,7 +453,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       id: messageIdCounterRef.current++,
       metadata: initialMeta,
       partBasedMode: initialMeta.partBasedMode || false,
-      partSize: initialMeta.partSize || 0
+      partSize: initialMeta.partSize || 0,
+      sessionId: sessionId
     })
   }
 

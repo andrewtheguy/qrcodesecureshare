@@ -13,13 +13,25 @@ function ensureDecoder(): void {
     }
 }
 
+/**
+ * Creates a composite dedup key for chunk identification
+ * Combines seed, degree, first index, and last index to prevent false positives
+ * from seed rollover or long sessions
+ */
+function createChunkKey(chunk: { seed: number; degree: number; indices: number[] }): string {
+    const firstIdx = chunk.indices.length > 0 ? chunk.indices[0] : -1;
+    const lastIdx = chunk.indices.length > 0 ? chunk.indices[chunk.indices.length - 1] : -1;
+    return `${chunk.seed}:${chunk.degree}:${firstIdx}:${lastIdx}`;
+}
+
 // Worker state
 let decoder: FountainDecoder | null = null;
-let receivedSeeds: Set<number> = new Set();
+const receivedChunks: Set<string> = new Set(); // Composite key: "seed:degree:firstIdx:lastIdx"
 const processedSeeds: Set<number> = new Set();
 let metadata: FountainMetadata;
 let lastDecodeAttemptTime = 0; // Throttle decode attempts to every 500ms
 let lastDecodedBlockCount = 0; // Track last decoded count to detect new blocks
+let currentSessionId: number | null = null; // Track current session for reset
 
 // Part-based transfer state
 let partBasedMode = false;
@@ -137,15 +149,50 @@ self.onmessage = async (event: MessageEvent) => {
                 metadata = data.metadata as FountainMetadata;
                 partBasedMode = data.partBasedMode || false;
                 partSize = data.partSize || 0;
-                console.log(`[Worker] Initialized with partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
-                decoder = await FountainDecoder.create(metadata, partBasedMode, partSize);
-                receivedSeeds = new Set();
-                processedSeeds.clear();
-                expectedPartChecksums.clear(); // Clear any previous part checksums
-                lastDecodeAttemptTime = Date.now();
-                lastDecodedBlockCount = decoder.getDecodedBlockCount();
-                lastPartCompleteCheck = 0;
-                self.postMessage({ type: 'initialized', id, metadata });
+                const sessionId = data.sessionId as number | undefined;
+
+                // Reset received chunks if session changed or is new
+                if (sessionId !== undefined && sessionId !== currentSessionId) {
+                    console.log(`[Worker] Session changed from ${currentSessionId} to ${sessionId}, clearing chunk dedup cache`);
+                    receivedChunks.clear();
+                    currentSessionId = sessionId;
+                } else if (!currentSessionId) {
+                    // First initialization
+                    receivedChunks.clear();
+                    currentSessionId = sessionId ?? null;
+                }
+
+                console.log(`[Worker] Initialized with sessionId: ${sessionId}, partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
+
+                try {
+                    decoder = await FountainDecoder.create(metadata, partBasedMode, partSize);
+                    processedSeeds.clear();
+                    expectedPartChecksums.clear(); // Clear any previous part checksums
+                    lastDecodeAttemptTime = Date.now();
+                    lastDecodedBlockCount = decoder.getDecodedBlockCount();
+                    lastPartCompleteCheck = 0;
+                    self.postMessage({ type: 'initialized', id, metadata });
+                } catch (err) {
+                    // Check for WASM initialization failure
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    if (errorMessage.includes('WASM_INIT_FAILED')) {
+                        // Post structured error with code for UI to surface
+                        self.postMessage({
+                            type: 'error',
+                            id,
+                            code: 'WASM_INIT_FAILED',
+                            error: 'Failed to initialize WASM decoder. The WASM bundle may not be loaded. Please refresh the page and try again.',
+                            details: errorMessage
+                        });
+                    } else {
+                        // Generic initialization error
+                        self.postMessage({
+                            type: 'error',
+                            id,
+                            error: `Failed to initialize decoder: ${errorMessage}`
+                        });
+                    }
+                }
                 break;
             }
 
@@ -154,8 +201,9 @@ self.onmessage = async (event: MessageEvent) => {
                 const { binaryData } = data as { binaryData: Uint8Array };
                 const chunk = parseBinaryChunk(binaryData);
 
-                // Check for duplicate seed
-                if (receivedSeeds.has(chunk.seed)) {
+                // Check for duplicate chunk using composite key
+                const chunkKey = createChunkKey(chunk);
+                if (receivedChunks.has(chunkKey)) {
                     self.postMessage({ type: 'chunkProcessed', id, duplicate: true, seed: chunk.seed });
                     break;
                 }
@@ -176,8 +224,8 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                // Add to received seeds
-                receivedSeeds.add(chunk.seed);
+                // Add to received chunks using composite key
+                receivedChunks.add(chunkKey);
                 processedSeeds.add(chunk.seed);
 
                 // Add chunk to decoder
@@ -234,13 +282,13 @@ self.onmessage = async (event: MessageEvent) => {
                     lastDecodeAttemptTime = now;
                     lastDecodedBlockCount = decodedBlockCount;
 
-                    // Get progress
-                    const progress = decoder!.getProgress();
+                    // Get overall progress (fraction of total blocks decoded across entire file)
+                    const overallProgress = decoder!.getProgress();
                     const isComplete = decoder!.isComplete();
                     const decodedBlockIndices = decoder!.getDecodedBlockIndices();
 
-                    // Get part-specific progress if in part-based mode
-                    let partProgress: number | undefined;
+                    // Get part-specific progress
+                    let partProgress: number;
                     let currentPartDecodedBlocks: number | undefined;
                     let currentPartTotalBlocks: number | undefined;
                     let currentPartIndex: number | undefined;
@@ -252,6 +300,9 @@ self.onmessage = async (event: MessageEvent) => {
                         partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
                         currentPartIndex = partInfo.currentPartIndex;
                         totalParts = partInfo.totalParts;
+                    } else {
+                        // In non-part mode, part progress equals overall progress
+                        partProgress = overallProgress;
                     }
 
                     self.postMessage({
@@ -259,10 +310,10 @@ self.onmessage = async (event: MessageEvent) => {
                         id,
                         seed: chunk.seed,
                         decodedBlockCount,
-                        progress,
+                        overallProgress,
+                        partProgress,
                         isComplete,
                         decodedBlockIndices,
-                        partProgress,
                         currentPartDecodedBlocks,
                         currentPartTotalBlocks,
                         currentPartIndex,
@@ -290,10 +341,11 @@ self.onmessage = async (event: MessageEvent) => {
                     }
                 } else {
                     // Queue chunk and send current state without full decode check
-                    const progress = decoder!.getProgress();
+                    const overallProgress = decoder!.getProgress();
                     const decodedBlockIndices = decoder!.getDecodedBlockIndices();
 
-                    // Get part-specific info if in part-based mode
+                    // Get part-specific info
+                    let partProgress: number;
                     let currentPartIndex: number | undefined;
                     let totalParts: number | undefined;
                     let currentPartDecodedBlocks: number | undefined;
@@ -304,6 +356,10 @@ self.onmessage = async (event: MessageEvent) => {
                         totalParts = partInfo.totalParts;
                         currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
                         currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
+                        partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
+                    } else {
+                        // In non-part mode, part progress equals overall progress
+                        partProgress = overallProgress;
                     }
 
                     self.postMessage({
@@ -312,7 +368,8 @@ self.onmessage = async (event: MessageEvent) => {
                         seed: chunk.seed,
                         queued: true,
                         decodedBlockCount,
-                        progress,
+                        overallProgress,
+                        partProgress,
                         isComplete: false,
                         decodedBlockIndices,
                         currentPartIndex,
@@ -329,15 +386,26 @@ self.onmessage = async (event: MessageEvent) => {
             case 'getStatus': {
                 ensureDecoder();
                 const decodedBlockCount__ = decoder!.getDecodedBlockCount();
-                const progress_ = decoder!.getProgress();
+                const overallProgress_ = decoder!.getProgress();
                 const isComplete_ = decoder!.isComplete();
                 const decodedBlockIndices__ = decoder!.getDecodedBlockIndices();
+
+                // Calculate part progress
+                let partProgress_: number;
+                if (partBasedMode) {
+                    const currentPartDecodedBlocks_ = decoder!.getCurrentPartDecodedBlockCount();
+                    const currentPartTotalBlocks_ = decoder!.getCurrentPartTotalBlockCount();
+                    partProgress_ = currentPartTotalBlocks_ > 0 ? currentPartDecodedBlocks_ / currentPartTotalBlocks_ : 0;
+                } else {
+                    partProgress_ = overallProgress_;
+                }
 
                 self.postMessage({
                     type: 'status',
                     id,
                     decodedBlockCount: decodedBlockCount__,
-                    progress: progress_,
+                    overallProgress: overallProgress_,
+                    partProgress: partProgress_,
                     isComplete: isComplete_,
                     decodedBlockIndices: decodedBlockIndices__
                 });

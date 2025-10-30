@@ -28,6 +28,9 @@ impl WasmFountainEncoder {
     /// * `block_size` - Optional block size (default: 400)
     /// * `c` - Optional robustness parameter (default: 0.2)
     /// * `delta` - Optional failure probability (default: 0.01)
+    /// * `seed_offset` - Optional seed offset for session-specific randomization
+    /// * `fixed_overhead` - Optional fixed overhead in bytes (default: 10)
+    /// * `part_overhead` - Optional part-based mode overhead in bytes (default: 0)
     #[wasm_bindgen(constructor)]
     pub fn new(
         data: Uint8Array,
@@ -37,6 +40,9 @@ impl WasmFountainEncoder {
         block_size: Option<usize>,
         c: Option<f64>,
         delta: Option<f64>,
+        seed_offset: Option<u32>,
+        fixed_overhead: Option<usize>,
+        part_overhead: Option<usize>,
     ) -> Result<WasmFountainEncoder, JsValue> {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
@@ -52,8 +58,14 @@ impl WasmFountainEncoder {
         if let Some(d_val) = delta {
             options = options.with_delta(d_val);
         }
+        if let Some(fo) = fixed_overhead {
+            options = options.with_fixed_overhead(fo);
+        }
+        if let Some(po) = part_overhead {
+            options = options.with_part_overhead(po);
+        }
 
-        let encoder = encoder::FountainEncoder::new(data_vec, name, file_type, timestamp, options);
+        let encoder = encoder::FountainEncoder::new(data_vec, name, file_type, timestamp, options, seed_offset);
 
         Ok(WasmFountainEncoder { encoder })
     }

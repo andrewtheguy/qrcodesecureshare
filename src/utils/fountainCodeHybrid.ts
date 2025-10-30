@@ -14,7 +14,7 @@
  */
 
 import { FountainEncoder as JSFountainEncoder, FountainDecoder as JSFountainDecoder } from './fountainCode'
-import { FountainWasmEncoder, FountainWasmDecoder } from './fountainCodeWasm'
+import { FountainWasmEncoder, FountainWasmDecoder, type WasmFountainMetadata } from './fountainCodeWasm'
 import type {
   FountainChunk,
   FountainMetadata,
@@ -51,15 +51,46 @@ export class FountainEncoder {
   ): Promise<FountainEncoder> {
     const encoder = new FountainEncoder(data, metadata, opts)
 
+    // Runtime assertion: verify required fields before WASM call
+    if (!metadata.name || typeof metadata.name !== 'string') {
+      throw new Error('metadata.name is required and must be a string')
+    }
+    if (!metadata.type || typeof metadata.type !== 'string') {
+      throw new Error('metadata.type is required and must be a string')
+    }
+    if (metadata.timestamp !== undefined && typeof metadata.timestamp !== 'number') {
+      throw new Error('metadata.timestamp must be a number if provided')
+    }
+
+    // Assemble explicit WASM-bound metadata shape
+    const wasmMetadata = {
+      name: metadata.name,
+      type: metadata.type,
+      timestamp: metadata.timestamp ?? Date.now()
+    }
+
     // Create WASM encoder for computation (REQUIRED)
     try {
       encoder.wasmEncoder = await FountainWasmEncoder.create(
         data,
-        { name: metadata.name, type: metadata.type, timestamp: metadata.timestamp },
-        { blockSize: opts.blockSize, c: opts.c, delta: opts.delta }
+        wasmMetadata,
+        {
+          blockSize: opts.blockSize,
+          c: opts.c,
+          delta: opts.delta,
+          seedOffset: opts.seedOffset,
+          fixedOverhead: opts.fixedOverhead,
+          partOverhead: opts.partOverhead
+        }
       )
     } catch (err) {
-      throw new Error(`Failed to initialize WASM encoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
+      // Check if this is a WASM initialization failure
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      if (errorMessage.includes('WASM_INIT_FAILED')) {
+        // Rethrow with distinct identifier preserved
+        throw new Error(`WASM_INIT_FAILED: ${errorMessage}`)
+      }
+      throw new Error(`Failed to initialize WASM encoder: ${errorMessage}. WASM is required for fountain code operations.`)
     }
 
     return encoder
@@ -149,22 +180,51 @@ export class FountainDecoder {
   ): Promise<FountainDecoder> {
     const decoder = new FountainDecoder(metadata, partBasedMode, partSize)
 
+    // Runtime assertion: verify required fields before WASM call
+    if (!metadata.name || typeof metadata.name !== 'string') {
+      throw new Error('metadata.name is required and must be a string')
+    }
+    if (typeof metadata.size !== 'number' || metadata.size < 0) {
+      throw new Error('metadata.size is required and must be a non-negative number')
+    }
+    if (!metadata.type || typeof metadata.type !== 'string') {
+      throw new Error('metadata.type is required and must be a string')
+    }
+    if (typeof metadata.timestamp !== 'number') {
+      throw new Error('metadata.timestamp is required and must be a number')
+    }
+    if (typeof metadata.totalSourceBlocks !== 'number' || metadata.totalSourceBlocks <= 0) {
+      throw new Error('metadata.totalSourceBlocks is required and must be a positive number')
+    }
+    if (typeof metadata.blockSize !== 'number' || metadata.blockSize <= 0) {
+      throw new Error('metadata.blockSize is required and must be a positive number')
+    }
+
+    // Assemble explicit WASM-bound metadata shape
+    const wasmMetadata: WasmFountainMetadata = {
+      name: metadata.name,
+      size: metadata.size,
+      fileType: metadata.type,
+      timestamp: metadata.timestamp,
+      totalSourceBlocks: metadata.totalSourceBlocks,
+      blockSize: metadata.blockSize,
+    }
+
     // Create WASM decoder for computation (required for both regular and part-based mode)
     try {
       decoder.wasmDecoder = await FountainWasmDecoder.create(
-        {
-          name: metadata.name,
-          size: metadata.size,
-          fileType: metadata.type,
-          timestamp: metadata.timestamp,
-          totalSourceBlocks: metadata.totalSourceBlocks,
-          blockSize: metadata.blockSize,
-        },
+        wasmMetadata,
         partBasedMode,
         partSize
       )
     } catch (err) {
-      throw new Error(`Failed to initialize WASM decoder: ${err instanceof Error ? err.message : String(err)}. WASM is required for fountain code operations.`)
+      // Check if this is a WASM initialization failure
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      if (errorMessage.includes('WASM_INIT_FAILED')) {
+        // Rethrow with distinct identifier preserved
+        throw new Error(`WASM_INIT_FAILED: ${errorMessage}`)
+      }
+      throw new Error(`Failed to initialize WASM decoder: ${errorMessage}. WASM is required for fountain code operations.`)
     }
 
     return decoder
@@ -187,7 +247,10 @@ export class FountainDecoder {
   }
 
   /**
-   * Get progress (REQUIRES WASM)
+   * Get overall decode progress (REQUIRES WASM)
+   * Returns the fraction (0.0 to 1.0) of total blocks decoded across the entire file.
+   * In part-based mode, this represents overall file progress, not current part progress.
+   * Use getCurrentPartDecodedBlockCount() / getCurrentPartTotalBlockCount() for part-specific progress.
    */
   getProgress(): number {
     return this.wasmDecoder.getProgress()

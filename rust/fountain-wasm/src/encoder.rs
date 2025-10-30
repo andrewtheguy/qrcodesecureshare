@@ -16,6 +16,8 @@ pub struct FountainEncoder {
     options: FountainEncoderOptions,
     /// Current seed for chunk generation
     current_seed: u32,
+    /// Initial seed offset (for session-specific randomization)
+    seed_offset: u32,
 }
 
 impl FountainEncoder {
@@ -25,6 +27,7 @@ impl FountainEncoder {
         file_type: String,
         timestamp: f64,
         options: FountainEncoderOptions,
+        seed_offset: Option<u32>,
     ) -> Self {
         let block_size = options.block_size;
         let total_size = data.len();
@@ -42,9 +45,15 @@ impl FountainEncoder {
 
         let total_source_blocks = blocks.len();
 
-        // Calculate max degree
+        // Calculate max degree with overhead parameters
         let max_degree = options.max_degree.unwrap_or_else(|| {
-            calculate_max_degree(total_source_blocks, options.max_qr_data_size, block_size)
+            calculate_max_degree(
+                total_source_blocks,
+                options.max_qr_data_size,
+                block_size,
+                options.fixed_overhead,
+                options.part_overhead,
+            )
         });
 
         // Build degree distribution
@@ -60,6 +69,12 @@ impl FountainEncoder {
             block_size,
         );
 
+        // Use provided seed offset or generate a random one based on timestamp
+        let offset = seed_offset.unwrap_or_else(|| {
+            // Use timestamp as seed for randomization
+            (timestamp as u64 % (u32::MAX as u64)) as u32
+        });
+
         Self {
             blocks,
             metadata,
@@ -67,12 +82,14 @@ impl FountainEncoder {
             max_degree,
             options,
             current_seed: 0,
+            seed_offset: offset,
         }
     }
 
     /// Generate a single fountain chunk
     pub fn generate_chunk(&mut self) -> FountainChunk {
-        let seed = self.current_seed;
+        // Apply seed offset for session-specific randomization
+        let seed = self.current_seed.wrapping_add(self.seed_offset);
         self.current_seed = self.current_seed.wrapping_add(1);
 
         // Create RNG from seed
@@ -133,6 +150,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         assert_eq!(encoder.block_count(), 3); // 1000 bytes / 400 bytes per block = 3 blocks
@@ -149,6 +167,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let chunk = encoder.generate_chunk();
@@ -168,6 +187,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let chunks = encoder.generate_chunks(10);
@@ -190,6 +210,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options.clone(),
+            None,
         );
 
         let mut encoder2 = FountainEncoder::new(
@@ -198,6 +219,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let chunk1 = encoder1.generate_chunk();

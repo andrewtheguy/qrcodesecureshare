@@ -13,7 +13,8 @@
       "mcp__fetch__fetch_markdown",
       "WebFetch(domain:zxing-wasm.deno.dev)",
       "Bash(curl:*)",
-      "Bash(npm run build:wasm:*)"
+      "Bash(npm run build:wasm:*)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

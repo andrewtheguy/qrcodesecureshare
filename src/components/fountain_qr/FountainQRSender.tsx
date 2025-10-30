@@ -100,8 +100,15 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         setEncoder(fountainEncoder)
         setError('')
       } catch (err) {
-        setError('Failed to process file')
-        console.error(err)
+        // Check for WASM initialization failure
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        if (errorMessage.includes('WASM_INIT_FAILED')) {
+          setError('⚠️ Failed to load WASM module. The fountain code engine could not be initialized. Please refresh the page and try again. If the problem persists, the WASM bundle may not be properly loaded.')
+          console.error('[FountainQRSender] WASM initialization failed:', err)
+        } else {
+          setError('Failed to process file')
+          console.error('[FountainQRSender] File processing error:', err)
+        }
       }
     }
 

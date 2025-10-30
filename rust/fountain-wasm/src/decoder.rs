@@ -225,6 +225,9 @@ impl FountainDecoder {
             }
         }
 
+        // Truncate to exact file size (handles last part padding)
+        result.truncate(self.metadata.size);
+
         Some(result)
     }
 
@@ -266,32 +269,27 @@ impl FountainDecoder {
         let mut result = Vec::with_capacity(part_data_size);
         let (start_block, end_block) = self.get_current_part_block_range();
 
+        // Calculate offset within first block where this part starts
+        let first_block_start_byte = start_block * self.metadata.block_size;
+        let offset_in_first_block = part_start_byte - first_block_start_byte;
+
+        // Concatenate blocks
         for i in start_block..end_block {
             if let Some(block) = self.decoded_blocks.get(&i) {
-                // Calculate which bytes from this block belong to this part
-                let block_start_byte = i * self.metadata.block_size;
-                let block_end_byte = block_start_byte + self.metadata.block_size;
-
-                // Calculate the offset within the block where this part starts
-                let block_start_in_part = if part_start_byte > block_start_byte {
-                    part_start_byte - block_start_byte
+                if i == start_block && offset_in_first_block > 0 {
+                    // First block: skip bytes before part starts
+                    result.extend_from_slice(&block[offset_in_first_block..]);
                 } else {
-                    0
-                };
-
-                // Calculate the offset within the block where this part ends
-                let block_end_in_part = if part_end_byte < block_end_byte {
-                    part_end_byte - block_start_byte
-                } else {
-                    self.metadata.block_size
-                };
-
-                // Only copy the bytes that belong to this part
-                result.extend_from_slice(&block[block_start_in_part..block_end_in_part]);
+                    // Other blocks: copy entire block
+                    result.extend_from_slice(block);
+                }
             } else {
                 return None;
             }
         }
+
+        // Truncate to exact part size (handles end boundary and padding)
+        result.truncate(part_data_size);
 
         Some(result)
     }
@@ -400,6 +398,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -429,6 +428,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -458,6 +458,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -481,6 +482,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -502,5 +504,126 @@ mod tests {
         let mut sorted = indices.clone();
         sorted.sort_unstable();
         assert_eq!(indices, sorted);
+    }
+
+    #[test]
+    fn test_decoder_non_aligned_file_size() {
+        // Test file size that's not a multiple of block_size
+        // This ensures truncation works correctly for the last block
+        let data = vec![1, 2, 3, 4, 5, 6, 7]; // 7 bytes
+        let block_size = 4; // Will create 2 blocks (4 bytes + 3 bytes padded to 4)
+        let options = FountainEncoderOptions::default().with_block_size(block_size);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.size, 7); // Original size
+        assert_eq!(metadata.block_size, 4);
+        assert_eq!(metadata.total_source_blocks, 2); // ceil(7/4) = 2
+
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Decode until complete
+        let mut chunks_needed = 0;
+        while !decoder.is_complete() && chunks_needed < 100 {
+            let chunk = encoder.generate_chunk();
+            decoder.add_chunk(chunk);
+            chunks_needed += 1;
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().unwrap();
+
+        // Verify exact length matches original (not padded)
+        assert_eq!(decoded.len(), 7, "Decoded data should be exactly 7 bytes, not padded to block size");
+        assert_eq!(decoded, data, "Decoded data should exactly match original data");
+    }
+
+    #[test]
+    fn test_part_based_mode_non_aligned_sizes() {
+        // Test part-based mode with file size not aligned to part_size or block_size
+        // File: 1337 bytes, Block: 400 bytes, Part: 512 bytes
+        let file_size = 1337;
+        let block_size = 400;
+        let part_size = 512;
+
+        let mut data = Vec::with_capacity(file_size);
+        for i in 0..file_size {
+            data.push((i % 256) as u8); // Sequential pattern
+        }
+
+        let options = FountainEncoderOptions::default().with_block_size(block_size);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.size, file_size);
+        assert_eq!(metadata.block_size, block_size);
+
+        // Create part-based decoder
+        let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
+
+        // Decode all parts
+        let (_, _, total_parts, _) = decoder.get_part_info();
+        assert_eq!(total_parts, 3); // ceil(1337/512) = 3 parts
+
+        for part_idx in 0..total_parts {
+            // Decode current part
+            while !decoder.is_current_part_complete() {
+                let chunk = encoder.generate_chunk();
+                decoder.add_chunk(chunk);
+            }
+
+            // Mark part complete and move to next
+            if let Some(part_data) = decoder.get_current_part_data() {
+                decoder.mark_part_completed(part_idx);
+
+                // Verify part size (last part may be smaller)
+                if part_idx < total_parts - 1 {
+                    assert_eq!(part_data.len(), part_size, "Non-final part should be exactly part_size");
+                } else {
+                    let expected_last_part_size = file_size - (part_idx * part_size);
+                    assert_eq!(
+                        part_data.len(),
+                        expected_last_part_size,
+                        "Last part should be exactly the remaining bytes: {} - ({} * {}) = {}",
+                        file_size,
+                        part_idx,
+                        part_size,
+                        expected_last_part_size
+                    );
+                }
+            }
+
+            if part_idx < total_parts - 1 {
+                decoder.move_to_next_part();
+            }
+        }
+
+        assert!(decoder.is_complete());
+        let decoded = decoder.get_decoded_data().unwrap();
+
+        // Verify exact length and content
+        assert_eq!(
+            decoded.len(),
+            file_size,
+            "Decoded data should be exactly {} bytes (original size), not padded",
+            file_size
+        );
+        assert_eq!(decoded, data, "Decoded data should exactly match original data");
     }
 }
