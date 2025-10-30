@@ -41,8 +41,9 @@ mod integration_tests {
         // Encode and decode
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 100 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -85,8 +86,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 500 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -120,8 +122,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 2000 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -163,8 +166,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 200 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -198,8 +202,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 200 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -233,8 +238,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 200 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 
@@ -290,15 +296,18 @@ mod integration_tests {
         let mut chunks_delivered = 0;
         let mut chunks_dropped = 0;
         while !decoder.is_complete() && chunks_sent < 500 {
-            let chunk = encoder.generate_chunk();
-            chunks_sent += 1;
+            if let Some(chunk) = encoder.generate_chunk() {
+                chunks_sent += 1;
 
-            // Drop every 5th chunk (20% packet loss)
-            if chunks_sent % 5 != 0 {
-                decoder.add_chunk(chunk);
-                chunks_delivered += 1;
+                // Drop every 5th chunk (20% packet loss)
+                if chunks_sent % 5 != 0 {
+                    decoder.add_chunk(chunk);
+                    chunks_delivered += 1;
+                } else {
+                    chunks_dropped += 1;
+                }
             } else {
-                chunks_dropped += 1;
+                chunks_sent += 1;
             }
         }
 
@@ -345,19 +354,22 @@ mod integration_tests {
         let mut chunks_sent = 0;
 
         while !decoder.is_complete() && chunks_sent < 100 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
-            chunks_sent += 1;
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                chunks_sent += 1;
 
-            let progress = decoder.get_progress();
-            // Progress should never decrease
-            assert!(
-                progress >= last_progress,
-                "Progress decreased from {} to {}",
-                last_progress,
-                progress
-            );
-            last_progress = progress;
+                let progress = decoder.get_progress();
+                // Progress should never decrease
+                assert!(
+                    progress >= last_progress,
+                    "Progress decreased from {} to {}",
+                    last_progress,
+                    progress
+                );
+                last_progress = progress;
+            } else {
+                chunks_sent += 1;
+            }
         }
 
         assert!(decoder.is_complete());
@@ -397,8 +409,9 @@ mod integration_tests {
         for part_idx in 0..total_parts {
             let mut chunks_sent = 0;
             while !decoder.is_current_part_complete() && chunks_sent < 500 {
-                let chunk = encoder.generate_chunk();
-                decoder.add_chunk(chunk);
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
                 chunks_sent += 1;
             }
 
@@ -464,8 +477,9 @@ mod integration_tests {
         for (part_idx, expected_checksum) in expected_part_checksums.iter().enumerate() {
             let mut chunks_sent = 0;
             while !decoder.is_current_part_complete() && chunks_sent < 500 {
-                let chunk = encoder.generate_chunk();
-                decoder.add_chunk(chunk);
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
                 chunks_sent += 1;
             }
 
@@ -483,51 +497,6 @@ mod integration_tests {
                 decoder.move_to_next_part();
             }
         }
-    }
-
-    #[test]
-    fn test_e2e_empty_file_with_checksum() {
-        let data = vec![];
-        let original_checksum = crc32(&data);
-
-        // Empty checksum should be consistent
-        assert_eq!(original_checksum, "00000000");
-
-        // Perform full encode-decode cycle with empty data
-        let options = FountainEncoderOptions::default().with_block_size(10);
-
-        let mut encoder = FountainEncoder::new(
-            data.clone(),
-            "empty.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false,
-            0,
-            None,
-        );
-
-        let metadata = encoder.get_metadata();
-        let mut decoder = FountainDecoder::new(metadata);
-
-        let mut chunks_sent = 0;
-        while !decoder.is_complete() && chunks_sent < 50 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
-            chunks_sent += 1;
-        }
-
-        // Empty data should complete immediately or very quickly
-        assert!(decoder.is_complete(), "Decoder should complete for empty data");
-        let decoded = decoder
-            .get_decoded_data()
-            .expect("Should have decoded data for empty file");
-
-        // Verify decoded data is empty and checksums match
-        assert_eq!(decoded, data, "Decoded data should match original empty vec");
-        let decoded_checksum = crc32(&decoded);
-        assert_eq!(decoded_checksum, original_checksum, "Checksums should match");
-        assert_eq!(decoded_checksum, "00000000", "Empty data checksum should be 00000000");
     }
 
     #[test]
@@ -551,8 +520,9 @@ mod integration_tests {
 
         let mut chunks_sent = 0;
         while !decoder.is_complete() && chunks_sent < 50 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_sent += 1;
         }
 

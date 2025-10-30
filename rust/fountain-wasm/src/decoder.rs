@@ -410,8 +410,9 @@ mod tests {
         // Keep adding chunks until decoded
         let mut chunks_needed = 0;
         while !decoder.is_complete() && chunks_needed < 100 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_needed += 1;
         }
 
@@ -441,8 +442,9 @@ mod tests {
 
         // Add some chunks
         for _ in 0..5 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
         }
 
         // Progress should have increased
@@ -468,9 +470,10 @@ mod tests {
         let mut decoder = FountainDecoder::new(metadata);
 
         for i in 1..=5 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
-            assert_eq!(decoder.get_received_chunk_count(), i);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                assert_eq!(decoder.get_received_chunk_count(), i);
+            }
         }
     }
 
@@ -493,10 +496,11 @@ mod tests {
 
         // Add chunks until we decode at least one block
         for _ in 0..10 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
-            if decoder.get_decoded_block_count() > 0 {
-                break;
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+                if decoder.get_decoded_block_count() > 0 {
+                    break;
+                }
             }
         }
 
@@ -536,8 +540,9 @@ mod tests {
         // Decode until complete
         let mut chunks_needed = 0;
         while !decoder.is_complete() && chunks_needed < 100 {
-            let chunk = encoder.generate_chunk();
-            decoder.add_chunk(chunk);
+            if let Some(chunk) = encoder.generate_chunk() {
+                decoder.add_chunk(chunk);
+            }
             chunks_needed += 1;
         }
 
@@ -594,8 +599,9 @@ mod tests {
         for part_idx in 0..total_parts {
             // Decode current part
             while !decoder.is_current_part_complete() {
-                let chunk = encoder.generate_chunk();
-                decoder.add_chunk(chunk);
+                if let Some(chunk) = encoder.generate_chunk() {
+                    decoder.add_chunk(chunk);
+                }
             }
 
             // Mark part complete and move to next

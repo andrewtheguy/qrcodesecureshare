@@ -80,14 +80,21 @@ impl WasmFountainEncoder {
     }
 
     /// Generate a single fountain chunk
-    /// Returns a JS object with { seed, degree, indices, data }
+    /// Returns a JS object with { seed, degree, indices, data }, or null if no chunks can be generated
+    ///
+    /// Returns null when:
+    /// - In part-based mode, all blocks in the current part have been cleared via `markPartCompleted()`
+    /// - No blocks are available for encoding in the current state
     #[wasm_bindgen(js_name = generateChunk)]
     pub fn generate_chunk(&mut self) -> Result<JsValue, JsValue> {
-        let chunk = self.encoder.generate_chunk();
-
-        // Convert to JS-friendly format using serde
-        serde_wasm_bindgen::to_value(&chunk)
-            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+        match self.encoder.generate_chunk() {
+            Some(chunk) => {
+                // Convert to JS-friendly format using serde
+                serde_wasm_bindgen::to_value(&chunk)
+                    .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
+            }
+            None => Ok(JsValue::null()),
+        }
     }
 
     /// Get the metadata as a JS object

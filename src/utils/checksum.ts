@@ -8,7 +8,7 @@ export type ChecksumAlgorithm = 'crc32' | 'sha256'
 
 // WASM initialization state
 let wasmInitialized = false
-let wasmInitPromise: Promise<void> | null = null
+let wasmInitPromise: Promise<void> | undefined = undefined
 
 /**
  * Ensures WASM module is initialized before use
@@ -23,6 +23,9 @@ async function ensureWasmInit(): Promise<void> {
         wasmInitialized = true
       } catch (err) {
         console.error('[WASM Init] Failed to initialize checksum WASM:', err)
+        // Reset the promise to allow retries on subsequent calls
+        wasmInitPromise = undefined
+        wasmInitialized = false
         throw new Error('Failed to initialize WASM module for checksums')
       }
     })()
@@ -102,10 +105,8 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   const encoder = new TextEncoder()
   const data = encoder.encode(canonicalString)
 
-  // Compute CRC32 checksum using Rust WASM
-  await ensureWasmInit()
-  const { crc32 } = await import('@/wasm/fountain_wasm')
-  const checksum = crc32(data)
+  // Compute CRC32 checksum using Rust WASM (centralized initialization and import)
+  const checksum = await computeChecksum(data, 'crc32')
 
   // Format as user-friendly code: uppercase hex with hyphen
   const upperChecksum = checksum.toUpperCase()

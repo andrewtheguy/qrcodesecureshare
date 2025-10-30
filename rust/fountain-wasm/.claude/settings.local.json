@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//Users/it3/codes/andrew/qrcodesecureshare/**)"
+      "Read(//Users/it3/codes/andrew/qrcodesecureshare/**)",
+      "Bash(cargo test:*)"
     ],
     "deny": [],
     "ask": []

@@ -25,4 +25,33 @@ mod tests {
         // Known CRC32 of "hello world" is 0x0d4a1185
         assert_eq!(result, "0d4a1185");
     }
+
+    #[test]
+    fn test_crc32_with_nulls() {
+        let data = b"\x00\x01\x02\x03";
+        let result = crc32(data);
+        assert_eq!(result, "8bb98613");
+    }
+
+    #[test]
+    fn test_crc32_longer_string() {
+        let data = b"The quick brown fox jumps over the lazy dog";
+        let result = crc32(data);
+        // CRC32 of the pangram string
+        assert_eq!(result, "414fa339");
+    }
+
+    #[test]
+    fn test_crc32_repeated_pattern() {
+        let data = b"AAAAAAAAAA"; // 10 'A' characters
+        let result = crc32(data);
+        assert_eq!(result, "478ed0cf");
+    }
+
+    #[test]
+    fn test_crc32_binary_data() {
+        let data: &[u8] = &[0xFF, 0xFE, 0xFD, 0xFC, 0xFB, 0xFA];
+        let result = crc32(data);
+        assert_eq!(result, "c0f083e9");
+    }
 }

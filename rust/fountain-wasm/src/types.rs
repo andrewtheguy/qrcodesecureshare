@@ -20,8 +20,65 @@ pub struct FountainChunk {
 
 #[wasm_bindgen]
 impl FountainChunk {
+    /// Create a new FountainChunk with validation (WASM-exposed constructor)
+    ///
+    /// # Arguments
+    /// * `seed` - RNG seed for deterministic block selection
+    /// * `degree` - Number of source blocks XORed together
+    /// * `indices` - Indices of source blocks used in this chunk
+    /// * `data` - Encoded data (XOR of selected blocks)
+    ///
+    /// # Errors
+    /// Returns a JS error if:
+    /// - `indices` is empty
+    /// - `data` is empty
+    /// - `degree` does not equal `indices.len()` (inconsistent chunk specification)
+    ///
+    /// # Example
+    /// ```javascript
+    /// // Valid chunk
+    /// const chunk = new FountainChunk(42, 2, [0, 1], new Uint8Array([0xAA, 0xBB]));
+    ///
+    /// // Errors:
+    /// // new FountainChunk(42, 0, [], new Uint8Array([0xAA])); // "indices must be non-empty"
+    /// // new FountainChunk(42, 2, [0, 1], new Uint8Array([])); // "data must be non-empty"
+    /// // new FountainChunk(42, 3, [0, 1], new Uint8Array([0xAA])); // "degree must equal indices.len()"
+    /// ```
     #[wasm_bindgen(constructor)]
-    pub fn new(seed: u32, degree: usize, indices: Vec<usize>, data: Vec<u8>) -> Self {
+    pub fn new(seed: u32, degree: usize, indices: Vec<usize>, data: Vec<u8>) -> Result<FountainChunk, wasm_bindgen::JsValue> {
+        // Validate indices is non-empty
+        if indices.is_empty() {
+            return Err(wasm_bindgen::JsValue::from_str("indices must be non-empty"));
+        }
+
+        // Validate data is non-empty
+        if data.is_empty() {
+            return Err(wasm_bindgen::JsValue::from_str("data must be non-empty"));
+        }
+
+        // Validate degree matches indices length
+        if degree != indices.len() {
+            return Err(wasm_bindgen::JsValue::from_str(
+                &format!("degree must equal indices.len(): degree={}, indices.len()={}", degree, indices.len())
+            ));
+        }
+
+        Ok(FountainChunk {
+            seed,
+            degree,
+            indices,
+            data,
+        })
+    }
+
+    /// Internal constructor for Rust code (skips validation for performance)
+    ///
+    /// This is used internally by the encoder where we know the inputs are valid.
+    /// Callers must ensure that:
+    /// - indices is non-empty
+    /// - data is non-empty
+    /// - degree equals indices.len()
+    pub(crate) fn new_unchecked(seed: u32, degree: usize, indices: Vec<usize>, data: Vec<u8>) -> Self {
         Self {
             seed,
             degree,
@@ -180,5 +237,140 @@ impl FountainEncoderOptions {
     pub fn with_part_overhead(mut self, part_overhead: usize) -> Self {
         self.part_overhead = part_overhead;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_valid_construction() {
+        // Valid chunk should be constructible
+        let result = FountainChunk::new(42, 2, vec![0, 1], vec![0xAA, 0xBB]);
+        assert!(result.is_ok(), "Valid chunk should construct successfully");
+
+        let chunk = result.unwrap();
+        assert_eq!(chunk.seed, 42);
+        assert_eq!(chunk.degree, 2);
+        assert_eq!(chunk.indices, vec![0, 1]);
+        assert_eq!(chunk.data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_empty_indices_error() {
+        // Empty indices should produce error
+        let result = FountainChunk::new(42, 0, vec![], vec![0xAA]);
+        assert!(result.is_err(), "Empty indices should produce error");
+
+        let err = result.unwrap_err();
+        let err_msg = err.as_string().unwrap_or_default();
+        assert!(err_msg.contains("indices must be non-empty"));
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_empty_data_error() {
+        // Empty data should produce error
+        let result = FountainChunk::new(42, 1, vec![0], vec![]);
+        assert!(result.is_err(), "Empty data should produce error");
+
+        let err = result.unwrap_err();
+        let err_msg = err.as_string().unwrap_or_default();
+        assert!(err_msg.contains("data must be non-empty"));
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_degree_mismatch_error() {
+        // Degree != indices.len() should produce error
+        let result = FountainChunk::new(42, 3, vec![0, 1], vec![0xAA, 0xBB]);
+        assert!(result.is_err(), "Degree mismatch should produce error");
+
+        let err = result.unwrap_err();
+        let err_msg = err.as_string().unwrap_or_default();
+        assert!(err_msg.contains("degree must equal indices.len()"));
+        assert!(err_msg.contains("degree=3"));
+        assert!(err_msg.contains("indices.len()=2"));
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_degree_zero_error() {
+        // Degree 0 with empty indices should error on empty indices first
+        let result = FountainChunk::new(42, 0, vec![], vec![0xFF]);
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let err_msg = err.as_string().unwrap_or_default();
+        assert!(err_msg.contains("indices must be non-empty"));
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_single_byte_valid() {
+        // Single byte data with single index should work
+        let result = FountainChunk::new(100, 1, vec![5], vec![0x42]);
+        assert!(result.is_ok());
+
+        let chunk = result.unwrap();
+        assert_eq!(chunk.seed, 100);
+        assert_eq!(chunk.degree, 1);
+        assert_eq!(chunk.indices, vec![5]);
+        assert_eq!(chunk.data, vec![0x42]);
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_fountain_chunk_large_indices_valid() {
+        // Multiple indices should work
+        let indices = vec![0, 1, 2, 3, 4];
+        let data = vec![0x00, 0x11, 0x22, 0x33, 0x44];
+        let result = FountainChunk::new(999, 5, indices.clone(), data.clone());
+        assert!(result.is_ok());
+
+        let chunk = result.unwrap();
+        assert_eq!(chunk.degree, 5);
+        assert_eq!(chunk.indices, indices);
+        assert_eq!(chunk.data, data);
+    }
+
+    #[test]
+    fn test_fountain_chunk_unchecked_constructor() {
+        // Unchecked constructor should always succeed
+        let chunk = FountainChunk::new_unchecked(42, 2, vec![0, 1], vec![0xAA, 0xBB]);
+        assert_eq!(chunk.seed, 42);
+        assert_eq!(chunk.degree, 2);
+        assert_eq!(chunk.indices, vec![0, 1]);
+        assert_eq!(chunk.data, vec![0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn test_fountain_encoder_options_default() {
+        let options = FountainEncoderOptions::default();
+        assert_eq!(options.block_size, 400);
+        assert_eq!(options.c, 0.2);
+        assert_eq!(options.delta, 0.01);
+        assert_eq!(options.degree1_rate, 0.08);
+        assert_eq!(options.low_degree_rate, 0.18);
+        assert_eq!(options.max_qr_data_size, 1000);
+    }
+
+    #[test]
+    fn test_fountain_encoder_options_builder() {
+        let options = FountainEncoderOptions::default()
+            .with_block_size(512)
+            .with_c(0.3)
+            .with_delta(0.02)
+            .with_max_degree(10)
+            .with_degree1_rate(0.1);
+
+        assert_eq!(options.block_size, 512);
+        assert_eq!(options.c, 0.3);
+        assert_eq!(options.delta, 0.02);
+        assert_eq!(options.max_degree, Some(10));
+        assert_eq!(options.degree1_rate, 0.1);
     }
 }
