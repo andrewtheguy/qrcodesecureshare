@@ -1,4 +1,4 @@
-use crate::distribution::{build_robust_soliton, calculate_max_degree, sample_degree_with_doping};
+use crate::distribution::{build_robust_soliton, calculate_max_degree, sample_degree_with_doping_lcg};
 use crate::rng::{create_rng, select_indices_with_rng};
 use crate::types::{FountainChunk, FountainEncoderOptions, FountainMetadata};
 use crate::xor::xor_blocks;
@@ -95,8 +95,8 @@ impl FountainEncoder {
         // Create RNG from seed
         let mut rng = create_rng(seed);
 
-        // Sample degree
-        let degree = sample_degree_with_doping(
+        // Sample degree using LCG-specific function
+        let degree = sample_degree_with_doping_lcg(
             &mut rng,
             &self.degree_distribution,
             self.options.degree1_rate,
@@ -230,5 +230,70 @@ mod tests {
         assert_eq!(chunk1.degree, chunk2.degree);
         assert_eq!(chunk1.indices, chunk2.indices);
         assert_eq!(chunk1.data, chunk2.data);
+    }
+
+    #[test]
+    fn test_encoder_parity_with_js() {
+        // This test validates that the Rust encoder produces the same (degree, indices)
+        // as the JavaScript implementation in docs/fountainCodeLegacy.tsx
+        // Test vectors generated with: node scripts/generate_test_vectors.js
+        //
+        // Parameters: k=10, blockSize=400, c=0.2, delta=0.01, maxDegree=8
+        // degree1Rate=0.08, lowDegreeRate=0.18
+
+        // Create test data with 10 blocks (10 * 400 = 4000 bytes)
+        let data = vec![0u8; 4000];
+        let options = FountainEncoderOptions::default()
+            .with_block_size(400)
+            .with_c(0.2)
+            .with_delta(0.01)
+            .with_max_degree(8)
+            .with_degree1_rate(0.08)
+            .with_low_degree_rate(0.18);
+
+        let mut encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            Some(0), // seed_offset = 0 for testing
+        );
+
+        // Test vectors from JS implementation
+        let test_vectors = vec![
+            (0, 3, vec![5, 7, 8]),
+            (1, 2, vec![3, 9]),
+            (42, 2, vec![7, 9]),
+            (123, 2, vec![1, 3]),
+            (9999, 5, vec![0, 3, 4, 5, 7]),
+        ];
+
+        for (seed, expected_degree, expected_indices) in test_vectors {
+            // Generate chunk
+            encoder.current_seed = seed;
+            let chunk = encoder.generate_chunk();
+
+            // Validate seed
+            assert_eq!(
+                chunk.seed, seed,
+                "Seed mismatch for test seed {}",
+                seed
+            );
+
+            // Validate degree
+            assert_eq!(
+                chunk.degree, expected_degree,
+                "Degree mismatch for seed {}: expected {}, got {}",
+                seed, expected_degree, chunk.degree
+            );
+
+            // Validate indices
+            assert_eq!(
+                chunk.indices, expected_indices,
+                "Indices mismatch for seed {}: expected {:?}, got {:?}",
+                seed, expected_indices, chunk.indices
+            );
+        }
     }
 }
