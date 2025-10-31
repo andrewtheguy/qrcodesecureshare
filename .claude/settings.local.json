@@ -34,7 +34,8 @@
       "Bash(perl -i -pe:*)",
       "Bash(cargo clean:*)",
       "Bash(npm run build:wasm:dev:*)",
-      "Bash(cargo build:*)"
+      "Bash(cargo build:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []

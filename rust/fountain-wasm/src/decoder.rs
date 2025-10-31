@@ -32,6 +32,14 @@ pub struct FountainDecoder {
     completed_parts: HashSet<usize>,
     /// Stored reconstructed part data (part_index -> data)
     stored_part_data: HashMap<usize, Vec<u8>>,
+
+    // Deduplication and session management
+    /// Composite keys of received chunks for deduplication (format: "seed:degree:firstIdx:lastIdx")
+    received_chunk_keys: HashSet<String>,
+    /// Current session ID for detecting session changes
+    session_id: Option<u32>,
+    /// Expected checksums for each part (part_index -> 4-byte checksum)
+    expected_part_checksums: HashMap<usize, [u8; 4]>,
 }
 
 impl FountainDecoder {
@@ -47,6 +55,9 @@ impl FountainDecoder {
             current_part_index: 0,
             completed_parts: HashSet::new(),
             stored_part_data: HashMap::new(),
+            received_chunk_keys: HashSet::new(),
+            session_id: None,
+            expected_part_checksums: HashMap::new(),
         }
     }
 
@@ -64,6 +75,9 @@ impl FountainDecoder {
             current_part_index: 0,
             completed_parts: HashSet::new(),
             stored_part_data: HashMap::new(),
+            received_chunk_keys: HashSet::new(),
+            session_id: None,
+            expected_part_checksums: HashMap::new(),
         }
     }
 
@@ -426,6 +440,105 @@ impl FountainDecoder {
             expected_checksum: expected_checksum_hex.to_lowercase(),
             actual_checksum: actual_checksum_hex,
         })
+    }
+
+    // Session and deduplication management
+
+    /// Set the current session ID and clear dedup cache if session changed
+    pub fn set_session_id(&mut self, session_id: u32) {
+        if self.session_id != Some(session_id) {
+            // Session changed - clear dedup cache
+            self.received_chunk_keys.clear();
+            self.session_id = Some(session_id);
+        }
+    }
+
+    /// Check if a chunk with the given key has already been received
+    pub fn is_chunk_duplicate(&self, chunk_key: &str) -> bool {
+        self.received_chunk_keys.contains(chunk_key)
+    }
+
+    /// Add a chunk key to the received set
+    pub fn add_chunk_key(&mut self, chunk_key: String) {
+        self.received_chunk_keys.insert(chunk_key);
+    }
+
+    /// Set the expected checksum for a specific part
+    pub fn set_expected_part_checksum(&mut self, part_index: usize, checksum: [u8; 4]) {
+        self.expected_part_checksums.insert(part_index, checksum);
+    }
+
+    /// Get the expected checksum for a specific part
+    pub fn get_expected_part_checksum(&self, part_index: usize) -> Option<[u8; 4]> {
+        self.expected_part_checksums.get(&part_index).copied()
+    }
+
+    /// Determine if a part should be validated for checksum
+    /// Returns false for the last part (will validate entire file instead)
+    pub fn should_validate_part(&self, part_index: usize) -> bool {
+        // Don't validate the last part - will validate entire file instead
+        part_index < self.total_parts - 1
+    }
+
+    /// High-level chunk processing with deduplication and part validation
+    /// Handles all orchestration: dedup check, chunk addition, part completion check, validation
+    pub fn process_chunk_with_validation(
+        &mut self,
+        chunk: FountainChunk,
+        chunk_key: String,
+    ) -> crate::types::ChunkProcessResult {
+        // Check for duplicate chunk
+        if self.is_chunk_duplicate(&chunk_key) {
+            return crate::types::ChunkProcessResult {
+                is_duplicate: true,
+                blocks_decoded: 0,
+                part_complete_info: None,
+            };
+        }
+
+        // Record the chunk key and add chunk to decoder
+        self.add_chunk_key(chunk_key);
+        let blocks_before = self.decoded_blocks.len();
+        self.add_chunk(chunk);
+        let blocks_after = self.decoded_blocks.len();
+        let blocks_decoded = blocks_after - blocks_before;
+
+        // Check if part just completed and needs validation
+        let mut part_complete_info = None;
+
+        if self.part_based_mode && self.is_current_part_complete() {
+            let part_index = self.current_part_index;
+            let should_validate = self.should_validate_part(part_index);
+
+            // Only validate if not the last part
+            if should_validate {
+                if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index) {
+                    if let Some(validation_result) = self.validate_current_part_checksum(expected_checksum_bytes) {
+                        // Mark part as completed (stores data and frees memory)
+                        if validation_result.is_valid {
+                            self.mark_part_completed(part_index);
+                        }
+
+                        part_complete_info = Some(crate::types::PartCompleteInfo {
+                            is_valid: validation_result.is_valid,
+                            expected_checksum: validation_result.expected_checksum,
+                            actual_checksum: validation_result.actual_checksum,
+                            current_part: part_index as u32,
+                            total_parts: self.total_parts as u32,
+                        });
+                    }
+                }
+            } else {
+                // For last part, just mark as completed without validation
+                self.mark_part_completed(part_index);
+            }
+        }
+
+        crate::types::ChunkProcessResult {
+            is_duplicate: false,
+            blocks_decoded,
+            part_complete_info,
+        }
     }
 }
 

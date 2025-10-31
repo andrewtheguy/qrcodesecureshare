@@ -13,7 +13,7 @@ mod tests;
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult};
+pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult, PartCompleteInfo, ChunkProcessResult};
 pub use parser::PartMetadata;
 
 /// WASM-exported Fountain Encoder
@@ -431,6 +431,55 @@ impl WasmFountainDecoder {
         self.decoder
             .validate_final_checksum(&expected_checksum_hex)
             .and_then(|result| serde_wasm_bindgen::to_value(&result).ok())
+    }
+
+    /// Set the current session ID and clear dedup cache if session changed
+    ///
+    /// # Arguments
+    /// * `session_id` - Session ID to track
+    #[wasm_bindgen(js_name = setSessionId)]
+    pub fn set_session_id(&mut self, session_id: u32) {
+        self.decoder.set_session_id(session_id);
+    }
+
+    /// Set the expected checksum for a specific part
+    ///
+    /// # Arguments
+    /// * `part_index` - Part index (0-indexed)
+    /// * `checksum_bytes` - Checksum as 4 bytes (big-endian CRC32)
+    #[wasm_bindgen(js_name = setExpectedPartChecksum)]
+    pub fn set_expected_part_checksum(&mut self, part_index: u32, checksum_bytes: Uint8Array) -> Result<(), JsValue> {
+        if checksum_bytes.length() != 4 {
+            return Err(JsValue::from_str("checksum_bytes must be exactly 4 bytes"));
+        }
+
+        let mut checksum = [0u8; 4];
+        checksum_bytes.copy_to(&mut checksum);
+        self.decoder.set_expected_part_checksum(part_index as usize, checksum);
+        Ok(())
+    }
+
+    /// Process a chunk with deduplication and part validation
+    /// High-level orchestration that handles all chunk processing logic
+    ///
+    /// # Arguments
+    /// * `chunk` - Chunk object with { seed, degree, indices, data }
+    /// * `chunk_key` - Composite key for deduplication ("seed:degree:firstIdx:lastIdx")
+    ///
+    /// # Returns
+    /// Result object with { is_duplicate, blocks_decoded, part_complete_info? }
+    #[wasm_bindgen(js_name = processChunkWithValidation)]
+    pub fn process_chunk_with_validation(&mut self, chunk: JsValue, chunk_key: String) -> Result<JsValue, JsValue> {
+        // Deserialize chunk from JS
+        let chunk: FountainChunk = serde_wasm_bindgen::from_value(chunk)
+            .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
+
+        // Process chunk with validation
+        let result = self.decoder.process_chunk_with_validation(chunk, chunk_key);
+
+        // Convert result to JS value
+        serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
     }
 }
 

@@ -167,6 +167,37 @@ pub struct FinalChecksumValidationResult {
     pub actual_checksum: String,
 }
 
+/// Result of completing a part (checksum validation result for that part)
+/// Returned by high-level chunk processing when a part is complete
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartCompleteInfo {
+    /// Whether the part's checksum is valid
+    pub is_valid: bool,
+    /// The expected checksum (as hex string)
+    pub expected_checksum: String,
+    /// The computed checksum (as hex string)
+    pub actual_checksum: String,
+    /// Current part index (0-indexed)
+    pub current_part: u32,
+    /// Total number of parts
+    pub total_parts: u32,
+}
+
+/// Result of processing a chunk at the high level (with deduplication and validation)
+/// Combines chunk processing result with part completion information if applicable
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChunkProcessResult {
+    /// Whether this chunk was a duplicate (already received)
+    pub is_duplicate: bool,
+    /// Number of blocks newly decoded in this processing
+    pub blocks_decoded: usize,
+    /// Part completion information if a part just completed and was validated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part_complete_info: Option<PartCompleteInfo>,
+}
+
 /// Result of parsing a binary fountain chunk
 /// Contains the decoded chunk metadata and optional part metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]
