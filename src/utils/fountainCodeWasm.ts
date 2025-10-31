@@ -1,0 +1,399 @@
+import init, { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import { DEFAULT_BLOCK_SIZE } from './fountainConfig'
+
+// WASM initialization state
+let wasmInitialized = false
+let wasmInitPromise: Promise<void> | null = null
+
+/**
+ * Ensures WASM module is initialized before use
+ * Includes bounded retry (2 attempts) with short delay
+ * @throws Error with code 'WASM_INIT_FAILED' if initialization fails
+ */
+export async function ensureWasmInit(): Promise<void> {
+  if (wasmInitialized) return
+
+  if (!wasmInitPromise) {
+    wasmInitPromise = (async () => {
+      const MAX_RETRIES = 2
+      const RETRY_DELAY_MS = 100
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        try {
+          await init()
+          wasmInitialized = true
+          return
+        } catch (err) {
+          console.error(`[WASM Init] Attempt ${attempt}/${MAX_RETRIES} failed:`, err)
+
+          if (attempt === MAX_RETRIES) {
+            // Final attempt failed - reset promise cache before throwing so future retries can be attempted
+            wasmInitPromise = null
+            const error = new Error(
+              `WASM_INIT_FAILED: Failed to initialize WASM module after ${MAX_RETRIES} attempts. ` +
+              `The WASM bundle may not be loaded. Please refresh the page and try again. ` +
+              `Original error: ${err instanceof Error ? err.message : String(err)}`
+            )
+            throw error
+          }
+
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+        }
+      }
+    })()
+  }
+
+  await wasmInitPromise
+}
+
+// Re-export types for convenience
+export interface FountainChunk {
+  seed: number
+  degree: number
+  indices: number[]
+  data: Uint8Array
+}
+
+/**
+ * WASM-bound metadata type
+ * This matches the exact structure expected by Rust WASM code
+ * Note: fileType (not type), no checksum fields
+ */
+export interface WasmFountainMetadata {
+  name: string
+  size: number
+  fileType: string
+  timestamp: number
+  totalSourceBlocks: number
+  blockSize: number
+}
+
+/**
+ * Extended metadata type for application use
+ * Includes all fields from WasmFountainMetadata plus additional app-level fields
+ * All fields are required
+ */
+export interface FountainMetadata extends WasmFountainMetadata {
+  partBasedMode: boolean
+  partSize: number
+  checksum: string
+  checksumAlg: string
+}
+
+/**
+ * Part-based mode configuration (session-level settings)
+ * Separate from encoding algorithm parameters
+ */
+export interface PartBasedModeConfig {
+  enabled: boolean
+  partSize: number
+}
+
+/**
+ * Part info type (discriminated union based on partBasedMode)
+ * - When part-based mode is disabled: checksums don't exist
+ * - When part-based mode is enabled: checksums are always present (may be empty)
+ */
+export type PartInfo =
+  | {
+      partBasedMode: false
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+    }
+  | {
+      partBasedMode: true
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+      currentPartChecksum: string | undefined
+      partChecksums: string[]
+    }
+
+/**
+ * Fountain encoder options (all fields required)
+ * These are algorithm parameters, not session settings
+ * Matches the Rust FountainEncoderOptions structure
+ */
+export interface FountainEncoderOptions {
+  blockSize: number
+  c: number
+  delta: number
+  maxDegree: number | null
+  degree1Rate: number
+  lowDegreeRate: number
+  maxQrDataSize: number  // camelCase to match Rust serde
+  fixedOverhead: number
+  partOverhead: number
+}
+
+/**
+ * Default fountain encoder options
+ * Single source of truth for default values
+ */
+export const DEFAULT_FOUNTAIN_ENCODER_OPTIONS: FountainEncoderOptions = {
+  blockSize: DEFAULT_BLOCK_SIZE,  // Use system default (1000 bytes)
+  c: 0.2,
+  delta: 0.01,
+  maxDegree: null,
+  degree1Rate: 0.08,
+  lowDegreeRate: 0.18,
+  maxQrDataSize: 1000,  // camelCase to match Rust serde
+  fixedOverhead: 10,
+  partOverhead: 0,
+}
+
+/**
+ * TypeScript wrapper for Rust WASM Fountain Encoder
+ * Provides WASM initialization and a few convenience methods
+ * Access underlying WASM encoder directly via the `wasm` property for all other methods
+ */
+export class FountainWasmEncoder {
+  /**
+   * Direct access to the underlying WASM encoder
+   * Use this to call any WASM methods directly without delegation boilerplate
+   */
+  readonly wasm: WasmFountainEncoder
+
+  private constructor(
+    data: Uint8Array,
+    metadata: { name: string; fileType: string; timestamp?: number },
+    options: FountainEncoderOptions,
+    partConfig: PartBasedModeConfig,
+    seedOffset?: number
+  ) {
+    this.wasm = new WasmFountainEncoder(
+      data,
+      metadata.name,
+      metadata.fileType,
+      metadata.timestamp || Date.now(),
+      options,
+      partConfig.enabled,
+      partConfig.partSize,
+      seedOffset
+    )
+  }
+
+  /**
+   * Create a new encoder (ensures WASM is initialized first)
+   *
+   * @param data - Data to encode
+   * @param metadata - File metadata
+   * @param options - Encoding algorithm options (defaults to DEFAULT_FOUNTAIN_ENCODER_OPTIONS)
+   * @param partConfig - Part-based mode configuration (defaults to disabled)
+   * @param seedOffset - Optional seed offset for session-specific randomization
+   */
+  static async create(
+    data: Uint8Array,
+    metadata: { name: string; fileType: string; timestamp?: number },
+    options: FountainEncoderOptions = DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
+    partConfig: PartBasedModeConfig = { enabled: false, partSize: 0 },
+    seedOffset?: number
+  ): Promise<FountainWasmEncoder> {
+    await ensureWasmInit()
+    return new FountainWasmEncoder(data, metadata, options, partConfig, seedOffset)
+  }
+
+  /**
+   * Convenience method: Generate a single fountain chunk
+   * Same as encoder.wasm.generateChunk()
+   */
+  generateChunk(): FountainChunk {
+    return this.wasm.generateChunk() as FountainChunk
+  }
+
+  /**
+   * Convenience method: Get metadata
+   * Same as encoder.wasm.getMetadata()
+   */
+  getMetadata(): WasmFountainMetadata {
+    return this.wasm.getMetadata() as WasmFountainMetadata
+  }
+
+  /**
+   * Convenience method: Get part information
+   * Same as encoder.wasm.getPartInfo()
+   */
+  getPartInfo(): PartInfo {
+    const info = this.wasm.getPartInfo() as {
+      partBasedMode: boolean
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+      currentPartChecksum?: string
+      partChecksums?: string[]
+    }
+
+    // Ensure checksums are always arrays in part-based mode
+    if (info.partBasedMode) {
+      return {
+        partBasedMode: true,
+        currentPartIndex: info.currentPartIndex,
+        totalParts: info.totalParts,
+        partSize: info.partSize,
+        currentPartChecksum: info.currentPartChecksum,
+        partChecksums: info.partChecksums || []
+      }
+    }
+
+    return {
+      partBasedMode: false,
+      currentPartIndex: info.currentPartIndex,
+      totalParts: info.totalParts,
+      partSize: info.partSize
+    }
+  }
+
+  /**
+   * Convenience method: Move to next part
+   * Same as encoder.wasm.moveToNextPart()
+   */
+  moveToNextPart(): boolean {
+    return this.wasm.moveToNextPart()
+  }
+
+  /**
+   * Convenience method: Mark part as completed
+   * Same as encoder.wasm.markPartCompleted()
+   */
+  markPartCompleted(partIndex: number): void {
+    this.wasm.markPartCompleted(partIndex)
+  }
+
+  /**
+   * Compute checksums for all parts asynchronously
+   * Stores checksums in the encoder and returns them
+   * Returns array of CRC32 checksums (one per part)
+   */
+  async computePartChecksums(originalData: Uint8Array): Promise<string[]> {
+    const { crc32 } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
+    const { partBasedMode, totalParts, partSize } = this.getPartInfo()
+
+    if (!partBasedMode || totalParts === 0) {
+      return []
+    }
+
+    const checksums: string[] = []
+    for (let i = 0; i < totalParts; i++) {
+      const partStartByte = i * partSize
+      const partEndByte = Math.min((i + 1) * partSize, originalData.length)
+      const partData = originalData.slice(partStartByte, partEndByte)
+      checksums.push(crc32(partData))
+    }
+
+    // Store checksums in the WASM encoder
+    this.wasm.setPartChecksums(checksums)
+
+    return checksums
+  }
+}
+
+/**
+ * TypeScript wrapper for Rust WASM Fountain Decoder
+ * Provides WASM initialization and convenience methods
+ * Access underlying WASM decoder directly via the `wasm` property for all other methods
+ */
+export class FountainWasmDecoder {
+  /**
+   * Direct access to the underlying WASM decoder
+   * Use this to call any WASM methods directly without delegation boilerplate
+   */
+  readonly wasm: WasmFountainDecoder
+
+  private constructor(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+    this.wasm = new WasmFountainDecoder(
+      metadata,
+      partBasedMode || undefined,
+      partBasedMode && partSize > 0 ? partSize : undefined
+    )
+  }
+
+  /**
+   * Create a new decoder (ensures WASM is initialized first)
+   */
+  static async create(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0): Promise<FountainWasmDecoder> {
+    await ensureWasmInit()
+    return new FountainWasmDecoder(metadata, partBasedMode, partSize)
+  }
+
+  /**
+   * Convenience method: Add a chunk and attempt to decode
+   * Same as decoder.wasm.addChunk(chunk)
+   */
+  addChunk(chunk: FountainChunk): boolean {
+    return this.wasm.addChunk(chunk)
+  }
+
+  /**
+   * Convenience method: Check if decoding is complete
+   * Same as decoder.wasm.isComplete()
+   */
+  isComplete(): boolean {
+    return this.wasm.isComplete()
+  }
+
+  /**
+   * Convenience method: Get the decoded data
+   * Same as decoder.wasm.getDecodedData()
+   */
+  getDecodedData(): Uint8Array | null {
+    return this.wasm.getDecodedData() || null
+  }
+
+  /**
+   * Convenience method: Get metadata
+   * Same as decoder.wasm.getMetadata()
+   */
+  getMetadata(): WasmFountainMetadata {
+    return this.wasm.getMetadata() as WasmFountainMetadata
+  }
+
+  /**
+   * Convenience method: Get part info (transforms data to match PartInfo type)
+   * For direct access without transformation: decoder.wasm.getPartInfo()
+   */
+  getPartInfo(): PartInfo {
+    const info = this.wasm.getPartInfo() as {
+      partBasedMode: boolean
+      currentPartIndex: number
+      totalParts: number
+      partSize: number
+    }
+
+    // Decoder doesn't have checksums, only encoder does
+    if (info.partBasedMode) {
+      return {
+        partBasedMode: true,
+        currentPartIndex: info.currentPartIndex,
+        totalParts: info.totalParts,
+        partSize: info.partSize,
+        currentPartChecksum: undefined,
+        partChecksums: []
+      }
+    }
+
+    return {
+      partBasedMode: false,
+      currentPartIndex: info.currentPartIndex,
+      totalParts: info.totalParts,
+      partSize: info.partSize
+    }
+  }
+
+  /**
+   * For other decoder methods, use decoder.wasm directly:
+   * - decoder.wasm.getProgress() - Get overall decode progress (0.0 to 1.0)
+   * - decoder.wasm.getDecodedBlockCount() - Get number of decoded blocks
+   * - decoder.wasm.getDecodedBlockIndices() - Get decoded block indices
+   * - decoder.wasm.isCurrentPartComplete() - Check if current part is complete
+   * - decoder.wasm.getCurrentPartData() - Get current part data
+   * - decoder.wasm.markPartCompleted(partIndex) - Mark part as completed
+   * - decoder.wasm.getCurrentPartDecodedBlockCount() - Get current part decoded block count
+   * - decoder.wasm.getCurrentPartTotalBlockCount() - Get current part total block count
+   * - decoder.wasm.moveToNextPart() - Move to next part
+   */
+}
+
+// Re-export with simplified names for backward compatibility with fountainCodeHybrid
+export { FountainWasmEncoder as FountainEncoder, FountainWasmDecoder as FountainDecoder }

@@ -12,7 +12,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FountainEncoder } from '@/utils/fountainCode';
+import { FountainEncoder } from '@/utils/fountainCodeWasm';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
@@ -110,34 +110,26 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for part-complete mode
       // 3. checksum.ts - generateFeedbackConfirmationCode()
       //
-      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
-      // Do NOT expect optional fields like computedChecksum
+      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts
+      // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
       console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
-      console.log(`[FountainQRFeedbackScanner] Checksum match: ${data.partChecksumMatch}`);
 
-      // Check for part completion
+      // If receiver sent feedback, it means the part was completed successfully
+      // (receiver aborts and doesn't send feedback if checksum is invalid)
+      console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
+
       let partTransition = false;
       let newPartIndex: number | undefined;
 
-      if (data.partChecksumMatch) {
-        console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
-
-        // Move encoder to next part
-        const moved = encoder?.moveToNextPart();
-        if (moved) {
-          partTransition = true;
-          const partInfo = encoder?.getPartInfo();
-          newPartIndex = partInfo?.currentPartIndex;
-          console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
-        } else {
-          console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
-        }
+      // Move encoder to next part
+      const moved = encoder?.moveToNextPart();
+      if (moved) {
+        partTransition = true;
+        const partInfo = encoder?.getPartInfo();
+        newPartIndex = partInfo?.currentPartIndex;
+        console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
       } else {
-        // Part checksum mismatch - fail the transfer
-        onError(`Part ${data.currentPart + 1} checksum validation failed on receiver`);
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
+        console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
       }
 
       // Determine message based on part transition
@@ -162,47 +154,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       onFeedbackProcessed({
         sequence: data.sequence,
         mode: 'part-complete',
-        message: ackFeedback.message,
-      });
-
-      onModeChange('ack-display');
-      setProcessingRef(false);
-    } else if (data.mode === 'targeted') {
-      // SYNC REQUIREMENT: Validate these fields match exactly with:
-      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for targeted mode
-      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for targeted mode
-      // 3. checksum.ts - generateFeedbackConfirmationCode()
-      //
-      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
-      // Do NOT expect optional fields
-      if (!data.missingBlocks || !Array.isArray(data.missingBlocks)) {
-        onError('Invalid targeted feedback: missingBlocks must be an array.');
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
-      }
-      const missingBlocks = data.missingBlocks;
-      console.log(`[FountainQRFeedbackScanner] Processing targeted feedback for part ${data.currentPart + 1}/${data.totalParts}`);
-      console.log(`[FountainQRFeedbackScanner] Missing blocks: ${missingBlocks.length}`);
-      encoder?.setMissingBlocks(missingBlocks);
-
-      // Generate ACK for targeted mode (final cleanup)
-      const ackFeedback: SenderFeedbackAcknowledge = {
-        type: 'SENDER_FEEDBACK',
-        sessionId,
-        sequence: senderFeedbackSequence,
-        command: 'acknowledge',
-        acknowledgedSequence: data.sequence,
-        message: `Targeted feedback received. ${missingBlocks.length} blocks still missing. Final cleanup mode.`,
-      };
-
-      await generateSenderFeedbackQR(ackFeedback);
-      setCurrentMode('idle');
-
-      onFeedbackProcessed({
-        sequence: data.sequence,
-        mode: 'targeted',
-        receivedBlocks: new Set(),
         message: ackFeedback.message,
       });
 

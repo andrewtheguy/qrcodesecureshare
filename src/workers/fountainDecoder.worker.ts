@@ -1,8 +1,45 @@
 /// <reference lib="webworker" />
 
-import { FountainDecoder } from '../utils/fountainCode';
-import type { FountainMetadata, FountainChunk } from '../utils/fountainCode';
-import { computeChecksum, type ChecksumAlgorithm } from '../utils/checksum';
+import { FountainDecoder } from '../utils/fountainCodeWasm';
+import type { FountainMetadata } from '../utils/fountainCodeWasm';
+
+/**
+ * Result types from Rust processBinaryChunk method
+ */
+interface BinaryChunkProcessResult {
+    type: 'processed' | 'duplicate' | 'parseError' | 'checksumError' | 'processingError';
+    message?: string; // Present for error types
+    seed: number;
+    decodedBlockCount: number;
+    overallProgress: number;
+    partProgress: number;
+    isComplete: boolean;
+    decodedBlockIndices: number[];
+    currentPartIndex?: number;
+    totalParts?: number;
+    currentPartDecodedBlocks?: number;
+    currentPartTotalBlocks?: number;
+    partCompleteInfo?: {
+        isValid: boolean;
+        expectedChecksum: string;
+        actualChecksum: string;
+        currentPart: number;
+        totalParts: number;
+    };
+    completionData?: {
+        data: Uint8Array;
+        integrityOk: boolean;
+        expectedChecksum: string;
+        actualChecksum: string;
+    };
+}
+
+// Worker state
+let decoder: FountainDecoder | null = null;
+let metadata: FountainMetadata;
+let currentSessionId: number | null = null;
+let partBasedMode = false;
+let partSize = 0;
 
 /**
  * Ensures the decoder is initialized before use
@@ -11,120 +48,6 @@ function ensureDecoder(): void {
     if (!decoder) {
         throw new Error('Decoder not initialized');
     }
-}
-
-// Worker state
-let decoder: FountainDecoder | null = null;
-let receivedSeeds: Set<number> = new Set();
-const processedSeeds: Set<number> = new Set();
-let metadata: FountainMetadata;
-let lastDecodeAttemptTime = 0; // Throttle decode attempts to every 500ms
-let lastDecodedBlockCount = 0; // Track last decoded count to detect new blocks
-
-// Part-based transfer state
-let partBasedMode = false;
-let partSize = 0;
-const expectedPartChecksums = new Map<number, string>(); // Per-part checksums from sender, keyed by part index
-let lastPartCompleteCheck = 0; // Throttle part completion checks
-
-/**
- * Parses binary chunk data into a FountainChunk object
- */
-function parseBinaryChunk(bytes: Uint8Array): FountainChunk & { checksumStart: number; partInfo?: { currentPart: number; totalParts: number; partChecksum: string } } {
-    // Check minimum length for header (magic 2, seed 2, degree 1, numIndices 1)
-    if (bytes.length < 6) {
-        throw new Error('Chunk too short: missing header');
-    }
-
-    // Validate magic bytes [0xFF][0xFD]
-    if (bytes[0] !== 0xFF || bytes[1] !== 0xFD) {
-        throw new Error('Invalid magic bytes');
-    }
-
-    // Extract seed (2 bytes, big-endian)
-    const seed = (bytes[2] << 8) | bytes[3];
-
-    // Extract degree (1 byte)
-    const degree = bytes[4];
-
-    // Extract numIndices (1 byte)
-    const numIndices = bytes[5];
-
-    // Validate numIndices
-    if (numIndices < 0 || numIndices > 1000) {
-        throw new Error('Invalid numIndices: ' + numIndices);
-    }
-
-    // Ensure metadata is initialized and validate against total source blocks
-    if (!metadata) throw new Error('Decoder metadata not initialized');
-    if (numIndices > metadata.totalSourceBlocks) throw new Error('Invalid numIndices: exceeds total source blocks');
-
-    // Check length for indices and checksum
-    const expectedMinLength = 6 + numIndices * 2 + 4;
-    if (bytes.length < expectedMinLength) {
-        throw new Error('Chunk too short: missing indices or checksum');
-    }
-
-    // Extract indices (2 bytes each, big-endian)
-    const indices: number[] = [];
-    let offset = 6;
-    for (let i = 0; i < numIndices; i++) {
-        if (offset + 1 >= bytes.length) {
-            throw new Error('Unexpected end of data while reading indices');
-        }
-        const index = (bytes[offset] << 8) | bytes[offset + 1];
-        indices.push(index);
-        offset += 2;
-    }
-
-    // Try to parse part metadata if present
-    // Part metadata format: currentPart(2) + totalParts(2) + partChecksum(4) = 8 bytes
-    let partInfo: { currentPart: number; totalParts: number; partChecksum: string } | undefined;
-    const remainingBytes = bytes.length - offset - 4; // Subtract 4 for final checksum
-
-    // Check if there's at least 8 bytes for part metadata
-    // (part metadata comes before chunk data)
-    if (partBasedMode && remainingBytes >= 8) {
-        // Extract part metadata
-        const currentPart = (bytes[offset] << 8) | bytes[offset + 1];
-        offset += 2;
-
-        const totalParts = (bytes[offset] << 8) | bytes[offset + 1];
-        offset += 2;
-
-        // Extract part checksum (4 bytes as hex string)
-        let partChecksumHex = '';
-        for (let i = 0; i < 4; i++) {
-            partChecksumHex += bytes[offset++].toString(16).padStart(2, '0');
-        }
-
-        partInfo = {
-            currentPart,
-            totalParts,
-            partChecksum: partChecksumHex
-        };
-
-        // Store expected checksum for this part (indexed by part number)
-        expectedPartChecksums.set(currentPart, partChecksumHex);
-
-        console.log(`[Worker] Parsed part metadata: part ${currentPart + 1}/${totalParts}, checksum: ${partChecksumHex}`);
-    }
-
-    // Extract data (between current offset and checksum)
-    const checksumStart = bytes.length - 4;
-    if (checksumStart < offset) {
-        throw new Error('Invalid checksum position: checksumStart < offset');
-    }
-    const data = bytes.slice(offset, checksumStart);
-
-    return {
-        seed,
-        degree,
-        indices,
-        data,
-        checksumStart,
-        partInfo
-    };
 }
 
 // Message handler
@@ -137,209 +60,211 @@ self.onmessage = async (event: MessageEvent) => {
                 metadata = data.metadata as FountainMetadata;
                 partBasedMode = data.partBasedMode || false;
                 partSize = data.partSize || 0;
-                console.log(`[Worker] Initialized with partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
-                decoder = new FountainDecoder(metadata, partBasedMode, partSize);
-                receivedSeeds = new Set();
-                processedSeeds.clear();
-                expectedPartChecksums.clear(); // Clear any previous part checksums
-                lastDecodeAttemptTime = Date.now();
-                lastDecodedBlockCount = decoder.getDecodedBlockCount();
-                lastPartCompleteCheck = 0;
-                self.postMessage({ type: 'initialized', id, metadata });
+                const sessionId = data.sessionId as number | undefined;
+
+                // Track session changes
+                if (sessionId !== undefined && sessionId !== currentSessionId) {
+                    console.log(`[Worker] Session changed from ${currentSessionId} to ${sessionId}`);
+                    currentSessionId = sessionId;
+                } else if (!currentSessionId) {
+                    currentSessionId = sessionId ?? null;
+                }
+
+                console.log(`[Worker] Initialized with sessionId: ${sessionId}, partBasedMode: ${partBasedMode}, partSize: ${partSize}`);
+
+                try {
+                    decoder = await FountainDecoder.create(metadata, partBasedMode, partSize);
+
+                    // Set session ID (clears dedup cache on session change)
+                    if (sessionId !== undefined) {
+                        decoder.wasm.setSessionId(sessionId);
+                    }
+
+                    // Set final checksum for integrity validation
+                    decoder.wasm.setFinalChecksum(metadata.checksum);
+
+                    self.postMessage({ type: 'initialized', id, metadata });
+                } catch (err) {
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    if (errorMessage.includes('WASM_INIT_FAILED')) {
+                        self.postMessage({
+                            type: 'error',
+                            id,
+                            code: 'WASM_INIT_FAILED',
+                            error: 'Failed to initialize WASM decoder. Please refresh and try again.',
+                            details: errorMessage
+                        });
+                    } else {
+                        self.postMessage({
+                            type: 'error',
+                            id,
+                            error: `Failed to initialize decoder: ${errorMessage}`
+                        });
+                    }
+                }
                 break;
             }
 
             case 'processChunk': {
                 ensureDecoder();
                 const { binaryData } = data as { binaryData: Uint8Array };
-                const chunk = parseBinaryChunk(binaryData);
 
-                // Check for duplicate seed
-                if (receivedSeeds.has(chunk.seed)) {
-                    self.postMessage({ type: 'chunkProcessed', id, duplicate: true, seed: chunk.seed });
+                // Process binary chunk through complete Rust pipeline
+                let result: BinaryChunkProcessResult;
+                try {
+                    // Check if method exists
+                    if (typeof decoder!.wasm.processBinaryChunk !== 'function') {
+                        console.error('[Worker] processBinaryChunk method not found! WASM may not be updated. Available methods:', Object.keys(decoder!.wasm));
+                        self.postMessage({ type: 'error', id, error: 'processBinaryChunk method not found - please hard refresh (Ctrl+Shift+R or Cmd+Shift+R)' });
+                        break;
+                    }
+
+                    const rawResult = decoder!.wasm.processBinaryChunk(binaryData);
+
+                    // WASM returns a Map due to serde flatten - convert to plain object
+                    result = Object.fromEntries(rawResult as Map<string, unknown>) as unknown as BinaryChunkProcessResult;
+
+                    // Convert nested Maps to objects as well
+                    if (result.completionData instanceof Map) {
+                        result.completionData = Object.fromEntries(result.completionData) as BinaryChunkProcessResult['completionData'];
+                    }
+                    if (result.partCompleteInfo instanceof Map) {
+                        result.partCompleteInfo = Object.fromEntries(result.partCompleteInfo) as BinaryChunkProcessResult['partCompleteInfo'];
+                    }
+
+                    console.log('[Worker] processBinaryChunk result:', {
+                        type: result.type,
+                        seed: result.seed,
+                        decodedBlockCount: result.decodedBlockCount,
+                        overallProgress: result.overallProgress,
+                        isComplete: result.isComplete,
+                        decodedBlockIndices: result.decodedBlockIndices?.length
+                    });
+
+                    // Validate result has expected fields
+                    if (result.decodedBlockCount === undefined || result.overallProgress === undefined) {
+                        console.error('[Worker] Result missing expected fields! Result:', result);
+                        self.postMessage({ type: 'error', id, error: 'Invalid result from WASM - missing fields' });
+                        break;
+                    }
+                } catch (err) {
+                    const errorMessage = err instanceof Error ? err.message : String(err);
+                    console.error('[Worker] processBinaryChunk error:', err);
+                    self.postMessage({ type: 'error', id, error: `Processing error: ${errorMessage}` });
                     break;
                 }
 
-                // Validate checksum over complete chunk: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
-                // This is everything except magic bytes (first 2 bytes) and checksum itself (last 4 bytes)
-                const checksumPayload = binaryData.slice(2, chunk.checksumStart);
-                const expectedChecksumStr = Array.from(binaryData.slice(chunk.checksumStart))
-                    .map(b => b.toString(16).padStart(2, '0'))
-                    .join('');
-                const computedChecksum = await computeChecksum(checksumPayload, 'crc32');
-                const ok = computedChecksum === expectedChecksumStr;
-                if (!ok) {
-                    console.error(`[Worker] Checksum mismatch! Expected: ${expectedChecksumStr}, Got: ${computedChecksum}`);
-                    console.error(`[Worker] Payload length: ${checksumPayload.length}, checksumStart: ${chunk.checksumStart}, total: ${binaryData.length}`);
-                    console.error(`[Worker] partBasedMode: ${partBasedMode}, partInfo:`, chunk.partInfo);
-                    self.postMessage({ type: 'error', id, error: 'Invalid checksum', seed: chunk.seed });
+                // Handle different result types
+                if (result.type === 'parseError' || result.type === 'checksumError' || result.type === 'processingError') {
+                    self.postMessage({
+                        type: 'error',
+                        id,
+                        error: `${result.type}: ${result.message || 'Unknown error'}`,
+                        seed: result.seed
+                    });
                     break;
                 }
 
-                // Add to received seeds
-                receivedSeeds.add(chunk.seed);
-                processedSeeds.add(chunk.seed);
-
-                // Add chunk to decoder
-                decoder!.addChunk(chunk);
-
-                // Only attempt full decode check every 500ms or if new blocks were decoded
-                const now = Date.now();
-                const decodedBlockCount = decoder!.getDecodedBlockCount();
-                const hasNewBlocks = decodedBlockCount !== lastDecodedBlockCount;
-                const shouldAttemptDecode = (now - lastDecodeAttemptTime >= 500) || hasNewBlocks;
-
-                // Check part completion if in part-based mode
-                let partCompleteInfo: { partComplete: boolean; partChecksumMatch: boolean; computedChecksum: string; currentPart: number; totalParts: number } | undefined;
-                if (partBasedMode && (now - lastPartCompleteCheck >= 1000)) {
-                    lastPartCompleteCheck = now;
-                    if (decoder!.isCurrentPartComplete()) {
-                        const partData = decoder!.getCurrentPartData();
-                        if (partData) {
-                            const computedChecksum = await computeChecksum(partData, 'crc32');
-                            const partInfo = decoder!.getPartInfo();
-                            const expectedChecksum = expectedPartChecksums.get(partInfo.currentPartIndex) || '';
-                            const checksumMatch = computedChecksum === expectedChecksum;
-
-                            console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Computed checksum: ${computedChecksum}, Expected: ${expectedChecksum}, Match: ${checksumMatch}`);
-
-                            partCompleteInfo = {
-                                partComplete: true,
-                                partChecksumMatch: checksumMatch,
-                                computedChecksum,
-                                currentPart: partInfo.currentPartIndex,
-                                totalParts: partInfo.totalParts
-                            };
-
-                            // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
-                            if (checksumMatch) {
-                                decoder!.markPartCompleted(partInfo.currentPartIndex);
-                                console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
-
-                                // Clean up the checksum from the map since this part is completed
-                                expectedPartChecksums.delete(partInfo.currentPartIndex);
-
-                                // If this was the last part, force a decode check to trigger completion
-                                const isLastPart = (partInfo.currentPartIndex + 1) === partInfo.totalParts;
-                                if (isLastPart) {
-                                    console.log('[Worker] Last part completed, forcing completion check...');
-                                    lastDecodeAttemptTime = 0; // Force decode attempt
-                                }
-                            }
-                        }
-                    }
+                if (result.type === 'duplicate') {
+                    // Even for duplicates, send current progress so UI stays updated
+                    self.postMessage({
+                        type: 'chunkProcessed',
+                        id,
+                        duplicate: true,
+                        seed: result.seed,
+                        decodedBlockCount: result.decodedBlockCount,
+                        overallProgress: result.overallProgress,
+                        partProgress: result.partProgress,
+                        isComplete: result.isComplete,
+                        decodedBlockIndices: result.decodedBlockIndices,
+                        currentPartDecodedBlocks: result.currentPartDecodedBlocks,
+                        currentPartTotalBlocks: result.currentPartTotalBlocks,
+                        currentPartIndex: result.currentPartIndex,
+                        totalParts: result.totalParts
+                    });
+                    break;
                 }
 
-                if (shouldAttemptDecode) {
-                    lastDecodeAttemptTime = now;
-                    lastDecodedBlockCount = decodedBlockCount;
+                // Handle successful processing
+                const partCompleteInfo = result.partCompleteInfo ? {
+                    partComplete: true,
+                    isValid: result.partCompleteInfo.isValid,
+                    expectedChecksum: result.partCompleteInfo.expectedChecksum,
+                    actualChecksum: result.partCompleteInfo.actualChecksum,
+                    currentPart: result.partCompleteInfo.currentPart,
+                    totalParts: result.partCompleteInfo.totalParts
+                } : undefined;
 
-                    // Get progress
-                    const progress = decoder!.getProgress();
-                    const isComplete = decoder!.isComplete();
-                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
+                if (partCompleteInfo?.isValid) {
+                    console.log(`[Worker] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete and valid`);
+                }
 
-                    // Get part-specific progress if in part-based mode
-                    let partProgress: number | undefined;
-                    let currentPartDecodedBlocks: number | undefined;
-                    let currentPartTotalBlocks: number | undefined;
-                    let currentPartIndex: number | undefined;
-                    let totalParts: number | undefined;
-                    if (partBasedMode) {
-                        const partInfo = decoder!.getPartInfo();
-                        currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
-                        partProgress = currentPartTotalBlocks > 0 ? currentPartDecodedBlocks / currentPartTotalBlocks : 0;
-                        currentPartIndex = partInfo.currentPartIndex;
-                        totalParts = partInfo.totalParts;
+                // Send progress update
+                self.postMessage({
+                    type: 'chunkProcessed',
+                    id,
+                    seed: result.seed,
+                    decodedBlockCount: result.decodedBlockCount,
+                    overallProgress: result.overallProgress,
+                    partProgress: result.partProgress,
+                    isComplete: result.isComplete,
+                    decodedBlockIndices: result.decodedBlockIndices,
+                    currentPartDecodedBlocks: result.currentPartDecodedBlocks,
+                    currentPartTotalBlocks: result.currentPartTotalBlocks,
+                    currentPartIndex: result.currentPartIndex,
+                    totalParts: result.totalParts,
+                    partCompleteInfo
+                });
+
+                // If complete, send completion message
+                if (result.isComplete && result.completionData) {
+                    console.log('[Worker] Transfer complete! Preparing completion message');
+                    console.log('[Worker] completionData:', result.completionData);
+
+                    // Get the decoded data separately (data field is skipped in serialization)
+                    const decodedData = decoder!.wasm.getDecodedData();
+                    if (!decodedData) {
+                        console.error('[Worker] Completion detected but no decoded data available!');
+                        self.postMessage({ type: 'error', id, error: 'Transfer complete but data is missing' });
+                        break;
                     }
+
+                    console.log('[Worker] Decoded data retrieved, size:', decodedData.length, 'bytes');
 
                     self.postMessage({
-                        type: 'chunkProcessed',
+                        type: 'complete',
                         id,
-                        seed: chunk.seed,
-                        decodedBlockCount,
-                        progress,
-                        isComplete,
-                        decodedBlockIndices,
-                        partProgress,
-                        currentPartDecodedBlocks,
-                        currentPartTotalBlocks,
-                        currentPartIndex,
-                        totalParts,
-                        partCompleteInfo
-                    });
-
-                    // If complete, trigger reconstruction
-                    // In part-based mode, this happens when all parts are stored
-                    // In non-part mode, this happens when all blocks are decoded
-                    if (isComplete) {
-                        const reconstructedData = decoder!.getDecodedData();
-                        if (reconstructedData) {
-                            const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
-                            const integrityOk = computed === metadata.checksum;
-                            self.postMessage({
-                                type: 'complete',
-                                id,
-                                data: reconstructedData,
-                                integrityOk,
-                                expectedChecksum: metadata.checksum,
-                                calculatedChecksum: computed
-                            }, [reconstructedData.buffer]);
-                        }
-                    }
-                } else {
-                    // Queue chunk and send current state without full decode check
-                    const progress = decoder!.getProgress();
-                    const decodedBlockIndices = decoder!.getDecodedBlockIndices();
-
-                    // Get part-specific info if in part-based mode
-                    let currentPartIndex: number | undefined;
-                    let totalParts: number | undefined;
-                    let currentPartDecodedBlocks: number | undefined;
-                    let currentPartTotalBlocks: number | undefined;
-                    if (partBasedMode) {
-                        const partInfo = decoder!.getPartInfo();
-                        currentPartIndex = partInfo.currentPartIndex;
-                        totalParts = partInfo.totalParts;
-                        currentPartDecodedBlocks = decoder!.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.getCurrentPartTotalBlockCount();
-                    }
-
-                    self.postMessage({
-                        type: 'chunkProcessed',
-                        id,
-                        seed: chunk.seed,
-                        queued: true,
-                        decodedBlockCount,
-                        progress,
-                        isComplete: false,
-                        decodedBlockIndices,
-                        currentPartIndex,
-                        totalParts,
-                        currentPartDecodedBlocks,
-                        currentPartTotalBlocks,
-                        partCompleteInfo
-                    });
+                        data: decodedData,
+                        integrityOk: result.completionData.integrityOk,
+                        expectedChecksum: result.completionData.expectedChecksum,
+                        calculatedChecksum: result.completionData.actualChecksum
+                    }, [decodedData.buffer]);
                 }
                 break;
             }
 
-
             case 'getStatus': {
                 ensureDecoder();
-                const decodedBlockCount__ = decoder!.getDecodedBlockCount();
-                const progress_ = decoder!.getProgress();
-                const isComplete_ = decoder!.isComplete();
-                const decodedBlockIndices__ = decoder!.getDecodedBlockIndices();
+                const decodedBlockCount = decoder!.wasm.getDecodedBlockCount();
+                const overallProgress = decoder!.wasm.getProgress();
+                const isComplete = decoder!.isComplete();
+                const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
+
+                // Calculate part progress
+                const partProgress = partBasedMode
+                    ? (decoder!.wasm.getCurrentPartTotalBlockCount() > 0
+                        ? decoder!.wasm.getCurrentPartDecodedBlockCount() / decoder!.wasm.getCurrentPartTotalBlockCount()
+                        : 0)
+                    : overallProgress;
 
                 self.postMessage({
                     type: 'status',
                     id,
-                    decodedBlockCount: decodedBlockCount__,
-                    progress: progress_,
-                    isComplete: isComplete_,
-                    decodedBlockIndices: decodedBlockIndices__
+                    decodedBlockCount,
+                    overallProgress,
+                    partProgress,
+                    isComplete,
+                    decodedBlockIndices
                 });
                 break;
             }
@@ -351,7 +276,7 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                const moved = decoder!.moveToNextPart();
+                const moved = decoder!.wasm.moveToNextPart();
                 if (moved) {
                     const partInfo = decoder!.getPartInfo();
                     self.postMessage({

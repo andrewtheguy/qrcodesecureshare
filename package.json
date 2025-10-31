@@ -5,9 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
-    "build:cloud": "npm run build",
+    "build:js": "tsc -b && vite build",
+    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
+    "build": "npm run build:wasm && npm run build:js",
+    "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
+    "test": "cd rust/fountain-wasm && cargo test --all",
     "preview": "vite preview",
     "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
     "generate-keys": "node scripts/generate-keys.cjs"
@@ -26,7 +29,6 @@
     "@types/peerjs": "^0.0.30",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "hash-wasm": "^4.12.0",
     "lucide-react": "^0.542.0",
     "peerjs": "^1.5.5",
     "qrcode": "^1.5.4",
@@ -52,6 +54,7 @@
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.39.1",
     "vite": "^7.1.2",
-    "vite-plugin-eslint": "^1.8.1"
+    "vite-plugin-eslint": "^1.8.1",
+    "wasm-pack": "^0.13.1"
   }
 }

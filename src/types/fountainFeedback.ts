@@ -4,53 +4,31 @@
  */
 
 /**
- * Base interface for fountain feedback payloads.
+ * Part completion feedback payload - signals that a part has been decoded and validated.
+ * This is the primary feedback mode for part-based transfers.
  */
-interface FountainFeedbackBase {
+export interface FountainFeedback {
   /** Always 'FOUNTAIN_FEEDBACK' */
   type: 'FOUNTAIN_FEEDBACK';
-  /** Either 'part-complete' or 'targeted' */
-  mode: 'part-complete' | 'targeted';
+  /** Always 'part-complete' (targeted mode removed) */
+  mode: 'part-complete';
   /** Session ID to match feedback with sender */
   sessionId: number;
   /** Sequence number to prevent duplicate processing */
   sequence: number;
-}
-
-/**
- * Part completion feedback payload - signals that a part has been decoded and validated.
- * This is the primary feedback mode for part-based transfers.
- */
-export interface FountainFeedbackPartComplete extends FountainFeedbackBase {
-  mode: 'part-complete';
   /** Current part index that was completed (0-indexed) */
   currentPart: number;
   /** Total number of parts in the file */
   totalParts: number;
   /** Whether the decoded part's checksum matches the expected checksum */
-  partChecksumMatch: boolean;
+  isValid?: boolean;
+  /** Alias for isValid - whether the decoded part's checksum matches the expected checksum */
+  partChecksumMatch?: boolean;
+  /** Expected checksum from sender (CRC32 hex string) */
+  expectedChecksum?: string;
   /** Computed checksum of the decoded part (CRC32 hex string) */
-  computedChecksum?: string;
+  actualChecksum?: string;
 }
-
-/**
- * Targeted mode feedback payload - includes missing block indices for final cleanup.
- * Used when only a few blocks remain missing (≤10 blocks).
- */
-export interface FountainFeedbackTargeted extends FountainFeedbackBase {
-  mode: 'targeted';
-  /** Array of missing block indices that need to be sent */
-  missingBlocks: number[];
-  /** Current part index being decoded (0-indexed) */
-  currentPart: number;
-  /** Total number of parts in the file */
-  totalParts: number;
-}
-
-/**
- * Union type for all fountain feedback payloads.
- */
-export type FountainFeedback = FountainFeedbackPartComplete | FountainFeedbackTargeted;
 
 /**
  * Base interface for sender feedback payloads.

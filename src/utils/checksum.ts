@@ -1,7 +1,7 @@
 import type { FountainFeedback } from '@/types/fountainFeedback'
-import { crc32 as hashCrc32 } from 'hash-wasm'
+import { ensureWasmInit } from './fountainCodeWasm'
 
-// Checksum utilities using hash-wasm for CRC32
+// Checksum utilities using Rust WASM for CRC32
 // Default: CRC32 (fast, non-cryptographic). Optionally supports SHA-256 when stronger integrity needed.
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
@@ -12,7 +12,11 @@ export async function computeChecksum(
 ): Promise<string> {
   const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
   if (algorithm === 'crc32') {
-    return await hashCrc32(data)
+    // Ensure WASM is initialized before using it
+    await ensureWasmInit()
+    // Use Rust WASM function - import here after init to ensure binding is available
+    const { crc32 } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
+    return crc32(data)
   }
   // SHA-256 path using browser WebCrypto
   const copy = new Uint8Array(data) // fresh ArrayBuffer
@@ -21,6 +25,19 @@ export async function computeChecksum(
   let hex = ''
   for (let i = 0; i < bytes.length; i++) hex += bytes[i].toString(16).padStart(2, '0')
   return hex
+}
+
+/**
+ * Compute CRC32 checksum and return as raw bytes (4 bytes, big-endian)
+ * For use in binary data formats where raw bytes are needed instead of hex strings
+ */
+export async function computeChecksumBytes(dataInput: Uint8Array | ArrayBuffer): Promise<Uint8Array> {
+  const data = dataInput instanceof Uint8Array ? dataInput : new Uint8Array(dataInput)
+  // Ensure WASM is initialized before using it
+  await ensureWasmInit()
+  // Use Rust WASM function - import here after init to ensure binding is available
+  const { crc32_bytes } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
+  return crc32_bytes(data)
 }
 
 export function normalizeConfirmationCode(code: string): string {
@@ -44,9 +61,7 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   //console.log('[generateFeedbackConfirmationCode] Input feedback:', JSON.stringify(feedback, null, 2));
 
   // Check for unexpected extra fields
-  const knownFields = feedback.mode === 'part-complete'
-    ? ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'partChecksumMatch']
-    : ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'missingBlocks'];
+  const knownFields = ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts']
 
   const actualFields = Object.keys(feedback);
   const extraFields = actualFields.filter(f => !knownFields.includes(f));
@@ -59,31 +74,14 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
 
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
-    { version: "3" }, // v3: Simplified to part-complete mode, removed progress/firstMissingBlock
+    { version: "4" }, // v4: Removed partChecksumMatch - receiver only sends feedback if part is valid
     { type: feedback.type },
     { mode: feedback.mode },
     { sessionId: feedback.sessionId.toString() },
     { sequence: feedback.sequence.toString() },
+    { currentPart: feedback.currentPart.toString() },
+    { totalParts: feedback.totalParts.toString() }
   ]
-
-  // Add mode-specific fields
-  if (feedback.mode === 'part-complete') {
-    // Part-complete required fields: currentPart, totalParts, partChecksumMatch
-    // Do NOT include computedChecksum (optional field)
-    fields.push(
-      { currentPart: feedback.currentPart.toString() },
-      { totalParts: feedback.totalParts.toString() },
-      { partChecksumMatch: feedback.partChecksumMatch.toString() }
-    )
-  } else if (feedback.mode === 'targeted') {
-    // Targeted required fields: currentPart, totalParts, missingBlocks
-    fields.push(
-      { currentPart: feedback.currentPart.toString() },
-      { totalParts: feedback.totalParts.toString() }
-    )
-    const sortedMissingBlocks = [...feedback.missingBlocks].sort((a, b) => a - b)
-    fields.push({ missingBlocks: sortedMissingBlocks.join(',') })
-  }
 
   // Create canonical string representation
   const canonicalString = JSON.stringify(fields)
@@ -92,8 +90,8 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   const encoder = new TextEncoder()
   const data = encoder.encode(canonicalString)
 
-  // Compute CRC32 checksum using hash-wasm
-  const checksum = await hashCrc32(data)
+  // Compute CRC32 checksum using Rust WASM (centralized initialization and import)
+  const checksum = await computeChecksum(data, 'crc32')
 
   // Format as user-friendly code: uppercase hex with hyphen
   const upperChecksum = checksum.toUpperCase()

@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FountainEncoder } from '@/utils/fountainCode'
+import { FountainEncoder, DEFAULT_FOUNTAIN_ENCODER_OPTIONS, type PartBasedModeConfig } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { getQRCapacity } from '@/utils/qrCapacity'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
@@ -61,7 +61,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         const metadata = {
           name: file.name,
           size: file.size,
-          type: file.type,
+          fileType: file.type,
           timestamp: Date.now(),
           checksum,
           checksumAlg
@@ -70,16 +70,19 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Enable part-based mode for feedback-enabled transfers
         const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
 
-        const fountainEncoder = new FountainEncoder(bytes, metadata, {
-           blockSize: DEFAULT_BLOCK_SIZE,
-           c: 0.2,
-           delta: 0.01,
-           // Optional: override doping rates here if experimenting
-           degree1Rate: 0.08,
-           maxQRDataSize, // Pass QR capacity to encoder for degree tuning
-           partBasedMode: feedbackEnabled, // Enable part-based mode in feedback mode
-           partSize // Part size for part-based transfer
-          })
+        // Part-based mode configuration (session-level settings)
+        const partConfig: PartBasedModeConfig = {
+          enabled: feedbackEnabled,
+          partSize
+        }
+
+        // Use default options with maxQrDataSize override for degree tuning
+        const encoderOptions = {
+          ...DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
+          maxQrDataSize: maxQRDataSize // Pass QR capacity to encoder for degree tuning (camelCase)
+        }
+
+        const fountainEncoder = await FountainEncoder.create(bytes, metadata, encoderOptions, partConfig)
 
          // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
          const encoderBlockSize = fountainEncoder.getMetadata().blockSize
@@ -92,16 +95,25 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         // Compute part checksums if in part-based mode
         if (feedbackEnabled) {
           console.log('[FountainQRSender] Computing part checksums...')
-          await fountainEncoder.computePartChecksums()
+          await fountainEncoder.computePartChecksums(bytes)
           const partInfo = fountainEncoder.getPartInfo()
-          console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+          if (partInfo.partBasedMode) {
+            console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+          }
         }
 
         setEncoder(fountainEncoder)
         setError('')
       } catch (err) {
-        setError('Failed to process file')
-        console.error(err)
+        // Check for WASM initialization failure
+        const errorMessage = err instanceof Error ? err.message : String(err)
+        if (errorMessage.includes('WASM_INIT_FAILED')) {
+          setError('⚠️ Failed to load WASM module. The fountain code engine could not be initialized. Please refresh the page and try again. If the problem persists, the WASM bundle may not be properly loaded.')
+          console.error('[FountainQRSender] WASM initialization failed:', err)
+        } else {
+          setError('Failed to process file')
+          console.error('[FountainQRSender] File processing error:', err)
+        }
       }
     }
 
@@ -371,7 +383,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             onAckGenerated={handleAckGenerated}
             onModeChange={handleFeedbackModeChange}
             onError={handleFeedbackError}
-            skipTargetedModeForSession={false}
           />
         )
       )}
