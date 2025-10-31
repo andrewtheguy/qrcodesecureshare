@@ -192,10 +192,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           setDownloadUrl(url)
           setSuccess(true)
           setIsScanning(false)
+          setReceiverMode('feedback-display') // Change mode to stop scanner
           setIntegrityOk(integrityOk)
           setActualChecksum(calculatedChecksum)
 
-          // Debug logging moved to subcomponent
+          console.log('[FountainQRReceiver] Transfer complete! File decoded successfully.')
           break
         }
 
