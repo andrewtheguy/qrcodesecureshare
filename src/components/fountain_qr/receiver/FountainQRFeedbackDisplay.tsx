@@ -380,9 +380,8 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all">{feedbackData.sequence}</span>
 
                 {/* SYNC REQUIREMENT: Display fields MUST match feedback generation above
-                    Part-complete mode: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
-                    Targeted mode: type, mode, sessionId, sequence, currentPart, totalParts, missingBlocks
-                    Do NOT display optional fields - they are not included in feedback QR or confirmation code */}
+                    Part-complete mode: type, mode, sessionId, sequence, currentPart, totalParts
+                    NOTE: Checksum fields are NOT included - receiver only sends feedback if part is valid */}
 
                 <span className="text-muted-foreground font-medium text-sm">Mode:</span>
                 <span className="font-mono text-sm cursor-text select-all">Part Complete</span>
@@ -391,17 +390,6 @@ export function FountainQRFeedbackDisplay({
                 <span className="font-mono text-sm cursor-text select-all">
                   {feedbackData.currentPart + 1} / {feedbackData.totalParts}
                 </span>
-
-                <span className="text-muted-foreground font-medium text-sm">Checksum Valid:</span>
-                <span className={`font-mono text-sm cursor-text select-all ${feedbackData.isValid ? 'text-green-600' : 'text-red-600'}`}>
-                  {feedbackData.isValid ? '✓ Valid' : '✗ Invalid'}
-                </span>
-
-                <span className="text-muted-foreground font-medium text-sm">Expected Checksum:</span>
-                <span className="font-mono text-sm cursor-text select-all break-all">{feedbackData.expectedChecksum}</span>
-
-                <span className="text-muted-foreground font-medium text-sm">Actual Checksum:</span>
-                <span className="font-mono text-sm cursor-text select-all break-all">{feedbackData.actualChecksum}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>
