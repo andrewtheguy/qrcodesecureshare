@@ -198,6 +198,77 @@ pub struct ChunkProcessResult {
     pub part_complete_info: Option<PartCompleteInfo>,
 }
 
+/// Complete result of processing a binary chunk through the entire pipeline
+/// This is a comprehensive result that includes parsing, validation, processing, and completion handling
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BinaryChunkProcessResult {
+    /// Processing status (Processed, Duplicate, or various error types)
+    #[serde(flatten)]
+    pub status: ChunkStatus,
+    /// Seed from the processed chunk (0 if parsing failed)
+    pub seed: u32,
+    /// Number of decoded blocks so far
+    pub decoded_block_count: usize,
+    /// Overall decode progress (0.0 to 1.0)
+    pub overall_progress: f64,
+    /// Part-specific progress (0.0 to 1.0), equals overall_progress if not in part mode
+    pub part_progress: f64,
+    /// Whether decoding is complete
+    pub is_complete: bool,
+    /// List of decoded block indices
+    pub decoded_block_indices: Vec<usize>,
+    /// Current part index (if in part mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_part_index: Option<u32>,
+    /// Total number of parts (if in part mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_parts: Option<u32>,
+    /// Number of decoded blocks in current part (if in part mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_part_decoded_blocks: Option<usize>,
+    /// Total blocks in current part (if in part mode)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_part_total_blocks: Option<usize>,
+    /// Part completion information if a part just completed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub part_complete_info: Option<PartCompleteInfo>,
+    /// Completion data if decoding is complete (includes final validation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completion_data: Option<CompletionData>,
+}
+
+/// Status of binary chunk processing
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum ChunkStatus {
+    /// Chunk was successfully processed
+    Processed,
+    /// Chunk was a duplicate (already received)
+    Duplicate,
+    /// Failed to parse the binary chunk
+    ParseError { message: String },
+    /// Checksum validation failed
+    ChecksumError { message: String },
+    /// Error during chunk processing
+    ProcessingError { message: String },
+}
+
+/// Data available when decoding is complete
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompletionData {
+    /// The decoded data (skipped from JSON, handled separately in WASM)
+    #[serde(skip)]
+    pub data: Vec<u8>,
+    /// Whether final checksum validation passed
+    pub integrity_ok: bool,
+    /// Expected checksum (hex string)
+    pub expected_checksum: String,
+    /// Actual computed checksum (hex string)
+    pub actual_checksum: String,
+}
+
 /// Result of parsing a binary fountain chunk
 /// Contains the decoded chunk metadata and optional part metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]

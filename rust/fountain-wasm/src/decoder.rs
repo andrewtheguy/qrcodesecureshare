@@ -636,6 +636,186 @@ impl FountainDecoder {
     pub fn get_decode_throttle_count(&self) -> usize {
         self.decode_throttle_count
     }
+
+    /// Process a binary chunk through the complete pipeline
+    ///
+    /// This method handles all aspects of chunk processing:
+    /// 1. Parse binary chunk
+    /// 2. Validate checksum
+    /// 3. Create chunk key for deduplication
+    /// 4. Handle part metadata (if present)
+    /// 5. Process chunk with validation
+    /// 6. Gather all progress metrics
+    /// 7. Handle completion (reconstruction + validation)
+    ///
+    /// Returns a comprehensive result with all state information
+    pub fn process_binary_chunk(
+        &mut self,
+        binary_data: &[u8],
+        total_source_blocks: usize,
+        final_checksum: &str,
+    ) -> crate::types::BinaryChunkProcessResult {
+        use crate::types::{BinaryChunkProcessResult, ChunkStatus, CompletionData};
+
+        // Helper to create error result (doesn't capture self)
+        fn make_error_result(status: ChunkStatus, seed: u32, decoded_count: usize, progress: f64) -> BinaryChunkProcessResult {
+            BinaryChunkProcessResult {
+                status,
+                seed,
+                decoded_block_count: decoded_count,
+                overall_progress: progress,
+                part_progress: 0.0,
+                is_complete: false,
+                decoded_block_indices: vec![],
+                current_part_index: None,
+                total_parts: None,
+                current_part_decoded_blocks: None,
+                current_part_total_blocks: None,
+                part_complete_info: None,
+                completion_data: None,
+            }
+        }
+
+        // 1. Parse binary chunk
+        let parsed = match crate::parser::parse_binary_chunk(binary_data, self.part_based_mode, total_source_blocks) {
+            Ok(p) => p,
+            Err(e) => {
+                let decoded_count = self.decoded_blocks.len();
+                let progress = self.get_progress();
+                return make_error_result(ChunkStatus::ParseError { message: e }, 0, decoded_count, progress);
+            }
+        };
+
+        let chunk_seed = parsed.chunk.seed;
+
+        // 2. Validate checksum
+        let checksum_payload = &binary_data[2..parsed.checksum_start];
+        let computed = crate::checksum::crc32(checksum_payload);
+        let computed_hex = crate::checksum::crc32_to_hex(&computed);
+
+        // Extract stored checksum from binary data
+        if parsed.checksum_start + 4 > binary_data.len() {
+            let decoded_count = self.decoded_blocks.len();
+            let progress = self.get_progress();
+            return make_error_result(
+                ChunkStatus::ChecksumError {
+                    message: format!("Checksum position {} + 4 exceeds data length {}", parsed.checksum_start, binary_data.len())
+                },
+                chunk_seed,
+                decoded_count,
+                progress
+            );
+        }
+        let stored_bytes = &binary_data[parsed.checksum_start..parsed.checksum_start + 4];
+        let stored_hex = crate::checksum::crc32_to_hex(stored_bytes.try_into().unwrap_or(&[0,0,0,0]));
+
+        if computed_hex != stored_hex {
+            let decoded_count = self.decoded_blocks.len();
+            let progress = self.get_progress();
+            return make_error_result(
+                ChunkStatus::ChecksumError {
+                    message: format!("Computed: {}, Stored: {}", computed_hex, stored_hex)
+                },
+                chunk_seed,
+                decoded_count,
+                progress
+            );
+        }
+
+        // 3. Create chunk key for deduplication
+        let chunk_key = crate::parser::create_chunk_key(
+            parsed.chunk.seed,
+            parsed.chunk.degree,
+            &parsed.chunk.indices
+        );
+
+        // 4. Handle part metadata if present
+        if let Some(ref meta) = parsed.part_metadata {
+            self.set_expected_part_checksum(meta.current_part as usize, meta.part_checksum);
+        }
+
+        // 5. Process chunk with validation (includes throttling and deduplication)
+        let process_result = self.process_chunk_with_validation(parsed.chunk, chunk_key);
+
+        // 6. Handle duplicate
+        if process_result.is_duplicate {
+            let decoded_count = self.decoded_blocks.len();
+            let progress = self.get_progress();
+            return make_error_result(ChunkStatus::Duplicate, chunk_seed, decoded_count, progress);
+        }
+
+        // 7. Gather all state
+        let decoded_block_count = self.get_decoded_block_count();
+        let overall_progress = self.get_progress();
+        let is_complete = self.is_complete();
+        let decoded_block_indices = self.get_decoded_block_indices();
+
+        // 8. Calculate part progress
+        let part_progress = if self.part_based_mode {
+            let decoded = self.get_current_part_decoded_block_count();
+            let total = self.get_current_part_total_block_count();
+            if total > 0 {
+                decoded as f64 / total as f64
+            } else {
+                0.0
+            }
+        } else {
+            overall_progress
+        };
+
+        // 9. Get part info if in part mode
+        let (current_part_index, total_parts, current_part_decoded_blocks, current_part_total_blocks) =
+            if self.part_based_mode {
+                let (_, idx, total, _) = self.get_part_info();
+                (
+                    Some(idx as u32),
+                    Some(total as u32),
+                    Some(self.get_current_part_decoded_block_count()),
+                    Some(self.get_current_part_total_block_count()),
+                )
+            } else {
+                (None, None, None, None)
+            };
+
+        // 10. Handle completion
+        let completion_data = if is_complete {
+            if let Some(data) = self.get_decoded_data() {
+                let validation = self.validate_final_checksum(final_checksum);
+                Some(CompletionData {
+                    data,
+                    integrity_ok: validation.as_ref().map(|v| v.is_valid).unwrap_or(false),
+                    expected_checksum: validation
+                        .as_ref()
+                        .map(|v| v.expected_checksum.clone())
+                        .unwrap_or_default(),
+                    actual_checksum: validation
+                        .as_ref()
+                        .map(|v| v.actual_checksum.clone())
+                        .unwrap_or_default(),
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        BinaryChunkProcessResult {
+            status: ChunkStatus::Processed,
+            seed: chunk_seed,
+            decoded_block_count,
+            overall_progress,
+            part_progress,
+            is_complete,
+            decoded_block_indices,
+            current_part_index,
+            total_parts,
+            current_part_decoded_blocks,
+            current_part_total_blocks,
+            part_complete_info: process_result.part_complete_info,
+            completion_data,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1190,5 +1370,409 @@ mod tests {
         // Pending count should be 0 or very low (processed at threshold)
         let pending_after = decoder.get_pending_chunk_count();
         assert!(pending_after < pending_before, "Processing should have occurred at threshold");
+    }
+
+    // ========================================
+    // process_binary_chunk() Tests
+    // ========================================
+
+    #[test]
+    fn test_process_binary_chunk_successful() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Generate a chunk and serialize it to binary
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process binary chunk
+            let result = decoder.process_binary_chunk(
+                &binary_data,
+                total_source_blocks,
+                "",
+            );
+
+            // Should be processed successfully
+            match result.status {
+                crate::types::ChunkStatus::Processed => {
+                    // Seed can be any value including 0
+                    assert!(result.overall_progress >= 0.0 && result.overall_progress <= 1.0);
+                    assert!(!result.is_complete); // Not complete after one chunk
+                }
+                _ => panic!("Expected Processed status, got: {:?}", result.status),
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_parse_error() {
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default();
+
+        let encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Create malformed binary data (too short)
+        let invalid_data = vec![0u8; 5];
+
+        let result = decoder.process_binary_chunk(
+            &invalid_data,
+            total_source_blocks,
+            "",
+        );
+
+        // Should return parse error
+        match result.status {
+            crate::types::ChunkStatus::ParseError { message } => {
+                assert!(!message.is_empty());
+            }
+            _ => panic!("Expected ParseError status"),
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_checksum_error() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let mut binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Corrupt the checksum bytes (last 4 bytes)
+            let len = binary_data.len();
+            if len > 4 {
+                binary_data[len - 4] ^= 0xFF;
+            }
+
+            let result = decoder.process_binary_chunk(
+                &binary_data,
+                total_source_blocks,
+                "",
+            );
+
+            // Should return checksum error
+            match result.status {
+                crate::types::ChunkStatus::ChecksumError { message } => {
+                    assert!(!message.is_empty());
+                }
+                _ => panic!("Expected ChecksumError status, got {:?}", result.status),
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_duplicate() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process same chunk twice
+            let result1 = decoder.process_binary_chunk(
+                &binary_data,
+                total_source_blocks,
+                "",
+            );
+
+            // First should be processed
+            match result1.status {
+                crate::types::ChunkStatus::Processed => {}
+                _ => panic!("Expected Processed status on first chunk"),
+            }
+
+            // Flush to ensure it's processed
+            decoder.flush_pending_chunks();
+
+            let result2 = decoder.process_binary_chunk(
+                &binary_data,
+                total_source_blocks,
+                "",
+            );
+
+            // Second should be duplicate
+            match result2.status {
+                crate::types::ChunkStatus::Duplicate => {}
+                _ => panic!("Expected Duplicate status on second chunk, got {:?}", result2.status),
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_completion() {
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+
+        // Compute expected checksum
+        let expected_checksum = crate::checksum::crc32_to_hex(&crate::checksum::crc32(&data));
+
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1); // Process every chunk
+
+        let mut last_result = None;
+        let mut chunks_added = 0;
+
+        // Keep adding chunks until complete
+        while chunks_added < 100 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+                let result = decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    &expected_checksum,
+                );
+
+                last_result = Some(result);
+
+                if last_result.as_ref().unwrap().is_complete {
+                    break;
+                }
+            }
+            chunks_added += 1;
+        }
+
+        // Should be complete
+        let result = last_result.unwrap();
+        assert!(result.is_complete);
+        assert_eq!(result.overall_progress, 1.0);
+
+        // Should have completion data
+        assert!(result.completion_data.is_some());
+
+        let completion_data = result.completion_data.unwrap();
+        assert_eq!(completion_data.data, data);
+        assert!(completion_data.integrity_ok);
+        assert_eq!(completion_data.expected_checksum, expected_checksum);
+        assert_eq!(completion_data.actual_checksum, expected_checksum);
+    }
+
+    #[test]
+    fn test_process_binary_chunk_part_based_mode() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+        let part_size = 6; // 2 parts: [1,2,3,4,5,6] and [7,8,9,10,11,12]
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            true,  // part_based_mode
+            part_size,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
+        decoder.set_decode_throttle_count(1);
+
+        // Get part checksums from encoder
+        encoder.set_part_checksums(vec![]); // Trigger calculation
+        let part_checksums = encoder.get_part_checksums();
+
+        // Convert checksum strings to bytes and set them
+        for (idx, checksum_hex) in part_checksums.iter().enumerate() {
+            // Parse hex string to bytes
+            let mut checksum_array = [0u8; 4];
+            for (i, chunk) in checksum_hex.as_bytes().chunks(2).take(4).enumerate() {
+                let byte_str = std::str::from_utf8(chunk).unwrap();
+                checksum_array[i] = u8::from_str_radix(byte_str, 16).unwrap();
+            }
+            decoder.set_expected_part_checksum(idx, checksum_array);
+        }
+
+        // Process chunks for first part
+        let mut result = None;
+        for _ in 0..50 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, true);
+
+                result = Some(decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    "",
+                ));
+
+                if result.as_ref().unwrap().part_complete_info.is_some() {
+                    break;
+                }
+            }
+        }
+
+        // Should have part completion info
+        let last_result = result.unwrap();
+        assert!(last_result.current_part_index.is_some());
+        assert_eq!(last_result.current_part_index.unwrap(), 0);
+
+        if last_result.part_complete_info.is_some() {
+            let part_info = last_result.part_complete_info.unwrap();
+            assert_eq!(part_info.current_part, 0);
+            assert!(part_info.is_valid);
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_progress_tracking() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1);
+
+        let mut last_progress = 0.0;
+
+        // Add chunks and verify progress increases
+        for _ in 0..10 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+                let result = decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    "",
+                );
+
+                // Progress should be between 0 and 1
+                assert!(result.overall_progress >= 0.0 && result.overall_progress <= 1.0);
+
+                // Progress should not decrease
+                assert!(result.overall_progress >= last_progress);
+
+                last_progress = result.overall_progress;
+
+                // Decoded block count should match progress
+                assert_eq!(
+                    result.decoded_block_count,
+                    result.decoded_block_indices.len()
+                );
+
+                if result.is_complete {
+                    assert_eq!(result.overall_progress, 1.0);
+                    break;
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_process_binary_chunk_integrity_check_fail() {
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+
+        // Use WRONG checksum
+        let wrong_checksum = "deadbeef";
+
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1);
+
+        // Process until complete
+        for _ in 0..100 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+                let result = decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    wrong_checksum,
+                );
+
+                if result.is_complete {
+                    // Should have completion data but integrity should fail
+                    assert!(result.completion_data.is_some());
+                    let completion_data = result.completion_data.unwrap();
+                    assert!(!completion_data.integrity_ok);
+                    assert_eq!(completion_data.expected_checksum, wrong_checksum);
+                    assert_ne!(completion_data.actual_checksum, wrong_checksum);
+                    break;
+                }
+            }
+        }
     }
 }

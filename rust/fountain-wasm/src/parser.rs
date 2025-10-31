@@ -214,6 +214,47 @@ pub fn create_chunk_key(seed: u32, degree: usize, indices: &[usize]) -> String {
     format!("{}:{}:{}:{}", seed, degree, first_idx, last_idx)
 }
 
+/// Serialize a FountainChunk to binary format for testing
+/// This is used by tests to create binary chunks from FountainChunk objects
+#[cfg(test)]
+pub fn serialize_chunk_to_binary(chunk: &FountainChunk, _include_part_metadata: bool) -> Vec<u8> {
+    let mut binary = Vec::new();
+
+    // Magic bytes (always 0xFF 0xFD)
+    binary.push(0xFF);
+    binary.push(0xFD);
+
+    // Seed (2 bytes, big-endian)
+    let seed_u16 = (chunk.seed & 0xFFFF) as u16;
+    binary.push((seed_u16 >> 8) as u8);
+    binary.push(seed_u16 as u8);
+
+    // Degree (1 byte)
+    binary.push(chunk.degree as u8);
+
+    // NumIndices (1 byte) - must equal degree
+    binary.push(chunk.indices.len() as u8);
+
+    // Indices (each 2 bytes, big-endian)
+    for &idx in &chunk.indices {
+        let idx_u16 = idx as u16;
+        binary.push((idx_u16 >> 8) as u8);
+        binary.push(idx_u16 as u8);
+    }
+
+    // Part metadata (if included) - skipped for now as it's not in FountainChunk
+    // This would come from encoder's part info and would be added here
+
+    // Data
+    binary.extend_from_slice(&chunk.data);
+
+    // Checksum (compute CRC32 of everything from position 2 to here, excluding magic bytes)
+    let checksum = crate::checksum::crc32(&binary[2..]);
+    binary.extend_from_slice(&checksum);
+
+    binary
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

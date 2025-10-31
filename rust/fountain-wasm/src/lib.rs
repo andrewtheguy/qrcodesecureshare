@@ -13,7 +13,7 @@ mod tests;
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult, PartCompleteInfo, ChunkProcessResult};
+pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult, PartCompleteInfo, ChunkProcessResult, BinaryChunkProcessResult, ChunkStatus, CompletionData};
 pub use parser::PartMetadata;
 
 /// WASM-exported Fountain Encoder
@@ -197,6 +197,7 @@ impl WasmFountainEncoder {
 #[wasm_bindgen]
 pub struct WasmFountainDecoder {
     decoder: decoder::FountainDecoder,
+    final_checksum: Option<String>,
 }
 
 #[wasm_bindgen]
@@ -229,7 +230,10 @@ impl WasmFountainDecoder {
             decoder::FountainDecoder::new(metadata)
         };
 
-        Ok(WasmFountainDecoder { decoder })
+        Ok(WasmFountainDecoder {
+            decoder,
+            final_checksum: None,
+        })
     }
 
     /// Add a chunk to the decoder
@@ -524,6 +528,98 @@ impl WasmFountainDecoder {
     #[wasm_bindgen(js_name = getDecodeThrottleCount)]
     pub fn get_decode_throttle_count(&self) -> usize {
         self.decoder.get_decode_throttle_count()
+    }
+
+    /// Set the expected final checksum for integrity validation
+    ///
+    /// # Arguments
+    /// * `checksum` - The expected final checksum as a hex string (e.g., "0d4a1185")
+    #[wasm_bindgen(js_name = setFinalChecksum)]
+    pub fn set_final_checksum(&mut self, checksum: String) {
+        self.final_checksum = Some(checksum);
+    }
+
+    /// Process a binary chunk through the complete pipeline
+    ///
+    /// This is the high-level method that handles the entire chunk processing pipeline:
+    /// 1. Parse binary chunk
+    /// 2. Validate checksum
+    /// 3. Create chunk key for deduplication
+    /// 4. Handle part metadata if present
+    /// 5. Process with validation (includes throttling)
+    /// 6. Gather all progress metrics
+    /// 7. Handle completion with data reconstruction and validation
+    ///
+    /// # Arguments
+    /// * `binary_data` - The raw binary chunk data as Uint8Array
+    ///
+    /// # Returns
+    /// A comprehensive result object with:
+    /// - `type`: ChunkStatus ("processed", "duplicate", "parseError", "checksumError", "processingError")
+    /// - `seed`: Chunk seed
+    /// - `decodedBlockCount`: Number of blocks decoded so far
+    /// - `overallProgress`: Overall decoding progress (0.0 to 1.0)
+    /// - `partProgress`: Current part progress (0.0 to 1.0)
+    /// - `isComplete`: Whether decoding is complete
+    /// - `decodedBlockIndices`: Array of decoded block indices
+    /// - `currentPartIndex`: Current part index (if in part-based mode)
+    /// - `totalParts`: Total parts (if in part-based mode)
+    /// - `currentPartDecodedBlocks`: Decoded blocks in current part
+    /// - `currentPartTotalBlocks`: Total blocks in current part
+    /// - `partCompleteInfo`: Info about newly completed part (if any)
+    /// - `completionData`: Final decoded data and integrity info (if complete)
+    ///
+    /// # Example
+    /// ```javascript
+    /// decoder.setFinalChecksum("0d4a1185");
+    /// const result = decoder.processBinaryChunk(binaryData);
+    /// if (result.type === 'processed') {
+    ///   console.log(`Progress: ${result.overallProgress * 100}%`);
+    ///   if (result.isComplete && result.completionData) {
+    ///     const data = result.completionData.data; // Uint8Array
+    ///     console.log(`Integrity: ${result.completionData.integrityOk}`);
+    ///   }
+    /// }
+    /// ```
+    #[wasm_bindgen(js_name = processBinaryChunk)]
+    pub fn process_binary_chunk(&mut self, binary_data: Uint8Array) -> Result<JsValue, JsValue> {
+        // Convert Uint8Array to Vec<u8>
+        let binary_vec = binary_data.to_vec();
+
+        // Get total source blocks from metadata
+        let total_source_blocks = self.decoder.get_metadata().total_source_blocks;
+
+        // Get final checksum (default to empty string if not set)
+        let final_checksum = self.final_checksum.as_deref().unwrap_or("");
+
+        // Call the decoder's process_binary_chunk method
+        let result = self.decoder.process_binary_chunk(
+            &binary_vec,
+            total_source_blocks,
+            final_checksum,
+        );
+
+        // Serialize result to JsValue (without completion data)
+        let js_result = serde_wasm_bindgen::to_value(&result)
+            .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
+
+        // Handle completion_data.data separately (it's skipped in serialization)
+        if let Some(completion_data) = result.completion_data {
+            if !completion_data.data.is_empty() {
+                // Create Uint8Array for the decoded data
+                let data_array = Uint8Array::new_with_length(completion_data.data.len() as u32);
+                data_array.copy_from(&completion_data.data);
+
+                // Get the completionData object from the result
+                let completion_obj = js_sys::Reflect::get(&js_result, &"completionData".into())
+                    .unwrap_or(JsValue::NULL);
+
+                // Add data to completionData
+                js_sys::Reflect::set(&completion_obj, &"data".into(), &data_array).ok();
+            }
+        }
+
+        Ok(js_result)
     }
 }
 
