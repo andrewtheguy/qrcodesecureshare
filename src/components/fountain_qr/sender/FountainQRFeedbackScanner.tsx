@@ -110,34 +110,26 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for part-complete mode
       // 3. checksum.ts - generateFeedbackConfirmationCode()
       //
-      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
-      // Do NOT expect optional fields like computedChecksum
+      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts
+      // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
       console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
-      console.log(`[FountainQRFeedbackScanner] Checksum match: ${data.partChecksumMatch}`);
 
-      // Check for part completion
+      // If receiver sent feedback, it means the part was completed successfully
+      // (receiver aborts and doesn't send feedback if checksum is invalid)
+      console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
+
       let partTransition = false;
       let newPartIndex: number | undefined;
 
-      if (data.partChecksumMatch) {
-        console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
-
-        // Move encoder to next part
-        const moved = encoder?.moveToNextPart();
-        if (moved) {
-          partTransition = true;
-          const partInfo = encoder?.getPartInfo();
-          newPartIndex = partInfo?.currentPartIndex;
-          console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
-        } else {
-          console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
-        }
+      // Move encoder to next part
+      const moved = encoder?.moveToNextPart();
+      if (moved) {
+        partTransition = true;
+        const partInfo = encoder?.getPartInfo();
+        newPartIndex = partInfo?.currentPartIndex;
+        console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
       } else {
-        // Part checksum mismatch - fail the transfer
-        onError(`Part ${data.currentPart + 1} checksum validation failed on receiver`);
-        setCurrentMode('idle');
-        setProcessingRef(false);
-        return;
+        console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
       }
 
       // Determine message based on part transition

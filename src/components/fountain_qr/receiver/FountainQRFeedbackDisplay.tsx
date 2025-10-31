@@ -122,7 +122,8 @@ export function FountainQRFeedbackDisplay({
       // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
       // 3. checksum.ts - generateFeedbackConfirmationCode()
       //
-      // Include all checksum validation fields for transparency
+      // NOTE: Checksum validation fields are intentionally excluded. The receiver only sends
+      // feedback if the part is valid. If invalid, the receiver aborts and never generates feedback.
       const feedback: FountainFeedback = {
         type: 'FOUNTAIN_FEEDBACK',
         mode: 'part-complete',
@@ -130,9 +131,6 @@ export function FountainQRFeedbackDisplay({
         sequence: seq,
         currentPart: partCompleteInfo.currentPart,
         totalParts: partCompleteInfo.totalParts,
-        isValid: partCompleteInfo.isValid,
-        expectedChecksum: partCompleteInfo.expectedChecksum,
-        actualChecksum: partCompleteInfo.actualChecksum,
       }
 
       let dataUrl: string

@@ -61,7 +61,7 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   //console.log('[generateFeedbackConfirmationCode] Input feedback:', JSON.stringify(feedback, null, 2));
 
   // Check for unexpected extra fields
-  const knownFields = ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts', 'partChecksumMatch']
+  const knownFields = ['type', 'mode', 'sessionId', 'sequence', 'currentPart', 'totalParts']
 
   const actualFields = Object.keys(feedback);
   const extraFields = actualFields.filter(f => !knownFields.includes(f));
@@ -74,14 +74,13 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
 
   // Extract essential fields as array of JSON objects with single key-value pairs for easier debugging
   const fields: Array<Record<string, string>> = [
-    { version: "3" }, // v3: Simplified to part-complete mode, removed progress/firstMissingBlock
+    { version: "4" }, // v4: Removed partChecksumMatch - receiver only sends feedback if part is valid
     { type: feedback.type },
     { mode: feedback.mode },
     { sessionId: feedback.sessionId.toString() },
     { sequence: feedback.sequence.toString() },
     { currentPart: feedback.currentPart.toString() },
-    { totalParts: feedback.totalParts.toString() },
-    { partChecksumMatch: (feedback.partChecksumMatch ?? feedback.isValid ?? false).toString() }
+    { totalParts: feedback.totalParts.toString() }
   ]
 
   // Create canonical string representation
