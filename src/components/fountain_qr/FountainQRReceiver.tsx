@@ -257,13 +257,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     setIsAwaitingFeedback(true)
   }, [])
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, message: string) => {
-    // Window logic removed - no window synchronization
-    console.log(`[FountainQRReceiver] ACK received: ${message}`)
+  const handleAckReceived = useCallback((_acknowledgedSequence: number, message: string, partTransition?: boolean, newPartIndex?: number) => {
+    console.log(`[FountainQRReceiver] ACK received: ${message}, partTransition: ${partTransition}, newPartIndex: ${newPartIndex}`)
 
-    // NOTE: Do NOT call moveToNextPart here - the sender already called it when processing feedback
-    // The worker will receive the new part index from the sender's data chunks
-    // Calling moveToNextPart here would cause a double increment (skipping parts)
+    // If sender signals part transition, tell worker to move to next part
+    if (partTransition && newPartIndex !== undefined) {
+      const msgId = messageIdCounterRef.current++
+      workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId })
+      console.log(`[FountainQRReceiver] Moving to next part ${newPartIndex + 1} after sender ACK`)
+    }
 
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)

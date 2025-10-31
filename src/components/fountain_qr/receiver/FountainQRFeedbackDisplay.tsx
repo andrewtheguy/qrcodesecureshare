@@ -29,7 +29,7 @@ interface FountainQRFeedbackDisplayProps {
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
   isActive: boolean
   onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete', sequence: number) => void
-  onAckReceived: (acknowledgedSequence: number, message: string) => void
+  onAckReceived: (acknowledgedSequence: number, message: string, partTransition?: boolean, newPartIndex?: number) => void
   onModeChange: (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => void
   onError: (error: string) => void
   onSequenceIncrement: () => void
@@ -247,7 +247,8 @@ export function FountainQRFeedbackDisplay({
               console.log('[FountainQRFeedbackDisplay] Executing delayed transition to data-scanning mode')
               onModeChange('data-scanning')
 
-              onAckReceived(parsed.acknowledgedSequence, parsed.message)
+              // Pass partTransition and newPartIndex from sender's ACK
+              onAckReceived(parsed.acknowledgedSequence, parsed.message, parsed.partTransition, parsed.newPartIndex)
             }, 150)
            break
         }
