@@ -116,6 +116,14 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         case 'chunkProcessed': {
           const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
 
+          console.log('[FountainQRReceiver] chunkProcessed:', {
+            duplicate,
+            decodedBlockCount,
+            decodedBlockIndicesLength: decodedBlockIndices?.length,
+            partDecodedBlocks,
+            partTotalBlocks
+          })
+
           // Always update progress, even for duplicates, so UI shows current state
           setDecodedBlocks(decodedBlockCount)
           decodedBlockIndicesRef.current = decodedBlockIndices

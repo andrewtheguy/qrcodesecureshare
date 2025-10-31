@@ -121,29 +121,15 @@ self.onmessage = async (event: MessageEvent) => {
 
                     const rawResult = decoder!.wasm.processBinaryChunk(binaryData);
 
-                    console.log('[Worker] rawResult type:', rawResult instanceof Map ? 'Map' : typeof rawResult);
-                    console.log('[Worker] rawResult:', rawResult);
-
                     // WASM returns a Map due to serde flatten - convert to plain object
-                    if (rawResult instanceof Map) {
-                        result = Object.fromEntries(rawResult) as BinaryChunkProcessResult;
+                    result = Object.fromEntries(rawResult as Map<string, unknown>) as unknown as BinaryChunkProcessResult;
 
-                        console.log('[Worker] After top-level conversion, completionData type:',
-                            result.completionData instanceof Map ? 'Map' : typeof result.completionData);
-                        console.log('[Worker] completionData value:', result.completionData);
-
-                        // Convert nested Maps to objects as well
-                        if (result.completionData instanceof Map) {
-                            console.log('[Worker] Converting completionData Map to object');
-                            result.completionData = Object.fromEntries(result.completionData) as BinaryChunkProcessResult['completionData'];
-                            console.log('[Worker] After conversion:', result.completionData);
-                        }
-                        if (result.partCompleteInfo instanceof Map) {
-                            console.log('[Worker] Converting partCompleteInfo Map to object');
-                            result.partCompleteInfo = Object.fromEntries(result.partCompleteInfo) as BinaryChunkProcessResult['partCompleteInfo'];
-                        }
-                    } else {
-                        result = rawResult as unknown as BinaryChunkProcessResult;
+                    // Convert nested Maps to objects as well
+                    if (result.completionData instanceof Map) {
+                        result.completionData = Object.fromEntries(result.completionData) as BinaryChunkProcessResult['completionData'];
+                    }
+                    if (result.partCompleteInfo instanceof Map) {
+                        result.partCompleteInfo = Object.fromEntries(result.partCompleteInfo) as BinaryChunkProcessResult['partCompleteInfo'];
                     }
 
                     console.log('[Worker] processBinaryChunk result:', {
