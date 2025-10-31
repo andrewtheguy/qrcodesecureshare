@@ -21,9 +21,11 @@ export interface FountainFeedback {
   /** Total number of parts in the file */
   totalParts: number;
   /** Whether the decoded part's checksum matches the expected checksum */
-  partChecksumMatch: boolean;
+  isValid: boolean;
+  /** Expected checksum from sender (CRC32 hex string) */
+  expectedChecksum: string;
   /** Computed checksum of the decoded part (CRC32 hex string) */
-  computedChecksum?: string;
+  actualChecksum: string;
 }
 
 /**

@@ -38,8 +38,9 @@ interface FountainQRFeedbackDisplayProps {
   onAckTransitionStatus: (successful: boolean) => void
   partCompleteInfo: {
     partComplete: boolean
-    partChecksumMatch: boolean
-    computedChecksum: string
+    isValid: boolean
+    expectedChecksum: string
+    actualChecksum: string
     currentPart: number
     totalParts: number
   } | null
@@ -121,8 +122,7 @@ export function FountainQRFeedbackDisplay({
       // 2. FountainQRManualFeedbackInput.tsx - validateInputs() and UI fields
       // 3. checksum.ts - generateFeedbackConfirmationCode()
       //
-      // IMPORTANT: Only include REQUIRED fields. Do NOT include optional fields like computedChecksum.
-      // Optional fields break confirmation code validation and cause manual input mismatches.
+      // Include all checksum validation fields for transparency
       const feedback: FountainFeedback = {
         type: 'FOUNTAIN_FEEDBACK',
         mode: 'part-complete',
@@ -130,7 +130,9 @@ export function FountainQRFeedbackDisplay({
         sequence: seq,
         currentPart: partCompleteInfo.currentPart,
         totalParts: partCompleteInfo.totalParts,
-        partChecksumMatch: partCompleteInfo.partChecksumMatch,
+        isValid: partCompleteInfo.isValid,
+        expectedChecksum: partCompleteInfo.expectedChecksum,
+        actualChecksum: partCompleteInfo.actualChecksum,
       }
 
       let dataUrl: string
@@ -391,10 +393,16 @@ export function FountainQRFeedbackDisplay({
                   {feedbackData.currentPart + 1} / {feedbackData.totalParts}
                 </span>
 
-                <span className="text-muted-foreground font-medium text-sm">Checksum Match:</span>
-                <span className="font-mono text-sm cursor-text select-all">
-                  {feedbackData.partChecksumMatch ? 'Yes' : 'No'}
+                <span className="text-muted-foreground font-medium text-sm">Checksum Valid:</span>
+                <span className={`font-mono text-sm cursor-text select-all ${feedbackData.isValid ? 'text-green-600' : 'text-red-600'}`}>
+                  {feedbackData.isValid ? '✓ Valid' : '✗ Invalid'}
                 </span>
+
+                <span className="text-muted-foreground font-medium text-sm">Expected Checksum:</span>
+                <span className="font-mono text-sm cursor-text select-all break-all">{feedbackData.expectedChecksum}</span>
+
+                <span className="text-muted-foreground font-medium text-sm">Actual Checksum:</span>
+                <span className="font-mono text-sm cursor-text select-all break-all">{feedbackData.actualChecksum}</span>
 
                 <span className="text-muted-foreground font-medium text-sm">Confirmation Code:</span>
                 <span className="font-mono text-sm cursor-text select-all bg-blue-50 px-2 py-1 rounded border font-bold text-blue-800">{confirmationCode}</span>

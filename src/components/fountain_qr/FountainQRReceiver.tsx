@@ -71,8 +71,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Part-based transfer state
   const [partCompleteInfo, setPartCompleteInfo] = useState<{
     partComplete: boolean
-    partChecksumMatch: boolean
-    computedChecksum: string
+    isValid: boolean
+    expectedChecksum: string
+    actualChecksum: string
     currentPart: number
     totalParts: number
   } | null>(null)
@@ -135,15 +136,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Handle part completion if in part-based mode
           if (partCompleteInfo && partCompleteInfo.partComplete) {
-            console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum match: ${partCompleteInfo.partChecksumMatch}`)
+            console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`)
 
             // Store part completion info in state
             setPartCompleteInfo(partCompleteInfo)
 
-            if (!partCompleteInfo.partChecksumMatch) {
+            if (!partCompleteInfo.isValid) {
               // Part checksum mismatch - fail the transfer
-              console.error(`[FountainQRReceiver] Part checksum mismatch! Computed: ${partCompleteInfo.computedChecksum}, partCompleteInfo:`, partCompleteInfo)
-              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Computed: ${partCompleteInfo.computedChecksum}, but expected different value from sender`)
+              console.error(`[FountainQRReceiver] Part checksum mismatch! Expected: ${partCompleteInfo.expectedChecksum}, Actual: ${partCompleteInfo.actualChecksum}, partCompleteInfo:`, partCompleteInfo)
+              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Expected: ${partCompleteInfo.expectedChecksum}, but got ${partCompleteInfo.actualChecksum}`)
               setIsScanning(false)
               return
             }
@@ -249,7 +250,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     console.log(`[FountainQRReceiver] ACK received: ${message}`)
 
     // If a part was just completed, trigger move to next part
-    if (partCompleteInfo && partCompleteInfo.partChecksumMatch) {
+    if (partCompleteInfo && partCompleteInfo.isValid) {
       const msgId = messageIdCounterRef.current++
       workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId })
       console.log(`[FountainQRReceiver] Moving to next part after ACK received`)
@@ -459,9 +460,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes
                 </span>
               </p>
-              <p className={`text-sm font-medium ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
-                {integrityOk ? `🔐 Integrity verified (checksum matches ${initialMetadata.checksum})` : `❌ Integrity check failed, expected ${initialMetadata.checksum}, but got ${actualChecksum}`}
-              </p>
+              <div className={`text-sm font-medium space-y-2 ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+                <p>
+                  {integrityOk === null && '⏳ Verifying integrity...'}
+                  {integrityOk === true && '🔐 Integrity verified'}
+                  {integrityOk === false && '❌ Integrity check failed'}
+                </p>
+                <div className="space-y-1 text-xs">
+                  <p><span className="font-semibold">Expected checksum:</span> <span className="font-mono break-all">{initialMetadata.checksum}</span></p>
+                  <p><span className="font-semibold">Actual checksum:</span> <span className="font-mono break-all">{actualChecksum || '(calculating...)'}</span></p>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {fountainMetadata.name}
