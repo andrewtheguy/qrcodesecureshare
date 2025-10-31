@@ -115,11 +115,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
         case 'chunkProcessed': {
           const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
-          if (duplicate) {
-            // Debug logging moved to subcomponent
-            return
-          }
-          // setReceivedFountainChunks moved to subcomponent
+
+          // Always update progress, even for duplicates, so UI shows current state
           setDecodedBlocks(decodedBlockCount)
           decodedBlockIndicesRef.current = decodedBlockIndices
 
@@ -132,9 +129,16 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             setCurrentPartDecodedBlocks(partDecodedBlocks)
             setCurrentPartTotalBlocks(partTotalBlocks)
           }
+
+          // Skip further processing for duplicate chunks
+          if (duplicate) {
+            // Debug logging moved to subcomponent
+            break
+          }
+
           // Debug logging moved to subcomponent
 
-          // Handle part completion if in part-based mode
+          // Handle part completion if in part-based mode (only for non-duplicate chunks)
           if (partCompleteInfo && partCompleteInfo.partComplete) {
             console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`)
 

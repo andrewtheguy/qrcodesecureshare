@@ -112,9 +112,58 @@ self.onmessage = async (event: MessageEvent) => {
                 // Process binary chunk through complete Rust pipeline
                 let result: BinaryChunkProcessResult;
                 try {
-                    result = decoder!.wasm.processBinaryChunk(binaryData) as unknown as BinaryChunkProcessResult;
+                    // Check if method exists
+                    if (typeof decoder!.wasm.processBinaryChunk !== 'function') {
+                        console.error('[Worker] processBinaryChunk method not found! WASM may not be updated. Available methods:', Object.keys(decoder!.wasm));
+                        self.postMessage({ type: 'error', id, error: 'processBinaryChunk method not found - please hard refresh (Ctrl+Shift+R or Cmd+Shift+R)' });
+                        break;
+                    }
+
+                    const rawResult = decoder!.wasm.processBinaryChunk(binaryData);
+
+                    console.log('[Worker] rawResult type:', rawResult instanceof Map ? 'Map' : typeof rawResult);
+                    console.log('[Worker] rawResult:', rawResult);
+
+                    // WASM returns a Map due to serde flatten - convert to plain object
+                    if (rawResult instanceof Map) {
+                        result = Object.fromEntries(rawResult) as BinaryChunkProcessResult;
+
+                        console.log('[Worker] After top-level conversion, completionData type:',
+                            result.completionData instanceof Map ? 'Map' : typeof result.completionData);
+                        console.log('[Worker] completionData value:', result.completionData);
+
+                        // Convert nested Maps to objects as well
+                        if (result.completionData instanceof Map) {
+                            console.log('[Worker] Converting completionData Map to object');
+                            result.completionData = Object.fromEntries(result.completionData) as BinaryChunkProcessResult['completionData'];
+                            console.log('[Worker] After conversion:', result.completionData);
+                        }
+                        if (result.partCompleteInfo instanceof Map) {
+                            console.log('[Worker] Converting partCompleteInfo Map to object');
+                            result.partCompleteInfo = Object.fromEntries(result.partCompleteInfo) as BinaryChunkProcessResult['partCompleteInfo'];
+                        }
+                    } else {
+                        result = rawResult as unknown as BinaryChunkProcessResult;
+                    }
+
+                    console.log('[Worker] processBinaryChunk result:', {
+                        type: result.type,
+                        seed: result.seed,
+                        decodedBlockCount: result.decodedBlockCount,
+                        overallProgress: result.overallProgress,
+                        isComplete: result.isComplete,
+                        decodedBlockIndices: result.decodedBlockIndices?.length
+                    });
+
+                    // Validate result has expected fields
+                    if (result.decodedBlockCount === undefined || result.overallProgress === undefined) {
+                        console.error('[Worker] Result missing expected fields! Result:', result);
+                        self.postMessage({ type: 'error', id, error: 'Invalid result from WASM - missing fields' });
+                        break;
+                    }
                 } catch (err) {
                     const errorMessage = err instanceof Error ? err.message : String(err);
+                    console.error('[Worker] processBinaryChunk error:', err);
                     self.postMessage({ type: 'error', id, error: `Processing error: ${errorMessage}` });
                     break;
                 }
@@ -131,7 +180,22 @@ self.onmessage = async (event: MessageEvent) => {
                 }
 
                 if (result.type === 'duplicate') {
-                    self.postMessage({ type: 'chunkProcessed', id, duplicate: true, seed: result.seed });
+                    // Even for duplicates, send current progress so UI stays updated
+                    self.postMessage({
+                        type: 'chunkProcessed',
+                        id,
+                        duplicate: true,
+                        seed: result.seed,
+                        decodedBlockCount: result.decodedBlockCount,
+                        overallProgress: result.overallProgress,
+                        partProgress: result.partProgress,
+                        isComplete: result.isComplete,
+                        decodedBlockIndices: result.decodedBlockIndices,
+                        currentPartDecodedBlocks: result.currentPartDecodedBlocks,
+                        currentPartTotalBlocks: result.currentPartTotalBlocks,
+                        currentPartIndex: result.currentPartIndex,
+                        totalParts: result.totalParts
+                    });
                     break;
                 }
 
@@ -168,14 +232,27 @@ self.onmessage = async (event: MessageEvent) => {
 
                 // If complete, send completion message
                 if (result.isComplete && result.completionData) {
+                    console.log('[Worker] Transfer complete! Preparing completion message');
+                    console.log('[Worker] completionData:', result.completionData);
+
+                    // Get the decoded data separately (data field is skipped in serialization)
+                    const decodedData = decoder!.wasm.getDecodedData();
+                    if (!decodedData) {
+                        console.error('[Worker] Completion detected but no decoded data available!');
+                        self.postMessage({ type: 'error', id, error: 'Transfer complete but data is missing' });
+                        break;
+                    }
+
+                    console.log('[Worker] Decoded data retrieved, size:', decodedData.length, 'bytes');
+
                     self.postMessage({
                         type: 'complete',
                         id,
-                        data: result.completionData.data,
+                        data: decodedData,
                         integrityOk: result.completionData.integrityOk,
                         expectedChecksum: result.completionData.expectedChecksum,
                         calculatedChecksum: result.completionData.actualChecksum
-                    }, [result.completionData.data.buffer]);
+                    }, [decodedData.buffer]);
                 }
                 break;
             }
