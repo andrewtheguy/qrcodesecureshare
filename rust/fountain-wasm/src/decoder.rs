@@ -378,6 +378,55 @@ impl FountainDecoder {
 
         (start_block, end_block)
     }
+
+    /// Validate the current part's checksum against the expected value
+    /// Returns a ChecksumValidationResult with the validation status and checksums
+    pub fn validate_current_part_checksum(&self, expected_checksum_bytes: [u8; 4]) -> Option<crate::types::ChecksumValidationResult> {
+        if !self.part_based_mode {
+            return None;
+        }
+
+        // Get the current part data
+        let part_data = self.get_current_part_data()?;
+
+        // Compute the actual checksum
+        let actual_checksum_bytes = crate::checksum::crc32(&part_data);
+
+        // Convert both to hex strings for comparison and display
+        let expected_hex = crate::checksum::crc32_to_hex(&expected_checksum_bytes);
+        let actual_hex = crate::checksum::crc32_to_hex(&actual_checksum_bytes);
+
+        // Compare
+        let is_valid = actual_checksum_bytes == expected_checksum_bytes;
+
+        Some(crate::types::ChecksumValidationResult {
+            is_valid,
+            expected_checksum: expected_hex,
+            actual_checksum: actual_hex,
+            part_index: self.current_part_index as u32,
+        })
+    }
+
+    /// Validate the final decoded file's checksum against the expected value
+    /// Takes the expected checksum as a hex string and computes the actual checksum
+    /// Returns a FinalChecksumValidationResult with the validation status and checksums
+    pub fn validate_final_checksum(&self, expected_checksum_hex: &str) -> Option<crate::types::FinalChecksumValidationResult> {
+        // Get the decoded data
+        let decoded_data = self.get_decoded_data()?;
+
+        // Compute the actual checksum
+        let actual_checksum_bytes = crate::checksum::crc32(&decoded_data);
+        let actual_checksum_hex = crate::checksum::crc32_to_hex(&actual_checksum_bytes);
+
+        // Compare (case-insensitive for hex strings)
+        let is_valid = actual_checksum_hex.eq_ignore_ascii_case(expected_checksum_hex);
+
+        Some(crate::types::FinalChecksumValidationResult {
+            is_valid,
+            expected_checksum: expected_checksum_hex.to_lowercase(),
+            actual_checksum: actual_checksum_hex,
+        })
+    }
 }
 
 #[cfg(test)]

@@ -2,7 +2,6 @@
 
 import { FountainDecoder } from '../utils/fountainCodeWasm';
 import type { FountainMetadata, FountainChunk } from '../utils/fountainCodeWasm';
-import { computeChecksum, type ChecksumAlgorithm } from '../utils/checksum';
 import { parseBinaryChunk, createChunkKey, validateChunkChecksum, crc32 } from '../../rust/fountain-wasm/pkg/fountain_wasm';
 
 /**
@@ -13,6 +12,7 @@ function ensureDecoder(): void {
         throw new Error('Decoder not initialized');
     }
 }
+
 
 /**
  * Calculates progress for the current part in part-based mode or overall progress in normal mode
@@ -43,7 +43,7 @@ let currentSessionId: number | null = null; // Track current session for reset
 // Part-based transfer state
 let partBasedMode = false;
 let partSize = 0;
-const expectedPartChecksums = new Map<number, string>(); // Per-part checksums from sender, keyed by part index
+const expectedPartChecksumBytes = new Map<number, Uint8Array>(); // Per-part checksums from sender as bytes, keyed by part index
 let lastPartCompleteCheck = 0; // Throttle part completion checks
 
 // Message handler
@@ -74,7 +74,7 @@ self.onmessage = async (event: MessageEvent) => {
                 try {
                     decoder = await FountainDecoder.create(metadata, partBasedMode, partSize);
                     processedSeeds.clear();
-                    expectedPartChecksums.clear(); // Clear any previous part checksums
+                    expectedPartChecksumBytes.clear(); // Clear any previous part checksums
                     lastDecodeAttemptTime = Date.now();
                     lastDecodedBlockCount = decoder.wasm.getDecodedBlockCount();
                     lastPartCompleteCheck = 0;
@@ -108,9 +108,10 @@ self.onmessage = async (event: MessageEvent) => {
                 const { binaryData } = data as { binaryData: Uint8Array };
 
                 // Parse binary chunk in Rust (includes automatic part metadata extraction)
-                let parsedChunk: FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: string } };
+                // Note: partChecksum is now Uint8Array (bytes) instead of string (hex)
+                let parsedChunk: FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: Uint8Array } };
                 try {
-                    parsedChunk = parseBinaryChunk(binaryData, partBasedMode, metadata.totalSourceBlocks) as FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: string } };
+                    parsedChunk = parseBinaryChunk(binaryData, partBasedMode, metadata.totalSourceBlocks) as FountainChunk & { checksumStart: number; partMetadata?: { currentPart: number; totalParts: number; partChecksum: Uint8Array } };
                 } catch (err) {
                     const errorMessage = err instanceof Error ? err.message : String(err);
                     self.postMessage({ type: 'error', id, error: `Parse error: ${errorMessage}` });
@@ -151,10 +152,14 @@ self.onmessage = async (event: MessageEvent) => {
                 receivedChunks.add(chunkKey);
                 processedSeeds.add(chunk.seed);
 
-                // Store part checksum if present
+                // Store part checksum if present (keep as bytes for Rust validation)
                 if (chunk.partMetadata) {
-                    expectedPartChecksums.set(chunk.partMetadata.currentPart, chunk.partMetadata.partChecksum);
-                    console.log(`[Worker] Parsed part metadata: part ${chunk.partMetadata.currentPart + 1}/${chunk.partMetadata.totalParts}, checksum: ${chunk.partMetadata.partChecksum}`);
+                    expectedPartChecksumBytes.set(chunk.partMetadata.currentPart, chunk.partMetadata.partChecksum);
+                    // Log the checksum as hex for debugging (convert bytes to hex)
+                    const checksumHex = Array.from(chunk.partMetadata.partChecksum)
+                        .map(b => b.toString(16).padStart(2, '0'))
+                        .join('');
+                    console.log(`[Worker] Parsed part metadata: part ${chunk.partMetadata.currentPart + 1}/${chunk.partMetadata.totalParts}, checksum: ${checksumHex}`);
                 }
 
                 // Add chunk to decoder
@@ -167,40 +172,44 @@ self.onmessage = async (event: MessageEvent) => {
                 const shouldAttemptDecode = (now - lastDecodeAttemptTime >= 500) || hasNewBlocks;
 
                 // Check part completion if in part-based mode
-                let partCompleteInfo: { partComplete: boolean; partChecksumMatch: boolean; computedChecksum: string; currentPart: number; totalParts: number } | undefined;
+                let partCompleteInfo: { partComplete: boolean; isValid: boolean; expectedChecksum: string; actualChecksum: string; currentPart: number; totalParts: number } | undefined;
                 if (partBasedMode && (now - lastPartCompleteCheck >= 1000)) {
                     lastPartCompleteCheck = now;
                     if (decoder!.wasm.isCurrentPartComplete()) {
-                        const partData = decoder!.wasm.getCurrentPartData();
-                        if (partData) {
-                            const computedChecksum = await computeChecksum(partData, 'crc32');
-                            const partInfo = decoder!.getPartInfo();
-                            const expectedChecksum = expectedPartChecksums.get(partInfo.currentPartIndex) || '';
-                            const checksumMatch = computedChecksum === expectedChecksum;
+                        const partInfo = decoder!.getPartInfo();
+                        const expectedChecksumBytes = expectedPartChecksumBytes.get(partInfo.currentPartIndex);
 
-                            console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Computed checksum: ${computedChecksum}, Expected: ${expectedChecksum}, Match: ${checksumMatch}`);
+                        // Only validate if we have the expected checksum
+                        if (expectedChecksumBytes) {
+                            // Call Rust to validate the checksum
+                            const validationResult = decoder!.wasm.validateCurrentPartChecksum(expectedChecksumBytes);
 
-                            partCompleteInfo = {
-                                partComplete: true,
-                                partChecksumMatch: checksumMatch,
-                                computedChecksum,
-                                currentPart: partInfo.currentPartIndex,
-                                totalParts: partInfo.totalParts
-                            };
+                            if (validationResult) {
+                                console.log(`[Worker] Part ${partInfo.currentPartIndex + 1} complete. Expected: ${validationResult.expectedChecksum}, Actual: ${validationResult.actualChecksum}, Valid: ${validationResult.isValid}`);
 
-                            // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
-                            if (checksumMatch) {
-                                decoder!.wasm.markPartCompleted(partInfo.currentPartIndex);
-                                console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
+                                partCompleteInfo = {
+                                    partComplete: true,
+                                    isValid: validationResult.isValid,
+                                    expectedChecksum: validationResult.expectedChecksum,
+                                    actualChecksum: validationResult.actualChecksum,
+                                    currentPart: partInfo.currentPartIndex,
+                                    totalParts: partInfo.totalParts
+                                };
 
-                                // Clean up the checksum from the map since this part is completed
-                                expectedPartChecksums.delete(partInfo.currentPartIndex);
+                                // If checksum matches, mark part as completed (reconstructs and stores part data, then cleans up memory)
+                                if (validationResult.isValid) {
+                                    decoder!.wasm.markPartCompleted(partInfo.currentPartIndex);
+                                    console.log(`[Worker] Part ${partInfo.currentPartIndex + 1}/${partInfo.totalParts} completed and memory freed`);
 
-                                // If this was the last part, force a decode check to trigger completion
-                                const isLastPart = (partInfo.currentPartIndex + 1) === partInfo.totalParts;
-                                if (isLastPart) {
-                                    console.log('[Worker] Last part completed, forcing completion check...');
-                                    lastDecodeAttemptTime = 0; // Force decode attempt
+                                    // Clean up the checksum from the map since this part is completed
+                                    expectedPartChecksumBytes.delete(partInfo.currentPartIndex);
+
+                                    // If this was the last part, force a decode check to trigger completion
+                                    const isLastPart = (partInfo.currentPartIndex + 1) === partInfo.totalParts;
+                                    if (isLastPart) {
+                                        console.log('[Worker] Last part completed, forcing completion check...');
+                                        lastDecodeAttemptTime = 0; // Force decode attempt
+                                    }
                                 }
                             }
                         }
@@ -252,15 +261,16 @@ self.onmessage = async (event: MessageEvent) => {
                     if (isComplete) {
                         const reconstructedData = decoder!.getDecodedData();
                         if (reconstructedData) {
-                            const computed = await computeChecksum(reconstructedData, metadata.checksumAlg as ChecksumAlgorithm || 'crc32');
-                            const integrityOk = computed === metadata.checksum;
+                            // Validate final checksum using Rust (avoids expensive JS computation)
+                            const validationResult = decoder!.wasm.validateFinalChecksum(metadata.checksum);
+                            const integrityOk = validationResult?.isValid ?? false;
                             self.postMessage({
                                 type: 'complete',
                                 id,
                                 data: reconstructedData,
                                 integrityOk,
-                                expectedChecksum: metadata.checksum,
-                                calculatedChecksum: computed
+                                expectedChecksum: validationResult?.expectedChecksum ?? metadata.checksum,
+                                calculatedChecksum: validationResult?.actualChecksum ?? ''
                             }, [reconstructedData.buffer]);
                         }
                     }

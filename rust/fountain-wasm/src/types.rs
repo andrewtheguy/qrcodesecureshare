@@ -139,6 +139,34 @@ pub struct PartInfo {
     pub part_checksums: Option<Vec<String>>,
 }
 
+/// Result of validating a part's checksum
+/// Provides detailed information about checksum validation success/failure
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChecksumValidationResult {
+    /// Whether the checksum matches
+    pub is_valid: bool,
+    /// The expected checksum from the binary chunk (as hex string)
+    pub expected_checksum: String,
+    /// The computed checksum of the reconstructed part data (as hex string)
+    pub actual_checksum: String,
+    /// Part index for reference
+    pub part_index: u32,
+}
+
+/// Result of validating the final file's checksum
+/// Provides detailed information about final file integrity validation
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalChecksumValidationResult {
+    /// Whether the checksum matches (file integrity verified)
+    pub is_valid: bool,
+    /// The expected checksum from metadata (as hex string)
+    pub expected_checksum: String,
+    /// The computed checksum of the reconstructed file (as hex string)
+    pub actual_checksum: String,
+}
+
 /// Result of parsing a binary fountain chunk
 /// Contains the decoded chunk metadata and optional part metadata
 #[derive(Clone, Debug, Serialize, Deserialize)]

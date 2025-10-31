@@ -13,7 +13,7 @@ mod tests;
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata};
+pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult};
 pub use parser::PartMetadata;
 
 /// WASM-exported Fountain Encoder
@@ -378,6 +378,59 @@ impl WasmFountainDecoder {
     #[wasm_bindgen(js_name = getPartInfo)]
     pub fn get_part_info(&self) -> JsValue {
         serde_wasm_bindgen::to_value(&self.get_part_info_internal()).unwrap_or(JsValue::NULL)
+    }
+
+    /// Validate the current part's checksum against the expected value
+    ///
+    /// # Arguments
+    /// * `expected_checksum` - The expected checksum bytes as a Uint8Array (4 bytes, big-endian)
+    ///
+    /// # Returns
+    /// A validation result object with:
+    /// - `isValid`: boolean indicating if checksums match
+    /// - `expectedChecksum`: hex string of the expected checksum
+    /// - `actualChecksum`: hex string of the computed checksum
+    /// - `partIndex`: the current part index
+    ///
+    /// Returns null if not in part-based mode or if part data is not yet complete
+    #[wasm_bindgen(js_name = validateCurrentPartChecksum)]
+    pub fn validate_current_part_checksum(&self, expected_checksum: Uint8Array) -> Option<JsValue> {
+        // Convert Uint8Array to [u8; 4]
+        if expected_checksum.length() != 4 {
+            web_sys::console::error_1(&format!("Expected checksum must be 4 bytes, got {}", expected_checksum.length()).into());
+            return None;
+        }
+
+        let mut checksum_bytes = [0u8; 4];
+        expected_checksum.copy_to(&mut checksum_bytes);
+
+        // Call the decoder's validation method
+        self.decoder
+            .validate_current_part_checksum(checksum_bytes)
+            .and_then(|result| serde_wasm_bindgen::to_value(&result).ok())
+    }
+
+    /// Validate the final decoded file's checksum against the expected value
+    ///
+    /// # Arguments
+    /// * `expected_checksum_hex` - The expected checksum as a hex string (e.g., "0d4a1185")
+    ///
+    /// # Returns
+    /// A validation result object with:
+    /// - `isValid`: boolean indicating if checksums match
+    /// - `expectedChecksum`: hex string of the expected checksum (normalized to lowercase)
+    /// - `actualChecksum`: hex string of the computed checksum
+    ///
+    /// Returns null if decoding is not yet complete
+    ///
+    /// This method performs the checksum validation entirely in Rust, avoiding
+    /// expensive checksum computation in JavaScript
+    #[wasm_bindgen(js_name = validateFinalChecksum)]
+    pub fn validate_final_checksum(&self, expected_checksum_hex: String) -> Option<JsValue> {
+        // Call the decoder's validation method
+        self.decoder
+            .validate_final_checksum(&expected_checksum_hex)
+            .and_then(|result| serde_wasm_bindgen::to_value(&result).ok())
     }
 }
 
