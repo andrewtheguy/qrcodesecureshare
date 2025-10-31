@@ -261,18 +261,15 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     // Window logic removed - no window synchronization
     console.log(`[FountainQRReceiver] ACK received: ${message}`)
 
-    // If a part was just completed, trigger move to next part
-    if (partCompleteInfo && partCompleteInfo.isValid) {
-      const msgId = messageIdCounterRef.current++
-      workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId })
-      console.log(`[FountainQRReceiver] Moving to next part after ACK received`)
-    }
+    // NOTE: Do NOT call moveToNextPart here - the sender already called it when processing feedback
+    // The worker will receive the new part index from the sender's data chunks
+    // Calling moveToNextPart here would cause a double increment (skipping parts)
 
     triggeredFeedbackRef.current = false
     setIsAwaitingFeedback(false)
     setIsScanning(true)
     setSenderFeedbackMessage(message)
-  }, [partCompleteInfo])
+  }, [])
 
   const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
     console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)
