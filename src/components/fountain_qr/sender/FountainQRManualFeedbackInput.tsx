@@ -12,7 +12,6 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { FountainEncoder } from '@/utils/fountainCodeWasm';
@@ -55,7 +54,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   // Conversion to 0-indexed happens in validateInputs before checksum generation
   const [inputCurrentPart, setInputCurrentPart] = useState('1');
   const [inputTotalParts, setInputTotalParts] = useState('1');
-  const [inputPartChecksumMatch, setInputPartChecksumMatch] = useState<'true' | 'false'>('true');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
   const validationErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -113,7 +111,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       }
     }
     // Note: inputTotalParts is not reset here as it's auto-populated from encoder
-    setInputPartChecksumMatch('true');
     setInputConfirmationCode('');
   }, [lastProcessedSequence, encoder]);
 
@@ -140,8 +137,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     // 2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
     // 3. checksum.ts - generateFeedbackConfirmationCode()
     //
-    // Required fields: type, mode, sessionId, sequence, currentPart, totalParts, partChecksumMatch
-    // Do NOT include optional fields like computedChecksum
+    // Required fields: type, mode, sessionId, sequence, currentPart, totalParts
+    // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
 
     // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
     const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
@@ -169,7 +166,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       sequence: parsedSequence,
       currentPart: parsedCurrentPart,
       totalParts: parsedTotalParts,
-      partChecksumMatch: inputPartChecksumMatch === 'true',
     };
 
     // Validate confirmation code against expected value
@@ -186,7 +182,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputCurrentPart, inputTotalParts, inputPartChecksumMatch, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [inputSessionId, inputSequence, inputCurrentPart, inputTotalParts, inputConfirmationCode, sessionId, lastProcessedSequence]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
     try {
@@ -218,29 +214,23 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     if (feedback.mode === 'part-complete') {
       console.log(`[FountainQRManualFeedbackInput] Processing part-complete feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`);
-      console.log(`[FountainQRManualFeedbackInput] Checksum match: ${feedback.partChecksumMatch}`);
 
-      // Check for part completion
+      // Receiving feedback means the part was completed successfully
+      // (receiver aborts and doesn't send feedback if checksum is invalid)
+      console.log(`[FountainQRManualFeedbackInput] Part ${feedback.currentPart + 1}/${feedback.totalParts} completed successfully`);
+
       let partTransition = false;
       let newPartIndex: number | undefined;
 
-      if (feedback.partChecksumMatch) {
-        console.log(`[FountainQRManualFeedbackInput] Part ${feedback.currentPart + 1}/${feedback.totalParts} completed successfully`);
-
-        // Move encoder to next part
-        const moved = encoder?.moveToNextPart();
-        if (moved) {
-          partTransition = true;
-          const partInfo = encoder?.getPartInfo();
-          newPartIndex = partInfo?.currentPartIndex;
-          console.log(`[FountainQRManualFeedbackInput] Moved to part ${(newPartIndex ?? 0) + 1}`);
-        } else {
-          console.log('[FountainQRManualFeedbackInput] Part complete, but this was the last part');
-        }
+      // Move encoder to next part
+      const moved = encoder?.moveToNextPart();
+      if (moved) {
+        partTransition = true;
+        const partInfo = encoder?.getPartInfo();
+        newPartIndex = partInfo?.currentPartIndex;
+        console.log(`[FountainQRManualFeedbackInput] Moved to part ${(newPartIndex ?? 0) + 1}`);
       } else {
-        // Part checksum mismatch - fail the transfer
-        showValidationError(`Part ${feedback.currentPart + 1} checksum validation failed on receiver`);
-        return;
+        console.log('[FountainQRManualFeedbackInput] Part complete, but this was the last part');
       }
 
       // Determine message based on part transition
@@ -332,8 +322,8 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             2. FountainQRFeedbackScanner.tsx - handleFeedbackScan() validation
             3. checksum.ts - generateFeedbackConfirmationCode()
 
-            Part-complete mode: currentPart, totalParts, partChecksumMatch
-            Do NOT include optional fields like computedChecksum */}
+            Part-complete mode: currentPart, totalParts
+            NOTE: Checksum fields excluded - receiver only sends feedback if part is valid */}
 
         <div className="grid grid-cols-2 gap-4">
           <div>
@@ -359,20 +349,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
               className="bg-gray-100"
             />
           </div>
-        </div>
-
-        <div>
-          <Label className="text-xs">Part Checksum Match</Label>
-          <RadioGroup value={inputPartChecksumMatch} onValueChange={(value: 'true' | 'false') => setInputPartChecksumMatch(value)}>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="true" id="checksum-yes" />
-              <Label htmlFor="checksum-yes" className="text-sm">Yes</Label>
-            </div>
-            <div className="flex items-center space-x-2">
-              <RadioGroupItem value="false" id="checksum-no" />
-              <Label htmlFor="checksum-no" className="text-sm">No</Label>
-            </div>
-          </RadioGroup>
         </div>
 
         <div>
