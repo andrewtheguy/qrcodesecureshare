@@ -40,6 +40,14 @@ pub struct FountainDecoder {
     session_id: Option<u32>,
     /// Expected checksums for each part (part_index -> 4-byte checksum)
     expected_part_checksums: HashMap<usize, [u8; 4]>,
+
+    // Throttling fields
+    /// Queue of chunks waiting to be processed
+    pending_chunks: Vec<DecodingChunk>,
+    /// Threshold for triggering decode (number of non-duplicate chunks)
+    decode_throttle_count: usize,
+    /// Counter of chunks queued since last decode attempt
+    chunks_since_last_decode: usize,
 }
 
 impl FountainDecoder {
@@ -58,6 +66,9 @@ impl FountainDecoder {
             received_chunk_keys: HashSet::new(),
             session_id: None,
             expected_part_checksums: HashMap::new(),
+            pending_chunks: Vec::new(),
+            decode_throttle_count: 10,
+            chunks_since_last_decode: 0,
         }
     }
 
@@ -78,6 +89,9 @@ impl FountainDecoder {
             received_chunk_keys: HashSet::new(),
             session_id: None,
             expected_part_checksums: HashMap::new(),
+            pending_chunks: Vec::new(),
+            decode_throttle_count: 10,
+            chunks_since_last_decode: 0,
         }
     }
 
@@ -110,6 +124,38 @@ impl FountainDecoder {
 
         // Run belief propagation
         self.belief_propagation()
+    }
+
+    /// Process all pending chunks in the queue
+    /// Returns the number of new blocks decoded
+    fn process_pending_chunks(&mut self) -> usize {
+        if self.pending_chunks.is_empty() {
+            return 0;
+        }
+
+        let blocks_before = self.decoded_blocks.len();
+
+        // Move all pending chunks to the active chunks list
+        while let Some(mut chunk) = self.pending_chunks.pop() {
+            // Remove already-decoded blocks from this chunk
+            for &decoded_idx in self.decoded_blocks.keys() {
+                if chunk.indices.contains(&decoded_idx) {
+                    xor_into(&mut chunk.data, &self.decoded_blocks[&decoded_idx]);
+                    chunk.indices.remove(&decoded_idx);
+                }
+            }
+
+            // Only add non-empty chunks
+            if !chunk.indices.is_empty() {
+                self.chunks.push(chunk);
+            }
+        }
+
+        // Run belief propagation on all chunks
+        self.belief_propagation();
+
+        let blocks_after = self.decoded_blocks.len();
+        blocks_after - blocks_before
     }
 
     /// Belief propagation (peeling) decoder
@@ -480,8 +526,8 @@ impl FountainDecoder {
         part_index < self.total_parts - 1
     }
 
-    /// High-level chunk processing with deduplication and part validation
-    /// Handles all orchestration: dedup check, chunk addition, part completion check, validation
+    /// High-level chunk processing with deduplication, throttling, and part validation
+    /// Handles all orchestration: dedup check, chunk queuing, throttled decode, part completion check, validation
     pub fn process_chunk_with_validation(
         &mut self,
         chunk: FountainChunk,
@@ -496,12 +542,32 @@ impl FountainDecoder {
             };
         }
 
-        // Record the chunk key and add chunk to decoder
+        // Record the chunk key
         self.add_chunk_key(chunk_key);
-        let blocks_before = self.decoded_blocks.len();
-        self.add_chunk(chunk);
-        let blocks_after = self.decoded_blocks.len();
-        let blocks_decoded = blocks_after - blocks_before;
+        self.received_chunk_count += 1;
+
+        // Convert to internal format and add to pending queue
+        let decoding_chunk = DecodingChunk {
+            indices: chunk.indices.into_iter().collect(),
+            data: chunk.data,
+        };
+        self.pending_chunks.push(decoding_chunk);
+
+        // Increment throttle counter
+        self.chunks_since_last_decode += 1;
+
+        // Check if we should process pending chunks
+        let should_process = self.chunks_since_last_decode >= self.decode_throttle_count;
+
+        let blocks_decoded = if should_process {
+            // Reset counter
+            self.chunks_since_last_decode = 0;
+
+            // Process all pending chunks
+            self.process_pending_chunks()
+        } else {
+            0
+        };
 
         // Check if part just completed and needs validation
         let mut part_complete_info = None;
@@ -539,6 +605,36 @@ impl FountainDecoder {
             blocks_decoded,
             part_complete_info,
         }
+    }
+
+    /// Force processing of all pending chunks in the queue
+    /// Returns the number of new blocks decoded
+    /// Useful when transmission is complete or when checking for completion without waiting for throttle threshold
+    pub fn flush_pending_chunks(&mut self) -> usize {
+        if self.pending_chunks.is_empty() {
+            return 0;
+        }
+
+        // Reset throttle counter since we're forcing a flush
+        self.chunks_since_last_decode = 0;
+
+        // Process all pending chunks
+        self.process_pending_chunks()
+    }
+
+    /// Get the number of pending chunks waiting to be processed
+    pub fn get_pending_chunk_count(&self) -> usize {
+        self.pending_chunks.len()
+    }
+
+    /// Set the decode throttle threshold (number of chunks before triggering decode)
+    pub fn set_decode_throttle_count(&mut self, count: usize) {
+        self.decode_throttle_count = count;
+    }
+
+    /// Get the current decode throttle threshold
+    pub fn get_decode_throttle_count(&self) -> usize {
+        self.decode_throttle_count
     }
 }
 
@@ -806,5 +902,293 @@ mod tests {
             decoded, data,
             "Decoded data should exactly match original data"
         );
+    }
+
+    #[test]
+    fn test_flush_pending_chunks_processes_queued_chunks() {
+        // Create a small file that can be decoded with just a few chunks
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Generate and queue 5 chunks (below default threshold of 10)
+        let mut chunks = Vec::new();
+        for _ in 0..5 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                chunks.push(chunk);
+            }
+        }
+
+        // Process chunks using process_chunk_with_validation
+        let mut decoded_before_flush = 0;
+        for chunk in chunks {
+            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                   chunk.indices.first().unwrap_or(&0),
+                                   chunk.indices.last().unwrap_or(&0));
+            let result = decoder.process_chunk_with_validation(chunk, chunk_key);
+            decoded_before_flush = result.blocks_decoded;
+        }
+
+        // Verify chunks are pending (not processed yet due to throttle)
+        let pending_count = decoder.get_pending_chunk_count();
+        assert!(pending_count > 0, "Should have pending chunks below threshold");
+
+        // Flush pending chunks
+        let blocks_decoded = decoder.flush_pending_chunks();
+
+        // Verify chunks were processed
+        assert!(blocks_decoded > 0 || decoded_before_flush > 0, "Should have decoded blocks after flush");
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending chunks after flush");
+    }
+
+    #[test]
+    fn test_flush_required_to_complete_decoding() {
+        // Create a very small file that can be decoded with 2-3 chunks
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set a high throttle threshold so we won't trigger automatic processing
+        decoder.set_decode_throttle_count(20);
+
+        // Generate enough chunks to complete decoding (but fewer than threshold)
+        let mut chunk_count = 0;
+        while chunk_count < 10 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+                chunk_count += 1;
+            }
+        }
+
+        // Verify not complete yet (chunks are pending)
+        assert!(!decoder.is_complete(), "Should not be complete before flush");
+        assert!(decoder.get_pending_chunk_count() > 0, "Should have pending chunks");
+
+        // Flush pending chunks - this should complete the decoding
+        let blocks_decoded = decoder.flush_pending_chunks();
+        assert!(blocks_decoded > 0, "Flush should decode blocks");
+
+        // Verify decoding is now complete
+        assert!(decoder.is_complete(), "Should be complete after flush");
+
+        let decoded = decoder.get_decoded_data().unwrap();
+        assert_eq!(decoded, data, "Decoded data should match original");
+    }
+
+    #[test]
+    fn test_flush_empty_queue_returns_zero() {
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Flush without adding any chunks
+        let blocks_decoded = decoder.flush_pending_chunks();
+        assert_eq!(blocks_decoded, 0, "Flushing empty queue should return 0");
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "Pending count should be 0");
+    }
+
+    #[test]
+    fn test_flush_resets_throttle_counter() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set throttle to 5 chunks
+        decoder.set_decode_throttle_count(5);
+
+        // Add 3 chunks (below threshold)
+        for _ in 0..3 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Verify pending
+        assert!(decoder.get_pending_chunk_count() > 0, "Should have pending chunks");
+
+        // Flush (should reset counter)
+        decoder.flush_pending_chunks();
+
+        // Add 3 more chunks (should also be below threshold after reset)
+        for _ in 0..3 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Verify new chunks are also pending (counter was reset)
+        let pending = decoder.get_pending_chunk_count();
+        assert!(pending > 0 && pending <= 3, "Counter should have been reset after flush");
+    }
+
+    #[test]
+    fn test_get_pending_chunk_count_accuracy() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set high threshold to keep chunks pending
+        decoder.set_decode_throttle_count(20);
+
+        // Initially 0
+        assert_eq!(decoder.get_pending_chunk_count(), 0);
+
+        // Add chunks and verify count increases
+        for i in 1..=5 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+                assert_eq!(decoder.get_pending_chunk_count(), i,
+                          "Pending count should match chunks added");
+            }
+        }
+
+        // Flush and verify count is 0
+        decoder.flush_pending_chunks();
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "Count should be 0 after flush");
+    }
+
+    #[test]
+    fn test_set_get_throttle_count() {
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Default should be 10
+        assert_eq!(decoder.get_decode_throttle_count(), 10);
+
+        // Set to different values
+        decoder.set_decode_throttle_count(5);
+        assert_eq!(decoder.get_decode_throttle_count(), 5);
+
+        decoder.set_decode_throttle_count(100);
+        assert_eq!(decoder.get_decode_throttle_count(), 100);
+
+        decoder.set_decode_throttle_count(1);
+        assert_eq!(decoder.get_decode_throttle_count(), 1);
+    }
+
+    #[test]
+    fn test_throttle_triggers_at_exact_threshold() {
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set threshold to 3
+        decoder.set_decode_throttle_count(3);
+
+        // Add 2 chunks (below threshold)
+        for _ in 0..2 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Should have 2 pending
+        let pending_before = decoder.get_pending_chunk_count();
+        assert!(pending_before >= 2, "Should have at least 2 pending chunks");
+
+        // Add 3rd chunk (exactly at threshold - should trigger)
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                   chunk.indices.first().unwrap_or(&0),
+                                   chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        // Pending count should be 0 or very low (processed at threshold)
+        let pending_after = decoder.get_pending_chunk_count();
+        assert!(pending_after < pending_before, "Processing should have occurred at threshold");
     }
 }

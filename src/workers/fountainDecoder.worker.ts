@@ -34,8 +34,6 @@ function calculatePartProgress(decoder: FountainDecoder, isPartBasedMode: boolea
 // Worker state
 let decoder: FountainDecoder | null = null;
 let metadata: FountainMetadata;
-let lastDecodeAttemptTime = 0; // Throttle decode attempts (only send progress if new blocks decoded or 500ms passed)
-let lastDecodedBlockCount = 0; // Track last decoded count to detect new blocks
 let currentSessionId: number | null = null; // Track current session for reset
 
 // Part-based transfer state (session settings)
@@ -72,8 +70,6 @@ self.onmessage = async (event: MessageEvent) => {
                         decoder.wasm.setSessionId(sessionId);
                     }
 
-                    lastDecodeAttemptTime = Date.now();
-                    lastDecodedBlockCount = decoder.wasm.getDecodedBlockCount();
                     self.postMessage({ type: 'initialized', id, metadata });
                 } catch (err) {
                     // Check for WASM initialization failure
@@ -183,11 +179,11 @@ self.onmessage = async (event: MessageEvent) => {
                     break;
                 }
 
-                // Check throttling for decode attempt
-                const now = Date.now();
+                // Throttling is now handled in Rust - just get current state
                 const decodedBlockCount = decoder!.wasm.getDecodedBlockCount();
-                const hasNewBlocks = decodedBlockCount !== lastDecodedBlockCount;
-                const shouldAttemptDecode = hasNewBlocks || (now - lastDecodeAttemptTime >= 500);
+                const overallProgress = decoder!.wasm.getProgress();
+                const isComplete = decoder!.isComplete();
+                const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
 
                 // Convert part complete info if present
                 let partCompleteInfo: { partComplete: boolean; isValid: boolean; expectedChecksum: string; actualChecksum: string; currentPart: number; totalParts: number } | undefined;
@@ -206,96 +202,51 @@ self.onmessage = async (event: MessageEvent) => {
                     }
                 }
 
-                if (shouldAttemptDecode) {
-                    lastDecodeAttemptTime = now;
-                    lastDecodedBlockCount = decodedBlockCount;
+                // Get part-specific progress
+                const partProgress = calculatePartProgress(decoder!, partBasedMode);
+                let currentPartDecodedBlocks: number | undefined;
+                let currentPartTotalBlocks: number | undefined;
+                let currentPartIndex: number | undefined;
+                let totalParts: number | undefined;
+                if (partBasedMode) {
+                    const partInfo = decoder!.getPartInfo();
+                    currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
+                    currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
+                    currentPartIndex = partInfo.currentPartIndex;
+                    totalParts = partInfo.totalParts;
+                }
 
-                    // Get overall progress
-                    const overallProgress = decoder!.wasm.getProgress();
-                    const isComplete = decoder!.isComplete();
-                    const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
+                self.postMessage({
+                    type: 'chunkProcessed',
+                    id,
+                    seed: chunk.seed,
+                    decodedBlockCount,
+                    overallProgress,
+                    partProgress,
+                    isComplete,
+                    decodedBlockIndices,
+                    currentPartDecodedBlocks,
+                    currentPartTotalBlocks,
+                    currentPartIndex,
+                    totalParts,
+                    partCompleteInfo
+                });
 
-                    // Get part-specific progress
-                    const partProgress = calculatePartProgress(decoder!, partBasedMode);
-                    let currentPartDecodedBlocks: number | undefined;
-                    let currentPartTotalBlocks: number | undefined;
-                    let currentPartIndex: number | undefined;
-                    let totalParts: number | undefined;
-                    if (partBasedMode) {
-                        const partInfo = decoder!.getPartInfo();
-                        currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
-                        currentPartIndex = partInfo.currentPartIndex;
-                        totalParts = partInfo.totalParts;
+                // If complete, trigger reconstruction and final validation
+                if (isComplete) {
+                    const reconstructedData = decoder!.getDecodedData();
+                    if (reconstructedData) {
+                        const validationResult = decoder!.wasm.validateFinalChecksum(metadata.checksum);
+                        const integrityOk = validationResult?.isValid ?? false;
+                        self.postMessage({
+                            type: 'complete',
+                            id,
+                            data: reconstructedData,
+                            integrityOk,
+                            expectedChecksum: validationResult?.expectedChecksum ?? metadata.checksum,
+                            calculatedChecksum: validationResult?.actualChecksum ?? ''
+                        }, [reconstructedData.buffer]);
                     }
-
-                    self.postMessage({
-                        type: 'chunkProcessed',
-                        id,
-                        seed: chunk.seed,
-                        decodedBlockCount,
-                        overallProgress,
-                        partProgress,
-                        isComplete,
-                        decodedBlockIndices,
-                        currentPartDecodedBlocks,
-                        currentPartTotalBlocks,
-                        currentPartIndex,
-                        totalParts,
-                        partCompleteInfo
-                    });
-
-                    // If complete, trigger reconstruction and final validation
-                    if (isComplete) {
-                        const reconstructedData = decoder!.getDecodedData();
-                        if (reconstructedData) {
-                            const validationResult = decoder!.wasm.validateFinalChecksum(metadata.checksum);
-                            const integrityOk = validationResult?.isValid ?? false;
-                            self.postMessage({
-                                type: 'complete',
-                                id,
-                                data: reconstructedData,
-                                integrityOk,
-                                expectedChecksum: validationResult?.expectedChecksum ?? metadata.checksum,
-                                calculatedChecksum: validationResult?.actualChecksum ?? ''
-                            }, [reconstructedData.buffer]);
-                        }
-                    }
-                } else {
-                    // Queue chunk and send current state without full decode check
-                    const overallProgress = decoder!.wasm.getProgress();
-                    const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
-
-                    // Get part-specific info
-                    const partProgress = calculatePartProgress(decoder!, partBasedMode);
-                    let currentPartIndex: number | undefined;
-                    let totalParts: number | undefined;
-                    let currentPartDecodedBlocks: number | undefined;
-                    let currentPartTotalBlocks: number | undefined;
-                    if (partBasedMode) {
-                        const partInfo = decoder!.getPartInfo();
-                        currentPartIndex = partInfo.currentPartIndex;
-                        totalParts = partInfo.totalParts;
-                        currentPartDecodedBlocks = decoder!.wasm.getCurrentPartDecodedBlockCount();
-                        currentPartTotalBlocks = decoder!.wasm.getCurrentPartTotalBlockCount();
-                    }
-
-                    self.postMessage({
-                        type: 'chunkProcessed',
-                        id,
-                        seed: chunk.seed,
-                        queued: true,
-                        decodedBlockCount,
-                        overallProgress,
-                        partProgress,
-                        isComplete: false,
-                        decodedBlockIndices,
-                        currentPartIndex,
-                        totalParts,
-                        currentPartDecodedBlocks,
-                        currentPartTotalBlocks,
-                        partCompleteInfo
-                    });
                 }
                 break;
             }

@@ -481,6 +481,50 @@ impl WasmFountainDecoder {
         serde_wasm_bindgen::to_value(&result)
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))
     }
+
+    /// Force processing of all pending chunks in the queue
+    ///
+    /// # Returns
+    /// Number of new blocks decoded from processing the pending chunks
+    ///
+    /// This is useful when:
+    /// - Transmission is complete and you want to process remaining queued chunks
+    /// - You haven't hit the throttle threshold but want to check for completion
+    /// - You need to ensure all chunks are processed before checking status
+    #[wasm_bindgen(js_name = flushPendingChunks)]
+    pub fn flush_pending_chunks(&mut self) -> usize {
+        self.decoder.flush_pending_chunks()
+    }
+
+    /// Get the number of pending chunks waiting to be processed
+    ///
+    /// # Returns
+    /// Number of chunks in the pending queue
+    #[wasm_bindgen(js_name = getPendingChunkCount)]
+    pub fn get_pending_chunk_count(&self) -> usize {
+        self.decoder.get_pending_chunk_count()
+    }
+
+    /// Set the decode throttle threshold (number of chunks before triggering decode)
+    ///
+    /// # Arguments
+    /// * `count` - Number of non-duplicate chunks to accumulate before processing
+    ///
+    /// Default is 10. Lower values = more frequent decode attempts (more CPU but faster progress updates).
+    /// Higher values = fewer decode attempts (less CPU but slower progress updates).
+    #[wasm_bindgen(js_name = setDecodeThrottleCount)]
+    pub fn set_decode_throttle_count(&mut self, count: usize) {
+        self.decoder.set_decode_throttle_count(count);
+    }
+
+    /// Get the current decode throttle threshold
+    ///
+    /// # Returns
+    /// Number of chunks that trigger a decode attempt
+    #[wasm_bindgen(js_name = getDecodeThrottleCount)]
+    pub fn get_decode_throttle_count(&self) -> usize {
+        self.decoder.get_decode_throttle_count()
+    }
 }
 
 /// Compute CRC32 checksum of the given data
