@@ -81,7 +81,7 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
     { sequence: feedback.sequence.toString() },
     { currentPart: feedback.currentPart.toString() },
     { totalParts: feedback.totalParts.toString() },
-    { partChecksumMatch: feedback.partChecksumMatch.toString() }
+    { partChecksumMatch: (feedback.partChecksumMatch ?? feedback.isValid ?? false).toString() }
   ]
 
   // Create canonical string representation
