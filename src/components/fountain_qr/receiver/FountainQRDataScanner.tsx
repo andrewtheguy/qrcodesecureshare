@@ -6,7 +6,7 @@
  *
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -29,6 +29,7 @@ interface FountainQRDataScannerProps {
   decodedBlocks: number
   invalidChecksumCount: number
   senderFeedbackMessage: string
+  receivedFountainChunks: number
   decodedBlockIndices?: number[]
   currentPartIndex?: number
   totalParts?: number
@@ -54,6 +55,7 @@ export function FountainQRDataScanner({
   decodedBlocks,
   invalidChecksumCount,
   senderFeedbackMessage,
+  receivedFountainChunks,
   decodedBlockIndices = [],
   currentPartIndex = 0,
   totalParts = 1,
@@ -71,11 +73,7 @@ export function FountainQRDataScanner({
   const [showDebugLog, setShowDebugLog] = useState(false)
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
-  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
   const [hasAutoStarted, setHasAutoStarted] = useState(false)
-
-  const chunkCounterRef = useRef<number>(0)
-  const lastUIUpdateRef = useRef<number>(Date.now())
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
@@ -96,13 +94,8 @@ export function FountainQRDataScanner({
     // Send binary data to worker for processing
     workerRef.current?.postMessage({ type: 'processChunk', id: messageIdCounterRef.current++, binaryData: bytes }, [bytes.buffer])
 
-    // Batch UI updates to every 500ms to avoid slowing down decoding
-    chunkCounterRef.current++
-    const now = Date.now()
-    if (now - lastUIUpdateRef.current >= 500) {
-      setReceivedFountainChunks(chunkCounterRef.current)
-      lastUIUpdateRef.current = now
-    }
+    // Note: Counter is now incremented in parent's worker message handler
+    // to ensure we only count non-duplicate chunks
 
     addDebugLog('📤 Sent chunk to worker for processing')
 
@@ -187,9 +180,6 @@ export function FountainQRDataScanner({
   }, [receiverMode, success, addDebugLog])
 
   const handleStartScan = useCallback(() => {
-    setReceivedFountainChunks(0)
-    chunkCounterRef.current = 0
-    lastUIUpdateRef.current = Date.now()
     setError('')
     setHasAutoStarted(true)
     onScanStart()

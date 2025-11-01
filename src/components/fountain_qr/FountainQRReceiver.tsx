@@ -85,6 +85,11 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
 
+  // Chunk counter state (only counts non-duplicate chunks)
+  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
+  const chunkCounterRef = useRef<number>(0)
+  const lastUIUpdateRef = useRef<number>(Date.now())
+
   const workerRef = useRef<Worker | null>(null)
   const messageIdCounterRef = useRef<number>(0)
   const decodedBlockIndicesRef = useRef<number[]>([])
@@ -123,6 +128,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             partDecodedBlocks,
             partTotalBlocks
           })
+
+          // Increment chunk counter only for non-duplicate chunks
+          // Batch UI updates to every 500ms to avoid slowing down decoding
+          if (!duplicate) {
+            chunkCounterRef.current++
+            const now = Date.now()
+            if (now - lastUIUpdateRef.current >= 500) {
+              setReceivedFountainChunks(chunkCounterRef.current)
+              lastUIUpdateRef.current = now
+            }
+          }
 
           // Always update progress, even for duplicates, so UI shows current state
           setDecodedBlocks(decodedBlockCount)
@@ -188,6 +204,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           const { data: reconstructedData, integrityOk, calculatedChecksum } = data
           const blob = new Blob([reconstructedData], { type: fountainMetadata.fileType || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
+
+          // Sync final chunk count to UI
+          setReceivedFountainChunks(chunkCounterRef.current)
 
           setDownloadUrl(url)
           setSuccess(true)
@@ -389,6 +408,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     triggeredFeedbackRef.current = false
     setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
     setSenderFeedbackMessage('') // Clear sender feedback message on reset
+    // Reset chunk counter
+    chunkCounterRef.current = 0
+    setReceivedFountainChunks(0)
+    lastUIUpdateRef.current = Date.now()
     // Reinitialize worker state without recreating the worker instance
     workerRef.current?.postMessage({
       type: 'initialize',
@@ -508,6 +531,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         decodedBlocks={decodedBlocks}
         invalidChecksumCount={invalidChecksumCount}
         senderFeedbackMessage={senderFeedbackMessage}
+        receivedFountainChunks={receivedFountainChunks}
         decodedBlockIndices={decodedBlockIndicesRef.current}
         currentPartIndex={currentPartIndex}
         totalParts={totalParts}
@@ -521,6 +545,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         }}
         onScanStart={() => {
           setIsScanning(true)
+          // Reset chunk counter when starting a new scan
+          chunkCounterRef.current = 0
+          setReceivedFountainChunks(0)
+          lastUIUpdateRef.current = Date.now()
         }}
         onScanStop={() => {
           setIsScanning(false)

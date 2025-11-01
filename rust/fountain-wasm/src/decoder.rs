@@ -1775,4 +1775,584 @@ mod tests {
             }
         }
     }
+
+    // ========================================
+    // Deduplication Tests
+    // ========================================
+
+    #[test]
+    fn test_deduplication_multiple_duplicates() {
+        // Test that the same chunk can be sent multiple times and is detected as duplicate each time
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process same chunk 5 times
+            for i in 0..5 {
+                let result = decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    "",
+                );
+
+                if i == 0 {
+                    // First should be processed
+                    match result.status {
+                        crate::types::ChunkStatus::Processed => {},
+                        _ => panic!("Expected Processed status on first chunk, got {:?}", result.status),
+                    }
+                } else {
+                    // All subsequent should be duplicates
+                    match result.status {
+                        crate::types::ChunkStatus::Duplicate => {},
+                        _ => panic!("Expected Duplicate status on chunk #{}, got {:?}", i, result.status),
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_deduplication_does_not_increment_received_count() {
+        // Test that duplicates don't increment the received_chunk_count
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process same chunk 3 times
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            assert_eq!(decoder.get_received_chunk_count(), 1, "First chunk should increment count to 1");
+
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            assert_eq!(decoder.get_received_chunk_count(), 1, "Duplicate should not increment count");
+
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            assert_eq!(decoder.get_received_chunk_count(), 1, "Second duplicate should not increment count");
+        }
+    }
+
+    #[test]
+    fn test_deduplication_session_id_change_clears_cache() {
+        // Test that changing session ID clears the dedup cache
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set initial session ID
+        decoder.set_session_id(100);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process chunk
+            let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            match result1.status {
+                crate::types::ChunkStatus::Processed => {},
+                _ => panic!("Expected Processed status on first chunk"),
+            }
+
+            // Process same chunk again - should be duplicate
+            let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            match result2.status {
+                crate::types::ChunkStatus::Duplicate => {},
+                _ => panic!("Expected Duplicate status before session change"),
+            }
+
+            // Change session ID
+            decoder.set_session_id(200);
+
+            // Process same chunk again - should be processed (not duplicate) after session change
+            let result3 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            match result3.status {
+                crate::types::ChunkStatus::Processed => {},
+                _ => panic!("Expected Processed status after session change, got {:?}", result3.status),
+            }
+        }
+    }
+
+    #[test]
+    fn test_deduplication_interleaved_duplicates() {
+        // Test duplicates mixed with new chunks
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Generate 3 different chunks
+        let chunk1 = encoder.generate_chunk().unwrap();
+        let chunk2 = encoder.generate_chunk().unwrap();
+        let chunk3 = encoder.generate_chunk().unwrap();
+
+        let binary1 = crate::parser::serialize_chunk_to_binary(&chunk1, false);
+        let binary2 = crate::parser::serialize_chunk_to_binary(&chunk2, false);
+        let binary3 = crate::parser::serialize_chunk_to_binary(&chunk3, false);
+
+        // Process in pattern: 1, 2, 1 (dup), 3, 2 (dup), 1 (dup)
+        let patterns = vec![
+            (&binary1, false, "chunk1 first time"),
+            (&binary2, false, "chunk2 first time"),
+            (&binary1, true, "chunk1 duplicate"),
+            (&binary3, false, "chunk3 first time"),
+            (&binary2, true, "chunk2 duplicate"),
+            (&binary1, true, "chunk1 second duplicate"),
+        ];
+
+        for (binary_data, should_be_duplicate, desc) in patterns {
+            let result = decoder.process_binary_chunk(binary_data, total_source_blocks, "");
+
+            if should_be_duplicate {
+                match result.status {
+                    crate::types::ChunkStatus::Duplicate => {},
+                    _ => panic!("Expected Duplicate for {}, got {:?}", desc, result.status),
+                }
+            } else {
+                match result.status {
+                    crate::types::ChunkStatus::Processed => {},
+                    _ => panic!("Expected Processed for {}, got {:?}", desc, result.status),
+                }
+            }
+        }
+
+        // Verify received count is 3 (not 6)
+        assert_eq!(decoder.get_received_chunk_count(), 3, "Should only count 3 unique chunks");
+    }
+
+    #[test]
+    fn test_deduplication_chunk_key_consistency() {
+        // Test that chunk keys are generated consistently for the same chunk
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            // Create chunk key
+            let chunk_key = crate::parser::create_chunk_key(
+                chunk.seed,
+                chunk.degree,
+                &chunk.indices
+            );
+
+            // Check if it's a duplicate (should be false initially)
+            assert!(!decoder.is_chunk_duplicate(&chunk_key), "Initial chunk should not be marked as duplicate");
+
+            // Add the chunk key
+            decoder.add_chunk_key(chunk_key.clone());
+
+            // Check if it's now a duplicate (should be true)
+            assert!(decoder.is_chunk_duplicate(&chunk_key), "Chunk should now be marked as duplicate");
+
+            // Recreate the same chunk key
+            let chunk_key2 = crate::parser::create_chunk_key(
+                chunk.seed,
+                chunk.degree,
+                &chunk.indices
+            );
+
+            // Should be the same
+            assert_eq!(chunk_key, chunk_key2, "Chunk keys should be identical for same chunk");
+            assert!(decoder.is_chunk_duplicate(&chunk_key2), "Recreated chunk key should also be duplicate");
+        }
+    }
+
+    #[test]
+    fn test_deduplication_many_chunks() {
+        // Test deduplication with many chunks
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Generate 20 chunks
+        let mut binaries = Vec::new();
+        for _ in 0..20 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                binaries.push(crate::parser::serialize_chunk_to_binary(&chunk, false));
+            }
+        }
+
+        // Process all chunks once
+        for binary in &binaries {
+            decoder.process_binary_chunk(binary, total_source_blocks, "");
+        }
+
+        let first_count = decoder.get_received_chunk_count();
+        assert_eq!(first_count, 20, "Should have 20 unique chunks");
+
+        // Process all chunks again - all should be duplicates
+        for binary in &binaries {
+            let result = decoder.process_binary_chunk(binary, total_source_blocks, "");
+            match result.status {
+                crate::types::ChunkStatus::Duplicate => {},
+                _ => panic!("Expected all chunks to be duplicates on second pass"),
+            }
+        }
+
+        // Count should still be 20
+        assert_eq!(decoder.get_received_chunk_count(), 20, "Count should not increase for duplicates");
+    }
+
+    #[test]
+    fn test_deduplication_with_progress() {
+        // Test that duplicates maintain correct progress reporting
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1); // Process immediately
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process once
+            let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            let progress1 = result1.overall_progress;
+            let decoded1 = result1.decoded_block_count;
+
+            // Process duplicate
+            let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+
+            // Should be duplicate
+            match result2.status {
+                crate::types::ChunkStatus::Duplicate => {},
+                _ => panic!("Expected Duplicate status"),
+            }
+
+            // Progress should be the same (duplicates return current progress)
+            assert_eq!(result2.overall_progress, progress1, "Progress should not change for duplicate");
+            assert_eq!(result2.decoded_block_count, decoded1, "Decoded count should not change for duplicate");
+        }
+    }
+
+    #[test]
+    fn test_deduplication_session_id_same_does_not_clear() {
+        // Test that setting the same session ID does NOT clear the cache
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set session ID
+        decoder.set_session_id(100);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process chunk
+            let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            match result1.status {
+                crate::types::ChunkStatus::Processed => {},
+                _ => panic!("Expected Processed status on first chunk"),
+            }
+
+            // Set same session ID again
+            decoder.set_session_id(100);
+
+            // Process same chunk again - should still be duplicate (cache not cleared)
+            let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            match result2.status {
+                crate::types::ChunkStatus::Duplicate => {},
+                _ => panic!("Expected Duplicate status after setting same session ID, got {:?}", result2.status),
+            }
+        }
+    }
+
+    #[test]
+    fn test_deduplication_does_not_add_to_pending_queue() {
+        // Test that duplicates don't get added to the pending chunks queue
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Set high throttle so chunks stay in pending queue
+        decoder.set_decode_throttle_count(100);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process first time
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            let pending_after_first = decoder.get_pending_chunk_count();
+            assert_eq!(pending_after_first, 1, "First chunk should be in pending queue");
+
+            // Process duplicate
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            let pending_after_duplicate = decoder.get_pending_chunk_count();
+            assert_eq!(pending_after_duplicate, 1, "Duplicate should NOT be added to pending queue");
+
+            // Process duplicate again
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            let pending_after_second_dup = decoder.get_pending_chunk_count();
+            assert_eq!(pending_after_second_dup, 1, "Second duplicate should NOT be added to pending queue");
+        }
+    }
+
+    #[test]
+    fn test_deduplication_does_not_decode_blocks() {
+        // Test that duplicates don't cause any blocks to be decoded
+        let data = vec![1, 2, 3, 4];
+        let options = FountainEncoderOptions::default().with_block_size(2);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1); // Process immediately
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process first time and flush
+            let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+            decoder.flush_pending_chunks();
+
+            let decoded_count_after_first = result1.decoded_block_count;
+            let progress_after_first = result1.overall_progress;
+            let indices_after_first = result1.decoded_block_indices.clone();
+
+            // Process duplicate
+            let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+
+            // Verify no additional decoding happened
+            assert_eq!(result2.decoded_block_count, decoded_count_after_first,
+                "Duplicate should not decode additional blocks");
+            assert_eq!(result2.overall_progress, progress_after_first,
+                "Duplicate should not change progress");
+            assert_eq!(result2.decoded_block_indices, indices_after_first,
+                "Duplicate should not change decoded block indices");
+
+            // Process another duplicate
+            let result3 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+
+            // Still no changes
+            assert_eq!(result3.decoded_block_count, decoded_count_after_first,
+                "Second duplicate should not decode additional blocks");
+            assert_eq!(result3.overall_progress, progress_after_first,
+                "Second duplicate should not change progress");
+        }
+    }
+
+    #[test]
+    fn test_deduplication_does_not_affect_subsequent_unique_chunks() {
+        // Test that after processing duplicates, new unique chunks still work correctly
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+        decoder.set_decode_throttle_count(1); // Process immediately
+
+        // Generate 3 different chunks
+        let chunk1 = encoder.generate_chunk().unwrap();
+        let chunk2 = encoder.generate_chunk().unwrap();
+        let chunk3 = encoder.generate_chunk().unwrap();
+
+        let binary1 = crate::parser::serialize_chunk_to_binary(&chunk1, false);
+        let binary2 = crate::parser::serialize_chunk_to_binary(&chunk2, false);
+        let binary3 = crate::parser::serialize_chunk_to_binary(&chunk3, false);
+
+        // Process chunk1
+        let result1 = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
+        assert!(matches!(result1.status, crate::types::ChunkStatus::Processed));
+        let count_after_1 = decoder.get_received_chunk_count();
+        assert_eq!(count_after_1, 1);
+
+        // Process chunk1 duplicate
+        let result1_dup = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
+        assert!(matches!(result1_dup.status, crate::types::ChunkStatus::Duplicate));
+        let count_after_1_dup = decoder.get_received_chunk_count();
+        assert_eq!(count_after_1_dup, 1, "Duplicate should not increment count");
+
+        // Process chunk2 (unique)
+        let result2 = decoder.process_binary_chunk(&binary2, total_source_blocks, "");
+        assert!(matches!(result2.status, crate::types::ChunkStatus::Processed));
+        let count_after_2 = decoder.get_received_chunk_count();
+        assert_eq!(count_after_2, 2, "New chunk should increment count");
+
+        // Process chunk1 duplicate again
+        let result1_dup2 = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
+        assert!(matches!(result1_dup2.status, crate::types::ChunkStatus::Duplicate));
+        let count_after_1_dup2 = decoder.get_received_chunk_count();
+        assert_eq!(count_after_1_dup2, 2, "Duplicate should not increment count");
+
+        // Process chunk3 (unique)
+        let result3 = decoder.process_binary_chunk(&binary3, total_source_blocks, "");
+        assert!(matches!(result3.status, crate::types::ChunkStatus::Processed));
+        let count_after_3 = decoder.get_received_chunk_count();
+        assert_eq!(count_after_3, 3, "New chunk should increment count");
+
+        // Process chunk2 duplicate
+        let result2_dup = decoder.process_binary_chunk(&binary2, total_source_blocks, "");
+        assert!(matches!(result2_dup.status, crate::types::ChunkStatus::Duplicate));
+        let final_count = decoder.get_received_chunk_count();
+        assert_eq!(final_count, 3, "Final count should be 3 unique chunks");
+    }
+
+    #[test]
+    fn test_deduplication_zero_blocks_decoded_in_result() {
+        // Test that duplicate result reports zero blocks decoded
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
+        let options = FountainEncoderOptions::default().with_block_size(4);
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        if let Some(chunk) = encoder.generate_chunk() {
+            let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+            // Process first time
+            decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
+
+            // Process duplicate - check internal result
+            let chunk_dup = crate::parser::parse_binary_chunk(&binary_data, false, total_source_blocks).unwrap();
+            let chunk_key = crate::parser::create_chunk_key(
+                chunk_dup.chunk.seed,
+                chunk_dup.chunk.degree,
+                &chunk_dup.chunk.indices
+            );
+
+            let process_result = decoder.process_chunk_with_validation(chunk_dup.chunk, chunk_key);
+
+            // Should be duplicate with zero blocks decoded
+            assert!(process_result.is_duplicate, "Should be marked as duplicate");
+            assert_eq!(process_result.blocks_decoded, 0, "Duplicate should decode zero blocks");
+            assert!(process_result.part_complete_info.is_none(), "Duplicate should have no part completion info");
+        }
+    }
 }
