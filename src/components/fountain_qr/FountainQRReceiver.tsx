@@ -388,41 +388,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // handleStartScan, handleStopScan moved to subcomponent
 
-  const handleReset = () => {
-    if (downloadUrl) {
-      URL.revokeObjectURL(downloadUrl)
-    }
-    setDecodedBlocks(0)
-    decodedBlockIndicesRef.current = []
-    setError('')
-    setSuccess(false)
-    setDownloadUrl('')
-    setIsScanning(false)
-    setIsAwaitingFeedback(false)
-    setReceiverMode('data-scanning')
-    // Window mode removed
-    feedbackSequenceRef.current = 0
-    setFeedbackSequence(0)
-    setLastSenderFeedbackSequence(-1)
-    setInvalidChecksumCount(0)
-    triggeredFeedbackRef.current = false
-    setLastAckTransitionSuccessful(true) // Guard against stale success state across resets
-    setSenderFeedbackMessage('') // Clear sender feedback message on reset
-    // Reset chunk counter
-    chunkCounterRef.current = 0
-    setReceivedFountainChunks(0)
-    lastUIUpdateRef.current = Date.now()
-    // Reinitialize worker state without recreating the worker instance
-    workerRef.current?.postMessage({
-      type: 'initialize',
-      id: messageIdCounterRef.current++,
-      metadata: initialMeta,
-      partBasedMode: initialMeta.partBasedMode || false,
-      partSize: initialMeta.partSize || 0,
-      sessionId: sessionId
-    })
-  }
-
   const handleDownload = () => {
     if (!downloadUrl) return
 
@@ -523,12 +488,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   </div>
                 </div>
               </div>
-              <div className="flex gap-2">
-                <Button onClick={handleDownload} className="flex-1">
+              <div>
+                <Button onClick={handleDownload} className="w-full">
                   📥 Download {fountainMetadata.name}
-                </Button>
-                <Button onClick={handleReset} variant="outline">
-                  Reset
                 </Button>
               </div>
             </div>
