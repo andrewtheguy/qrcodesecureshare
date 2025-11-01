@@ -54,6 +54,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [actualChecksum, setActualChecksum] = useState<string>('')
   const [downloadUrl, setDownloadUrl] = useState<string>('')
+  const [fileDownloaded, setFileDownloaded] = useState(false)
   const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
    const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
 
@@ -272,6 +273,25 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     }
   }, []) // Empty dependency array - only run on mount/unmount
 
+  // Warn user before navigating away if file is decoded but not downloaded
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      // Only show warning if file is successfully decoded, integrity is verified, and not downloaded yet
+      if (success && integrityOk === true && !fileDownloaded) {
+        e.preventDefault()
+        // Modern browsers ignore custom messages, but setting returnValue is still required
+        e.returnValue = ''
+        return ''
+      }
+    }
+
+    window.addEventListener('beforeunload', handleBeforeUnload)
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [success, integrityOk, fileDownloaded])
+
   const handleFeedbackGenerated = useCallback(() => {
     setReceiverMode('feedback-display')
     setIsAwaitingFeedback(true)
@@ -397,6 +417,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+
+    // Mark file as downloaded to prevent navigation warning
+    setFileDownloaded(true)
   }
 
 
