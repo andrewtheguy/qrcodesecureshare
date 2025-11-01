@@ -506,6 +506,23 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   <p><span className="font-semibold">Actual checksum:</span> <span className="font-mono break-all">{actualChecksum || '(calculating...)'}</span></p>
                 </div>
               </div>
+              <div className="text-sm text-muted-foreground space-y-1 border-t pt-3">
+                <p className="font-medium text-foreground">Transfer Statistics:</p>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="font-semibold">Chunks received:</span> {receivedFountainChunks}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Blocks decoded:</span> {decodedBlocks}
+                  </div>
+                  <div className="col-span-2">
+                    <span className="font-semibold">Efficiency ratio:</span> {decodedBlocks > 0 ? (receivedFountainChunks / decodedBlocks).toFixed(2) : 'N/A'} chunks per block
+                    <span className="text-xs ml-1">
+                      ({decodedBlocks > 0 ? ((receivedFountainChunks / decodedBlocks - 1) * 100).toFixed(1) : '0'}% overhead)
+                    </span>
+                  </div>
+                </div>
+              </div>
               <div className="flex gap-2">
                 <Button onClick={handleDownload} className="flex-1">
                   📥 Download {fountainMetadata.name}
