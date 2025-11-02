@@ -530,6 +530,41 @@ impl WasmFountainDecoder {
         self.decoder.get_decode_throttle_count()
     }
 
+    /// Set the adaptive throttle percentage for incremental decodes
+    ///
+    /// # Arguments
+    /// * `percentage` - Percentage (0.0 to 1.0) of total blocks to use as threshold
+    ///
+    /// Default is 0.02 (2%). This determines how many chunks to accumulate
+    /// before attempting incremental decodes after the first decode.
+    #[wasm_bindgen(js_name = setAdaptiveThrottlePercentage)]
+    pub fn set_adaptive_throttle_percentage(&mut self, percentage: f64) {
+        self.decoder.set_adaptive_throttle_percentage(percentage);
+    }
+
+    /// Get the current adaptive throttle percentage
+    #[wasm_bindgen(js_name = getAdaptiveThrottlePercentage)]
+    pub fn get_adaptive_throttle_percentage(&self) -> f64 {
+        self.decoder.get_adaptive_throttle_percentage()
+    }
+
+    /// Set the minimum incremental chunk threshold
+    ///
+    /// # Arguments
+    /// * `count` - Minimum number of chunks to accumulate before decode
+    ///
+    /// Default is 10. The actual threshold used is max(percentage_based, this_value).
+    #[wasm_bindgen(js_name = setMinIncrementalChunks)]
+    pub fn set_min_incremental_chunks(&mut self, count: usize) {
+        self.decoder.set_min_incremental_chunks(count);
+    }
+
+    /// Get the current minimum incremental chunk threshold
+    #[wasm_bindgen(js_name = getMinIncrementalChunks)]
+    pub fn get_min_incremental_chunks(&self) -> usize {
+        self.decoder.get_min_incremental_chunks()
+    }
+
     /// Set the expected final checksum for integrity validation
     ///
     /// # Arguments

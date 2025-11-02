@@ -48,6 +48,12 @@ pub struct FountainDecoder {
     decode_throttle_count: usize,
     /// Counter of chunks queued since last decode attempt
     chunks_since_last_decode: usize,
+    /// Whether the first decode attempt has been made for current part
+    first_decode_attempted: bool,
+    /// Adaptive throttle percentage for incremental decodes (default 2%)
+    adaptive_throttle_percentage: f64,
+    /// Minimum chunk threshold for incremental decodes (default 10)
+    min_incremental_chunks: usize,
 }
 
 impl FountainDecoder {
@@ -69,6 +75,9 @@ impl FountainDecoder {
             pending_chunks: Vec::new(),
             decode_throttle_count: 10,
             chunks_since_last_decode: 0,
+            first_decode_attempted: false,
+            adaptive_throttle_percentage: 0.02,
+            min_incremental_chunks: 10,
         }
     }
 
@@ -92,6 +101,9 @@ impl FountainDecoder {
             pending_chunks: Vec::new(),
             decode_throttle_count: 10,
             chunks_since_last_decode: 0,
+            first_decode_attempted: false,
+            adaptive_throttle_percentage: 0.02,
+            min_incremental_chunks: 10,
         }
     }
 
@@ -364,6 +376,10 @@ impl FountainDecoder {
         self.decoded_blocks.clear();
         self.chunks.clear();
 
+        // Reset first decode flag for the new part
+        self.first_decode_attempted = false;
+        self.chunks_since_last_decode = 0;
+
         true
     }
 
@@ -556,10 +572,37 @@ impl FountainDecoder {
         // Increment throttle counter
         self.chunks_since_last_decode += 1;
 
-        // Check if we should process pending chunks
-        let should_process = self.chunks_since_last_decode >= self.decode_throttle_count;
+        // Determine if we should process pending chunks
+        let should_process = if !self.first_decode_attempted {
+            // First decode: wait for 110% of required chunks
+            let required_chunks = if self.part_based_mode {
+                let blocks_in_part = self.get_current_part_total_block_count();
+                (blocks_in_part as f64 * 1.10).ceil() as usize
+            } else {
+                (self.metadata.total_source_blocks as f64 * 1.10).ceil() as usize
+            };
+
+            self.chunks_since_last_decode >= required_chunks
+        } else {
+            // Subsequent decodes: 2% or 10 chunks, whichever is greater
+            let total_blocks = if self.part_based_mode {
+                self.get_current_part_total_block_count()
+            } else {
+                self.metadata.total_source_blocks
+            };
+
+            let percentage_threshold = (total_blocks as f64 * self.adaptive_throttle_percentage).ceil() as usize;
+            let threshold = percentage_threshold.max(self.min_incremental_chunks);
+
+            self.chunks_since_last_decode >= threshold
+        };
 
         let blocks_decoded = if should_process {
+            // Mark first decode as attempted
+            if !self.first_decode_attempted {
+                self.first_decode_attempted = true;
+            }
+
             // Reset counter
             self.chunks_since_last_decode = 0;
 
@@ -635,6 +678,26 @@ impl FountainDecoder {
     /// Get the current decode throttle threshold
     pub fn get_decode_throttle_count(&self) -> usize {
         self.decode_throttle_count
+    }
+
+    /// Set the adaptive throttle percentage for incremental decodes
+    pub fn set_adaptive_throttle_percentage(&mut self, percentage: f64) {
+        self.adaptive_throttle_percentage = percentage.clamp(0.0, 1.0);
+    }
+
+    /// Get the adaptive throttle percentage
+    pub fn get_adaptive_throttle_percentage(&self) -> f64 {
+        self.adaptive_throttle_percentage
+    }
+
+    /// Set the minimum incremental chunk threshold
+    pub fn set_min_incremental_chunks(&mut self, count: usize) {
+        self.min_incremental_chunks = count;
+    }
+
+    /// Get the minimum incremental chunk threshold
+    pub fn get_min_incremental_chunks(&self) -> usize {
+        self.min_incremental_chunks
     }
 
     /// Process a binary chunk through the complete pipeline
