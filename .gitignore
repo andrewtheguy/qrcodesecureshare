@@ -32,3 +32,4 @@ tmp/
 # Rust/WASM build artifacts
 rust/**/target/
 rust/**/Cargo.lock
+target/
