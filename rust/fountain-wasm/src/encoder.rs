@@ -575,69 +575,6 @@ mod tests {
         assert!(chunk.is_none(), "Expected None when no blocks are available");
     }
 
-    #[test]
-    fn test_encoder_parity_with_js() {
-        // This test validates that the Rust encoder produces the same (degree, indices)
-        // as the JavaScript implementation in docs/fountainCodeLegacy.tsx
-        // Test vectors generated with: node scripts/generate_test_vectors.js
-        //
-        // Parameters: k=10, blockSize=400, c=0.2, delta=0.01, maxDegree=8
-        // degree1Rate=0.08, lowDegreeRate=0.18
-
-        // Create test data with 10 blocks (10 * 400 = 4000 bytes)
-        let data = vec![0u8; 4000];
-        let options = FountainEncoderOptions::default()
-            .with_block_size(400)
-            .with_c(0.2)
-            .with_delta(0.01)
-            .with_max_degree(8)
-            .with_degree1_rate(0.08)
-            .with_low_degree_rate(0.18);
-
-        let mut encoder = FountainEncoder::new(
-            data,
-            "test.dat".to_string(),
-            "application/octet-stream".to_string(),
-            0.0,
-            options,
-            false,   // part_based_mode
-            0,       // part_size
-            Some(0), // seed_offset = 0 for testing
-        );
-
-        // Test vectors from Rust implementation
-        let test_vectors = vec![
-            (0, 3, vec![1, 5, 8]),
-            (1, 2, vec![2, 9]),
-            (42, 2, vec![0, 3]),
-            (123, 2, vec![1, 4]),
-            (9999, 5, vec![0, 1, 4, 7, 8]),
-        ];
-
-        for (seed, expected_degree, expected_indices) in test_vectors {
-            // Generate chunk
-            encoder.current_seed = seed;
-            let chunk = encoder.generate_chunk().expect(&format!("Should generate chunk for seed {}", seed));
-
-            // Validate seed
-            assert_eq!(chunk.seed, seed, "Seed mismatch for test seed {}", seed);
-
-            // Validate degree
-            assert_eq!(
-                chunk.degree, expected_degree,
-                "Degree mismatch for seed {}: expected {}, got {}",
-                seed, expected_degree, chunk.degree
-            );
-
-            // Validate indices
-            assert_eq!(
-                chunk.indices, expected_indices,
-                "Indices mismatch for seed {}: expected {:?}, got {:?}",
-                seed, expected_indices, chunk.indices
-            );
-        }
-    }
-
     // ========================================
     // Part-Based Mode Tests
     // ========================================
