@@ -54,6 +54,8 @@ pub struct FountainDecoder {
     adaptive_throttle_percentage: f64,
     /// Minimum chunk threshold for incremental decodes (default 10)
     min_incremental_chunks: usize,
+    /// Number of chunks received for the current part (in part-based mode) or entire file
+    chunks_received_for_current_part: usize,
 }
 
 impl FountainDecoder {
@@ -78,6 +80,7 @@ impl FountainDecoder {
             first_decode_attempted: false,
             adaptive_throttle_percentage: 0.02,
             min_incremental_chunks: 10,
+            chunks_received_for_current_part: 0,
         }
     }
 
@@ -104,6 +107,7 @@ impl FountainDecoder {
             first_decode_attempted: false,
             adaptive_throttle_percentage: 0.02,
             min_incremental_chunks: 10,
+            chunks_received_for_current_part: 0,
         }
     }
 
@@ -376,9 +380,10 @@ impl FountainDecoder {
         self.decoded_blocks.clear();
         self.chunks.clear();
 
-        // Reset first decode flag for the new part
+        // Reset first decode flag and counters for the new part
         self.first_decode_attempted = false;
         self.chunks_since_last_decode = 0;
+        self.chunks_received_for_current_part = 0;
 
         true
     }
@@ -561,6 +566,7 @@ impl FountainDecoder {
         // Record the chunk key
         self.add_chunk_key(chunk_key);
         self.received_chunk_count += 1;
+        self.chunks_received_for_current_part += 1;
 
         // Convert to internal format and add to pending queue
         let decoding_chunk = DecodingChunk {
@@ -572,19 +578,27 @@ impl FountainDecoder {
         // Increment throttle counter
         self.chunks_since_last_decode += 1;
 
+        // Get total chunks received for current part
+        let total_chunks_current_part = self.chunks_received_for_current_part;
+
         // Determine if we should process pending chunks
+        // Strategy:
+        // 1. At 10 total chunks: early decode for error detection
+        // 2. At 110% total chunks: first real decode with high success probability
+        // 3. After 110%: incremental decodes at max(2%, 10 chunks) since last decode
         let should_process = if !self.first_decode_attempted {
-            // First decode: wait for 110% of required chunks
-            let required_chunks = if self.part_based_mode {
+            // Before first decode at 110%
+            let required_chunks_110 = if self.part_based_mode {
                 let blocks_in_part = self.get_current_part_total_block_count();
                 (blocks_in_part as f64 * 1.10).ceil() as usize
             } else {
                 (self.metadata.total_source_blocks as f64 * 1.10).ceil() as usize
             };
 
-            self.chunks_since_last_decode >= required_chunks
+            // Trigger at 10 total chunks (early error detection) OR at 110% total chunks
+            total_chunks_current_part == 10 || total_chunks_current_part >= required_chunks_110
         } else {
-            // Subsequent decodes: 2% or 10 chunks, whichever is greater
+            // After first decode at 110%: incremental decodes at 2% or 10 chunks since last decode
             let total_blocks = if self.part_based_mode {
                 self.get_current_part_total_block_count()
             } else {
@@ -598,9 +612,18 @@ impl FountainDecoder {
         };
 
         let blocks_decoded = if should_process {
-            // Mark first decode as attempted
+            // Mark first decode as attempted only when we reach 110% threshold
             if !self.first_decode_attempted {
-                self.first_decode_attempted = true;
+                let required_chunks_110 = if self.part_based_mode {
+                    let blocks_in_part = self.get_current_part_total_block_count();
+                    (blocks_in_part as f64 * 1.10).ceil() as usize
+                } else {
+                    (self.metadata.total_source_blocks as f64 * 1.10).ceil() as usize
+                };
+
+                if total_chunks_current_part >= required_chunks_110 {
+                    self.first_decode_attempted = true;
+                }
             }
 
             // Reset counter
