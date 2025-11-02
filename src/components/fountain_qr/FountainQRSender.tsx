@@ -181,13 +181,13 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleChunkGenerated = () => {
     // Optional: Log chunk generation for debugging
-    console.log('Chunk generated')
+    //console.log('Chunk generated')
   }
 
 
   const handleBufferUpdate = (bufferSize: number) => {
     // Optional: Monitor buffer status
-    console.log(`Buffer size: ${bufferSize}`)
+    //console.log(`Buffer size: ${bufferSize}`)
   }
 
   const handleDataDisplayError = (error: string) => {
