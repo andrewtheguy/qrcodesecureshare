@@ -268,7 +268,7 @@ mod decoder_tests {
     fn test_flush_pending_chunks_processes_queued_chunks() {
         // Create a small file that can be decoded with just a few chunks
         // With adaptive strategy: 2 blocks need ceil(2 * 1.10) = 3 chunks for first decode
-        // Then max(ceil(2 * 0.02), 10) = 10 chunks for subsequent decodes
+        // Then max(ceil(2 * 0.05), 10) = 10 chunks for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -321,7 +321,7 @@ mod decoder_tests {
     fn test_flush_required_to_complete_decoding() {
         // Create a very small file that can be decoded with 2-3 chunks
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
-        // Then max(ceil(2 * 0.02), 10) = 10 for next decode
+        // Then max(ceil(2 * 0.05), 10) = 10 for next decode
         let data = vec![1, 2, 3, 4];
         let options = FountainEncoderOptions::default().with_block_size(2);
 
@@ -408,7 +408,7 @@ mod decoder_tests {
     #[test]
     fn test_flush_resets_throttle_counter() {
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
-        // Then max(ceil(2 * 0.02), 10) = 10 for subsequent decodes
+        // Then max(ceil(2 * 0.05), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -461,7 +461,7 @@ mod decoder_tests {
     #[test]
     fn test_get_pending_chunk_count_accuracy() {
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
-        // Then max(ceil(2 * 0.02), 10) = 10 for subsequent decodes
+        // Then max(ceil(2 * 0.05), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -1590,7 +1590,7 @@ mod decoder_tests {
     #[test]
     fn test_adaptive_small_file_less_than_10_chunks() {
         // Test that files requiring less than 10 chunks still decode successfully
-        // This verifies the "max(2%, 10)" logic works when total chunks < 10
+        // This verifies the "max(5%, 10)" logic works when total chunks < 10
         let data = vec![1, 2, 3, 4]; // Very small file: 4 bytes
         let options = FountainEncoderOptions::default().with_block_size(2); // 2 blocks total
 
@@ -1610,7 +1610,7 @@ mod decoder_tests {
 
         // With adaptive strategy:
         // - First decode needs: ceil(2 * 1.10) = 3 chunks
-        // - After that: max(ceil(2 * 0.02), 10) = max(1, 10) = 10 chunks
+        // - After that: max(ceil(2 * 0.05), 10) = max(1, 10) = 10 chunks
         // But we should still be able to complete with very few chunks via flush
 
         let mut chunks_added = 0;
@@ -1702,9 +1702,9 @@ mod decoder_tests {
 
     #[test]
     fn test_adaptive_incremental_threshold_after_first_decode() {
-        // Test that after first decode, threshold is max(2%, 10 chunks)
+        // Test that after first decode, threshold is max(5%, 10 chunks)
         // Also tests early decode at max(10, 2%) chunks
-        let data = vec![0u8; 1000]; // Large file to ensure 2% > 10
+        let data = vec![0u8; 1000]; // Large file to ensure 5% > 10
         let options = FountainEncoderOptions::default().with_block_size(20); // 50 blocks
 
         let mut encoder = FountainEncoder::new(
@@ -1722,7 +1722,7 @@ mod decoder_tests {
         let mut decoder = FountainDecoder::new(metadata);
 
         // Strategy: Early decode at max(10, 2%) = 10 chunks, then 110% decode at 55 chunks
-        // After 110%: max(ceil(50 * 0.02), 10) = max(1, 10) = 10 chunks
+        // After 110%: max(ceil(50 * 0.05), 10) = max(3, 10) = 10 chunks
 
         // Add chunks to trigger both early and first decode
         let first_decode_threshold = (50.0_f64 * 1.10).ceil() as usize;  // 55
@@ -1739,7 +1739,7 @@ mod decoder_tests {
         // Early decode at 10 + first real decode at 55 should have processed all pending
         assert_eq!(decoder.get_pending_chunk_count(), 0, "Decodes at 10 and 55 should have processed all pending");
 
-        // Now test incremental threshold (should be 10 chunks since 2% of 50 = 1 < 10)
+        // Now test incremental threshold (should be 10 chunks since 5% of 50 = 2.5 < 10)
         for i in 1..=9 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}",
@@ -1890,8 +1890,8 @@ mod decoder_tests {
 
     #[test]
     fn test_adaptive_percentage_based_threshold_for_large_file() {
-        // Test that for very large files, the 2% threshold is used (not 10 chunks)
-        // Create a file with 1000 blocks, so 2% = 20 chunks > 10 chunks
+        // Test that for very large files, the 5% threshold is used (not 10 chunks)
+        // Create a file with 1000 blocks, so 5% = 50 chunks > 10 chunks
         // Also tests early decode at max(10, 2%) = 20 chunks, then 110% decode at 1100 chunks
         let data = vec![0u8; 10000]; // 10000 bytes
         let options = FountainEncoderOptions::default().with_block_size(10); // 1000 blocks
@@ -1925,16 +1925,16 @@ mod decoder_tests {
             }
         }
 
-        // 110% decode should have been triggered (early decode at 10 already happened)
+        // 110% decode should have been triggered (early decode at 20 already happened)
         assert_eq!(decoder.get_pending_chunk_count(), 0, "110% decode should have processed all pending");
 
         // Now test incremental threshold
-        // For 1000 blocks: max(ceil(1000 * 0.02), 10) = max(20, 10) = 20 chunks
-        let incremental_threshold = ((1000.0_f64 * 0.02).ceil() as usize).max(10);
-        assert_eq!(incremental_threshold, 20, "Incremental threshold should be 20 (2% of 1000)");
+        // For 1000 blocks: max(ceil(1000 * 0.05), 10) = max(50, 10) = 50 chunks
+        let incremental_threshold = ((1000.0_f64 * 0.05).ceil() as usize).max(10);
+        assert_eq!(incremental_threshold, 50, "Incremental threshold should be 50 (5% of 1000)");
 
-        // Add 19 chunks - should stay pending
-        for _ in 0..19 {
+        // Add 49 chunks - should stay pending
+        for _ in 0..49 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}",
                     chunk.seed, chunk.degree,
@@ -1944,9 +1944,9 @@ mod decoder_tests {
             }
         }
 
-        assert_eq!(decoder.get_pending_chunk_count(), 19, "Should have 19 pending chunks");
+        assert_eq!(decoder.get_pending_chunk_count(), 49, "Should have 49 pending chunks");
 
-        // Add 20th chunk - should trigger decode
+        // Add 50th chunk - should trigger decode
         if let Some(chunk) = encoder.generate_chunk() {
             let chunk_key = format!("{}:{}:{}:{}",
                 chunk.seed, chunk.degree,
@@ -1956,7 +1956,7 @@ mod decoder_tests {
         }
 
         assert_eq!(decoder.get_pending_chunk_count(), 0,
-            "Should have processed at 2% threshold (20 chunks)");
+            "Should have processed at 5% threshold (50 chunks)");
     }
 
     #[test]

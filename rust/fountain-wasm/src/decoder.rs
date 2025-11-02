@@ -50,7 +50,7 @@ pub struct FountainDecoder {
     chunks_since_last_decode: usize,
     /// Whether the first decode attempt has been made for current part
     first_decode_attempted: bool,
-    /// Adaptive throttle percentage for incremental decodes (default 2%)
+    /// Adaptive throttle percentage for incremental decodes (default 5%)
     adaptive_throttle_percentage: f64,
     /// Minimum chunk threshold for incremental decodes (default 10)
     min_incremental_chunks: usize,
@@ -78,7 +78,7 @@ impl FountainDecoder {
             decode_throttle_count: 10,
             chunks_since_last_decode: 0,
             first_decode_attempted: false,
-            adaptive_throttle_percentage: 0.02,
+            adaptive_throttle_percentage: 0.05,
             min_incremental_chunks: 10,
             chunks_received_for_current_part: 0,
         }
@@ -105,7 +105,7 @@ impl FountainDecoder {
             decode_throttle_count: 10,
             chunks_since_last_decode: 0,
             first_decode_attempted: false,
-            adaptive_throttle_percentage: 0.02,
+            adaptive_throttle_percentage: 0.05,
             min_incremental_chunks: 10,
             chunks_received_for_current_part: 0,
         }
@@ -585,7 +585,7 @@ impl FountainDecoder {
         // Strategy:
         // 1. At max(10, 2%) total chunks: early decode for error detection
         // 2. At 110% total chunks: first real decode with high success probability
-        // 3. After 110%: incremental decodes at max(2%, 10 chunks) since last decode
+        // 3. After 110%: incremental decodes at max(5%, 10 chunks) since last decode
         let should_process = if !self.first_decode_attempted {
             // Before first decode at 110%
             let total_blocks = if self.part_based_mode {
@@ -602,7 +602,7 @@ impl FountainDecoder {
             // Trigger at early threshold OR at 110% total chunks
             total_chunks_current_part == early_decode_threshold || total_chunks_current_part >= required_chunks_110
         } else {
-            // After first decode at 110%: incremental decodes at 2% or 10 chunks since last decode
+            // After first decode at 110%: incremental decodes at 5% or 10 chunks since last decode
             let total_blocks = if self.part_based_mode {
                 self.get_current_part_total_block_count()
             } else {
