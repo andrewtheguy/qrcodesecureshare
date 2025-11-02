@@ -1703,7 +1703,7 @@ mod decoder_tests {
     #[test]
     fn test_adaptive_incremental_threshold_after_first_decode() {
         // Test that after first decode, threshold is max(2%, 10 chunks)
-        // Also tests early decode at 10 chunks
+        // Also tests early decode at max(10, 2%) chunks
         let data = vec![0u8; 1000]; // Large file to ensure 2% > 10
         let options = FountainEncoderOptions::default().with_block_size(20); // 50 blocks
 
@@ -1721,7 +1721,7 @@ mod decoder_tests {
 
         let mut decoder = FountainDecoder::new(metadata);
 
-        // Strategy: Early decode at 10 chunks, then 110% decode at 55 chunks
+        // Strategy: Early decode at max(10, 2%) = 10 chunks, then 110% decode at 55 chunks
         // After 110%: max(ceil(50 * 0.02), 10) = max(1, 10) = 10 chunks
 
         // Add chunks to trigger both early and first decode
@@ -1830,7 +1830,7 @@ mod decoder_tests {
     #[test]
     fn test_adaptive_multi_part_first_decode_110_percent() {
         // Test that 110% threshold applies to each part separately in multi-part mode
-        // Also tests early decode at 10 chunks
+        // Also tests early decode at max(10, 2%) chunks
         let data = vec![0u8; 200]; // 200 bytes
         let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks total
         let part_size = 100; // 2 parts of 100 bytes each (10 blocks per part)
@@ -1850,7 +1850,7 @@ mod decoder_tests {
         let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
 
         // Part 0: Should have 10 blocks
-        // Early decode at 10 chunks, then 110% decode at ceil(10 * 1.10) = 11 chunks
+        // Early decode at max(10, 2%) = 10 chunks, then 110% decode at ceil(10 * 1.10) = 11 chunks
         let part0_blocks = decoder.get_current_part_total_block_count();
         assert_eq!(part0_blocks, 10, "Part 0 should have 10 blocks");
 
@@ -1892,7 +1892,7 @@ mod decoder_tests {
     fn test_adaptive_percentage_based_threshold_for_large_file() {
         // Test that for very large files, the 2% threshold is used (not 10 chunks)
         // Create a file with 1000 blocks, so 2% = 20 chunks > 10 chunks
-        // Also tests early decode at 10 chunks, then 110% decode at 1100 chunks
+        // Also tests early decode at max(10, 2%) = 20 chunks, then 110% decode at 1100 chunks
         let data = vec![0u8; 10000]; // 10000 bytes
         let options = FountainEncoderOptions::default().with_block_size(10); // 1000 blocks
 
@@ -1910,11 +1910,11 @@ mod decoder_tests {
 
         let mut decoder = FountainDecoder::new(metadata);
 
-        // Early decode at 10 chunks, then 110% decode at 1100 chunks
+        // Early decode at max(10, ceil(1000 * 0.02)) = max(10, 20) = 20 chunks, then 110% decode at 1100 chunks
         let first_decode_threshold = (1000.0_f64 * 1.10).ceil() as usize;
         assert_eq!(first_decode_threshold, 1100);
 
-        // Add chunks to trigger 110% decode (early decode at 10 will happen automatically)
+        // Add chunks to trigger 110% decode (early decode at 20 will happen automatically)
         for _ in 0..first_decode_threshold {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}",
@@ -1962,7 +1962,7 @@ mod decoder_tests {
     #[test]
     fn test_adaptive_part_reset_on_transition() {
         // Test that first_decode_attempted flag resets when moving to next part
-        // With early decode: Part 1 should trigger at 10 chunks (early), then 110% (11 chunks)
+        // With early decode: Part 1 should trigger at max(10, 2%) = 10 chunks (early), then 110% (11 chunks)
         let data = vec![0u8; 200]; // 200 bytes
         let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks
         let part_size = 100; // 2 parts, 10 blocks each

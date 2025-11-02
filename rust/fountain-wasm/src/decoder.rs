@@ -583,20 +583,24 @@ impl FountainDecoder {
 
         // Determine if we should process pending chunks
         // Strategy:
-        // 1. At 10 total chunks: early decode for error detection
+        // 1. At max(10, 2%) total chunks: early decode for error detection
         // 2. At 110% total chunks: first real decode with high success probability
         // 3. After 110%: incremental decodes at max(2%, 10 chunks) since last decode
         let should_process = if !self.first_decode_attempted {
             // Before first decode at 110%
-            let required_chunks_110 = if self.part_based_mode {
-                let blocks_in_part = self.get_current_part_total_block_count();
-                (blocks_in_part as f64 * 1.10).ceil() as usize
+            let total_blocks = if self.part_based_mode {
+                self.get_current_part_total_block_count()
             } else {
-                (self.metadata.total_source_blocks as f64 * 1.10).ceil() as usize
+                self.metadata.total_source_blocks
             };
 
-            // Trigger at 10 total chunks (early error detection) OR at 110% total chunks
-            total_chunks_current_part == 10 || total_chunks_current_part >= required_chunks_110
+            let required_chunks_110 = (total_blocks as f64 * 1.10).ceil() as usize;
+
+            // Early decode threshold: max(10 chunks, 2% of total blocks)
+            let early_decode_threshold = ((total_blocks as f64 * 0.02).ceil() as usize).max(10);
+
+            // Trigger at early threshold OR at 110% total chunks
+            total_chunks_current_part == early_decode_threshold || total_chunks_current_part >= required_chunks_110
         } else {
             // After first decode at 110%: incremental decodes at 2% or 10 chunks since last decode
             let total_blocks = if self.part_based_mode {
