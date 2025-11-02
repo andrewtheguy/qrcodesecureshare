@@ -275,13 +275,13 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     // 4. Convert to uppercase
     cleaned = cleaned.toUpperCase();
 
-    // 5. Limit to 8 characters
-    cleaned = cleaned.slice(0, 8);
+    // 5. Limit to 4 characters (CRC16 is 4 hex digits)
+    cleaned = cleaned.slice(0, 4);
 
-    // 6. Auto-insert dash after 4th character if length > 4
+    // 6. Auto-insert dash after 2nd character if length > 2
     let formatted = cleaned;
-    if (cleaned.length > 4) {
-      formatted = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+    if (cleaned.length > 2) {
+      formatted = cleaned.slice(0, 2) + '-' + cleaned.slice(2);
     }
 
     // 7. Set the formatted value to state
@@ -358,7 +358,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             type="text"
             value={inputConfirmationCode}
             onChange={handleConfirmationCodeChange}
-            placeholder="e.g., ABCD-1234"
+            placeholder="e.g., AB-CD"
             className="font-mono"
           />
           <p className="text-xs text-muted-foreground mt-1">

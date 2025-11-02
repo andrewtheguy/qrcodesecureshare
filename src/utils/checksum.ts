@@ -6,6 +6,33 @@ import { ensureWasmInit } from './fountainCodeWasm'
 
 export type ChecksumAlgorithm = 'crc32' | 'sha256'
 
+/**
+ * Compute CRC16-CCITT checksum (polynomial 0x1021)
+ * Used for confirmation codes - shorter than CRC32, sufficient for detecting human typing errors
+ *
+ * @param data - The data to checksum
+ * @returns 16-bit checksum as 4-character hex string (e.g., "A1B2")
+ */
+function crc16(data: Uint8Array): string {
+  let crc = 0xFFFF; // Initial value
+  const polynomial = 0x1021; // CRC16-CCITT polynomial
+
+  for (let i = 0; i < data.length; i++) {
+    crc ^= data[i] << 8;
+    for (let j = 0; j < 8; j++) {
+      if (crc & 0x8000) {
+        crc = (crc << 1) ^ polynomial;
+      } else {
+        crc = crc << 1;
+      }
+      crc &= 0xFFFF; // Keep it 16-bit
+    }
+  }
+
+  // Return as 4-character hex string (lowercase)
+  return crc.toString(16).padStart(4, '0');
+}
+
 export async function computeChecksum(
   dataInput: Uint8Array | ArrayBuffer,
   algorithm: ChecksumAlgorithm = 'crc32'
@@ -90,10 +117,11 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
   const encoder = new TextEncoder()
   const data = encoder.encode(canonicalString)
 
-  // Compute CRC32 checksum using Rust WASM (centralized initialization and import)
-  const checksum = await computeChecksum(data, 'crc32')
+  // Compute CRC16 checksum (JavaScript implementation - 4 hex chars, no WASM needed)
+  // CRC16 is sufficient for detecting human typing errors and is shorter than CRC32
+  const checksum = crc16(data)
 
-  // Format as user-friendly code: uppercase hex with hyphen
+  // Format as user-friendly code: uppercase hex with hyphen (e.g., "AB-CD")
   const upperChecksum = checksum.toUpperCase()
-  return upperChecksum.slice(0, 4) + '-' + upperChecksum.slice(4)
+  return upperChecksum.slice(0, 2) + '-' + upperChecksum.slice(2)
 }
