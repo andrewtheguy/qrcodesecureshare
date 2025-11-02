@@ -32,7 +32,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     onCameraReady,
     isScanning,
     facingMode = 'environment',
-    scanInterval,
+    scanInterval = 125, // Default to 125ms between scans
     binary = false, // Default to text mode for backward compatibility
     debounceMs = 0, // No debounce by default
     readerOptions = {}, // Custom reader options
@@ -143,9 +143,6 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   }, [binary, readerOptions])
 
   const startScanLoop = useCallback(() => {
-    const isMobile = isMobileDevice()
-    const interval = scanInterval ?? (isMobile ? 125 : 67) // ms between scans
-
     let lastScanTime = 0
 
     const scanFrame = () => {
@@ -154,7 +151,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
 
       const now = Date.now()
-      if (now - lastScanTime >= interval) {
+      if (now - lastScanTime >= scanInterval) {
         scanVideoFrame()
         lastScanTime = now
       }

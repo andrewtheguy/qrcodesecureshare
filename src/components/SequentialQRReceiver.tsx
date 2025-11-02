@@ -120,6 +120,7 @@ export function SequentialQRReceiver({ initialMetadata }: SequentialQRReceiverPr
     onScan: handleScan,
     isScanning,
     onError: handleScanError,
+    scanInterval: 33, // about 30 FPS
     binary: true
   })
 
