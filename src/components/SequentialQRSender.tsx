@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
-import { writeBarcode } from 'zxing-wasm/full'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
+import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 interface SequentialQRSenderProps {
   file: File
@@ -15,6 +15,9 @@ interface SequentialQRSenderProps {
 // Binary mode is more efficient (no base64 overhead)
 // Increased from 600 to 800 bytes with zxing-wasm binary QR encoding
 export const CHUNK_SIZE = 800 // bytes of raw binary data
+const PREFETCH_AHEAD = 6
+const QR_WIDTH = 400
+const QR_MARGIN = 4
 
 export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   // Metadata removed: parent component is responsible for metadata QR
@@ -29,9 +32,132 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
   const [hasStarted, setHasStarted] = useState(false) // User has pressed play at least once
   // Removed showMetadata state – always showing data chunks
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const workerRef = useRef<Worker | null>(null)
+  const pendingRequests = useRef<
+    Map<number, { resolve: (value: string) => void; reject: (reason: Error) => void }>
+  >(new Map())
+  const requestIdRef = useRef(0)
+  const qrCacheRef = useRef<Map<number, string>>(new Map())
+  const generationQueueRef = useRef<Map<number, Promise<string>>>(new Map())
+  const cleanupCache = useCallback(() => {
+    for (const url of qrCacheRef.current.values()) {
+      if (url.startsWith('blob:')) {
+        URL.revokeObjectURL(url)
+      }
+    }
+    qrCacheRef.current.clear()
+  }, [])
+
+  const getQrUrlForIndex = useCallback(async (index: number) => {
+    const cached = qrCacheRef.current.get(index)
+    if (cached) {
+      return cached
+    }
+
+    const chunk = dataChunks[index]
+    if (!chunk) {
+      throw new Error('Chunk not found')
+    }
+
+    let pending = generationQueueRef.current.get(index)
+    if (!pending) {
+      const worker = workerRef.current
+      if (!worker) {
+        throw new Error('QR worker unavailable')
+      }
+
+      pending = new Promise<string>((resolve, reject) => {
+        const id = requestIdRef.current++
+        pendingRequests.current.set(id, { resolve, reject })
+
+        try {
+          const payload = chunk.slice()
+          worker.postMessage(
+            {
+              type: 'generate',
+              id,
+              binaryBuffer: payload.buffer,
+              options: {
+                errorCorrectionLevel: 'M',
+                width: QR_WIDTH,
+                margin: QR_MARGIN
+              }
+            },
+            [payload.buffer]
+          )
+        } catch (err) {
+          pendingRequests.current.delete(id)
+          reject(err as Error)
+        }
+      }).catch((err) => {
+        console.error('QR worker failed for chunk', index, err)
+        throw err
+      })
+
+      generationQueueRef.current.set(index, pending)
+    }
+
+    try {
+      const url = await pending
+      qrCacheRef.current.set(index, url)
+      return url
+    } finally {
+      generationQueueRef.current.delete(index)
+    }
+  }, [dataChunks])
+
+  useEffect(() => {
+    try {
+      const worker = new QRWorker()
+      workerRef.current = worker
+      worker.onmessage = (event: MessageEvent) => {
+        const { type, id, buffer, mimeType, error } = event.data as {
+          type: 'success' | 'error'
+          id: number
+          buffer?: ArrayBuffer
+          mimeType?: string
+          error?: string
+        }
+
+        const pending = pendingRequests.current.get(id)
+        if (!pending) return
+
+        if (type === 'success' && buffer) {
+          try {
+            const blob = new Blob([buffer], { type: mimeType || 'image/png' })
+            const url = URL.createObjectURL(blob)
+            pending.resolve(url)
+          } catch (err) {
+            pending.reject(err as Error)
+          }
+        } else {
+          pending.reject(new Error(error || 'Worker error'))
+        }
+
+        pendingRequests.current.delete(id)
+      }
+    } catch (err) {
+      console.warn('QR worker initialization failed; QR generation unavailable.', err)
+      workerRef.current = null
+    }
+
+    return () => {
+      workerRef.current?.terminate()
+      workerRef.current = null
+      pendingRequests.current.forEach(({ reject }) =>
+        reject(new Error('QR worker terminated'))
+      )
+      pendingRequests.current.clear()
+      cleanupCache()
+    }
+  }, [cleanupCache])
 
   // Process file into chunks
   useEffect(() => {
+    cleanupCache()
+    generationQueueRef.current.clear()
+    setQrCodeUrl('')
+
     const reader = new FileReader()
     reader.onload = async (e) => {
       try {
@@ -80,43 +206,98 @@ export function SequentialQRSender({ file }: SequentialQRSenderProps) {
     }
 
     reader.readAsArrayBuffer(file)
-  }, [file])
+  }, [file, cleanupCache])
 
-  // Generate QR code for current chunk
+  // Generate QR code for current chunk, sourcing from cache or worker
   useEffect(() => {
-    if (dataChunks.length === 0 || !hasStarted) {
+    if (dataChunks.length === 0) {
       setQrCodeUrl('')
       return
     }
 
-    const generateQR = async () => {
-      try {
-        const chunkBinary = dataChunks[currentChunk]
-        if (!chunkBinary) return
+    if (!hasStarted) {
+      return
+    }
 
-        // Generate QR code with binary data using zxing-wasm
-        const result = await writeBarcode(chunkBinary, {
-          format: 'QRCode',
-          ecLevel: 'M',
-          sizeHint: 400,
-          withQuietZones: true
-        })
+    let isCancelled = false
 
-        if (result.error) {
-          throw new Error(result.error)
+    getQrUrlForIndex(currentChunk)
+      .then((url) => {
+        if (!isCancelled) {
+          setQrCodeUrl(url)
+        }
+      })
+      .catch((err) => {
+        console.error('QR generation error:', err)
+        if (!isCancelled) {
+          setError('Failed to generate QR code')
+        }
+      })
+
+    return () => {
+      isCancelled = true
+    }
+  }, [dataChunks, currentChunk, hasStarted, getQrUrlForIndex])
+
+  // Warm up QR cache as soon as chunks are available
+  useEffect(() => {
+    if (dataChunks.length === 0) return
+
+    let cancelled = false
+    const warmUp = async () => {
+      const limit = Math.min(PREFETCH_AHEAD, dataChunks.length)
+      for (let idx = 0; idx < limit; idx++) {
+        if (cancelled) break
+        try {
+          await getQrUrlForIndex(idx)
+        } catch (err) {
+          if (!cancelled) {
+            console.warn('Prefetch QR failed:', err)
+          }
         }
 
-        // Convert Blob to data URL
-        const dataUrl = URL.createObjectURL(result.image as Blob)
-        setQrCodeUrl(dataUrl)
-      } catch (err) {
-        console.error('QR generation error:', err)
-        setError('Failed to generate QR code')
+        if (cancelled) break
+        await new Promise((resolve) => setTimeout(resolve, 0))
       }
     }
 
-    generateQR()
-  }, [dataChunks, currentChunk, hasStarted])
+    warmUp()
+
+    return () => {
+      cancelled = true
+    }
+  }, [dataChunks, getQrUrlForIndex])
+
+  // Prefetch upcoming chunks during playback to minimize stutter
+  useEffect(() => {
+    if (!hasStarted || dataChunks.length === 0) return
+
+    let cancelled = false
+    const prefetch = async () => {
+      for (let offset = 1; offset <= PREFETCH_AHEAD; offset++) {
+        const nextIndex = (currentChunk + offset) % dataChunks.length
+        if (qrCacheRef.current.has(nextIndex)) continue
+        if (cancelled) break
+
+        try {
+          await getQrUrlForIndex(nextIndex)
+        } catch (err) {
+          if (!cancelled) {
+            console.warn('Prefetch QR failed:', err)
+          }
+        }
+
+        if (cancelled) break
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      }
+    }
+
+    prefetch()
+
+    return () => {
+      cancelled = true
+    }
+  }, [currentChunk, hasStarted, dataChunks.length, getQrUrlForIndex])
 
   // Animation loop
   useEffect(() => {

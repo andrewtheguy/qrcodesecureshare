@@ -9,7 +9,6 @@
  */
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { writeBarcode } from 'zxing-wasm/full'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
@@ -72,6 +71,18 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const bufferLengthRef = useRef(bufferLength)
   const fpsRef = useRef(fps)
   const chunkCounterRef = useRef<number>(0) // Track actual chunk count, synced to state every 500ms
+  const releaseQrUrl = useCallback((url: string | null) => {
+    if (url && url.startsWith('blob:')) {
+      URL.revokeObjectURL(url)
+    }
+  }, [])
+  const updateQrCodeDisplay = useCallback((nextUrl: string) => {
+    if (lastSuccessfulQrRef.current && lastSuccessfulQrRef.current !== nextUrl) {
+      releaseQrUrl(lastSuccessfulQrRef.current)
+    }
+    lastSuccessfulQrRef.current = nextUrl
+    setQrCodeUrl(nextUrl)
+  }, [releaseQrUrl])
 
   // Update refs when state changes
   useEffect(() => {
@@ -110,10 +121,13 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [onBufferUpdate])
 
   const clearBuffer = useCallback(() => {
+    for (const item of chunkBufferRef.current) {
+      releaseQrUrl(item.qrUrl)
+    }
     chunkBufferRef.current = []
     setBufferLength(0)
     onBufferUpdate(0)
-  }, [onBufferUpdate])
+  }, [onBufferUpdate, releaseQrUrl])
 
   // Helper function to calculate expected chunk size
   const calculateExpectedChunkSize = useCallback((
@@ -183,11 +197,26 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     try {
       workerRef.current = new QRWorker()
       workerRef.current.onmessage = (e) => {
-        const { type, id, qrUrl, error } = e.data
+        const { type, id, buffer, mimeType, error } = e.data as {
+          type: 'success' | 'error'
+          id: number
+          buffer?: ArrayBuffer
+          mimeType?: string
+          error?: string
+        }
         const resolver = pendingRequests.current.get(id)
         if (resolver) {
-          if (type === 'success') resolver.resolve(qrUrl)
-          else resolver.reject(new Error(error || 'Worker error'))
+          if (type === 'success' && buffer instanceof ArrayBuffer) {
+            try {
+              const blob = new Blob([buffer], { type: mimeType || 'image/png' })
+              const url = URL.createObjectURL(blob)
+              resolver.resolve(url)
+            } catch (err) {
+              resolver.reject(err as Error)
+            }
+          } else {
+            resolver.reject(new Error(error || 'Worker error'))
+          }
           pendingRequests.current.delete(id)
         }
       }
@@ -200,6 +229,15 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       workerRef.current?.terminate()
     }
   }, [])
+
+  useEffect(() => {
+    return () => {
+      releaseQrUrl(lastSuccessfulQrRef.current)
+      for (const item of chunkBufferRef.current) {
+        releaseQrUrl(item.qrUrl)
+      }
+    }
+  }, [releaseQrUrl])
 
   // Update buffer target size based on FPS
   useEffect(() => {
@@ -215,48 +253,23 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [fps])
 
   // Generate QR in worker (for data chunks only)
-  const generateQRInWorker = useCallback((binaryString: string, options: { errorCorrectionLevel?: string; width?: number; margin?: number; color?: { dark: string; light: string } }): Promise<string> => {
-    // Check if we should skip worker due to recent failures (exponential backoff)
+  const generateQRInWorker = useCallback((binaryData: Uint8Array, options: { errorCorrectionLevel?: string; width?: number; margin?: number; color?: { dark: string; light: string } }): Promise<string> => {
     const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
     const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
 
-    // Convert binary string back to Uint8Array for zxing-wasm
-    const binaryData = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      binaryData[i] = binaryString.charCodeAt(i) & 0xFF
-    }
-
-    // Generate QR directly using zxing-wasm (writeBarcode is efficient enough)
-    const generateZXingQR = async (): Promise<string> => {
-      const result = await writeBarcode(binaryData, {
-        format: 'QRCode',
-        ecLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') || 'M',
-        sizeHint: options.width || 400,
-        withQuietZones: true
-      })
-
-      if (result.error) {
-        throw new Error(result.error)
-      }
-
-      // Convert Blob to data URL
-      return URL.createObjectURL(result.image as Blob)
-    }
-
     if (shouldSkipWorker) {
-      // Direct generation during backoff period
-      return generateZXingQR()
+      throw new Error('QR worker temporarily paused after repeated failures')
     }
+
+    const worker = workerRef.current
+    if (!worker) {
+      throw new Error('QR worker unavailable')
+    }
+
+    const payload = binaryData.slice()
 
     const workerPromise = new Promise<string>((resolve, reject) => {
-      if (!workerRef.current) {
-        // Fallback to direct zxing generation if worker is unavailable
-        generateZXingQR().then(resolve).catch(reject)
-        return
-      }
-
       const id = requestIdRef.current++
-      // Adaptive timeout: start at 8s for first few chunks, lower after consecutive successes
       const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
       const timeout = setTimeout(() => {
         pendingRequests.current.delete(id)
@@ -266,7 +279,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       pendingRequests.current.set(id, {
         resolve: (qrUrl: string) => {
           clearTimeout(timeout)
-          // Success! Reset failure counter and increment success counter
           consecutiveWorkerFailuresRef.current = 0
           consecutiveWorkerSuccessesRef.current++
           setWorkerFallbackHint('')
@@ -279,33 +291,31 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       })
 
       try {
-        workerRef.current.postMessage({ type: 'generate', id, binaryString, options })
+        worker.postMessage(
+          { type: 'generate', id, binaryBuffer: payload.buffer, options },
+          [payload.buffer]
+        )
       } catch (err) {
-        console.warn('Worker postMessage failed; falling back:', err)
+        console.warn('Worker postMessage failed:', err)
         clearTimeout(timeout)
         pendingRequests.current.delete(id)
-        // Fallback to direct zxing generation on worker error
-        generateZXingQR().then(resolve).catch(reject)
+        reject(err as Error)
       }
     })
 
     return workerPromise.catch((err) => {
-      console.warn('QR worker failed, falling back to main thread:', err)
+      console.warn('QR worker failed during generation:', err)
 
-      // Track consecutive failures and reset success counter
       consecutiveWorkerFailuresRef.current++
       consecutiveWorkerSuccessesRef.current = 0
       const failures = consecutiveWorkerFailuresRef.current
 
-      // Apply exponential backoff after N consecutive failures
       if (failures >= 3) {
-        // Skip worker for next M chunks (exponential: 2^failures)
-        const skipChunks = Math.min(Math.pow(2, failures - 2), 64) // Cap at 64 chunks
+        const skipChunks = Math.min(Math.pow(2, failures - 2), 64)
         workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
 
-        console.warn(`${failures} consecutive worker failures. Skipping worker for next ${skipChunks} chunks.`)
+        console.warn(`${failures} consecutive worker failures. Pausing worker for next ${skipChunks} chunks.`)
 
-        // Reduce FPS temporarily on persistent failures
         if (failures >= 5) {
           originalFpsRef.current = fpsRef.current
           const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
@@ -313,22 +323,20 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
         }
 
-        // Increase buffer size target temporarily
         if (failures >= 4) {
           originalBufferTargetRef.current = bufferTargetSizeRef.current
           bufferTargetSizeRef.current = Math.min(bufferTargetSizeRef.current + 2, 10)
           console.warn(`Increasing buffer target to ${bufferTargetSizeRef.current}`)
         }
 
-        // Set user-visible hint
         if (failures >= 5) {
-          setWorkerFallbackHint(`Performance issues detected. Using slower QR generation (${failures} failures).`)
-        } else if (failures >= 3) {
-          setWorkerFallbackHint('Using zxing-wasm QR generation method.')
+          setWorkerFallbackHint(`QR worker repeatedly failed (${failures}). Try reducing FPS or restarting.`)
+        } else {
+          setWorkerFallbackHint('QR worker encountered repeated failures; retrying soon.')
         }
       }
 
-      return generateZXingQR()
+      throw err
     })
   }, [chunkCountRef, bufferLengthRef, fpsRef])
 
@@ -434,9 +442,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 binaryData[offset++] = byte
               }
 
-              const binaryString = String.fromCharCode(...binaryData)
-
-              const dataUrl = await generateQRInWorker(binaryString, {
+              const dataUrl = await generateQRInWorker(binaryData, {
                   width: 400,
                   margin: currentQROptions.margin,
                   errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
@@ -561,10 +567,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           binaryData[offset++] = byte
         }
 
-        // Convert to string for QR encoding (ISO-8859-1/Latin1)
-        const binaryString = String.fromCharCode(...binaryData)
-
-        const dataUrl = await generateQRInWorker(binaryString, {
+        const dataUrl = await generateQRInWorker(binaryData, {
           width: 400,
           margin: currentQROptions.margin,
           errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
@@ -578,8 +581,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         currentChunkRef.current = chunk
         chunkCounterRef.current++
         onChunkGenerated(chunkCounterRef.current, chunk)
-        setQrCodeUrl(dataUrl)
-        lastSuccessfulQrRef.current = dataUrl
+        updateQrCodeDisplay(dataUrl)
         return // Exit successfully
 
       } catch (err) {
@@ -614,8 +616,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (bufferedItem) {
       currentChunkRef.current = bufferedItem.chunk
       chunkCounterRef.current = bufferedItem.chunkNum
-      setQrCodeUrl(bufferedItem.qrUrl)
-      lastSuccessfulQrRef.current = bufferedItem.qrUrl
+      updateQrCodeDisplay(bufferedItem.qrUrl)
       onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
     } else {
       generateAndShowNextChunk()
@@ -626,8 +627,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       if (bufferedItem) {
         currentChunkRef.current = bufferedItem.chunk
         chunkCounterRef.current = bufferedItem.chunkNum
-        setQrCodeUrl(bufferedItem.qrUrl)
-        lastSuccessfulQrRef.current = bufferedItem.qrUrl
+        updateQrCodeDisplay(bufferedItem.qrUrl)
         onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
       } else {
         generateAndShowNextChunk()
