@@ -8,6 +8,9 @@ mod types;
 mod xor;
 
 #[cfg(test)]
+mod decoder_tests;
+
+#[cfg(test)]
 mod tests;
 
 use js_sys::{Array, Uint8Array};
