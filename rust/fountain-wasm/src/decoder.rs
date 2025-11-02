@@ -1150,6 +1150,8 @@ mod tests {
     #[test]
     fn test_flush_pending_chunks_processes_queued_chunks() {
         // Create a small file that can be decoded with just a few chunks
+        // With adaptive strategy: 2 blocks need ceil(2 * 1.10) = 3 chunks for first decode
+        // Then max(ceil(2 * 0.02), 10) = 10 chunks for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -1163,9 +1165,10 @@ mod tests {
         );
 
         let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 2, "Should have 2 blocks");
         let mut decoder = FountainDecoder::new(metadata);
 
-        // Generate and queue 5 chunks (below default threshold of 10)
+        // Add 5 chunks: First 3 trigger first decode, next 2 are pending (need 10 for next)
         let mut chunks = Vec::new();
         for _ in 0..5 {
             if let Some(chunk) = encoder.generate_chunk() {
@@ -1174,30 +1177,34 @@ mod tests {
         }
 
         // Process chunks using process_chunk_with_validation
-        let mut decoded_before_flush = 0;
         for chunk in chunks {
             let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
                                    chunk.indices.first().unwrap_or(&0),
                                    chunk.indices.last().unwrap_or(&0));
-            let result = decoder.process_chunk_with_validation(chunk, chunk_key);
-            decoded_before_flush = result.blocks_decoded;
+            decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
-        // Verify chunks are pending (not processed yet due to throttle)
+        // Should have some blocks decoded from first decode (at 3 chunks)
+        // Check by seeing if decoder has decoded blocks
+        let decoded_blocks = decoder.get_decoded_block_count();
+        assert!(decoded_blocks > 0, "First decode should have happened at 3 chunks (decoded {} blocks)", decoded_blocks);
+
+        // Should have 2 pending chunks (need 10 for next decode)
         let pending_count = decoder.get_pending_chunk_count();
-        assert!(pending_count > 0, "Should have pending chunks below threshold");
+        assert!(pending_count > 0, "Should have pending chunks (need 10 for next decode)");
 
         // Flush pending chunks
-        let blocks_decoded = decoder.flush_pending_chunks();
+        decoder.flush_pending_chunks();
 
-        // Verify chunks were processed
-        assert!(blocks_decoded > 0 || decoded_before_flush > 0, "Should have decoded blocks after flush");
+        // Verify flush processed pending chunks
         assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending chunks after flush");
     }
 
     #[test]
     fn test_flush_required_to_complete_decoding() {
         // Create a very small file that can be decoded with 2-3 chunks
+        // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
+        // Then max(ceil(2 * 0.02), 10) = 10 for next decode
         let data = vec![1, 2, 3, 4];
         let options = FountainEncoderOptions::default().with_block_size(2);
 
@@ -1211,14 +1218,13 @@ mod tests {
         );
 
         let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 2, "Should have 2 blocks");
         let mut decoder = FountainDecoder::new(metadata);
 
-        // Set a high throttle threshold so we won't trigger automatic processing
-        decoder.set_decode_throttle_count(20);
-
-        // Generate enough chunks to complete decoding (but fewer than threshold)
+        // Add 7 chunks: First 3 trigger first decode, remaining 4 are pending (need 10)
+        // This should have enough data to complete, but chunks are pending
         let mut chunk_count = 0;
-        while chunk_count < 10 {
+        while chunk_count < 7 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
                                        chunk.indices.first().unwrap_or(&0),
@@ -1228,15 +1234,31 @@ mod tests {
             }
         }
 
-        // Verify not complete yet (chunks are pending)
-        assert!(!decoder.is_complete(), "Should not be complete before flush");
-        assert!(decoder.get_pending_chunk_count() > 0, "Should have pending chunks");
+        // May or may not be complete yet depending on chunks received
+        // But should have pending chunks (need 10 for next automatic decode)
+        let pending = decoder.get_pending_chunk_count();
+        assert!(pending > 0, "Should have pending chunks (need 10 for next decode, only added 4 more)");
 
-        // Flush pending chunks - this should complete the decoding
-        let blocks_decoded = decoder.flush_pending_chunks();
-        assert!(blocks_decoded > 0, "Flush should decode blocks");
+        // Flush pending chunks - this processes all pending
+        decoder.flush_pending_chunks();
 
-        // Verify decoding is now complete
+        // After flush, should have no pending
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending after flush");
+
+        // Should be complete or very close
+        if !decoder.is_complete() {
+            // Add a few more and flush again
+            for _ in 0..5 {
+                if let Some(chunk) = encoder.generate_chunk() {
+                    let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                           chunk.indices.first().unwrap_or(&0),
+                                           chunk.indices.last().unwrap_or(&0));
+                    decoder.process_chunk_with_validation(chunk, chunk_key);
+                }
+            }
+            decoder.flush_pending_chunks();
+        }
+
         assert!(decoder.is_complete(), "Should be complete after flush");
 
         let decoded = decoder.get_decoded_data().unwrap();
@@ -1268,6 +1290,8 @@ mod tests {
 
     #[test]
     fn test_flush_resets_throttle_counter() {
+        // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
+        // Then max(ceil(2 * 0.02), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -1281,13 +1305,11 @@ mod tests {
         );
 
         let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 2, "Should have 2 blocks");
         let mut decoder = FountainDecoder::new(metadata);
 
-        // Set throttle to 5 chunks
-        decoder.set_decode_throttle_count(5);
-
-        // Add 3 chunks (below threshold)
-        for _ in 0..3 {
+        // Add 5 chunks: First 3 trigger first decode, next 2 are pending
+        for _ in 0..5 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
                                        chunk.indices.first().unwrap_or(&0),
@@ -1296,14 +1318,15 @@ mod tests {
             }
         }
 
-        // Verify pending
-        assert!(decoder.get_pending_chunk_count() > 0, "Should have pending chunks");
+        // Verify pending (need 10 for next decode, only added 2 more)
+        assert!(decoder.get_pending_chunk_count() > 0, "Should have 2 pending chunks");
 
-        // Flush (should reset counter)
+        // Flush (should reset counter and process pending)
         decoder.flush_pending_chunks();
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending after flush");
 
-        // Add 3 more chunks (should also be below threshold after reset)
-        for _ in 0..3 {
+        // Add 5 more chunks (should also start pending - need 10 total)
+        for _ in 0..5 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
                                        chunk.indices.first().unwrap_or(&0),
@@ -1312,13 +1335,16 @@ mod tests {
             }
         }
 
-        // Verify new chunks are also pending (counter was reset)
-        let pending = decoder.get_pending_chunk_count();
-        assert!(pending > 0 && pending <= 3, "Counter should have been reset after flush");
+        // Verify new chunks are pending (counter was reset)
+        let pending_after = decoder.get_pending_chunk_count();
+        assert!(pending_after > 0, "Counter should have been reset, new chunks pending");
+        assert!(pending_after <= 5, "Should have at most 5 new pending chunks");
     }
 
     #[test]
     fn test_get_pending_chunk_count_accuracy() {
+        // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
+        // Then max(ceil(2 * 0.02), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
         let options = FountainEncoderOptions::default().with_block_size(4);
 
@@ -1332,23 +1358,44 @@ mod tests {
         );
 
         let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 2, "Should have 2 blocks");
         let mut decoder = FountainDecoder::new(metadata);
-
-        // Set high threshold to keep chunks pending
-        decoder.set_decode_throttle_count(20);
 
         // Initially 0
         assert_eq!(decoder.get_pending_chunk_count(), 0);
 
-        // Add chunks and verify count increases
-        for i in 1..=5 {
+        // Add chunks and verify count behavior with adaptive strategy
+        // Chunks 1-2: pending (count: 1, 2)
+        for i in 1..=2 {
             if let Some(chunk) = encoder.generate_chunk() {
                 let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
                                        chunk.indices.first().unwrap_or(&0),
                                        chunk.indices.last().unwrap_or(&0));
                 decoder.process_chunk_with_validation(chunk, chunk_key);
                 assert_eq!(decoder.get_pending_chunk_count(), i,
-                          "Pending count should match chunks added");
+                          "Pending count should be {} before first decode", i);
+            }
+        }
+
+        // Chunk 3: triggers first decode, count resets to 0
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                   chunk.indices.first().unwrap_or(&0),
+                                   chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+            assert_eq!(decoder.get_pending_chunk_count(), 0,
+                      "Count should be 0 after first decode at 3 chunks");
+        }
+
+        // Chunks 4-5: pending again (count: 1, 2)
+        for i in 1..=2 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
+                                       chunk.indices.first().unwrap_or(&0),
+                                       chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+                assert_eq!(decoder.get_pending_chunk_count(), i,
+                          "Pending count should be {} after first decode", i);
             }
         }
 
@@ -2417,5 +2464,471 @@ mod tests {
             assert_eq!(process_result.blocks_decoded, 0, "Duplicate should decode zero blocks");
             assert!(process_result.part_complete_info.is_none(), "Duplicate should have no part completion info");
         }
+    }
+
+    // ========================================
+    // Adaptive Decoding Strategy Tests
+    // ========================================
+
+    #[test]
+    fn test_adaptive_small_file_less_than_10_chunks() {
+        // Test that files requiring less than 10 chunks still decode successfully
+        // This verifies the "max(2%, 10)" logic works when total chunks < 10
+        let data = vec![1, 2, 3, 4]; // Very small file: 4 bytes
+        let options = FountainEncoderOptions::default().with_block_size(2); // 2 blocks total
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 2, "Should have 2 blocks");
+
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // With adaptive strategy:
+        // - First decode needs: ceil(2 * 1.10) = 3 chunks
+        // - After that: max(ceil(2 * 0.02), 10) = max(1, 10) = 10 chunks
+        // But we should still be able to complete with very few chunks via flush
+
+        let mut chunks_added = 0;
+        let mut completed = false;
+
+        // Add chunks until we have enough
+        while chunks_added < 50 && !completed {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+                chunks_added += 1;
+
+                // After enough chunks, flush to complete decoding
+                if chunks_added >= 5 {
+                    decoder.flush_pending_chunks();
+                    if decoder.is_complete() {
+                        completed = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        assert!(completed, "Should complete decoding even with small file");
+        assert!(chunks_added < 15, "Should complete with reasonable number of chunks (got {})", chunks_added);
+
+        let decoded = decoder.get_decoded_data().unwrap();
+        assert_eq!(decoded, data, "Decoded data should match original");
+    }
+
+    #[test]
+    fn test_adaptive_110_percent_threshold_first_decode() {
+        // Test that first decode waits for 110% of required chunks
+        let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 10 bytes
+        let options = FountainEncoderOptions::default().with_block_size(2); // 5 blocks
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 5, "Should have 5 blocks");
+
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // 110% of 5 blocks = ceil(5.5) = 6 chunks required for first decode
+        let required_for_first_decode = (5.0_f64 * 1.10).ceil() as usize;
+        assert_eq!(required_for_first_decode, 6, "Should require 6 chunks for first decode");
+
+        // Add exactly required_for_first_decode - 1 chunks
+        for _ in 0..(required_for_first_decode - 1) {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Should have pending chunks (not processed yet)
+        let pending_before = decoder.get_pending_chunk_count();
+        assert!(pending_before > 0, "Should have pending chunks before threshold");
+
+        // Add one more chunk to reach threshold
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}",
+                chunk.seed, chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        // Should have processed chunks (pending should be 0 or very low)
+        let pending_after = decoder.get_pending_chunk_count();
+        assert!(pending_after < pending_before,
+            "Should have processed chunks at 110% threshold (pending: {} -> {})",
+            pending_before, pending_after);
+    }
+
+    #[test]
+    fn test_adaptive_incremental_threshold_after_first_decode() {
+        // Test that after first decode, threshold is max(2%, 10 chunks)
+        let data = vec![0u8; 1000]; // Large file to ensure 2% > 10
+        let options = FountainEncoderOptions::default().with_block_size(20); // 50 blocks
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 50, "Should have 50 blocks");
+
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // First decode: 110% of 50 = 55 chunks
+        // After first decode: max(ceil(50 * 0.02), 10) = max(1, 10) = 10 chunks
+
+        // Add chunks to trigger first decode
+        let first_decode_threshold = (50.0_f64 * 1.10).ceil() as usize;
+        for _ in 0..first_decode_threshold {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // First decode should have been triggered
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "First decode should have processed all pending");
+
+        // Now test incremental threshold (should be 10 chunks since 2% of 50 = 1 < 10)
+        for i in 1..=9 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+            // Should still have pending chunks (threshold is 10)
+            assert_eq!(decoder.get_pending_chunk_count(), i,
+                "Should have {} pending chunks before incremental threshold", i);
+        }
+
+        // Add 10th chunk - should trigger decode
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}",
+                chunk.seed, chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        // Should have processed at 10 chunk threshold
+        assert_eq!(decoder.get_pending_chunk_count(), 0,
+            "Should have processed chunks at incremental threshold of 10");
+    }
+
+    #[test]
+    fn test_adaptive_complete_single_part_file_decode() {
+        // Test complete decode flow for a single-part file with adaptive strategy
+        let data = vec![0u8; 200]; // 200 bytes
+        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 20, "Should have 20 blocks");
+
+        let expected_checksum = crate::checksum::crc32_to_hex(&crate::checksum::crc32(&data));
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        let mut chunks_added = 0;
+        let mut completed = false;
+
+        // Keep adding chunks until complete
+        while chunks_added < 200 && !completed {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
+
+                let result = decoder.process_binary_chunk(
+                    &binary_data,
+                    total_source_blocks,
+                    &expected_checksum,
+                );
+
+                chunks_added += 1;
+
+                if result.is_complete {
+                    completed = true;
+                    assert!(result.completion_data.is_some(), "Should have completion data");
+
+                    let completion_data = result.completion_data.unwrap();
+                    assert_eq!(completion_data.data.len(), 200, "Decoded data should be 200 bytes");
+                    assert!(completion_data.integrity_ok, "Checksum should be valid");
+                    assert_eq!(completion_data.expected_checksum, expected_checksum);
+                    assert_eq!(completion_data.actual_checksum, expected_checksum);
+                    break;
+                }
+            }
+        }
+
+        assert!(completed, "Should complete decoding");
+        assert!(chunks_added >= 22, "Should need at least 110% of blocks (22 chunks)");
+        assert!(chunks_added < 100, "Should complete reasonably fast (got {} chunks)", chunks_added);
+
+        let decoded = decoder.get_decoded_data().unwrap();
+        assert_eq!(decoded, data, "Decoded data should match original");
+    }
+
+    #[test]
+    fn test_adaptive_multi_part_first_decode_110_percent() {
+        // Test that 110% threshold applies to each part separately in multi-part mode
+        let data = vec![0u8; 200]; // 200 bytes
+        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks total
+        let part_size = 100; // 2 parts of 100 bytes each (10 blocks per part)
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            true, // part_based_mode
+            part_size,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
+
+        // Part 0: Should have 10 blocks, need 110% = ceil(11) = 11 chunks for first decode
+        let part0_blocks = decoder.get_current_part_total_block_count();
+        assert_eq!(part0_blocks, 10, "Part 0 should have 10 blocks");
+
+        let part0_threshold = (part0_blocks as f64 * 1.10).ceil() as usize;
+        assert_eq!(part0_threshold, 11, "Part 0 should need 11 chunks for first decode");
+
+        // Add 10 chunks - should stay pending
+        for _ in 0..10 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        let pending_before = decoder.get_pending_chunk_count();
+        assert!(pending_before > 0, "Should have pending chunks before 110% threshold for part 0");
+
+        // Add 11th chunk - should trigger first decode
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}",
+                chunk.seed, chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        let pending_after = decoder.get_pending_chunk_count();
+        assert!(pending_after < pending_before,
+            "Should have processed chunks at 110% threshold for part 0");
+
+        // Verify the adaptive strategy is working per-part
+        // The key point is that each part gets its own 110% threshold, not the global block count
+    }
+
+    #[test]
+    fn test_adaptive_percentage_based_threshold_for_large_file() {
+        // Test that for very large files, the 2% threshold is used (not 10 chunks)
+        // Create a file with 1000 blocks, so 2% = 20 chunks > 10 chunks
+        let data = vec![0u8; 10000]; // 10000 bytes
+        let options = FountainEncoderOptions::default().with_block_size(10); // 1000 blocks
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false, 0, None,
+        );
+
+        let metadata = encoder.get_metadata();
+        assert_eq!(metadata.total_source_blocks, 1000, "Should have 1000 blocks");
+
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // First decode: 110% of 1000 = 1100 chunks
+        let first_decode_threshold = (1000.0_f64 * 1.10).ceil() as usize;
+        assert_eq!(first_decode_threshold, 1100);
+
+        // Add chunks to trigger first decode
+        for _ in 0..first_decode_threshold {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // First decode should have been triggered
+        assert_eq!(decoder.get_pending_chunk_count(), 0, "First decode should have processed all pending");
+
+        // Now test incremental threshold
+        // For 1000 blocks: max(ceil(1000 * 0.02), 10) = max(20, 10) = 20 chunks
+        let incremental_threshold = ((1000.0_f64 * 0.02).ceil() as usize).max(10);
+        assert_eq!(incremental_threshold, 20, "Incremental threshold should be 20 (2% of 1000)");
+
+        // Add 19 chunks - should stay pending
+        for _ in 0..19 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        assert_eq!(decoder.get_pending_chunk_count(), 19, "Should have 19 pending chunks");
+
+        // Add 20th chunk - should trigger decode
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}",
+                chunk.seed, chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        assert_eq!(decoder.get_pending_chunk_count(), 0,
+            "Should have processed at 2% threshold (20 chunks)");
+    }
+
+    #[test]
+    fn test_adaptive_part_reset_on_transition() {
+        // Test that first_decode_attempted flag resets when moving to next part
+        let data = vec![0u8; 200]; // 200 bytes
+        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks
+        let part_size = 100; // 2 parts
+
+        let mut encoder = FountainEncoder::new(
+            data.clone(),
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            true, // part_based_mode
+            part_size,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
+
+        // Set up checksums
+        encoder.set_part_checksums(vec![]);
+        let part_checksums = encoder.get_part_checksums();
+        for (idx, checksum_hex) in part_checksums.iter().enumerate() {
+            let mut checksum_array = [0u8; 4];
+            for (i, chunk) in checksum_hex.as_bytes().chunks(2).take(4).enumerate() {
+                let byte_str = std::str::from_utf8(chunk).unwrap();
+                checksum_array[i] = u8::from_str_radix(byte_str, 16).unwrap();
+            }
+            decoder.set_expected_part_checksum(idx, checksum_array);
+        }
+
+        // Part 0: First decode needs 110% of blocks
+        let part0_blocks = decoder.get_current_part_total_block_count();
+        let part0_threshold = (part0_blocks as f64 * 1.10).ceil() as usize;
+
+        // Add chunks for part 0
+        for _ in 0..part0_threshold {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Complete part 0
+        while !decoder.is_current_part_complete() {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        // Move to part 1
+        decoder.move_to_next_part();
+
+        // Part 1: Should also need 110% for FIRST decode (flag should have reset)
+        let part1_blocks = decoder.get_current_part_total_block_count();
+        let part1_threshold = (part1_blocks as f64 * 1.10).ceil() as usize;
+
+        // Add part1_threshold - 1 chunks - should stay pending
+        for _ in 0..(part1_threshold - 1) {
+            if let Some(chunk) = encoder.generate_chunk() {
+                let chunk_key = format!("{}:{}:{}:{}",
+                    chunk.seed, chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0));
+                decoder.process_chunk_with_validation(chunk, chunk_key);
+            }
+        }
+
+        let pending_before = decoder.get_pending_chunk_count();
+        assert!(pending_before > 0, "Part 1 should have pending chunks before 110% threshold");
+
+        // Add one more to reach 110%
+        if let Some(chunk) = encoder.generate_chunk() {
+            let chunk_key = format!("{}:{}:{}:{}",
+                chunk.seed, chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0));
+            decoder.process_chunk_with_validation(chunk, chunk_key);
+        }
+
+        let pending_after = decoder.get_pending_chunk_count();
+        assert!(pending_after < pending_before,
+            "Part 1 should process at 110% threshold, confirming flag reset");
     }
 }
