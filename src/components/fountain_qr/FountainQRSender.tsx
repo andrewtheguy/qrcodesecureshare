@@ -185,7 +185,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }
 
 
-  const handleBufferUpdate = (bufferSize: number) => {
+  const handleBufferUpdate = () => {
     // Optional: Monitor buffer status
     //console.log(`Buffer size: ${bufferSize}`)
   }
