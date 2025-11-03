@@ -282,7 +282,9 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "gen_range: invalid range [start=10, end=10), start must be less than end")]
+    #[should_panic(
+        expected = "gen_range: invalid range [start=10, end=10), start must be less than end"
+    )]
     fn test_gen_range_empty_range_panics() {
         let mut rng = LcgRandom::new(42);
         // This should panic because start >= end (empty range)

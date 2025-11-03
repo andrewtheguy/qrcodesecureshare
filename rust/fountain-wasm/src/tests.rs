@@ -41,9 +41,9 @@ mod integration_tests {
             "application/octet-stream".to_string(),
             0.0, // timestamp
             options,
-            false,              // part_based_mode
-            0,                  // part_size
-            None,               // seed_offset
+            false, // part_based_mode
+            0,     // part_size
+            None,  // seed_offset
         )
     }
 
@@ -165,9 +165,7 @@ mod integration_tests {
 
         // Generate pseudo-random data using fountain RNG
         let mut rng = create_rng(12345);
-        let data: Vec<u8> = (0..1000)
-            .map(|_| (rng.next_u32() % 256) as u8)
-            .collect();
+        let data: Vec<u8> = (0..1000).map(|_| (rng.next_u32() % 256) as u8).collect();
 
         let original_checksum = crc32(&data);
 
@@ -493,9 +491,9 @@ mod wasm_refactoring_tests {
     //! without requiring WASM compilation.
 
     use crate::checksum::crc32;
-    use crate::encoder::FountainEncoder;
     use crate::decoder::FountainDecoder;
-    use crate::parser::{parse_binary_chunk, create_chunk_key};
+    use crate::encoder::FountainEncoder;
+    use crate::parser::{create_chunk_key, parse_binary_chunk};
     use crate::types::{FountainEncoderOptions, PartInfo};
 
     /// Helper to create a test encoder
@@ -545,7 +543,8 @@ mod wasm_refactoring_tests {
         let data_size = 10000;
         let part_size = 1000;
         let encoder = make_encoder(data_size, true, part_size);
-        let (part_based_mode, current_part_index, total_parts, _part_size) = encoder.get_part_info();
+        let (part_based_mode, current_part_index, total_parts, _part_size) =
+            encoder.get_part_info();
 
         assert_eq!(part_based_mode, true);
         assert_eq!(current_part_index, 0); // Initial state
@@ -562,7 +561,8 @@ mod wasm_refactoring_tests {
         let could_move = encoder.move_to_next_part();
         assert!(could_move);
 
-        let (part_based_mode, current_part_index, total_parts, _part_size) = encoder.get_part_info();
+        let (part_based_mode, current_part_index, total_parts, _part_size) =
+            encoder.get_part_info();
 
         assert_eq!(part_based_mode, true);
         assert_eq!(current_part_index, 1); // Should be at part 1
@@ -585,7 +585,8 @@ mod wasm_refactoring_tests {
         let data_size = 10000;
         let part_size = 1000;
         let decoder = make_decoder(data_size, true, part_size);
-        let (part_based_mode, current_part_index, total_parts, returned_part_size) = decoder.get_part_info();
+        let (part_based_mode, current_part_index, total_parts, returned_part_size) =
+            decoder.get_part_info();
 
         assert_eq!(part_based_mode, true);
         assert_eq!(current_part_index, 0); // Initial state
@@ -803,8 +804,12 @@ mod wasm_refactoring_tests {
     fn test_create_chunk_key_differentiates_chunks() {
         let mut encoder = make_encoder(1000, false, 0);
 
-        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
-        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
+        let chunk1 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 1");
+        let chunk2 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 2");
 
         let key1 = create_chunk_key(chunk1.seed, chunk1.degree, &chunk1.indices);
         let key2 = create_chunk_key(chunk2.seed, chunk2.degree, &chunk2.indices);
@@ -830,7 +835,9 @@ mod wasm_refactoring_tests {
         assert_eq!(current, 0);
 
         // Generate chunks for first part
-        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
+        let chunk1 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 1");
         let key1 = create_chunk_key(chunk1.seed, chunk1.degree, &chunk1.indices);
         assert!(!key1.is_empty());
 
@@ -842,7 +849,9 @@ mod wasm_refactoring_tests {
         assert_eq!(current_new, current + 1);
 
         // Generate chunk for second part
-        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
+        let chunk2 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 2");
         let key2 = create_chunk_key(chunk2.seed, chunk2.degree, &chunk2.indices);
 
         // Keys should be different (different parts usually have different seeds)
@@ -911,7 +920,11 @@ mod wasm_refactoring_tests {
         assert!(parsed.part_metadata.is_some());
 
         // Create key for deduplication
-        let key = create_chunk_key(parsed.chunk.seed, parsed.chunk.degree, &parsed.chunk.indices);
+        let key = create_chunk_key(
+            parsed.chunk.seed,
+            parsed.chunk.degree,
+            &parsed.chunk.indices,
+        );
         assert!(!key.is_empty());
 
         // Compute and verify checksum
@@ -927,13 +940,17 @@ mod wasm_lib_tests {
     //! These tests verify that the WASM wrapper methods correctly interact with
     //! the underlying Rust fountain codec without requiring JavaScript/WASM execution.
 
-    use crate::encoder::FountainEncoder;
-    use crate::decoder::FountainDecoder;
-    use crate::types::FountainEncoderOptions;
     use crate::checksum::crc32;
+    use crate::decoder::FountainDecoder;
+    use crate::encoder::FountainEncoder;
+    use crate::types::FountainEncoderOptions;
 
     /// Helper to create a test encoder
-    fn make_test_encoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainEncoder {
+    fn make_test_encoder(
+        data_size: usize,
+        part_based_mode: bool,
+        part_size: usize,
+    ) -> FountainEncoder {
         let data = (0..data_size).map(|i| (i % 256) as u8).collect();
         FountainEncoder::new(
             data,
@@ -948,7 +965,11 @@ mod wasm_lib_tests {
     }
 
     /// Helper to create a test decoder
-    fn make_test_decoder(data_size: usize, part_based_mode: bool, part_size: usize) -> FountainDecoder {
+    fn make_test_decoder(
+        data_size: usize,
+        part_based_mode: bool,
+        part_size: usize,
+    ) -> FountainDecoder {
         let encoder = make_test_encoder(data_size, part_based_mode, part_size);
         let metadata = encoder.get_metadata().clone();
 
@@ -1009,9 +1030,15 @@ mod wasm_lib_tests {
     fn test_encoder_generate_multiple_chunks() {
         let mut encoder = make_test_encoder(1000, false, 0);
 
-        let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk 1");
-        let chunk2 = encoder.generate_chunk().expect("Failed to generate chunk 2");
-        let chunk3 = encoder.generate_chunk().expect("Failed to generate chunk 3");
+        let chunk1 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 1");
+        let chunk2 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 2");
+        let chunk3 = encoder
+            .generate_chunk()
+            .expect("Failed to generate chunk 3");
 
         // Chunks should have different seeds (with very high probability)
         let mut unique_seeds = std::collections::HashSet::new();
@@ -1437,10 +1464,15 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_complete());
-        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded = decoder
+            .get_decoded_data()
+            .expect("Failed to get decoded data");
         let decoded_checksum = crc32(&decoded);
 
-        assert_eq!(decoded_checksum, original_checksum, "Single-part checksum mismatch");
+        assert_eq!(
+            decoded_checksum, original_checksum,
+            "Single-part checksum mismatch"
+        );
         assert_eq!(decoded, data);
     }
 
@@ -1462,10 +1494,15 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_complete());
-        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded = decoder
+            .get_decoded_data()
+            .expect("Failed to get decoded data");
         let decoded_checksum = crc32(&decoded);
 
-        assert_eq!(decoded_checksum, original_checksum, "Medium data checksum mismatch");
+        assert_eq!(
+            decoded_checksum, original_checksum,
+            "Medium data checksum mismatch"
+        );
         assert_eq!(decoded, data);
     }
 
@@ -1487,10 +1524,15 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_complete());
-        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded = decoder
+            .get_decoded_data()
+            .expect("Failed to get decoded data");
         let decoded_checksum = crc32(&decoded);
 
-        assert_eq!(decoded_checksum, original_checksum, "Large data checksum mismatch");
+        assert_eq!(
+            decoded_checksum, original_checksum,
+            "Large data checksum mismatch"
+        );
         assert_eq!(decoded, data);
     }
 
@@ -1513,10 +1555,15 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_complete());
-        let decoded = decoder.get_decoded_data().expect("Failed to get decoded data");
+        let decoded = decoder
+            .get_decoded_data()
+            .expect("Failed to get decoded data");
         let decoded_checksum = crc32(&decoded);
 
-        assert_eq!(decoded_checksum, original_checksum, "Binary data checksum mismatch");
+        assert_eq!(
+            decoded_checksum, original_checksum,
+            "Binary data checksum mismatch"
+        );
         assert_eq!(decoded, data);
     }
 
@@ -1547,11 +1594,19 @@ mod wasm_lib_tests {
             chunks_for_part_1 += 1;
         }
 
-        assert!(decoder.is_current_part_complete(), "Part 1 should be complete");
-        let decoded_part_1 = decoder.get_current_part_data().expect("Failed to get part 1");
+        assert!(
+            decoder.is_current_part_complete(),
+            "Part 1 should be complete"
+        );
+        let decoded_part_1 = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 1");
         let decoded_part_1_checksum = crc32(&decoded_part_1);
 
-        assert_eq!(decoded_part_1_checksum, part_1_checksum, "Part 1 checksum mismatch");
+        assert_eq!(
+            decoded_part_1_checksum, part_1_checksum,
+            "Part 1 checksum mismatch"
+        );
         assert_eq!(decoded_part_1, part_1_data);
 
         // Move to part 2
@@ -1567,18 +1622,29 @@ mod wasm_lib_tests {
             chunks_for_part_2 += 1;
         }
 
-        assert!(decoder.is_current_part_complete(), "Part 2 should be complete");
-        let decoded_part_2 = decoder.get_current_part_data().expect("Failed to get part 2");
+        assert!(
+            decoder.is_current_part_complete(),
+            "Part 2 should be complete"
+        );
+        let decoded_part_2 = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 2");
         let decoded_part_2_checksum = crc32(&decoded_part_2);
 
-        assert_eq!(decoded_part_2_checksum, part_2_checksum, "Part 2 checksum mismatch");
+        assert_eq!(
+            decoded_part_2_checksum, part_2_checksum,
+            "Part 2 checksum mismatch"
+        );
         assert_eq!(decoded_part_2, part_2_data);
 
         // Verify full data integrity if possible
         let mut full_decoded = decoded_part_1;
         full_decoded.extend_from_slice(&decoded_part_2);
         let full_decoded_checksum = crc32(&full_decoded);
-        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            full_decoded_checksum, full_checksum,
+            "Full file checksum mismatch"
+        );
     }
 
     #[test]
@@ -1625,7 +1691,11 @@ mod wasm_lib_tests {
                 "Part {} checksum mismatch",
                 part_idx
             );
-            assert_eq!(decoded_part, parts_data[part_idx], "Part {} data mismatch", part_idx);
+            assert_eq!(
+                decoded_part, parts_data[part_idx],
+                "Part {} data mismatch",
+                part_idx
+            );
 
             all_parts_decoded.extend_from_slice(&decoded_part);
 
@@ -1638,7 +1708,10 @@ mod wasm_lib_tests {
 
         // Verify full file checksum
         let full_decoded_checksum = crc32(&all_parts_decoded);
-        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            full_decoded_checksum, full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_parts_decoded, total_data, "Full data mismatch");
     }
 
@@ -1691,7 +1764,11 @@ mod wasm_lib_tests {
             let expected_part_start = part_idx * part_size;
             let expected_part_end = (part_idx + 1) * part_size;
             let expected_part = &total_data[expected_part_start..expected_part_end];
-            assert_eq!(decoded_part, expected_part, "Part {} data mismatch", part_idx);
+            assert_eq!(
+                decoded_part, expected_part,
+                "Part {} data mismatch",
+                part_idx
+            );
 
             all_decoded_parts.extend_from_slice(&decoded_part);
 
@@ -1704,7 +1781,10 @@ mod wasm_lib_tests {
 
         // Verify full file
         let full_decoded_checksum = crc32(&all_decoded_parts);
-        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            full_decoded_checksum, full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_decoded_parts, total_data, "Full file data mismatch");
     }
 
@@ -1875,7 +1955,9 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_current_part_complete());
-        let part_1_data = decoder.get_current_part_data().expect("Failed to get part 1");
+        let part_1_data = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 1");
         assert_eq!(crc32(&part_1_data), part_1_checksum);
 
         // Move to part 2
@@ -1895,7 +1977,9 @@ mod wasm_lib_tests {
         }
 
         assert!(decoder.is_current_part_complete());
-        let part_2_data = decoder.get_current_part_data().expect("Failed to get part 2");
+        let part_2_data = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 2");
         assert_eq!(crc32(&part_2_data), part_2_checksum);
     }
 
@@ -1911,8 +1995,8 @@ mod wasm_lib_tests {
 
         // Pre-compute expected checksums for each part
         let parts_data: Vec<&[u8]> = vec![
-            &total_data[0..512_000],      // Part 0: 512KB
-            &total_data[512_000..1_024_000], // Part 1: 512KB
+            &total_data[0..512_000],           // Part 0: 512KB
+            &total_data[512_000..1_024_000],   // Part 1: 512KB
             &total_data[1_024_000..1_300_000], // Part 2: 276KB (uneven/trimmed)
         ];
         let part_checksums: Vec<[u8; 4]> = parts_data.iter().map(|p| crc32(p)).collect();
@@ -1933,8 +2017,14 @@ mod wasm_lib_tests {
                 chunks += 1;
             }
 
-            assert!(decoder.is_current_part_complete(), "Part {} should be complete", part_idx);
-            let decoded_part = decoder.get_current_part_data().expect(&format!("Failed to get part {}", part_idx));
+            assert!(
+                decoder.is_current_part_complete(),
+                "Part {} should be complete",
+                part_idx
+            );
+            let decoded_part = decoder
+                .get_current_part_data()
+                .expect(&format!("Failed to get part {}", part_idx));
             let decoded_checksum = crc32(&decoded_part);
 
             // Verify individual part checksum matches expected
@@ -1946,7 +2036,8 @@ mod wasm_lib_tests {
 
             // Verify data integrity for this part
             assert_eq!(
-                &decoded_part[..], parts_data[part_idx],
+                &decoded_part[..],
+                parts_data[part_idx],
                 "Part {} data mismatch",
                 part_idx
             );
@@ -1956,13 +2047,19 @@ mod wasm_lib_tests {
             // Move to next part
             if part_idx < 2 {
                 assert!(encoder.move_to_next_part(), "Should move to next part");
-                assert!(decoder.move_to_next_part(), "Decoder should move to next part");
+                assert!(
+                    decoder.move_to_next_part(),
+                    "Decoder should move to next part"
+                );
             }
         }
 
         // Verify full file checksum
         let full_decoded_checksum = crc32(&all_decoded);
-        assert_eq!(full_decoded_checksum, full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            full_decoded_checksum, full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_decoded, total_data, "Full data mismatch");
     }
 
@@ -1974,9 +2071,9 @@ mod wasm_lib_tests {
 
         // Pre-compute expected checksums
         let parts_data: Vec<&[u8]> = vec![
-            &total_data[0..2000],       // Part 0: 2000 bytes
-            &total_data[2000..4000],    // Part 1: 2000 bytes
-            &total_data[4000..5500],    // Part 2: 1500 bytes (uneven)
+            &total_data[0..2000],    // Part 0: 2000 bytes
+            &total_data[2000..4000], // Part 1: 2000 bytes
+            &total_data[4000..5500], // Part 2: 1500 bytes (uneven)
         ];
         let part_checksums: Vec<[u8; 4]> = parts_data.iter().map(|p| crc32(p)).collect();
         let full_checksum = crc32(&total_data);
@@ -1996,10 +2093,17 @@ mod wasm_lib_tests {
             }
 
             assert!(decoder.is_current_part_complete());
-            let decoded_part = decoder.get_current_part_data().expect(&format!("Failed to get part {}", part_idx));
+            let decoded_part = decoder
+                .get_current_part_data()
+                .expect(&format!("Failed to get part {}", part_idx));
 
             // Verify individual part checksum
-            assert_eq!(crc32(&decoded_part), part_checksums[part_idx], "Part {} checksum mismatch", part_idx);
+            assert_eq!(
+                crc32(&decoded_part),
+                part_checksums[part_idx],
+                "Part {} checksum mismatch",
+                part_idx
+            );
 
             all_decoded.extend_from_slice(&decoded_part);
 
@@ -2010,7 +2114,11 @@ mod wasm_lib_tests {
         }
 
         // Verify full checksum
-        assert_eq!(crc32(&all_decoded), full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            crc32(&all_decoded),
+            full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_decoded, total_data);
     }
 
@@ -2048,7 +2156,9 @@ mod wasm_lib_tests {
             }
 
             assert!(decoder.is_current_part_complete());
-            let decoded_part = decoder.get_current_part_data().expect(&format!("Failed to get part {}", part_idx));
+            let decoded_part = decoder
+                .get_current_part_data()
+                .expect(&format!("Failed to get part {}", part_idx));
             let part_checksum = crc32(&decoded_part);
 
             actual_part_checksums.push(part_checksum);
@@ -2063,15 +2173,18 @@ mod wasm_lib_tests {
         // Verify all individual part checksums match
         for part_idx in 0..expected_parts {
             assert_eq!(
-                actual_part_checksums[part_idx],
-                expected_part_checksums[part_idx],
+                actual_part_checksums[part_idx], expected_part_checksums[part_idx],
                 "Part {} checksum mismatch",
                 part_idx
             );
         }
 
         // Verify full file checksum
-        assert_eq!(crc32(&all_decoded), full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            crc32(&all_decoded),
+            full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_decoded, total_data);
     }
 
@@ -2099,8 +2212,14 @@ mod wasm_lib_tests {
             chunks += 1;
         }
 
-        let part_0_data = decoder.get_current_part_data().expect("Failed to get part 0");
-        assert_eq!(crc32(&part_0_data), part_0_checksum, "Part 0 checksum mismatch");
+        let part_0_data = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 0");
+        assert_eq!(
+            crc32(&part_0_data),
+            part_0_checksum,
+            "Part 0 checksum mismatch"
+        );
         all_decoded.extend_from_slice(&part_0_data);
 
         encoder.move_to_next_part();
@@ -2115,13 +2234,23 @@ mod wasm_lib_tests {
             chunks += 1;
         }
 
-        let part_1_data = decoder.get_current_part_data().expect("Failed to get part 1");
+        let part_1_data = decoder
+            .get_current_part_data()
+            .expect("Failed to get part 1");
         assert_eq!(part_1_data.len(), 1, "Part 1 should have exactly 1 byte");
-        assert_eq!(crc32(&part_1_data), part_1_checksum, "Part 1 checksum mismatch");
+        assert_eq!(
+            crc32(&part_1_data),
+            part_1_checksum,
+            "Part 1 checksum mismatch"
+        );
         all_decoded.extend_from_slice(&part_1_data);
 
         // Verify full checksum
-        assert_eq!(crc32(&all_decoded), full_checksum, "Full file checksum mismatch");
+        assert_eq!(
+            crc32(&all_decoded),
+            full_checksum,
+            "Full file checksum mismatch"
+        );
         assert_eq!(all_decoded, total_data);
     }
 }

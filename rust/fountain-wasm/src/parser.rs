@@ -97,9 +97,7 @@ pub fn parse_binary_chunk(
     let indices_byte_length = num_indices * 2;
     let min_length_with_indices_and_checksum = 6 + indices_byte_length + 4;
     if bytes.len() < min_length_with_indices_and_checksum {
-        return Err(
-            "Chunk too short: missing indices or checksum".to_string(),
-        );
+        return Err("Chunk too short: missing indices or checksum".to_string());
     }
 
     // Extract indices (2 bytes each, big-endian)
@@ -259,12 +257,7 @@ pub fn serialize_chunk_to_binary(chunk: &FountainChunk, _include_part_metadata: 
 mod tests {
     use super::*;
 
-    fn create_test_chunk_binary(
-        seed: u16,
-        degree: u8,
-        indices: &[u16],
-        data: &[u8],
-    ) -> Vec<u8> {
+    fn create_test_chunk_binary(seed: u16, degree: u8, indices: &[u16], data: &[u8]) -> Vec<u8> {
         let mut binary = Vec::new();
 
         // Magic bytes
@@ -345,14 +338,14 @@ mod tests {
         let result = parse_binary_chunk(&binary, false, 2); // Only 2 source blocks
 
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .contains("exceeds total source blocks"));
+        assert!(result.unwrap_err().contains("exceeds total source blocks"));
     }
 
     #[test]
     fn test_validate_checksum_valid() {
-        let binary = vec![0xFF, 0xFD, 0x00, 0x2A, 0x01, 0x01, 0x00, 0x00, 0xAA, 0x01, 0x02, 0x03, 0x04];
+        let binary = vec![
+            0xFF, 0xFD, 0x00, 0x2A, 0x01, 0x01, 0x00, 0x00, 0xAA, 0x01, 0x02, 0x03, 0x04,
+        ];
         let result = validate_chunk_checksum(&binary, 9, "01020304");
 
         assert!(result.is_ok());
@@ -361,7 +354,9 @@ mod tests {
 
     #[test]
     fn test_validate_checksum_mismatch() {
-        let binary = vec![0xFF, 0xFD, 0x00, 0x2A, 0x01, 0x01, 0x00, 0x00, 0xAA, 0x01, 0x02, 0x03, 0x04];
+        let binary = vec![
+            0xFF, 0xFD, 0x00, 0x2A, 0x01, 0x01, 0x00, 0x00, 0xAA, 0x01, 0x02, 0x03, 0x04,
+        ];
         let result = validate_chunk_checksum(&binary, 9, "05060708");
 
         assert!(result.is_ok());
@@ -395,7 +390,7 @@ mod tests {
         binary.extend_from_slice(&[0x00, 0x00]); // currentPart = 0
         binary.extend_from_slice(&[0x00, 0x05]); // totalParts = 5
         binary.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // partChecksum bytes
-        // Data
+                                                             // Data
         binary.extend_from_slice(&[0x42, 0x43]);
         // Checksum
         binary.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);
