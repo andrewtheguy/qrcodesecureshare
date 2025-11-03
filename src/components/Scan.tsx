@@ -46,10 +46,19 @@ interface WebRTCReceiveState {
   data: WebRTCScanData | null
 }
 
+type QRCodeType = 'encrypted-file' | 'webrtc-transfer' | 'text'
+
+interface ParsedQRData {
+  type: QRCodeType
+  encryptedFileData?: EncryptedFileData
+  webrtcData?: WebRTCScanData
+}
+
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const location = useLocation()
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
+  const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null)
   const [webrtcReceive, setWebrtcReceive] = useState<WebRTCReceiveState>({ isReceiving: false, data: null })
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
@@ -91,19 +100,23 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     const data = qrData instanceof Uint8Array ? new TextDecoder().decode(qrData) : qrData
     console.log('QR code detected:', data)
 
+    // Always set the scanned text
+    setScannedText(data)
+    setScanning(false)
+
     // Check if QR code contains encrypted file data
     if (data.startsWith(ENCRYPTED_FILE_MAGIC)) {
       try {
         const jsonData = data.substring(ENCRYPTED_FILE_MAGIC.length)
         const parsedData = JSON.parse(jsonData) as EncryptedFileData
         console.log('Parsed encrypted file data:', parsedData)
-        setScannedData(parsedData)
-        setScannedText(null)
-        setScanState({ showingDetails: true, confirmDownload: true })
-        setScanning(false)
+        setParsedQRData({
+          type: 'encrypted-file',
+          encryptedFileData: parsedData
+        })
       } catch (error) {
         console.error('Invalid encrypted file data in QR code:', error)
-        alert('QR code contains invalid encrypted file data')
+        setParsedQRData({ type: 'text' })
       }
     } else if (data.startsWith(WEBRTC_TRANSFER_MAGIC)) {
       // Check if it's a WebRTC transfer QR code
@@ -111,21 +124,18 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         const jsonData = data.substring(WEBRTC_TRANSFER_MAGIC.length)
         const parsedData = JSON.parse(jsonData) as WebRTCScanData
         console.log('Parsed WebRTC transfer data:', parsedData)
-        // Show WebRTC receiver directly in this tab
-        setWebrtcReceive({ isReceiving: true, data: parsedData })
-        setScannedData(null)
-        setScannedText(null)
-        setScanning(false)
+        setParsedQRData({
+          type: 'webrtc-transfer',
+          webrtcData: parsedData
+        })
       } catch (error) {
         console.error('Invalid WebRTC transfer data in QR code:', error)
-        alert('QR code contains invalid WebRTC transfer data')
+        setParsedQRData({ type: 'text' })
       }
     } else {
       // Regular text QR code
       console.log('Regular text QR code:', data)
-      setScannedText(data)
-      setScannedData(null)
-      setScanning(false)
+      setParsedQRData({ type: 'text' })
     }
   }, [])
 
@@ -174,7 +184,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const renderTextWithLinks = (text: string) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g
     const parts = text.split(urlRegex)
-    
+
     return parts.map((part, index) => {
       if (part.match(urlRegex)) {
         return (
@@ -191,6 +201,23 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       }
       return part
     })
+  }
+
+  const handleProceedToEncryptedFile = () => {
+    if (parsedQRData?.type === 'encrypted-file' && parsedQRData.encryptedFileData) {
+      setScannedData(parsedQRData.encryptedFileData)
+      setScanState({ showingDetails: true, confirmDownload: true })
+      setScannedText(null)
+      setParsedQRData(null)
+    }
+  }
+
+  const handleProceedToWebRTC = () => {
+    if (parsedQRData?.type === 'webrtc-transfer' && parsedQRData.webrtcData) {
+      setWebrtcReceive({ isReceiving: true, data: parsedQRData.webrtcData })
+      setScannedText(null)
+      setParsedQRData(null)
+    }
   }
 
 
@@ -863,6 +890,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                 onClick={() => {
                   setScannedData(null)
                   setScannedText(null)
+                  setParsedQRData(null)
                   setWebrtcReceive({ isReceiving: false, data: null })
                   setScanState({ showingDetails: false, confirmDownload: false })
                   setUploadMode('camera')
@@ -919,11 +947,74 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* Show detected type alert if it's encrypted file or WebRTC */}
+            {parsedQRData?.type === 'encrypted-file' && (
+              <Alert className="bg-blue-50 border-blue-200">
+                <AlertDescription className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    🔐 Encrypted File Detected
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This QR code contains an encrypted file download link. Click below to proceed to decryption.
+                  </p>
+                  {parsedQRData.encryptedFileData && (
+                    <div className="text-sm space-y-1">
+                      <div><span className="font-semibold">Filename:</span> {parsedQRData.encryptedFileData.filename}</div>
+                      <div><span className="font-semibold">Type:</span> {parsedQRData.encryptedFileData.encryptionType === 'asymmetric' ? 'Asymmetric (RSA)' : 'Symmetric (AES)'}</div>
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {parsedQRData?.type === 'webrtc-transfer' && (
+              <Alert className="bg-purple-50 border-purple-200">
+                <AlertDescription className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    🌐 WebRTC Transfer Detected
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This QR code is for a direct peer-to-peer file transfer. Click below to connect and receive the file.
+                  </p>
+                  {parsedQRData.webrtcData && (
+                    <div className="text-sm space-y-1">
+                      <div><span className="font-semibold">Filename:</span> {parsedQRData.webrtcData.filename}</div>
+                      <div><span className="font-semibold">Size:</span> {(parsedQRData.webrtcData.fileSize / 1024).toFixed(2)}KB</div>
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-3">
               <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {renderTextWithLinks(scannedText)}
               </div>
-              <div className="flex justify-center gap-3">
+
+              {/* Show proceed CTAs for encrypted file or WebRTC */}
+              {parsedQRData?.type === 'encrypted-file' && (
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handleProceedToEncryptedFile}
+                    className="flex items-center gap-2"
+                  >
+                    🔐 Proceed to File Decryption
+                  </Button>
+                </div>
+              )}
+
+              {parsedQRData?.type === 'webrtc-transfer' && (
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handleProceedToWebRTC}
+                    className="flex items-center gap-2"
+                  >
+                    🌐 Connect to WebRTC Transfer
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex justify-center gap-3 flex-wrap">
                 <Button
                   variant="outline"
                   onClick={() => copyToClipboard(scannedText)}
@@ -934,6 +1025,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                   onClick={() => {
                     setScannedData(null)
                     setScannedText(null)
+                    setParsedQRData(null)
                     setWebrtcReceive({ isReceiving: false, data: null })
                     setUploadMode('camera')
                   }}
@@ -941,7 +1033,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                   📷 Scan Another QR
                 </Button>
               </div>
-              {onGenerateQR && (
+              {onGenerateQR && parsedQRData?.type === 'text' && (
                 <div className="flex justify-center">
                   <Button
                     onClick={() => onGenerateQR(scannedText)}
