@@ -101,7 +101,7 @@ export default defineConfig(({ mode }) => ({
     // PWA plugin - only enabled in production builds
     ...(mode === 'production' ? [VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icon.svg', 'apple-touch-icon-180x180.png'],
+      includeAssets: ['favicon.ico', 'icon.svg', 'icon-ios.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
         name: 'QR Code Secure Share',
         short_name: 'QR Secure',
