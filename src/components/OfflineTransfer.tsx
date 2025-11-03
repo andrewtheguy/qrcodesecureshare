@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { OfflineQRMode } from './OfflineQRMode'
 import { OfflineQRReceiver } from './OfflineQRReceiver'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,9 +16,33 @@ import {
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
-export default function OfflineTransfer() {
+interface OfflineTransferProps {
+  defaultMode?: 'select' | 'send' | 'receive'
+}
+
+export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTransferProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
-  const [mode, setMode] = useState<'select' | 'send' | 'receive'>('select')
+  const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
+
+  // Sync mode with route changes
+  useEffect(() => {
+    if (location.pathname === '/offline/send') {
+      setMode('send')
+    } else if (location.pathname === '/offline/receive') {
+      setMode('receive')
+    } else if (location.pathname === '/offline' || location.pathname === '/offline/') {
+      setMode('select')
+    }
+  }, [location.pathname])
+
+  // Redirect to /offline if on /send route but no file is selected
+  useEffect(() => {
+    if (location.pathname === '/offline/send' && !selectedFile) {
+      navigate('/offline', { replace: true })
+    }
+  }, [location.pathname, selectedFile, navigate])
   const [backDialogOpen, setBackDialogOpen] = useState(false)
   const [pendingBackContext, setPendingBackContext] = useState<'send' | 'receive' | null>(null)
 
@@ -30,13 +55,13 @@ export default function OfflineTransfer() {
         return
       }
       setSelectedFile(file)
-      setMode('send')
+      navigate('/offline/send')
     }
   }
 
   const handleReset = () => {
     setSelectedFile(null)
-    setMode('select')
+    navigate('/offline')
   }
 
   const requestBackNavigation = (context: 'send' | 'receive') => {
@@ -106,24 +131,23 @@ export default function OfflineTransfer() {
             </CardContent>
           </Card>
 
-          <Card
-            className="cursor-pointer hover:border-primary transition-colors"
-            onClick={() => setMode('receive')}
-          >
-            <CardHeader>
-              <CardTitle className="text-center">📥 Receive a File</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  Use your camera to scan animated QR codes and receive a file
-                </p>
-                <Button className="w-full" size="lg">
-                  Start Receiving
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+          <NavLink to="/offline/receive">
+            <Card className="cursor-pointer hover:border-primary transition-colors">
+              <CardHeader>
+                <CardTitle className="text-center">📥 Receive a File</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Use your camera to scan animated QR codes and receive a file
+                  </p>
+                  <Button className="w-full" size="lg">
+                    Start Receiving
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </NavLink>
         </div>
       )}
 

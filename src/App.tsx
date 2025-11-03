@@ -25,6 +25,10 @@ function App() {
     if (tab.path === '/scan') {
       return location.pathname.startsWith('/scan')
     }
+    // For offline route, match /offline, /offline/send and /offline/receive
+    if (tab.path === '/offline') {
+      return location.pathname.startsWith('/offline')
+    }
     return location.pathname === tab.path
   }) || tabs[0]
 
@@ -68,10 +72,13 @@ function App() {
                         to={tab.path}
                         onClick={() => setMobileMenuOpen(false)}
                         className={({ isActive }) => {
-                          // For scan route, also match nested routes
-                          const active = tab.path === '/scan'
-                            ? location.pathname.startsWith('/scan')
-                            : isActive
+                          // For nested routes, also match nested paths
+                          let active = isActive
+                          if (tab.path === '/scan') {
+                            active = location.pathname.startsWith('/scan')
+                          } else if (tab.path === '/offline') {
+                            active = location.pathname.startsWith('/offline')
+                          }
                           return `px-4 py-3 rounded-md text-left font-medium transition-colors ${
                             active
                               ? 'bg-primary text-primary-foreground'
@@ -97,10 +104,13 @@ function App() {
                   key={tab.path}
                   to={tab.path}
                   className={({ isActive }) => {
-                    // For scan route, also match nested routes
-                    const active = tab.path === '/scan'
-                      ? location.pathname.startsWith('/scan')
-                      : isActive
+                    // For nested routes, also match nested paths
+                    let active = isActive
+                    if (tab.path === '/scan') {
+                      active = location.pathname.startsWith('/scan')
+                    } else if (tab.path === '/offline') {
+                      active = location.pathname.startsWith('/offline')
+                    }
                     return `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       active
                         ? 'bg-primary text-primary-foreground'
@@ -130,7 +140,11 @@ function App() {
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
             <Route path="upload" element={<ScanWithNavigation defaultMode="file" />} />
           </Route>
-          <Route path="/offline" element={<OfflineTransfer />} />
+          <Route path="/offline">
+            <Route index element={<OfflineTransfer defaultMode="select" />} />
+            <Route path="send" element={<OfflineTransfer defaultMode="send" />} />
+            <Route path="receive" element={<OfflineTransfer defaultMode="receive" />} />
+          </Route>
         </Routes>
       </main>
     </div>
