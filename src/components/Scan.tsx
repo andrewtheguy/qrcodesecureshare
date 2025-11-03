@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { NavLink, useLocation } from 'react-router-dom'
-import { ENCRYPTED_FILE_MAGIC } from '../constants'
+import { ENCRYPTED_FILE_MAGIC, WEBRTC_TRANSFER_MAGIC } from '../constants'
 import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -105,32 +105,27 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         console.error('Invalid encrypted file data in QR code:', error)
         alert('QR code contains invalid encrypted file data')
       }
-    } else {
+    } else if (data.startsWith(WEBRTC_TRANSFER_MAGIC)) {
       // Check if it's a WebRTC transfer QR code
       try {
-        const parsedData = JSON.parse(data)
-        if (parsedData.type === 'webrtc-transfer' && parsedData.peerId && parsedData.encryptionKey) {
-          console.log('Parsed WebRTC transfer data:', parsedData)
-          // Show WebRTC receiver directly in this tab
-          setWebrtcReceive({ isReceiving: true, data: parsedData as WebRTCScanData })
-          setScannedData(null)
-          setScannedText(null)
-          setScanning(false)
-          return
-        } else {
-          // Regular text QR code
-          console.log('Regular text QR code:', data)
-          setScannedText(data)
-          setScannedData(null)
-          setScanning(false)
-        }
-      } catch {
-        // Regular text QR code
-        console.log('Regular text QR code:', data)
-        setScannedText(data)
+        const jsonData = data.substring(WEBRTC_TRANSFER_MAGIC.length)
+        const parsedData = JSON.parse(jsonData) as WebRTCScanData
+        console.log('Parsed WebRTC transfer data:', parsedData)
+        // Show WebRTC receiver directly in this tab
+        setWebrtcReceive({ isReceiving: true, data: parsedData })
         setScannedData(null)
+        setScannedText(null)
         setScanning(false)
+      } catch (error) {
+        console.error('Invalid WebRTC transfer data in QR code:', error)
+        alert('QR code contains invalid WebRTC transfer data')
       }
+    } else {
+      // Regular text QR code
+      console.log('Regular text QR code:', data)
+      setScannedText(data)
+      setScannedData(null)
+      setScanning(false)
     }
   }, [])
 
