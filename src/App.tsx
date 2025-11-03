@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Upload from './components/Upload'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
@@ -9,27 +10,17 @@ import './App.css'
 import './utils/generateKeys' // Load key generation utility
 
 function App() {
-  const [activeTab, setActiveTab] = useState("generateqr")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
-
-  const handleGenerateQRFromScan = (text: string) => {
-    // Switch to generate QR tab and set the text
-    setActiveTab("generateqr")
-    // Use a small delay to ensure the tab switch completes
-    setTimeout(() => {
-      uploadRef.current?.setTextFromScan(text)
-    }, 100)
-  }
+  const location = useLocation()
 
   const tabs = [
-    { value: "generateqr", label: "Generate QR Code", icon: "🔲" },
-    { value: "upload", label: "Upload File", icon: "📤" },
-    { value: "scan", label: "Scan QR", icon: "📸" },
-    { value: "offline", label: "Offline Transfer", icon: "🔄" },
+    { path: "/generate", label: "Generate QR Code", icon: "🔲" },
+    { path: "/upload", label: "Upload File", icon: "📤" },
+    { path: "/scan", label: "Scan QR", icon: "📸" },
+    { path: "/offline", label: "Offline Transfer", icon: "🔄" },
   ]
 
-  const activeTabInfo = tabs.find(tab => tab.value === activeTab)
+  const activeTabInfo = tabs.find(tab => location.pathname === tab.path) || tabs[0]
 
   return (
     <div className="min-h-screen">
@@ -66,14 +57,12 @@ function App() {
                 <SheetContent side="right" className="w-72">
                   <div className="flex flex-col gap-2 mt-8">
                     {tabs.map((tab) => (
-                      <button
-                        key={tab.value}
-                        onClick={() => {
-                          setActiveTab(tab.value)
-                          setMobileMenuOpen(false)
-                        }}
-                        className={`px-4 py-3 rounded-md text-left font-medium transition-colors ${
-                          activeTab === tab.value
+                      <NavLink
+                        key={tab.path}
+                        to={tab.path}
+                        onClick={() => setMobileMenuOpen(false)}
+                        className={({ isActive }) => `px-4 py-3 rounded-md text-left font-medium transition-colors ${
+                          isActive
                             ? 'bg-primary text-primary-foreground'
                             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                         }`}
@@ -82,7 +71,7 @@ function App() {
                           <span className="text-xl">{tab.icon}</span>
                           <span>{tab.label}</span>
                         </span>
-                      </button>
+                      </NavLink>
                     ))}
                   </div>
                 </SheetContent>
@@ -92,11 +81,11 @@ function App() {
             {/* Desktop Navigation Links */}
             <div className="hidden md:flex space-x-1">
               {tabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  onClick={() => setActiveTab(tab.value)}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    activeTab === tab.value
+                <NavLink
+                  key={tab.path}
+                  to={tab.path}
+                  className={({ isActive }) => `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
                   }`}
@@ -105,7 +94,7 @@ function App() {
                     <span className="text-lg">{tab.icon}</span>
                     <span>{tab.label}</span>
                   </span>
-                </button>
+                </NavLink>
               ))}
             </div>
           </div>
@@ -114,13 +103,46 @@ function App() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
-        {activeTab === "generateqr" && <Upload ref={uploadRef} mode="text" />}
-        {activeTab === "upload" && <Upload mode="file" />}
-        {activeTab === "scan" && <Scan onGenerateQR={handleGenerateQRFromScan} />}
-        {activeTab === "offline" && <OfflineTransfer />}
+        <Routes>
+          <Route path="/" element={<Navigate to="/generate" replace />} />
+          <Route path="/generate" element={<UploadWithState mode="text" />} />
+          <Route path="/upload" element={<Upload mode="file" />} />
+          <Route path="/scan" element={<ScanWithNavigation />} />
+          <Route path="/offline" element={<OfflineTransfer />} />
+        </Routes>
       </main>
     </div>
   )
+}
+
+// Wrapper component for Upload that handles location state
+function UploadWithState({ mode }: { mode: 'text' | 'file' }) {
+  const location = useLocation()
+  const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
+
+  // Handle text passed from Scan component via navigation state
+  useEffect(() => {
+    const state = location.state as { text?: string } | null
+    if (state?.text && uploadRef.current) {
+      const text = state.text
+      setTimeout(() => {
+        uploadRef.current?.setTextFromScan(text)
+      }, 100)
+    }
+  }, [location.state])
+
+  return <Upload ref={uploadRef} mode={mode} />
+}
+
+// Wrapper component for Scan that handles navigation to Generate
+function ScanWithNavigation() {
+  const navigate = useNavigate()
+
+  const handleGenerateQR = (text: string) => {
+    navigate('/generate', { state: { text } })
+  }
+
+  return <Scan onGenerateQR={handleGenerateQR} />
 }
 
 export default App
