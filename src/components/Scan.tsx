@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { NavLink, useLocation } from 'react-router-dom'
 import { ENCRYPTED_FILE_MAGIC } from '../constants'
 import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
@@ -37,6 +38,7 @@ interface WebRTCScanData {
 
 interface ScanProps {
   onGenerateQR?: (text: string) => void
+  defaultMode?: 'camera' | 'file'
 }
 
 interface WebRTCReceiveState {
@@ -44,14 +46,24 @@ interface WebRTCReceiveState {
   data: WebRTCScanData | null
 }
 
-const Scan = ({ onGenerateQR }: ScanProps) => {
+const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
+  const location = useLocation()
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [webrtcReceive, setWebrtcReceive] = useState<WebRTCReceiveState>({ isReceiving: false, data: null })
   const [scanning, setScanning] = useState(false)
   const [decrypting, setDecrypting] = useState(false)
   const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
-  const [uploadMode, setUploadMode] = useState<'camera' | 'file'>('camera')
+  const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode)
+
+  // Sync uploadMode with route changes
+  useEffect(() => {
+    if (location.pathname === '/scan/camera') {
+      setUploadMode('camera')
+    } else if (location.pathname === '/scan/upload') {
+      setUploadMode('file')
+    }
+  }, [location.pathname])
   const [privateKeyInput, setPrivateKeyInput] = useState('') // raw input field (cleared after load)
   const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
   const [privateKeyFingerprint, setPrivateKeyFingerprint] = useState<string | null>(null)
@@ -520,20 +532,26 @@ const Scan = ({ onGenerateQR }: ScanProps) => {
               
               {/* Mode selection */}
               <div className="flex justify-center gap-2 mb-4">
-                <Button
-                  variant={uploadMode === 'camera' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setUploadMode('camera')}
-                >
-                  📷 Camera
-                </Button>
-                <Button
-                  variant={uploadMode === 'file' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setUploadMode('file')}
-                >
-                  📁 Upload Image
-                </Button>
+                <NavLink to="/scan/camera">
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? 'default' : 'outline'}
+                      size="sm"
+                    >
+                      📷 Camera
+                    </Button>
+                  )}
+                </NavLink>
+                <NavLink to="/scan/upload">
+                  {({ isActive }) => (
+                    <Button
+                      variant={isActive ? 'default' : 'outline'}
+                      size="sm"
+                    >
+                      📁 Upload Image
+                    </Button>
+                  )}
+                </NavLink>
               </div>
 
               {uploadMode === 'camera' ? (

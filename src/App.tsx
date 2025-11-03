@@ -20,7 +20,13 @@ function App() {
     { path: "/offline", label: "Offline Transfer", icon: "🔄" },
   ]
 
-  const activeTabInfo = tabs.find(tab => location.pathname === tab.path) || tabs[0]
+  const activeTabInfo = tabs.find(tab => {
+    // For scan route, match both /scan/camera and /scan/upload
+    if (tab.path === '/scan') {
+      return location.pathname.startsWith('/scan')
+    }
+    return location.pathname === tab.path
+  }) || tabs[0]
 
   return (
     <div className="min-h-screen">
@@ -61,11 +67,17 @@ function App() {
                         key={tab.path}
                         to={tab.path}
                         onClick={() => setMobileMenuOpen(false)}
-                        className={({ isActive }) => `px-4 py-3 rounded-md text-left font-medium transition-colors ${
-                          isActive
-                            ? 'bg-primary text-primary-foreground'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                        }`}
+                        className={({ isActive }) => {
+                          // For scan route, also match nested routes
+                          const active = tab.path === '/scan'
+                            ? location.pathname.startsWith('/scan')
+                            : isActive
+                          return `px-4 py-3 rounded-md text-left font-medium transition-colors ${
+                            active
+                              ? 'bg-primary text-primary-foreground'
+                              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                          }`
+                        }}
                       >
                         <span className="flex items-center gap-3">
                           <span className="text-xl">{tab.icon}</span>
@@ -84,11 +96,17 @@ function App() {
                 <NavLink
                   key={tab.path}
                   to={tab.path}
-                  className={({ isActive }) => `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                  }`}
+                  className={({ isActive }) => {
+                    // For scan route, also match nested routes
+                    const active = tab.path === '/scan'
+                      ? location.pathname.startsWith('/scan')
+                      : isActive
+                    return `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                    }`
+                  }}
                 >
                   <span className="flex items-center gap-2">
                     <span className="text-lg">{tab.icon}</span>
@@ -107,7 +125,11 @@ function App() {
           <Route path="/" element={<Navigate to="/generate" replace />} />
           <Route path="/generate" element={<UploadWithState mode="text" />} />
           <Route path="/upload" element={<Upload mode="file" />} />
-          <Route path="/scan" element={<ScanWithNavigation />} />
+          <Route path="/scan">
+            <Route index element={<Navigate to="/scan/camera" replace />} />
+            <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
+            <Route path="upload" element={<ScanWithNavigation defaultMode="file" />} />
+          </Route>
           <Route path="/offline" element={<OfflineTransfer />} />
         </Routes>
       </main>
@@ -135,14 +157,14 @@ function UploadWithState({ mode }: { mode: 'text' | 'file' }) {
 }
 
 // Wrapper component for Scan that handles navigation to Generate
-function ScanWithNavigation() {
+function ScanWithNavigation({ defaultMode }: { defaultMode?: 'camera' | 'file' }) {
   const navigate = useNavigate()
 
   const handleGenerateQR = (text: string) => {
     navigate('/generate', { state: { text } })
   }
 
-  return <Scan onGenerateQR={handleGenerateQR} />
+  return <Scan onGenerateQR={handleGenerateQR} defaultMode={defaultMode} />
 }
 
 export default App
