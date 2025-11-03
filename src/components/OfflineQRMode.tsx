@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { computeChecksum } from '@/utils/checksum'
+import { OFFLINE_METADATA_MAGIC } from '@/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -122,7 +123,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
              checksum
            }
           if (cancelled) return
-          const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
+          const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
           const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
             width: 400,
             margin: 2,
@@ -162,7 +163,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
           }
           if (cancelled) return
-            const utf8Bytes = new TextEncoder().encode(JSON.stringify(meta))
+            const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
             const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
               width: 400,
               margin: 2,

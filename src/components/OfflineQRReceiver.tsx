@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -41,22 +42,79 @@ interface FountainDetectedMetadata extends DetectedMetadata {
 }
 
 export function OfflineQRReceiver() {
+  const location = useLocation()
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
-  const [isScanning, setIsScanning] = useState(false)
   const [detectedMetadata, setDetectedMetadata] = useState<SequentialDetectedMetadata | FountainDetectedMetadata | null>(null)
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
   const [receiverKey, setReceiverKey] = useState(0)
-  const [error, setError] = useState<string>('')
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
-  // Flag to prevent duplicate metadata detection
+  const [isScanning, setIsScanning] = useState(false)
+  const [error, setError] = useState<string>('')
   const [metadataDetected, setMetadataDetected] = useState(false)
 
   const addDebugLog = (message: string) => {
     console.log(`[AnimatedQRReceiver] ${message}`)
     setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
+
+  // Load metadata from location state on mount
+  useEffect(() => {
+    interface LocationState {
+      metadata?: {
+        mode: 'sequential' | 'fountain'
+        fileName: string
+        fileSize: number
+        fileType: string
+        sessionId: number
+        checksum: string
+        checksumAlg: string
+        totalChunks?: number
+        totalSourceBlocks?: number
+        blockSize?: number
+        feedbackEnabled?: boolean
+        partBasedMode?: boolean
+        partSize?: number
+      }
+    }
+    const state = location.state as LocationState | null
+    if (state?.metadata) {
+      const parsed = state.metadata
+      addDebugLog('Loading metadata from navigation state')
+
+      if (parsed.mode === 'sequential' && parsed.totalChunks !== undefined) {
+        setDetectedMetadata({
+          mode: 'sequential',
+          name: parsed.fileName,
+          size: parsed.fileSize,
+          type: parsed.fileType,
+          sessionId: parsed.sessionId,
+          totalChunks: parsed.totalChunks,
+          checksum: parsed.checksum,
+          checksumAlg: parsed.checksumAlg
+        })
+        addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
+      } else if (parsed.mode === 'fountain' && parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
+        setDetectedMetadata({
+          mode: 'fountain',
+          name: parsed.fileName,
+          size: parsed.fileSize,
+          type: parsed.fileType,
+          sessionId: parsed.sessionId,
+          totalSourceBlocks: parsed.totalSourceBlocks,
+          blockSize: parsed.blockSize,
+          checksum: parsed.checksum,
+          checksumAlg: parsed.checksumAlg,
+          feedbackEnabled: parsed.feedbackEnabled,
+          partBasedMode: parsed.partBasedMode,
+          partSize: parsed.partSize
+        })
+        addDebugLog(`✓ Fountain metadata: ${parsed.fileName} (${parsed.totalSourceBlocks} blocks)`)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleMetadataScan = useCallback((data: string | Uint8Array) => {
     // Prevent duplicate detection if metadata already detected

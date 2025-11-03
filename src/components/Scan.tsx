@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
-import { ENCRYPTED_FILE_MAGIC, WEBRTC_TRANSFER_MAGIC } from '../constants'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { ENCRYPTED_FILE_MAGIC, WEBRTC_TRANSFER_MAGIC, OFFLINE_METADATA_MAGIC } from '../constants'
 import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -36,6 +36,42 @@ interface WebRTCScanData {
   fileSize: number
 }
 
+interface SequentialMetadata {
+  type: 'METADATA'
+  mode: 'sequential'
+  version: 1
+  sessionId: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  totalChunks: number
+  chunkSize: number
+  timestamp: number
+  checksumAlg: 'crc32'
+  checksum: string
+}
+
+interface FountainMetadata {
+  type: 'METADATA'
+  mode: 'fountain'
+  version: 1
+  sessionId: number
+  fileName: string
+  fileType: string
+  fileSize: number
+  timestamp: number
+  totalSourceBlocks: number
+  blockSize: number
+  chunkSize: number
+  checksumAlg: 'crc32'
+  checksum: string
+  feedbackEnabled: boolean
+  partBasedMode?: boolean
+  partSize?: number
+}
+
+type OfflineMetadata = SequentialMetadata | FountainMetadata
+
 interface ScanProps {
   onGenerateQR?: (text: string) => void
   defaultMode?: 'camera' | 'file'
@@ -46,16 +82,18 @@ interface WebRTCReceiveState {
   data: WebRTCScanData | null
 }
 
-type QRCodeType = 'encrypted-file' | 'webrtc-transfer' | 'text'
+type QRCodeType = 'encrypted-file' | 'webrtc-transfer' | 'offline-metadata' | 'text'
 
 interface ParsedQRData {
   type: QRCodeType
   encryptedFileData?: EncryptedFileData
   webrtcData?: WebRTCScanData
+  offlineMetadata?: OfflineMetadata
 }
 
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const location = useLocation()
+  const navigate = useNavigate()
   const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null)
@@ -130,6 +168,26 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         })
       } catch (error) {
         console.error('Invalid WebRTC transfer data in QR code:', error)
+        setParsedQRData({ type: 'text' })
+      }
+    } else if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
+      // Check if it's an offline file transfer metadata QR code
+      try {
+        const jsonData = data.substring(OFFLINE_METADATA_MAGIC.length)
+        const parsedData = JSON.parse(jsonData) as OfflineMetadata
+        console.log('Parsed offline metadata:', parsedData)
+        // Validate that it's actually metadata
+        if (parsedData.type === 'METADATA' && (parsedData.mode === 'sequential' || parsedData.mode === 'fountain')) {
+          setParsedQRData({
+            type: 'offline-metadata',
+            offlineMetadata: parsedData
+          })
+        } else {
+          console.error('Invalid offline metadata structure')
+          setParsedQRData({ type: 'text' })
+        }
+      } catch (error) {
+        console.error('Invalid offline metadata in QR code:', error)
         setParsedQRData({ type: 'text' })
       }
     } else {
@@ -217,6 +275,13 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       setWebrtcReceive({ isReceiving: true, data: parsedQRData.webrtcData })
       setScannedText(null)
       setParsedQRData(null)
+    }
+  }
+
+  const handleProceedToOfflineReceive = () => {
+    if (parsedQRData?.type === 'offline-metadata' && parsedQRData.offlineMetadata) {
+      // Navigate to /offline/receive with metadata in location state
+      navigate('/offline/receive', { state: { metadata: parsedQRData.offlineMetadata } })
     }
   }
 
@@ -986,6 +1051,32 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               </Alert>
             )}
 
+            {parsedQRData?.type === 'offline-metadata' && (
+              <Alert className="bg-amber-50 border-amber-200">
+                <AlertDescription className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    📡 Offline File Transfer Detected
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This QR code contains metadata for an offline file transfer. Click below to proceed to receive the file data.
+                  </p>
+                  {parsedQRData.offlineMetadata && (
+                    <div className="text-sm space-y-1">
+                      <div><span className="font-semibold">Filename:</span> {parsedQRData.offlineMetadata.fileName}</div>
+                      <div><span className="font-semibold">Size:</span> {(parsedQRData.offlineMetadata.fileSize / 1024).toFixed(2)}KB</div>
+                      <div><span className="font-semibold">Mode:</span> {parsedQRData.offlineMetadata.mode === 'sequential' ? 'Sequential' : 'Fountain'}</div>
+                      {parsedQRData.offlineMetadata.mode === 'sequential' && (
+                        <div><span className="font-semibold">Chunks:</span> {parsedQRData.offlineMetadata.totalChunks}</div>
+                      )}
+                      {parsedQRData.offlineMetadata.mode === 'fountain' && (
+                        <div><span className="font-semibold">Blocks:</span> {parsedQRData.offlineMetadata.totalSourceBlocks}</div>
+                      )}
+                    </div>
+                  )}
+                </AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-3">
               <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {renderTextWithLinks(scannedText)}
@@ -1010,6 +1101,17 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                     className="flex items-center gap-2"
                   >
                     🌐 Connect to WebRTC Transfer
+                  </Button>
+                </div>
+              )}
+
+              {parsedQRData?.type === 'offline-metadata' && (
+                <div className="flex justify-center">
+                  <Button
+                    onClick={handleProceedToOfflineReceive}
+                    className="flex items-center gap-2"
+                  >
+                    📡 Proceed to Receive Data
                   </Button>
                 </div>
               )}
