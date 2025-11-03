@@ -14,7 +14,7 @@ function App() {
   const location = useLocation()
 
   const tabs = [
-    { path: "/generate", label: "Generate QR Code", icon: "🔲" },
+    { path: "/", label: "Generate QR Code", icon: "🔲" },
     { path: "/upload", label: "Upload File", icon: "📤" },
     { path: "/scan", label: "Scan QR", icon: "📸" },
     { path: "/offline", label: "Offline Transfer", icon: "🔄" },
@@ -132,8 +132,7 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
         <Routes>
-          <Route path="/" element={<Navigate to="/generate" replace />} />
-          <Route path="/generate" element={<UploadWithState mode="text" />} />
+          <Route path="/" element={<UploadWithState mode="text" />} />
           <Route path="/upload" element={<Upload mode="file" />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
@@ -175,7 +174,7 @@ function ScanWithNavigation({ defaultMode }: { defaultMode?: 'camera' | 'file' }
   const navigate = useNavigate()
 
   const handleGenerateQR = (text: string) => {
-    navigate('/generate', { state: { text } })
+    navigate('/', { state: { text } })
   }
 
   return <Scan onGenerateQR={handleGenerateQR} defaultMode={defaultMode} />
