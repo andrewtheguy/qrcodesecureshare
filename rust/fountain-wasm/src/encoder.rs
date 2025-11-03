@@ -116,11 +116,7 @@ impl FountainEncoder {
         };
 
         // Only store original_data when part_based_mode is enabled to save memory
-        let original_data = if part_based_mode {
-            Some(data)
-        } else {
-            None
-        };
+        let original_data = if part_based_mode { Some(data) } else { None };
 
         Self {
             blocks,
@@ -201,9 +197,7 @@ impl FountainEncoder {
     /// the iteration stops early. The returned vector may contain fewer than `count`
     /// chunks if no blocks become available before `count` iterations.
     pub fn generate_chunks(&mut self, count: usize) -> Vec<FountainChunk> {
-        (0..count)
-            .map_while(|_| self.generate_chunk())
-            .collect()
+        (0..count).map_while(|_| self.generate_chunk()).collect()
     }
 
     /// Get the metadata
@@ -229,13 +223,11 @@ impl FountainEncoder {
             let part_start_byte = self.current_part_index * self.part_size;
             let part_end_byte = std::cmp::min(
                 (self.current_part_index + 1) * self.part_size,
-                self.original_data
-                    .as_ref()
-                    .map(|d| d.len())
-                    .unwrap_or(0),
+                self.original_data.as_ref().map(|d| d.len()).unwrap_or(0),
             );
             let start_block_index = part_start_byte / self.metadata.block_size;
-            let end_block_index = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+            let end_block_index =
+                (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
 
             // Filter out empty blocks (blocks cleared via mark_part_completed)
             (start_block_index..end_block_index.min(self.blocks.len()))
@@ -351,14 +343,12 @@ impl FountainEncoder {
         let part_start_byte = part_index * self.part_size;
         let part_end_byte = std::cmp::min(
             (part_index + 1) * self.part_size,
-            self.original_data
-                .as_ref()
-                .map(|d| d.len())
-                .unwrap_or(0),
+            self.original_data.as_ref().map(|d| d.len()).unwrap_or(0),
         );
 
         let start_block_index = part_start_byte / self.metadata.block_size;
-        let end_block_index = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+        let end_block_index =
+            (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
 
         // Clear source blocks for this part to save memory
         for i in start_block_index..end_block_index.min(self.blocks.len()) {
@@ -519,8 +509,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode enabled
-            0,     // part_size = 0 (invalid)
+            true, // part_based_mode enabled
+            0,    // part_size = 0 (invalid)
             None,
         );
     }
@@ -535,8 +525,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,   // part_based_mode enabled
-            250,    // part_size = 250
+            true, // part_based_mode enabled
+            250,  // part_size = 250
             None,
         );
 
@@ -557,8 +547,8 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,   // part_based_mode enabled
-            250,    // part_size = 250
+            true, // part_based_mode enabled
+            250,  // part_size = 250
             None,
         );
 
@@ -572,7 +562,10 @@ mod tests {
 
         // Now generate_chunk should return None since no blocks are available
         let chunk = encoder.generate_chunk();
-        assert!(chunk.is_none(), "Expected None when no blocks are available");
+        assert!(
+            chunk.is_none(),
+            "Expected None when no blocks are available"
+        );
     }
 
     // ========================================
@@ -591,7 +584,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode enabled
+            true, // part_based_mode enabled
             part_size,
             Some(42), // fixed seed for determinism
         );
@@ -601,7 +594,9 @@ mod tests {
 
         // Part 0: blocks 0-1
         for _ in 0..5 {
-            let chunk = encoder.generate_chunk().expect("Should generate chunk for part 0");
+            let chunk = encoder
+                .generate_chunk()
+                .expect("Should generate chunk for part 0");
             // All indices should be 0 or 1 (blocks in part 0)
             for &idx in &chunk.indices {
                 assert!(idx < 2, "Index {} is outside part 0 range [0, 1]", idx);
@@ -611,7 +606,9 @@ mod tests {
         // Move to part 1: blocks 2-3
         assert!(encoder.move_to_next_part());
         for _ in 0..5 {
-            let chunk = encoder.generate_chunk().expect("Should generate chunk for part 1");
+            let chunk = encoder
+                .generate_chunk()
+                .expect("Should generate chunk for part 1");
             // All indices should be 2 or 3 (blocks in part 1)
             for &idx in &chunk.indices {
                 assert!(
@@ -625,7 +622,9 @@ mod tests {
         // Move to part 2: block 4
         assert!(encoder.move_to_next_part());
         for _ in 0..5 {
-            let chunk = encoder.generate_chunk().expect("Should generate chunk for part 2");
+            let chunk = encoder
+                .generate_chunk()
+                .expect("Should generate chunk for part 2");
             // All indices should be 4 (only block in part 2)
             for &idx in &chunk.indices {
                 assert_eq!(idx, 4, "Index {} is outside part 2 range [4]", idx);
@@ -645,13 +644,16 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
 
         let (_, _, total_parts, _) = encoder.get_part_info();
-        assert_eq!(total_parts, 1, "Should have only 1 part when part_size > data length");
+        assert_eq!(
+            total_parts, 1,
+            "Should have only 1 part when part_size > data length"
+        );
 
         // Should be able to generate chunks from the single part
         let chunk = encoder.generate_chunk().expect("Should generate chunk");
@@ -673,18 +675,28 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
 
         let (_, _, total_parts, _) = encoder.get_part_info();
-        assert_eq!(total_parts, 5, "Should have 5 parts for 5 bytes with 1 byte/part");
+        assert_eq!(
+            total_parts, 5,
+            "Should have 5 parts for 5 bytes with 1 byte/part"
+        );
 
         // Each part should have exactly 1 block
         for part_idx in 0..5 {
-            let chunk = encoder.generate_chunk().expect(&format!("Should generate chunk for part {}", part_idx));
-            assert_eq!(chunk.indices.len(), 1, "Part {} should have exactly 1 block", part_idx);
+            let chunk = encoder
+                .generate_chunk()
+                .expect(&format!("Should generate chunk for part {}", part_idx));
+            assert_eq!(
+                chunk.indices.len(),
+                1,
+                "Part {} should have exactly 1 block",
+                part_idx
+            );
             assert_eq!(chunk.indices[0], part_idx, "Block index should match part");
 
             if part_idx < 4 {
@@ -710,7 +722,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
@@ -722,7 +734,9 @@ mod tests {
         // Verify we can process all 3 parts
         for part_idx in 0..3 {
             // Should be able to generate chunks from this part
-            let chunk = encoder.generate_chunk().expect(&format!("Should generate chunk for part {}", part_idx));
+            let chunk = encoder
+                .generate_chunk()
+                .expect(&format!("Should generate chunk for part {}", part_idx));
             assert!(!chunk.data.is_empty(), "Part {} should have data", part_idx);
 
             // Move to next part if not the last
@@ -732,7 +746,10 @@ mod tests {
         }
 
         // Try to move beyond last part (should fail)
-        assert!(!encoder.move_to_next_part(), "Should not move past last part");
+        assert!(
+            !encoder.move_to_next_part(),
+            "Should not move past last part"
+        );
     }
 
     #[test]
@@ -746,27 +763,34 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             Some(123), // fixed seed
         );
 
         // Part 0: seed should start at 0
-        let chunk0 = encoder.generate_chunk().expect("Should generate from part 0");
+        let chunk0 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 0");
         let seed0 = chunk0.seed;
 
         // Move to part 1
         assert!(encoder.move_to_next_part());
 
         // Part 1: seed should continue from where part 0 left off (incremental)
-        let chunk1 = encoder.generate_chunk().expect("Should generate from part 1");
+        let chunk1 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 1");
         let seed1 = chunk1.seed;
 
         // Seeds should be different (seed increments with each call, regardless of part)
         assert_ne!(seed0, seed1, "Seeds should be different across parts");
 
         // Indices in part 1 should be different from part 0
-        assert_ne!(chunk0.indices, chunk1.indices, "Different parts should generate different indices");
+        assert_ne!(
+            chunk0.indices, chunk1.indices,
+            "Different parts should generate different indices"
+        );
 
         // Part 1 indices should be within part 1's block range
         // Part 1: bytes 250-499 maps to blocks 0-1
@@ -786,7 +810,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
@@ -795,18 +819,26 @@ mod tests {
         let blocks_before = encoder
             .get_contiguous_blocks_data(0, 2)
             .expect("Should retrieve blocks 0-1");
-        assert!(!blocks_before.is_empty(), "Blocks should have data before completion");
+        assert!(
+            !blocks_before.is_empty(),
+            "Blocks should have data before completion"
+        );
 
         // Mark part 0 as completed (blocks 0-1)
         encoder.mark_part_completed(0);
 
         // Generate chunks should now return None for part 0 (blocks cleared)
         let chunk = encoder.generate_chunk();
-        assert!(chunk.is_none(), "Should return None after blocks are cleared");
+        assert!(
+            chunk.is_none(),
+            "Should return None after blocks are cleared"
+        );
 
         // Move to part 1 and verify we can still generate chunks
         assert!(encoder.move_to_next_part());
-        let chunk = encoder.generate_chunk().expect("Should generate chunk for part 1");
+        let chunk = encoder
+            .generate_chunk()
+            .expect("Should generate chunk for part 1");
         assert!(!chunk.data.is_empty());
     }
 
@@ -821,7 +853,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
@@ -841,8 +873,10 @@ mod tests {
             .get_contiguous_blocks_data(0, 2)
             .expect("Should still retrieve block range");
         // Blocks are replaced with empty Vec, so result size will be 0 or minimal
-        assert!(blocks_after.is_empty() || blocks_after.iter().all(|&b| b == 0),
-            "Cleared blocks should be empty or zero-filled");
+        assert!(
+            blocks_after.is_empty() || blocks_after.iter().all(|&b| b == 0),
+            "Cleared blocks should be empty or zero-filled"
+        );
     }
 
     #[test]
@@ -859,7 +893,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options.clone(),
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             Some(seed_offset),
         );
@@ -870,7 +904,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             Some(seed_offset),
         );
@@ -917,7 +951,7 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
@@ -926,19 +960,31 @@ mod tests {
         let part0_blocks = encoder
             .get_contiguous_blocks_data(0, 2)
             .expect("Should get part 0 blocks");
-        assert_eq!(part0_blocks.len(), 800, "Part 0 should have 800 bytes (2 * 400)");
+        assert_eq!(
+            part0_blocks.len(),
+            800,
+            "Part 0 should have 800 bytes (2 * 400)"
+        );
 
         // Get blocks for part 1 (blocks 2-3)
         let part1_blocks = encoder
             .get_contiguous_blocks_data(2, 4)
             .expect("Should get part 1 blocks");
-        assert_eq!(part1_blocks.len(), 800, "Part 1 should have 800 bytes (2 * 400)");
+        assert_eq!(
+            part1_blocks.len(),
+            800,
+            "Part 1 should have 800 bytes (2 * 400)"
+        );
 
         // Get blocks for part 2 (block 4)
         let part2_blocks = encoder
             .get_contiguous_blocks_data(4, 5)
             .expect("Should get part 2 blocks");
-        assert_eq!(part2_blocks.len(), 400, "Part 2 should have 400 bytes (1 * 400)");
+        assert_eq!(
+            part2_blocks.len(),
+            400,
+            "Part 2 should have 400 bytes (1 * 400)"
+        );
 
         // All should contain the original data pattern (99u8)
         assert!(part0_blocks.iter().all(|&b| b == 99));
@@ -958,13 +1004,15 @@ mod tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
 
         // Part 0: block 0
-        let chunk0 = encoder.generate_chunk().expect("Should generate from part 0");
+        let chunk0 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 0");
         assert_eq!(chunk0.indices[0], 0);
 
         // Mark part 0 as completed
@@ -975,7 +1023,9 @@ mod tests {
 
         // Move to part 1: block 1
         assert!(encoder.move_to_next_part());
-        let chunk1 = encoder.generate_chunk().expect("Should generate from part 1");
+        let chunk1 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 1");
         assert_eq!(chunk1.indices[0], 1);
 
         // Mark part 1 as completed
@@ -986,7 +1036,9 @@ mod tests {
 
         // Move to part 2: block 2
         assert!(encoder.move_to_next_part());
-        let chunk2 = encoder.generate_chunk().expect("Should generate from part 2");
+        let chunk2 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 2");
         assert_eq!(chunk2.indices[0], 2);
 
         // Mark part 2 as completed
@@ -995,7 +1047,9 @@ mod tests {
 
         // Move to part 3 (last part): block 3
         assert!(encoder.move_to_next_part());
-        let chunk3 = encoder.generate_chunk().expect("Should generate from part 3");
+        let chunk3 = encoder
+            .generate_chunk()
+            .expect("Should generate from part 3");
         assert_eq!(chunk3.indices[0], 3);
 
         // Mark part 3 as completed

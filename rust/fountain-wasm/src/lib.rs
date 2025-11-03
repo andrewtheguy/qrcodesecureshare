@@ -16,8 +16,12 @@ mod tests;
 use js_sys::{Array, Uint8Array};
 use wasm_bindgen::prelude::*;
 
-pub use types::{FountainChunk, FountainMetadata, PartInfo, ParsedChunkResult, ParsedPartMetadata, ChecksumValidationResult, FinalChecksumValidationResult, PartCompleteInfo, ChunkProcessResult, BinaryChunkProcessResult, ChunkStatus, CompletionData};
 pub use parser::PartMetadata;
+pub use types::{
+    BinaryChunkProcessResult, ChecksumValidationResult, ChunkProcessResult, ChunkStatus,
+    CompletionData, FinalChecksumValidationResult, FountainChunk, FountainMetadata,
+    ParsedChunkResult, ParsedPartMetadata, PartCompleteInfo, PartInfo,
+};
 
 /// WASM-exported Fountain Encoder
 #[wasm_bindgen]
@@ -139,7 +143,10 @@ impl WasmFountainEncoder {
             web_sys::console::error_1(&"Part info values exceed u32::MAX".into());
         }
 
-        let current_part_checksum = self.encoder.get_current_part_checksum().map(|s| s.to_string());
+        let current_part_checksum = self
+            .encoder
+            .get_current_part_checksum()
+            .map(|s| s.to_string());
         let checksums = self.encoder.get_part_checksums();
         let part_checksums = if !checksums.is_empty() {
             Some(checksums.into_iter().map(|s| s.to_string()).collect())
@@ -185,7 +192,11 @@ impl WasmFountainEncoder {
 
     /// Get contiguous blocks data
     #[wasm_bindgen(js_name = getContiguousBlocksData)]
-    pub fn get_contiguous_blocks_data(&self, start_idx: usize, end_idx: usize) -> Option<Uint8Array> {
+    pub fn get_contiguous_blocks_data(
+        &self,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Option<Uint8Array> {
         self.encoder
             .get_contiguous_blocks_data(start_idx, end_idx)
             .map(|data| {
@@ -404,7 +415,13 @@ impl WasmFountainDecoder {
     pub fn validate_current_part_checksum(&self, expected_checksum: Uint8Array) -> Option<JsValue> {
         // Convert Uint8Array to [u8; 4]
         if expected_checksum.length() != 4 {
-            web_sys::console::error_1(&format!("Expected checksum must be 4 bytes, got {}", expected_checksum.length()).into());
+            web_sys::console::error_1(
+                &format!(
+                    "Expected checksum must be 4 bytes, got {}",
+                    expected_checksum.length()
+                )
+                .into(),
+            );
             return None;
         }
 
@@ -455,14 +472,19 @@ impl WasmFountainDecoder {
     /// * `part_index` - Part index (0-indexed)
     /// * `checksum_bytes` - Checksum as 4 bytes (big-endian CRC32)
     #[wasm_bindgen(js_name = setExpectedPartChecksum)]
-    pub fn set_expected_part_checksum(&mut self, part_index: u32, checksum_bytes: Uint8Array) -> Result<(), JsValue> {
+    pub fn set_expected_part_checksum(
+        &mut self,
+        part_index: u32,
+        checksum_bytes: Uint8Array,
+    ) -> Result<(), JsValue> {
         if checksum_bytes.length() != 4 {
             return Err(JsValue::from_str("checksum_bytes must be exactly 4 bytes"));
         }
 
         let mut checksum = [0u8; 4];
         checksum_bytes.copy_to(&mut checksum);
-        self.decoder.set_expected_part_checksum(part_index as usize, checksum);
+        self.decoder
+            .set_expected_part_checksum(part_index as usize, checksum);
         Ok(())
     }
 
@@ -476,7 +498,11 @@ impl WasmFountainDecoder {
     /// # Returns
     /// Result object with { is_duplicate, blocks_decoded, part_complete_info? }
     #[wasm_bindgen(js_name = processChunkWithValidation)]
-    pub fn process_chunk_with_validation(&mut self, chunk: JsValue, chunk_key: String) -> Result<JsValue, JsValue> {
+    pub fn process_chunk_with_validation(
+        &mut self,
+        chunk: JsValue,
+        chunk_key: String,
+    ) -> Result<JsValue, JsValue> {
         // Deserialize chunk from JS
         let chunk: FountainChunk = serde_wasm_bindgen::from_value(chunk)
             .map_err(|e| JsValue::from_str(&format!("Deserialization error: {}", e)))?;
@@ -631,11 +657,9 @@ impl WasmFountainDecoder {
         let final_checksum = self.final_checksum.as_deref().unwrap_or("");
 
         // Call the decoder's process_binary_chunk method
-        let result = self.decoder.process_binary_chunk(
-            &binary_vec,
-            total_source_blocks,
-            final_checksum,
-        );
+        let result =
+            self.decoder
+                .process_binary_chunk(&binary_vec, total_source_blocks, final_checksum);
 
         // Serialize result to JsValue (without completion data)
         let js_result = serde_wasm_bindgen::to_value(&result)
@@ -784,11 +808,17 @@ pub fn create_chunk_key_wasm(seed: u32, degree: u32, indices: Array) -> Result<S
     let mut indices_vec = Vec::new();
     for i in 0..indices.length() {
         let val = indices.get(i);
-        let num = val.as_f64().ok_or_else(|| JsValue::from_str("Invalid index value"))?;
+        let num = val
+            .as_f64()
+            .ok_or_else(|| JsValue::from_str("Invalid index value"))?;
         indices_vec.push(num as usize);
     }
 
-    Ok(parser::create_chunk_key(seed, degree as usize, &indices_vec))
+    Ok(parser::create_chunk_key(
+        seed,
+        degree as usize,
+        &indices_vec,
+    ))
 }
 
 /// Validate a CRC32 checksum within binary chunk data

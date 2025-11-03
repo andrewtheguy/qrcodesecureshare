@@ -1,6 +1,6 @@
 use crate::types::{FountainChunk, FountainMetadata};
 use crate::xor::xor_into;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 
 /// Internal representation of a chunk with active indices
 #[derive(Clone)]
@@ -16,6 +16,12 @@ pub struct FountainDecoder {
     decoded_blocks: HashMap<usize, Vec<u8>>,
     /// Chunks being processed
     chunks: Vec<DecodingChunk>,
+    /// Map tracking which chunks reference each block index
+    block_to_chunks: HashMap<usize, BTreeSet<usize>>,
+    /// Queue of singleton chunks waiting to be processed
+    singleton_queue: VecDeque<usize>,
+    /// Fast lookup to avoid enqueuing a singleton twice
+    singleton_queue_members: HashSet<usize>,
     /// Number of chunks received
     received_chunk_count: usize,
 
@@ -64,6 +70,9 @@ impl FountainDecoder {
             metadata,
             decoded_blocks: HashMap::new(),
             chunks: Vec::new(),
+            block_to_chunks: HashMap::new(),
+            singleton_queue: VecDeque::new(),
+            singleton_queue_members: HashSet::new(),
             received_chunk_count: 0,
             part_based_mode: false,
             part_size: 0,
@@ -91,6 +100,9 @@ impl FountainDecoder {
             metadata,
             decoded_blocks: HashMap::new(),
             chunks: Vec::new(),
+            block_to_chunks: HashMap::new(),
+            singleton_queue: VecDeque::new(),
+            singleton_queue_members: HashSet::new(),
             received_chunk_count: 0,
             part_based_mode: true,
             part_size,
@@ -111,6 +123,36 @@ impl FountainDecoder {
         }
     }
 
+    /// Track a new chunk across auxiliary data structures
+    fn register_chunk(&mut self, chunk_idx: usize) {
+        if let Some(chunk) = self.chunks.get(chunk_idx) {
+            for &block_idx in &chunk.indices {
+                self.block_to_chunks
+                    .entry(block_idx)
+                    .or_insert_with(BTreeSet::new)
+                    .insert(chunk_idx);
+            }
+
+            if chunk.indices.len() == 1 {
+                self.enqueue_singleton(chunk_idx);
+            }
+        }
+    }
+
+    /// Queue a singleton chunk for processing exactly once
+    fn enqueue_singleton(&mut self, chunk_idx: usize) {
+        if self.singleton_queue_members.insert(chunk_idx) {
+            self.singleton_queue.push_back(chunk_idx);
+        }
+    }
+
+    /// Clear all active chunk-related state
+    fn clear_active_chunks(&mut self) {
+        self.chunks.clear();
+        self.block_to_chunks.clear();
+        self.singleton_queue.clear();
+        self.singleton_queue_members.clear();
+    }
 
     /// Add a chunk and attempt to decode
     /// Returns true if any new blocks were decoded
@@ -137,6 +179,8 @@ impl FountainDecoder {
         }
 
         self.chunks.push(decoding_chunk);
+        let new_idx = self.chunks.len() - 1;
+        self.register_chunk(new_idx);
 
         // Run belief propagation
         self.belief_propagation()
@@ -164,6 +208,8 @@ impl FountainDecoder {
             // Only add non-empty chunks
             if !chunk.indices.is_empty() {
                 self.chunks.push(chunk);
+                let new_idx = self.chunks.len() - 1;
+                self.register_chunk(new_idx);
             }
         }
 
@@ -179,41 +225,44 @@ impl FountainDecoder {
     fn belief_propagation(&mut self) -> bool {
         let mut decoded_any = false;
 
-        loop {
-            let mut decoded_this_round = false;
+        while let Some(chunk_idx) = self.singleton_queue.pop_front() {
+            self.singleton_queue_members.remove(&chunk_idx);
 
-            // Find chunks with exactly one undecoded block
-            let mut to_decode = Vec::new();
-            for (chunk_idx, chunk) in self.chunks.iter().enumerate() {
-                if chunk.indices.len() == 1 {
+            let (block_idx, data) = match self.chunks.get(chunk_idx) {
+                Some(chunk) if chunk.indices.len() == 1 => {
                     let block_idx = *chunk.indices.iter().next().unwrap();
-                    to_decode.push((chunk_idx, block_idx, chunk.data.clone()));
+                    (block_idx, chunk.data.clone())
                 }
+                _ => continue,
+            };
+
+            if self.decoded_blocks.contains_key(&block_idx) {
+                continue;
             }
 
-            // Decode discovered blocks
-            for (_chunk_idx, block_idx, data) in to_decode {
-                if !self.decoded_blocks.contains_key(&block_idx) {
-                    self.decoded_blocks.insert(block_idx, data.clone());
-                    decoded_this_round = true;
-                    decoded_any = true;
+            self.decoded_blocks.insert(block_idx, data.clone());
+            decoded_any = true;
 
-                    // XOR this block out of all other chunks
-                    for chunk in self.chunks.iter_mut() {
-                        if chunk.indices.contains(&block_idx) {
-                            xor_into(&mut chunk.data, &data);
-                            chunk.indices.remove(&block_idx);
+            if let Some(containing_chunks) = self.block_to_chunks.remove(&block_idx) {
+                for other_chunk_idx in containing_chunks {
+                    if other_chunk_idx == chunk_idx {
+                        continue;
+                    }
+
+                    if let Some(other_chunk) = self.chunks.get_mut(other_chunk_idx) {
+                        if other_chunk.indices.remove(&block_idx) {
+                            xor_into(&mut other_chunk.data, &data);
+                            if other_chunk.indices.len() == 1 {
+                                self.enqueue_singleton(other_chunk_idx);
+                            }
                         }
                     }
                 }
             }
 
-            // Remove empty chunks
-            self.chunks.retain(|c| !c.indices.is_empty());
-
-            // Stop if no progress this round
-            if !decoded_this_round {
-                break;
+            if let Some(chunk) = self.chunks.get_mut(chunk_idx) {
+                chunk.indices.clear();
+                chunk.data.clear();
             }
         }
 
@@ -378,7 +427,7 @@ impl FountainDecoder {
         self.current_part_index += 1;
         // Clear decoded blocks and received chunks for the new part
         self.decoded_blocks.clear();
-        self.chunks.clear();
+        self.clear_active_chunks();
 
         // Reset first decode flag and counters for the new part
         self.first_decode_attempted = false;
@@ -462,7 +511,10 @@ impl FountainDecoder {
 
     /// Validate the current part's checksum against the expected value
     /// Returns a ChecksumValidationResult with the validation status and checksums
-    pub fn validate_current_part_checksum(&self, expected_checksum_bytes: [u8; 4]) -> Option<crate::types::ChecksumValidationResult> {
+    pub fn validate_current_part_checksum(
+        &self,
+        expected_checksum_bytes: [u8; 4],
+    ) -> Option<crate::types::ChecksumValidationResult> {
         if !self.part_based_mode {
             return None;
         }
@@ -491,7 +543,10 @@ impl FountainDecoder {
     /// Validate the final decoded file's checksum against the expected value
     /// Takes the expected checksum as a hex string and computes the actual checksum
     /// Returns a FinalChecksumValidationResult with the validation status and checksums
-    pub fn validate_final_checksum(&self, expected_checksum_hex: &str) -> Option<crate::types::FinalChecksumValidationResult> {
+    pub fn validate_final_checksum(
+        &self,
+        expected_checksum_hex: &str,
+    ) -> Option<crate::types::FinalChecksumValidationResult> {
         // Get the decoded data
         let decoded_data = self.get_decoded_data()?;
 
@@ -600,7 +655,8 @@ impl FountainDecoder {
             let early_decode_threshold = ((total_blocks as f64 * 0.02).ceil() as usize).max(10);
 
             // Trigger at early threshold OR at 110% total chunks
-            total_chunks_current_part == early_decode_threshold || total_chunks_current_part >= required_chunks_110
+            total_chunks_current_part == early_decode_threshold
+                || total_chunks_current_part >= required_chunks_110
         } else {
             // After first decode at 110%: incremental decodes at 5% or 10 chunks since last decode
             let total_blocks = if self.part_based_mode {
@@ -609,7 +665,8 @@ impl FountainDecoder {
                 self.metadata.total_source_blocks
             };
 
-            let percentage_threshold = (total_blocks as f64 * self.adaptive_throttle_percentage).ceil() as usize;
+            let percentage_threshold =
+                (total_blocks as f64 * self.adaptive_throttle_percentage).ceil() as usize;
             let threshold = percentage_threshold.max(self.min_incremental_chunks);
 
             self.chunks_since_last_decode >= threshold
@@ -649,7 +706,9 @@ impl FountainDecoder {
             // Only validate if not the last part
             if should_validate {
                 if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index) {
-                    if let Some(validation_result) = self.validate_current_part_checksum(expected_checksum_bytes) {
+                    if let Some(validation_result) =
+                        self.validate_current_part_checksum(expected_checksum_bytes)
+                    {
                         // Mark part as completed (stores data and frees memory)
                         if validation_result.is_valid {
                             self.mark_part_completed(part_index);
@@ -748,7 +807,12 @@ impl FountainDecoder {
         use crate::types::{BinaryChunkProcessResult, ChunkStatus, CompletionData};
 
         // Helper to create error result (doesn't capture self)
-        fn make_error_result(status: ChunkStatus, seed: u32, decoded_count: usize, progress: f64) -> BinaryChunkProcessResult {
+        fn make_error_result(
+            status: ChunkStatus,
+            seed: u32,
+            decoded_count: usize,
+            progress: f64,
+        ) -> BinaryChunkProcessResult {
             BinaryChunkProcessResult {
                 status,
                 seed,
@@ -767,12 +831,21 @@ impl FountainDecoder {
         }
 
         // 1. Parse binary chunk
-        let parsed = match crate::parser::parse_binary_chunk(binary_data, self.part_based_mode, total_source_blocks) {
+        let parsed = match crate::parser::parse_binary_chunk(
+            binary_data,
+            self.part_based_mode,
+            total_source_blocks,
+        ) {
             Ok(p) => p,
             Err(e) => {
                 let decoded_count = self.decoded_blocks.len();
                 let progress = self.get_progress();
-                return make_error_result(ChunkStatus::ParseError { message: e }, 0, decoded_count, progress);
+                return make_error_result(
+                    ChunkStatus::ParseError { message: e },
+                    0,
+                    decoded_count,
+                    progress,
+                );
             }
         };
 
@@ -789,26 +862,31 @@ impl FountainDecoder {
             let progress = self.get_progress();
             return make_error_result(
                 ChunkStatus::ChecksumError {
-                    message: format!("Checksum position {} + 4 exceeds data length {}", parsed.checksum_start, binary_data.len())
+                    message: format!(
+                        "Checksum position {} + 4 exceeds data length {}",
+                        parsed.checksum_start,
+                        binary_data.len()
+                    ),
                 },
                 chunk_seed,
                 decoded_count,
-                progress
+                progress,
             );
         }
         let stored_bytes = &binary_data[parsed.checksum_start..parsed.checksum_start + 4];
-        let stored_hex = crate::checksum::crc32_to_hex(stored_bytes.try_into().unwrap_or(&[0,0,0,0]));
+        let stored_hex =
+            crate::checksum::crc32_to_hex(stored_bytes.try_into().unwrap_or(&[0, 0, 0, 0]));
 
         if computed_hex != stored_hex {
             let decoded_count = self.decoded_blocks.len();
             let progress = self.get_progress();
             return make_error_result(
                 ChunkStatus::ChecksumError {
-                    message: format!("Computed: {}, Stored: {}", computed_hex, stored_hex)
+                    message: format!("Computed: {}, Stored: {}", computed_hex, stored_hex),
                 },
                 chunk_seed,
                 decoded_count,
-                progress
+                progress,
             );
         }
 
@@ -816,7 +894,7 @@ impl FountainDecoder {
         let chunk_key = crate::parser::create_chunk_key(
             parsed.chunk.seed,
             parsed.chunk.degree,
-            &parsed.chunk.indices
+            &parsed.chunk.indices,
         );
 
         // 4. Handle part metadata if present
@@ -854,18 +932,22 @@ impl FountainDecoder {
         };
 
         // 9. Get part info if in part mode
-        let (current_part_index, total_parts, current_part_decoded_blocks, current_part_total_blocks) =
-            if self.part_based_mode {
-                let (_, idx, total, _) = self.get_part_info();
-                (
-                    Some(idx as u32),
-                    Some(total as u32),
-                    Some(self.get_current_part_decoded_block_count()),
-                    Some(self.get_current_part_total_block_count()),
-                )
-            } else {
-                (None, None, None, None)
-            };
+        let (
+            current_part_index,
+            total_parts,
+            current_part_decoded_blocks,
+            current_part_total_blocks,
+        ) = if self.part_based_mode {
+            let (_, idx, total, _) = self.get_part_info();
+            (
+                Some(idx as u32),
+                Some(total as u32),
+                Some(self.get_current_part_decoded_block_count()),
+                Some(self.get_current_part_total_block_count()),
+            )
+        } else {
+            (None, None, None, None)
+        };
 
         // 10. Handle completion
         let completion_data = if is_complete {
@@ -907,5 +989,3 @@ impl FountainDecoder {
         }
     }
 }
-
-

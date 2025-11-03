@@ -45,7 +45,12 @@ impl FountainChunk {
     /// // new FountainChunk(42, 3, [0, 1], new Uint8Array([0xAA])); // "degree must equal indices.len()"
     /// ```
     #[wasm_bindgen(constructor)]
-    pub fn new(seed: u32, degree: usize, indices: Vec<usize>, data: Vec<u8>) -> Result<FountainChunk, wasm_bindgen::JsValue> {
+    pub fn new(
+        seed: u32,
+        degree: usize,
+        indices: Vec<usize>,
+        data: Vec<u8>,
+    ) -> Result<FountainChunk, wasm_bindgen::JsValue> {
         // Validate indices is non-empty
         if indices.is_empty() {
             return Err(wasm_bindgen::JsValue::from_str("indices must be non-empty"));
@@ -58,9 +63,11 @@ impl FountainChunk {
 
         // Validate degree matches indices length
         if degree != indices.len() {
-            return Err(wasm_bindgen::JsValue::from_str(
-                &format!("degree must equal indices.len(): degree={}, indices.len()={}", degree, indices.len())
-            ));
+            return Err(wasm_bindgen::JsValue::from_str(&format!(
+                "degree must equal indices.len(): degree={}, indices.len()={}",
+                degree,
+                indices.len()
+            )));
         }
 
         Ok(FountainChunk {
@@ -78,7 +85,12 @@ impl FountainChunk {
     /// - indices is non-empty
     /// - data is non-empty
     /// - degree equals indices.len()
-    pub(crate) fn new_unchecked(seed: u32, degree: usize, indices: Vec<usize>, data: Vec<u8>) -> Self {
+    pub(crate) fn new_unchecked(
+        seed: u32,
+        degree: usize,
+        indices: Vec<usize>,
+        data: Vec<u8>,
+    ) -> Self {
         Self {
             seed,
             degree,
@@ -601,10 +613,7 @@ impl FountainEncoderOptions {
 
         // Validate probability parameters (must be in 0.0..=1.0)
         if !(0.0..=1.0).contains(&self.c) {
-            errors.push(format!(
-                "c must be in range 0.0..=1.0, got {}",
-                self.c
-            ));
+            errors.push(format!("c must be in range 0.0..=1.0, got {}", self.c));
         }
         if !(0.0..=1.0).contains(&self.delta) {
             errors.push(format!(
@@ -826,7 +835,10 @@ mod tests {
             3,
             400,
         );
-        assert!(result.is_ok(), "Valid metadata should construct successfully");
+        assert!(
+            result.is_ok(),
+            "Valid metadata should construct successfully"
+        );
 
         let metadata = result.unwrap();
         assert_eq!(metadata.name, "test.dat");
@@ -868,7 +880,10 @@ mod tests {
             0,
             400,
         );
-        assert!(result.is_err(), "Zero total_source_blocks should produce error");
+        assert!(
+            result.is_err(),
+            "Zero total_source_blocks should produce error"
+        );
 
         let err = result.unwrap_err();
         let err_msg = err.as_string().unwrap_or_default();
@@ -1159,7 +1174,10 @@ mod tests {
             low_degree_rate: 1.0,
             ..Default::default()
         };
-        assert!(options.validate().is_ok(), "Boundary values (0.0 and 1.0) should be valid");
+        assert!(
+            options.validate().is_ok(),
+            "Boundary values (0.0 and 1.0) should be valid"
+        );
     }
 
     #[test]
@@ -1230,9 +1248,15 @@ mod tests {
 
         // Deserialize and verify
         let deserialized: PartInfo = serde_json::from_str(&json).expect("deserialization failed");
-        assert_eq!(deserialized.current_part_checksum, Some("abc123def456".to_string()));
+        assert_eq!(
+            deserialized.current_part_checksum,
+            Some("abc123def456".to_string())
+        );
         assert_eq!(deserialized.part_checksums.as_ref().unwrap().len(), 3);
-        assert_eq!(deserialized.part_checksums.as_ref().unwrap()[0], "checksum1");
+        assert_eq!(
+            deserialized.part_checksums.as_ref().unwrap()[0],
+            "checksum1"
+        );
     }
 
     #[test]
@@ -1278,7 +1302,10 @@ mod tests {
         assert_eq!(roundtrip.current_part_index, original.current_part_index);
         assert_eq!(roundtrip.total_parts, original.total_parts);
         assert_eq!(roundtrip.part_size, original.part_size);
-        assert_eq!(roundtrip.current_part_checksum, original.current_part_checksum);
+        assert_eq!(
+            roundtrip.current_part_checksum,
+            original.current_part_checksum
+        );
         assert_eq!(roundtrip.part_checksums, original.part_checksums);
     }
 }

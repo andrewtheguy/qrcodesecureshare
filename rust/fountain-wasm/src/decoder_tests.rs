@@ -15,7 +15,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -46,7 +48,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -77,7 +81,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -102,7 +108,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -141,7 +149,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -196,7 +206,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -278,7 +290,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -295,26 +309,41 @@ mod decoder_tests {
 
         // Process chunks using process_chunk_with_validation
         for chunk in chunks {
-            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                   chunk.indices.first().unwrap_or(&0),
-                                   chunk.indices.last().unwrap_or(&0));
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         // Should have some blocks decoded from first decode (at 3 chunks)
         // Check by seeing if decoder has decoded blocks
         let decoded_blocks = decoder.get_decoded_block_count();
-        assert!(decoded_blocks > 0, "First decode should have happened at 3 chunks (decoded {} blocks)", decoded_blocks);
+        assert!(
+            decoded_blocks > 0,
+            "First decode should have happened at 3 chunks (decoded {} blocks)",
+            decoded_blocks
+        );
 
         // Should have 2 pending chunks (need 10 for next decode)
         let pending_count = decoder.get_pending_chunk_count();
-        assert!(pending_count > 0, "Should have pending chunks (need 10 for next decode)");
+        assert!(
+            pending_count > 0,
+            "Should have pending chunks (need 10 for next decode)"
+        );
 
         // Flush pending chunks
         decoder.flush_pending_chunks();
 
         // Verify flush processed pending chunks
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending chunks after flush");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "No pending chunks after flush"
+        );
     }
 
     #[test]
@@ -331,7 +360,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -343,9 +374,13 @@ mod decoder_tests {
         let mut chunk_count = 0;
         while chunk_count < 7 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
                 chunk_count += 1;
             }
@@ -354,22 +389,33 @@ mod decoder_tests {
         // May or may not be complete yet depending on chunks received
         // But should have pending chunks (need 10 for next automatic decode)
         let pending = decoder.get_pending_chunk_count();
-        assert!(pending > 0, "Should have pending chunks (need 10 for next decode, only added 4 more)");
+        assert!(
+            pending > 0,
+            "Should have pending chunks (need 10 for next decode, only added 4 more)"
+        );
 
         // Flush pending chunks - this processes all pending
         decoder.flush_pending_chunks();
 
         // After flush, should have no pending
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending after flush");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "No pending after flush"
+        );
 
         // Should be complete or very close
         if !decoder.is_complete() {
             // Add a few more and flush again
             for _ in 0..5 {
                 if let Some(chunk) = encoder.generate_chunk() {
-                    let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                           chunk.indices.first().unwrap_or(&0),
-                                           chunk.indices.last().unwrap_or(&0));
+                    let chunk_key = format!(
+                        "{}:{}:{}:{}",
+                        chunk.seed,
+                        chunk.degree,
+                        chunk.indices.first().unwrap_or(&0),
+                        chunk.indices.last().unwrap_or(&0)
+                    );
                     decoder.process_chunk_with_validation(chunk, chunk_key);
                 }
             }
@@ -393,7 +439,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -402,7 +450,11 @@ mod decoder_tests {
         // Flush without adding any chunks
         let blocks_decoded = decoder.flush_pending_chunks();
         assert_eq!(blocks_decoded, 0, "Flushing empty queue should return 0");
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "Pending count should be 0");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Pending count should be 0"
+        );
     }
 
     #[test]
@@ -418,7 +470,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -428,34 +482,55 @@ mod decoder_tests {
         // Add 5 chunks: First 3 trigger first decode, next 2 are pending
         for _ in 0..5 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // Verify pending (need 10 for next decode, only added 2 more)
-        assert!(decoder.get_pending_chunk_count() > 0, "Should have 2 pending chunks");
+        assert!(
+            decoder.get_pending_chunk_count() > 0,
+            "Should have 2 pending chunks"
+        );
 
         // Flush (should reset counter and process pending)
         decoder.flush_pending_chunks();
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "No pending after flush");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "No pending after flush"
+        );
 
         // Add 5 more chunks (should also start pending - need 10 total)
         for _ in 0..5 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // Verify new chunks are pending (counter was reset)
         let pending_after = decoder.get_pending_chunk_count();
-        assert!(pending_after > 0, "Counter should have been reset, new chunks pending");
-        assert!(pending_after <= 5, "Should have at most 5 new pending chunks");
+        assert!(
+            pending_after > 0,
+            "Counter should have been reset, new chunks pending"
+        );
+        assert!(
+            pending_after <= 5,
+            "Should have at most 5 new pending chunks"
+        );
     }
 
     #[test]
@@ -471,7 +546,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -485,40 +562,67 @@ mod decoder_tests {
         // Chunks 1-2: pending (count: 1, 2)
         for i in 1..=2 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
-                assert_eq!(decoder.get_pending_chunk_count(), i,
-                          "Pending count should be {} before first decode", i);
+                assert_eq!(
+                    decoder.get_pending_chunk_count(),
+                    i,
+                    "Pending count should be {} before first decode",
+                    i
+                );
             }
         }
 
         // Chunk 3: triggers first decode, count resets to 0
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                   chunk.indices.first().unwrap_or(&0),
-                                   chunk.indices.last().unwrap_or(&0));
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
-            assert_eq!(decoder.get_pending_chunk_count(), 0,
-                      "Count should be 0 after first decode at 3 chunks");
+            assert_eq!(
+                decoder.get_pending_chunk_count(),
+                0,
+                "Count should be 0 after first decode at 3 chunks"
+            );
         }
 
         // Chunks 4-5: pending again (count: 1, 2)
         for i in 1..=2 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
-                assert_eq!(decoder.get_pending_chunk_count(), i,
-                          "Pending count should be {} after first decode", i);
+                assert_eq!(
+                    decoder.get_pending_chunk_count(),
+                    i,
+                    "Pending count should be {} after first decode",
+                    i
+                );
             }
         }
 
         // Flush and verify count is 0
         decoder.flush_pending_chunks();
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "Count should be 0 after flush");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Count should be 0 after flush"
+        );
     }
 
     #[test]
@@ -532,7 +636,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -563,7 +669,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -575,9 +683,13 @@ mod decoder_tests {
         // Add 2 chunks (below threshold)
         for _ in 0..2 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                       chunk.indices.first().unwrap_or(&0),
-                                       chunk.indices.last().unwrap_or(&0));
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
+                    chunk.indices.first().unwrap_or(&0),
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
@@ -588,15 +700,22 @@ mod decoder_tests {
 
         // Add 3rd chunk (exactly at threshold - should trigger)
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}", chunk.seed, chunk.degree,
-                                   chunk.indices.first().unwrap_or(&0),
-                                   chunk.indices.last().unwrap_or(&0));
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
+                chunk.indices.first().unwrap_or(&0),
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         // Pending count should be 0 or very low (processed at threshold)
         let pending_after = decoder.get_pending_chunk_count();
-        assert!(pending_after < pending_before, "Processing should have occurred at threshold");
+        assert!(
+            pending_after < pending_before,
+            "Processing should have occurred at threshold"
+        );
     }
 
     // ========================================
@@ -614,7 +733,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -626,11 +747,7 @@ mod decoder_tests {
             let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
 
             // Process binary chunk
-            let result = decoder.process_binary_chunk(
-                &binary_data,
-                total_source_blocks,
-                "",
-            );
+            let result = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Should be processed successfully
             match result.status {
@@ -655,7 +772,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -665,11 +784,7 @@ mod decoder_tests {
         // Create malformed binary data (too short)
         let invalid_data = vec![0u8; 5];
 
-        let result = decoder.process_binary_chunk(
-            &invalid_data,
-            total_source_blocks,
-            "",
-        );
+        let result = decoder.process_binary_chunk(&invalid_data, total_source_blocks, "");
 
         // Should return parse error
         match result.status {
@@ -691,7 +806,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -707,11 +824,7 @@ mod decoder_tests {
                 binary_data[len - 4] ^= 0xFF;
             }
 
-            let result = decoder.process_binary_chunk(
-                &binary_data,
-                total_source_blocks,
-                "",
-            );
+            let result = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Should return checksum error
             match result.status {
@@ -734,7 +847,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -745,11 +860,7 @@ mod decoder_tests {
             let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
 
             // Process same chunk twice
-            let result1 = decoder.process_binary_chunk(
-                &binary_data,
-                total_source_blocks,
-                "",
-            );
+            let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // First should be processed
             match result1.status {
@@ -760,16 +871,15 @@ mod decoder_tests {
             // Flush to ensure it's processed
             decoder.flush_pending_chunks();
 
-            let result2 = decoder.process_binary_chunk(
-                &binary_data,
-                total_source_blocks,
-                "",
-            );
+            let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Second should be duplicate
             match result2.status {
                 crate::types::ChunkStatus::Duplicate => {}
-                _ => panic!("Expected Duplicate status on second chunk, got {:?}", result2.status),
+                _ => panic!(
+                    "Expected Duplicate status on second chunk, got {:?}",
+                    result2.status
+                ),
             }
         }
     }
@@ -785,7 +895,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -847,7 +959,7 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            true,  // part_based_mode
+            true, // part_based_mode
             part_size,
             None,
         );
@@ -878,11 +990,7 @@ mod decoder_tests {
             if let Some(chunk) = encoder.generate_chunk() {
                 let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, true);
 
-                result = Some(decoder.process_binary_chunk(
-                    &binary_data,
-                    total_source_blocks,
-                    "",
-                ));
+                result = Some(decoder.process_binary_chunk(&binary_data, total_source_blocks, ""));
 
                 if result.as_ref().unwrap().part_complete_info.is_some() {
                     break;
@@ -913,7 +1021,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -928,11 +1038,7 @@ mod decoder_tests {
             if let Some(chunk) = encoder.generate_chunk() {
                 let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
 
-                let result = decoder.process_binary_chunk(
-                    &binary_data,
-                    total_source_blocks,
-                    "",
-                );
+                let result = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
                 // Progress should be between 0 and 1
                 assert!(result.overall_progress >= 0.0 && result.overall_progress <= 1.0);
@@ -967,7 +1073,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -984,11 +1092,8 @@ mod decoder_tests {
             if let Some(chunk) = encoder.generate_chunk() {
                 let binary_data = crate::parser::serialize_chunk_to_binary(&chunk, false);
 
-                let result = decoder.process_binary_chunk(
-                    &binary_data,
-                    total_source_blocks,
-                    wrong_checksum,
-                );
+                let result =
+                    decoder.process_binary_chunk(&binary_data, total_source_blocks, wrong_checksum);
 
                 if result.is_complete {
                     // Should have completion data but integrity should fail
@@ -1019,7 +1124,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1031,23 +1138,25 @@ mod decoder_tests {
 
             // Process same chunk 5 times
             for i in 0..5 {
-                let result = decoder.process_binary_chunk(
-                    &binary_data,
-                    total_source_blocks,
-                    "",
-                );
+                let result = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
                 if i == 0 {
                     // First should be processed
                     match result.status {
-                        crate::types::ChunkStatus::Processed => {},
-                        _ => panic!("Expected Processed status on first chunk, got {:?}", result.status),
+                        crate::types::ChunkStatus::Processed => {}
+                        _ => panic!(
+                            "Expected Processed status on first chunk, got {:?}",
+                            result.status
+                        ),
                     }
                 } else {
                     // All subsequent should be duplicates
                     match result.status {
-                        crate::types::ChunkStatus::Duplicate => {},
-                        _ => panic!("Expected Duplicate status on chunk #{}, got {:?}", i, result.status),
+                        crate::types::ChunkStatus::Duplicate => {}
+                        _ => panic!(
+                            "Expected Duplicate status on chunk #{}, got {:?}",
+                            i, result.status
+                        ),
                     }
                 }
             }
@@ -1066,7 +1175,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1078,13 +1189,25 @@ mod decoder_tests {
 
             // Process same chunk 3 times
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
-            assert_eq!(decoder.get_received_chunk_count(), 1, "First chunk should increment count to 1");
+            assert_eq!(
+                decoder.get_received_chunk_count(),
+                1,
+                "First chunk should increment count to 1"
+            );
 
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
-            assert_eq!(decoder.get_received_chunk_count(), 1, "Duplicate should not increment count");
+            assert_eq!(
+                decoder.get_received_chunk_count(),
+                1,
+                "Duplicate should not increment count"
+            );
 
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
-            assert_eq!(decoder.get_received_chunk_count(), 1, "Second duplicate should not increment count");
+            assert_eq!(
+                decoder.get_received_chunk_count(),
+                1,
+                "Second duplicate should not increment count"
+            );
         }
     }
 
@@ -1100,7 +1223,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1116,14 +1241,14 @@ mod decoder_tests {
             // Process chunk
             let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             match result1.status {
-                crate::types::ChunkStatus::Processed => {},
+                crate::types::ChunkStatus::Processed => {}
                 _ => panic!("Expected Processed status on first chunk"),
             }
 
             // Process same chunk again - should be duplicate
             let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             match result2.status {
-                crate::types::ChunkStatus::Duplicate => {},
+                crate::types::ChunkStatus::Duplicate => {}
                 _ => panic!("Expected Duplicate status before session change"),
             }
 
@@ -1133,8 +1258,11 @@ mod decoder_tests {
             // Process same chunk again - should be processed (not duplicate) after session change
             let result3 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             match result3.status {
-                crate::types::ChunkStatus::Processed => {},
-                _ => panic!("Expected Processed status after session change, got {:?}", result3.status),
+                crate::types::ChunkStatus::Processed => {}
+                _ => panic!(
+                    "Expected Processed status after session change, got {:?}",
+                    result3.status
+                ),
             }
         }
     }
@@ -1151,7 +1279,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1182,19 +1312,23 @@ mod decoder_tests {
 
             if should_be_duplicate {
                 match result.status {
-                    crate::types::ChunkStatus::Duplicate => {},
+                    crate::types::ChunkStatus::Duplicate => {}
                     _ => panic!("Expected Duplicate for {}, got {:?}", desc, result.status),
                 }
             } else {
                 match result.status {
-                    crate::types::ChunkStatus::Processed => {},
+                    crate::types::ChunkStatus::Processed => {}
                     _ => panic!("Expected Processed for {}, got {:?}", desc, result.status),
                 }
             }
         }
 
         // Verify received count is 3 (not 6)
-        assert_eq!(decoder.get_received_chunk_count(), 3, "Should only count 3 unique chunks");
+        assert_eq!(
+            decoder.get_received_chunk_count(),
+            3,
+            "Should only count 3 unique chunks"
+        );
     }
 
     #[test]
@@ -1209,7 +1343,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1217,31 +1353,37 @@ mod decoder_tests {
 
         if let Some(chunk) = encoder.generate_chunk() {
             // Create chunk key
-            let chunk_key = crate::parser::create_chunk_key(
-                chunk.seed,
-                chunk.degree,
-                &chunk.indices
-            );
+            let chunk_key =
+                crate::parser::create_chunk_key(chunk.seed, chunk.degree, &chunk.indices);
 
             // Check if it's a duplicate (should be false initially)
-            assert!(!decoder.is_chunk_duplicate(&chunk_key), "Initial chunk should not be marked as duplicate");
+            assert!(
+                !decoder.is_chunk_duplicate(&chunk_key),
+                "Initial chunk should not be marked as duplicate"
+            );
 
             // Add the chunk key
             decoder.add_chunk_key(chunk_key.clone());
 
             // Check if it's now a duplicate (should be true)
-            assert!(decoder.is_chunk_duplicate(&chunk_key), "Chunk should now be marked as duplicate");
-
-            // Recreate the same chunk key
-            let chunk_key2 = crate::parser::create_chunk_key(
-                chunk.seed,
-                chunk.degree,
-                &chunk.indices
+            assert!(
+                decoder.is_chunk_duplicate(&chunk_key),
+                "Chunk should now be marked as duplicate"
             );
 
+            // Recreate the same chunk key
+            let chunk_key2 =
+                crate::parser::create_chunk_key(chunk.seed, chunk.degree, &chunk.indices);
+
             // Should be the same
-            assert_eq!(chunk_key, chunk_key2, "Chunk keys should be identical for same chunk");
-            assert!(decoder.is_chunk_duplicate(&chunk_key2), "Recreated chunk key should also be duplicate");
+            assert_eq!(
+                chunk_key, chunk_key2,
+                "Chunk keys should be identical for same chunk"
+            );
+            assert!(
+                decoder.is_chunk_duplicate(&chunk_key2),
+                "Recreated chunk key should also be duplicate"
+            );
         }
     }
 
@@ -1257,7 +1399,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1284,13 +1428,17 @@ mod decoder_tests {
         for binary in &binaries {
             let result = decoder.process_binary_chunk(binary, total_source_blocks, "");
             match result.status {
-                crate::types::ChunkStatus::Duplicate => {},
+                crate::types::ChunkStatus::Duplicate => {}
                 _ => panic!("Expected all chunks to be duplicates on second pass"),
             }
         }
 
         // Count should still be 20
-        assert_eq!(decoder.get_received_chunk_count(), 20, "Count should not increase for duplicates");
+        assert_eq!(
+            decoder.get_received_chunk_count(),
+            20,
+            "Count should not increase for duplicates"
+        );
     }
 
     #[test]
@@ -1305,7 +1453,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1326,13 +1476,19 @@ mod decoder_tests {
 
             // Should be duplicate
             match result2.status {
-                crate::types::ChunkStatus::Duplicate => {},
+                crate::types::ChunkStatus::Duplicate => {}
                 _ => panic!("Expected Duplicate status"),
             }
 
             // Progress should be the same (duplicates return current progress)
-            assert_eq!(result2.overall_progress, progress1, "Progress should not change for duplicate");
-            assert_eq!(result2.decoded_block_count, decoded1, "Decoded count should not change for duplicate");
+            assert_eq!(
+                result2.overall_progress, progress1,
+                "Progress should not change for duplicate"
+            );
+            assert_eq!(
+                result2.decoded_block_count, decoded1,
+                "Decoded count should not change for duplicate"
+            );
         }
     }
 
@@ -1348,7 +1504,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1364,7 +1522,7 @@ mod decoder_tests {
             // Process chunk
             let result1 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             match result1.status {
-                crate::types::ChunkStatus::Processed => {},
+                crate::types::ChunkStatus::Processed => {}
                 _ => panic!("Expected Processed status on first chunk"),
             }
 
@@ -1374,8 +1532,11 @@ mod decoder_tests {
             // Process same chunk again - should still be duplicate (cache not cleared)
             let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             match result2.status {
-                crate::types::ChunkStatus::Duplicate => {},
-                _ => panic!("Expected Duplicate status after setting same session ID, got {:?}", result2.status),
+                crate::types::ChunkStatus::Duplicate => {}
+                _ => panic!(
+                    "Expected Duplicate status after setting same session ID, got {:?}",
+                    result2.status
+                ),
             }
         }
     }
@@ -1392,7 +1553,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1408,17 +1571,26 @@ mod decoder_tests {
             // Process first time
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             let pending_after_first = decoder.get_pending_chunk_count();
-            assert_eq!(pending_after_first, 1, "First chunk should be in pending queue");
+            assert_eq!(
+                pending_after_first, 1,
+                "First chunk should be in pending queue"
+            );
 
             // Process duplicate
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             let pending_after_duplicate = decoder.get_pending_chunk_count();
-            assert_eq!(pending_after_duplicate, 1, "Duplicate should NOT be added to pending queue");
+            assert_eq!(
+                pending_after_duplicate, 1,
+                "Duplicate should NOT be added to pending queue"
+            );
 
             // Process duplicate again
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
             let pending_after_second_dup = decoder.get_pending_chunk_count();
-            assert_eq!(pending_after_second_dup, 1, "Second duplicate should NOT be added to pending queue");
+            assert_eq!(
+                pending_after_second_dup, 1,
+                "Second duplicate should NOT be added to pending queue"
+            );
         }
     }
 
@@ -1434,7 +1606,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1457,21 +1631,31 @@ mod decoder_tests {
             let result2 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Verify no additional decoding happened
-            assert_eq!(result2.decoded_block_count, decoded_count_after_first,
-                "Duplicate should not decode additional blocks");
-            assert_eq!(result2.overall_progress, progress_after_first,
-                "Duplicate should not change progress");
-            assert_eq!(result2.decoded_block_indices, indices_after_first,
-                "Duplicate should not change decoded block indices");
+            assert_eq!(
+                result2.decoded_block_count, decoded_count_after_first,
+                "Duplicate should not decode additional blocks"
+            );
+            assert_eq!(
+                result2.overall_progress, progress_after_first,
+                "Duplicate should not change progress"
+            );
+            assert_eq!(
+                result2.decoded_block_indices, indices_after_first,
+                "Duplicate should not change decoded block indices"
+            );
 
             // Process another duplicate
             let result3 = decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Still no changes
-            assert_eq!(result3.decoded_block_count, decoded_count_after_first,
-                "Second duplicate should not decode additional blocks");
-            assert_eq!(result3.overall_progress, progress_after_first,
-                "Second duplicate should not change progress");
+            assert_eq!(
+                result3.decoded_block_count, decoded_count_after_first,
+                "Second duplicate should not decode additional blocks"
+            );
+            assert_eq!(
+                result3.overall_progress, progress_after_first,
+                "Second duplicate should not change progress"
+            );
         }
     }
 
@@ -1487,7 +1671,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1506,37 +1692,58 @@ mod decoder_tests {
 
         // Process chunk1
         let result1 = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
-        assert!(matches!(result1.status, crate::types::ChunkStatus::Processed));
+        assert!(matches!(
+            result1.status,
+            crate::types::ChunkStatus::Processed
+        ));
         let count_after_1 = decoder.get_received_chunk_count();
         assert_eq!(count_after_1, 1);
 
         // Process chunk1 duplicate
         let result1_dup = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
-        assert!(matches!(result1_dup.status, crate::types::ChunkStatus::Duplicate));
+        assert!(matches!(
+            result1_dup.status,
+            crate::types::ChunkStatus::Duplicate
+        ));
         let count_after_1_dup = decoder.get_received_chunk_count();
         assert_eq!(count_after_1_dup, 1, "Duplicate should not increment count");
 
         // Process chunk2 (unique)
         let result2 = decoder.process_binary_chunk(&binary2, total_source_blocks, "");
-        assert!(matches!(result2.status, crate::types::ChunkStatus::Processed));
+        assert!(matches!(
+            result2.status,
+            crate::types::ChunkStatus::Processed
+        ));
         let count_after_2 = decoder.get_received_chunk_count();
         assert_eq!(count_after_2, 2, "New chunk should increment count");
 
         // Process chunk1 duplicate again
         let result1_dup2 = decoder.process_binary_chunk(&binary1, total_source_blocks, "");
-        assert!(matches!(result1_dup2.status, crate::types::ChunkStatus::Duplicate));
+        assert!(matches!(
+            result1_dup2.status,
+            crate::types::ChunkStatus::Duplicate
+        ));
         let count_after_1_dup2 = decoder.get_received_chunk_count();
-        assert_eq!(count_after_1_dup2, 2, "Duplicate should not increment count");
+        assert_eq!(
+            count_after_1_dup2, 2,
+            "Duplicate should not increment count"
+        );
 
         // Process chunk3 (unique)
         let result3 = decoder.process_binary_chunk(&binary3, total_source_blocks, "");
-        assert!(matches!(result3.status, crate::types::ChunkStatus::Processed));
+        assert!(matches!(
+            result3.status,
+            crate::types::ChunkStatus::Processed
+        ));
         let count_after_3 = decoder.get_received_chunk_count();
         assert_eq!(count_after_3, 3, "New chunk should increment count");
 
         // Process chunk2 duplicate
         let result2_dup = decoder.process_binary_chunk(&binary2, total_source_blocks, "");
-        assert!(matches!(result2_dup.status, crate::types::ChunkStatus::Duplicate));
+        assert!(matches!(
+            result2_dup.status,
+            crate::types::ChunkStatus::Duplicate
+        ));
         let final_count = decoder.get_received_chunk_count();
         assert_eq!(final_count, 3, "Final count should be 3 unique chunks");
     }
@@ -1553,7 +1760,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1567,19 +1776,27 @@ mod decoder_tests {
             decoder.process_binary_chunk(&binary_data, total_source_blocks, "");
 
             // Process duplicate - check internal result
-            let chunk_dup = crate::parser::parse_binary_chunk(&binary_data, false, total_source_blocks).unwrap();
+            let chunk_dup =
+                crate::parser::parse_binary_chunk(&binary_data, false, total_source_blocks)
+                    .unwrap();
             let chunk_key = crate::parser::create_chunk_key(
                 chunk_dup.chunk.seed,
                 chunk_dup.chunk.degree,
-                &chunk_dup.chunk.indices
+                &chunk_dup.chunk.indices,
             );
 
             let process_result = decoder.process_chunk_with_validation(chunk_dup.chunk, chunk_key);
 
             // Should be duplicate with zero blocks decoded
             assert!(process_result.is_duplicate, "Should be marked as duplicate");
-            assert_eq!(process_result.blocks_decoded, 0, "Duplicate should decode zero blocks");
-            assert!(process_result.part_complete_info.is_none(), "Duplicate should have no part completion info");
+            assert_eq!(
+                process_result.blocks_decoded, 0,
+                "Duplicate should decode zero blocks"
+            );
+            assert!(
+                process_result.part_complete_info.is_none(),
+                "Duplicate should have no part completion info"
+            );
         }
     }
 
@@ -1600,7 +1817,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1619,10 +1838,13 @@ mod decoder_tests {
         // Add chunks until we have enough
         while chunks_added < 50 && !completed {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
 
                 decoder.process_chunk_with_validation(chunk, chunk_key);
                 chunks_added += 1;
@@ -1639,7 +1861,11 @@ mod decoder_tests {
         }
 
         assert!(completed, "Should complete decoding even with small file");
-        assert!(chunks_added < 15, "Should complete with reasonable number of chunks (got {})", chunks_added);
+        assert!(
+            chunks_added < 15,
+            "Should complete with reasonable number of chunks (got {})",
+            chunks_added
+        );
 
         let decoded = decoder.get_decoded_data().unwrap();
         assert_eq!(decoded, data, "Decoded data should match original");
@@ -1657,7 +1883,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1667,37 +1895,52 @@ mod decoder_tests {
 
         // 110% of 5 blocks = ceil(5.5) = 6 chunks required for first decode
         let required_for_first_decode = (5.0_f64 * 1.10).ceil() as usize;
-        assert_eq!(required_for_first_decode, 6, "Should require 6 chunks for first decode");
+        assert_eq!(
+            required_for_first_decode, 6,
+            "Should require 6 chunks for first decode"
+        );
 
         // Add exactly required_for_first_decode - 1 chunks
         for _ in 0..(required_for_first_decode - 1) {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // Should have pending chunks (not processed yet)
         let pending_before = decoder.get_pending_chunk_count();
-        assert!(pending_before > 0, "Should have pending chunks before threshold");
+        assert!(
+            pending_before > 0,
+            "Should have pending chunks before threshold"
+        );
 
         // Add one more chunk to reach threshold
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         // Should have processed chunks (pending should be 0 or very low)
         let pending_after = decoder.get_pending_chunk_count();
-        assert!(pending_after < pending_before,
+        assert!(
+            pending_after < pending_before,
             "Should have processed chunks at 110% threshold (pending: {} -> {})",
-            pending_before, pending_after);
+            pending_before,
+            pending_after
+        );
     }
 
     #[test]
@@ -1713,7 +1956,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1725,46 +1970,66 @@ mod decoder_tests {
         // After 110%: max(ceil(50 * 0.05), 10) = max(3, 10) = 10 chunks
 
         // Add chunks to trigger both early and first decode
-        let first_decode_threshold = (50.0_f64 * 1.10).ceil() as usize;  // 55
+        let first_decode_threshold = (50.0_f64 * 1.10).ceil() as usize; // 55
         for _ in 0..first_decode_threshold {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // Early decode at 10 + first real decode at 55 should have processed all pending
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "Decodes at 10 and 55 should have processed all pending");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Decodes at 10 and 55 should have processed all pending"
+        );
 
         // Now test incremental threshold (should be 10 chunks since 5% of 50 = 2.5 < 10)
         for i in 1..=9 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
             // Should still have pending chunks (threshold is 10)
-            assert_eq!(decoder.get_pending_chunk_count(), i,
-                "Should have {} pending chunks before incremental threshold", i);
+            assert_eq!(
+                decoder.get_pending_chunk_count(),
+                i,
+                "Should have {} pending chunks before incremental threshold",
+                i
+            );
         }
 
         // Add 10th chunk - should trigger decode
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         // Should have processed at 10 chunk threshold
-        assert_eq!(decoder.get_pending_chunk_count(), 0,
-            "Should have processed chunks at incremental threshold of 10");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Should have processed chunks at incremental threshold of 10"
+        );
     }
 
     #[test]
@@ -1779,7 +2044,9 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
@@ -1807,10 +2074,17 @@ mod decoder_tests {
 
                 if result.is_complete {
                     completed = true;
-                    assert!(result.completion_data.is_some(), "Should have completion data");
+                    assert!(
+                        result.completion_data.is_some(),
+                        "Should have completion data"
+                    );
 
                     let completion_data = result.completion_data.unwrap();
-                    assert_eq!(completion_data.data.len(), 200, "Decoded data should be 200 bytes");
+                    assert_eq!(
+                        completion_data.data.len(),
+                        200,
+                        "Decoded data should be 200 bytes"
+                    );
                     assert!(completion_data.integrity_ok, "Checksum should be valid");
                     assert_eq!(completion_data.expected_checksum, expected_checksum);
                     assert_eq!(completion_data.actual_checksum, expected_checksum);
@@ -1820,8 +2094,15 @@ mod decoder_tests {
         }
 
         assert!(completed, "Should complete decoding");
-        assert!(chunks_added >= 22, "Should need at least 110% of blocks (22 chunks)");
-        assert!(chunks_added < 100, "Should complete reasonably fast (got {} chunks)", chunks_added);
+        assert!(
+            chunks_added >= 22,
+            "Should need at least 110% of blocks (22 chunks)"
+        );
+        assert!(
+            chunks_added < 100,
+            "Should complete reasonably fast (got {} chunks)",
+            chunks_added
+        );
 
         let decoded = decoder.get_decoded_data().unwrap();
         assert_eq!(decoded, data, "Decoded data should match original");
@@ -1855,34 +2136,50 @@ mod decoder_tests {
         assert_eq!(part0_blocks, 10, "Part 0 should have 10 blocks");
 
         let part0_threshold = (part0_blocks as f64 * 1.10).ceil() as usize;
-        assert_eq!(part0_threshold, 11, "Part 0 should need 11 chunks for first real decode");
+        assert_eq!(
+            part0_threshold, 11,
+            "Part 0 should need 11 chunks for first real decode"
+        );
 
         // Add 10 chunks - should trigger early decode at 10
         for _ in 0..10 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // At 10 chunks, early decode should have processed all pending
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "Early decode at 10 chunks should have processed all pending");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Early decode at 10 chunks should have processed all pending"
+        );
 
         // Add 11th chunk - should trigger 110% decode
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         // At 11 chunks total, 110% decode should have processed the 1 pending chunk
-        assert_eq!(decoder.get_pending_chunk_count(), 0,
-            "110% decode at 11 chunks should have processed pending chunk");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "110% decode at 11 chunks should have processed pending chunk"
+        );
 
         // Verify the adaptive strategy is working per-part
         // The key point is that each part gets its own 110% threshold, not the global block count
@@ -1902,11 +2199,16 @@ mod decoder_tests {
             "application/octet-stream".to_string(),
             0.0,
             options,
-            false, 0, None,
+            false,
+            0,
+            None,
         );
 
         let metadata = encoder.get_metadata();
-        assert_eq!(metadata.total_source_blocks, 1000, "Should have 1000 blocks");
+        assert_eq!(
+            metadata.total_source_blocks, 1000,
+            "Should have 1000 blocks"
+        );
 
         let mut decoder = FountainDecoder::new(metadata);
 
@@ -1917,46 +2219,69 @@ mod decoder_tests {
         // Add chunks to trigger 110% decode (early decode at 20 will happen automatically)
         for _ in 0..first_decode_threshold {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         // 110% decode should have been triggered (early decode at 20 already happened)
-        assert_eq!(decoder.get_pending_chunk_count(), 0, "110% decode should have processed all pending");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "110% decode should have processed all pending"
+        );
 
         // Now test incremental threshold
         // For 1000 blocks: max(ceil(1000 * 0.05), 10) = max(50, 10) = 50 chunks
         let incremental_threshold = ((1000.0_f64 * 0.05).ceil() as usize).max(10);
-        assert_eq!(incremental_threshold, 50, "Incremental threshold should be 50 (5% of 1000)");
+        assert_eq!(
+            incremental_threshold, 50,
+            "Incremental threshold should be 50 (5% of 1000)"
+        );
 
         // Add 49 chunks - should stay pending
         for _ in 0..49 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
-        assert_eq!(decoder.get_pending_chunk_count(), 49, "Should have 49 pending chunks");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            49,
+            "Should have 49 pending chunks"
+        );
 
         // Add 50th chunk - should trigger decode
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
-        assert_eq!(decoder.get_pending_chunk_count(), 0,
-            "Should have processed at 5% threshold (50 chunks)");
+        assert_eq!(
+            decoder.get_pending_chunk_count(),
+            0,
+            "Should have processed at 5% threshold (50 chunks)"
+        );
     }
 
     #[test]
@@ -2000,10 +2325,13 @@ mod decoder_tests {
         // Add chunks for part 0 to complete it
         while !decoder.is_current_part_complete() {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
@@ -2018,41 +2346,57 @@ mod decoder_tests {
         // Add 9 chunks - should stay pending (no trigger yet)
         for _ in 0..9 {
             if let Some(chunk) = encoder.generate_chunk() {
-                let chunk_key = format!("{}:{}:{}:{}",
-                    chunk.seed, chunk.degree,
+                let chunk_key = format!(
+                    "{}:{}:{}:{}",
+                    chunk.seed,
+                    chunk.degree,
                     chunk.indices.first().unwrap_or(&0),
-                    chunk.indices.last().unwrap_or(&0));
+                    chunk.indices.last().unwrap_or(&0)
+                );
                 decoder.process_chunk_with_validation(chunk, chunk_key);
             }
         }
 
         let pending_at_9 = decoder.get_pending_chunk_count();
-        assert_eq!(pending_at_9, 9, "Part 1 should have 9 pending chunks before early decode");
+        assert_eq!(
+            pending_at_9, 9,
+            "Part 1 should have 9 pending chunks before early decode"
+        );
 
         // Add 10th chunk - early decode should trigger (confirming flag reset)
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         let pending_at_10 = decoder.get_pending_chunk_count();
-        assert_eq!(pending_at_10, 0,
-            "Part 1 should trigger early decode at 10 chunks, confirming flag reset");
+        assert_eq!(
+            pending_at_10, 0,
+            "Part 1 should trigger early decode at 10 chunks, confirming flag reset"
+        );
 
         // Add 11th chunk - should trigger 110% decode
         if let Some(chunk) = encoder.generate_chunk() {
-            let chunk_key = format!("{}:{}:{}:{}",
-                chunk.seed, chunk.degree,
+            let chunk_key = format!(
+                "{}:{}:{}:{}",
+                chunk.seed,
+                chunk.degree,
                 chunk.indices.first().unwrap_or(&0),
-                chunk.indices.last().unwrap_or(&0));
+                chunk.indices.last().unwrap_or(&0)
+            );
             decoder.process_chunk_with_validation(chunk, chunk_key);
         }
 
         let pending_at_11 = decoder.get_pending_chunk_count();
-        assert_eq!(pending_at_11, 0,
-            "Part 1 should also process at 110% threshold (11 chunks)");
+        assert_eq!(
+            pending_at_11, 0,
+            "Part 1 should also process at 110% threshold (11 chunks)"
+        );
     }
 }
