@@ -131,7 +131,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             </CardContent>
           </Card>
 
-          <NavLink to="/offline/receive">
+          <NavLink to="/scan/camera">
             <Card className="cursor-pointer hover:border-primary transition-colors">
               <CardHeader>
                 <CardTitle className="text-center">📥 Receive a File</CardTitle>
@@ -139,10 +139,10 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
               <CardContent>
                 <div className="space-y-4">
                   <p className="text-sm text-muted-foreground text-center">
-                    Use your camera to scan animated QR codes and receive a file
+                    Use your camera to scan the metadata QR code to begin receiving a file
                   </p>
                   <Button className="w-full" size="lg">
-                    Start Receiving
+                    Scan Metadata QR
                   </Button>
                 </div>
               </CardContent>

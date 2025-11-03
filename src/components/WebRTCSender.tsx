@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Progress } from '@/components/ui/progress'
 import { createPeerOptions } from '@/lib/peerConfig'
+import { WEBRTC_TRANSFER_MAGIC } from '@/constants'
 
 interface WebRTCSenderProps {
   encryptedFile: File
@@ -104,7 +105,7 @@ export function WebRTCSender({ encryptedFile, encryptionKey, originalFilename, o
       setConnectionStatus('waiting')
 
       // Generate QR code with peer ID and encryption key
-      const qrData = JSON.stringify({
+      const qrData = WEBRTC_TRANSFER_MAGIC + JSON.stringify({
         type: 'webrtc-transfer',
         peerId: id,
         encryptionKey: encryptionKey,
