@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
+import { VitePWA } from 'vite-plugin-pwa'
 
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
@@ -42,7 +43,7 @@ const verifyWorkerBuildPlugin = () => {
 
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   server: {
     host: true,
     allowedHosts: [
@@ -97,6 +98,86 @@ export default defineConfig({
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
     }),
+    // PWA plugin - only enabled in production builds
+    ...(mode === 'production' ? [VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.ico', 'icon.svg'],
+      manifest: {
+        name: 'QR Code Secure Share',
+        short_name: 'QR Secure',
+        description: 'Secure file transfer via QR codes with offline support',
+        theme_color: '#ffffff',
+        background_color: '#ffffff',
+        display: 'standalone',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          {
+            src: 'icon.svg',
+            sizes: '192x192',
+            type: 'image/svg+xml',
+            purpose: 'any'
+          },
+          {
+            src: 'icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any'
+          },
+          {
+            src: 'icon.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'maskable'
+          }
+        ]
+      },
+      workbox: {
+        // Network-first strategy: Always try network first, fallback to cache
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }) => request.mode === 'navigate',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'pages-cache',
+              expiration: {
+                maxEntries: 50,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              },
+              networkTimeoutSeconds: 10
+            }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              }
+            }
+          },
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'images-cache',
+              expiration: {
+                maxEntries: 60,
+                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+              }
+            }
+          }
+        ],
+        // Skip waiting and claim clients for immediate updates
+        skipWaiting: true,
+        clientsClaim: true
+      },
+      devOptions: {
+        enabled: false // Explicitly disable in development
+      }
+    })] : [])
   ],
   // Testing Recommendations:
   // 1. Run `npm run build` and check the `dist` directory for worker chunks
@@ -104,4 +185,5 @@ export default defineConfig({
   // 3. Test in production build using `npm run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-})
+  // 6. For PWA: Check Application tab in DevTools for service worker and manifest
+}))
