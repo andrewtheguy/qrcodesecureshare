@@ -613,7 +613,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold">Scan QR Code</h2>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Scan a QR code from a previously uploaded file to retrieve the download URL and passphrase
+                  Scan any QR code to view its content. Supports encrypted files, WebRTC transfers, offline file transfers, and plain text.
                 </p>
               </div>
               
