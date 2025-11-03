@@ -165,10 +165,12 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             <AlertDescription>
               <p className="font-medium mb-2">📱 Instructions:</p>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Click "Play" to start the QR code animation</li>
-                <li>Have the receiver scan the animated QR codes</li>
-                <li>Keep the animation playing until all chunks are received</li>
-                <li>Adjust speed if needed (2-3 fps recommended)</li>
+                <li>First, select your transfer mode (Fountain Recommended/Basic or Sequential)</li>
+                <li>Have the receiver scan the metadata QR code to initialize the session</li>
+                <li>Click "Play" to start the animated data QR codes</li>
+                <li>For fountain feedback mode: scan receiver's feedback QR or enter confirmation codes manually</li>
+                <li>Keep the animation playing until transfer completes (progress shown on receiver)</li>
+                <li>Adjust fps if needed (default: 25 fps fountain, 5 fps sequential, range: 1-60 fps)</li>
               </ul>
             </AlertDescription>
           </Alert>
@@ -201,32 +203,40 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             <div className="space-y-2">
               <h3 className="font-semibold">✨ Features:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB completely offline (mode-dependent)</li>
-                <li>No internet connection required</li>
-                <li>Works between any two devices with cameras</li>
-                <li>Automatic chunking and reconstruction</li>
-                <li>Adjustable animation speed (1-5 fps)</li>
+                <li>Three transfer modes: Fountain Code (Recommended), Fountain Code (Basic), and Sequential</li>
+                <li>Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB completely offline with feedback mode</li>
+                <li>No internet connection required - works completely offline</li>
+                <li>Works between any two devices with cameras (some modes work without sender camera)</li>
+                <li>Automatic chunking and reconstruction with checksum validation</li>
+                <li>Adjustable animation speed (1-60 fps, default 25 fps for fountain mode, 5 fps for sequential)</li>
+                <li>Intelligent feedback system for optimized transfers (fountain feedback mode)</li>
               </ul>
             </div>
 
             <div className="space-y-2">
               <h3 className="font-semibold">🔧 Technical Details:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Files split into ~1.2KB chunks per QR code</li>
-                <li>Base64 encoding for binary data</li>
-                <li>Automatic deduplication of scanned chunks</li>
-                <li>Progress tracking for both sender and receiver</li>
+                <li><strong>Fountain Mode:</strong> 1000-byte source blocks, requires ~105-115% reception for completion</li>
+                <li><strong>Sequential Mode:</strong> 800-byte chunks transmitted in order, requires all chunks</li>
+                <li><strong>Part-based Transfers:</strong> Large files split into parts (32KB-1MB) with individual checksums</li>
+                <li><strong>Receiver Scanning:</strong> ~30 fps (33ms interval) using zxing-wasm binary mode</li>
+                <li><strong>Feedback Scanning:</strong> ~10 fps (100ms interval) for sender feedback QR codes</li>
+                <li>Binary data encoding (no Base64 overhead in newer modes)</li>
+                <li>CRC32 checksums for data integrity verification</li>
+                <li>Web Worker-based QR code generation for performance</li>
               </ul>
             </div>
 
             <div className="space-y-2">
               <h3 className="font-semibold">💡 Best Practices:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Use good lighting for better scanning</li>
-                <li>Keep camera steady and focused</li>
-                <li>Start with 2-3 fps, adjust as needed</li>
-                <li>Ensure QR codes fill most of the camera view</li>
-                <li>Smaller files transfer faster (aim for under 10KB)</li>
+                <li>Use <strong>Fountain Code (Recommended)</strong> for reliable transfers with feedback</li>
+                <li>Choose appropriate part size: smaller for slower devices/poor cameras, larger for faster transfers</li>
+                <li>Start with default fps (25 for fountain, 5 for sequential), adjust if needed</li>
+                <li>Use good lighting for better scanning accuracy</li>
+                <li>Keep camera steady and focused on the QR code</li>
+                <li>Ensure QR codes fill most of the camera view without cropping</li>
+                <li>For devices without cameras on sender side, use manual feedback input or fountain basic mode</li>
               </ul>
             </div>
           </CardContent>
