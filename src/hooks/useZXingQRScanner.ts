@@ -11,6 +11,7 @@ interface UseZXingQRScannerOptionsBase {
   scanInterval?: number
   debounceMs?: number // Debounce duplicate scans within this time window (ms)
   readerOptions?: Partial<ReaderOptions> // Custom reader options for barcode detection
+  preferLowRes?: boolean // Use lower resolution on mobile devices for better performance
 }
 
 interface UseZXingQRScannerBinaryOptions extends UseZXingQRScannerOptionsBase {
@@ -36,6 +37,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     binary = false, // Default to text mode for backward compatibility
     debounceMs = 0, // No debounce by default
     readerOptions = {}, // Custom reader options
+    preferLowRes = false, // Default to standard resolution
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -200,8 +202,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         video: isMobile
           ? {
               facingMode: facingMode,
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
+              width: { ideal: preferLowRes ? 640 : 1280 },
+              height: { ideal: preferLowRes ? 480 : 720 },
             }
           : {
               facingMode: facingMode,
@@ -229,7 +231,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
       isScanningRef.current = false
     }
-  }, [facingMode, enumerateCameras, onCameraReady, onError, startScanLoop])
+  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop])
 
   const switchCamera = useCallback(async () => {
     // Don't use stopCameraScanning as it sets isScanningRef to false
@@ -268,19 +270,25 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [isScanning, startCameraScanning, stopCameraScanning])
 
-  // Restart camera when facingMode changes (only if already scanning)
+  // Restart camera when facingMode or preferLowRes changes (only if already scanning)
   const facingModeRef = useRef(facingMode)
+  const preferLowResRef = useRef(preferLowRes)
   useEffect(() => {
-    // Skip on initial mount
-    if (facingModeRef.current !== facingMode && isScanningRef.current) {
+    // Skip on initial mount - check if either value has changed
+    const facingModeChanged = facingModeRef.current !== facingMode
+    const preferLowResChanged = preferLowResRef.current !== preferLowRes
+
+    if ((facingModeChanged || preferLowResChanged) && isScanningRef.current) {
       switchCamera()
     }
+
     facingModeRef.current = facingMode
-    // switchCamera intentionally omitted from dependency array: we only care about facingMode
+    preferLowResRef.current = preferLowRes
+    // switchCamera intentionally omitted from dependency array: we only care about facingMode/preferLowRes
     // changes triggering the effect. switchCamera is called for its side effects (camera restart),
     // not for its identity. Including it would cause unnecessary effect re-runs on every mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode])
+  }, [facingMode, preferLowRes])
 
   // Cleanup on unmount
   useEffect(() => {
