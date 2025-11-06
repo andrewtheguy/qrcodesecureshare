@@ -11,6 +11,7 @@ interface UseZXingQRScannerOptionsBase {
   scanInterval?: number
   debounceMs?: number // Debounce duplicate scans within this time window (ms)
   readerOptions?: Partial<ReaderOptions> // Custom reader options for barcode detection
+  preferLowRes?: boolean // Use lower resolution on mobile devices for better performance
 }
 
 interface UseZXingQRScannerBinaryOptions extends UseZXingQRScannerOptionsBase {
@@ -36,6 +37,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     binary = false, // Default to text mode for backward compatibility
     debounceMs = 0, // No debounce by default
     readerOptions = {}, // Custom reader options
+    preferLowRes = false, // Default to standard resolution
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -200,8 +202,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         video: isMobile
           ? {
               facingMode: facingMode,
-              width: { ideal: 1280 },
-              height: { ideal: 720 },
+              width: { ideal: preferLowRes ? 640 : 1280 },
+              height: { ideal: preferLowRes ? 480 : 720 },
             }
           : {
               facingMode: facingMode,
@@ -229,7 +231,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
       isScanningRef.current = false
     }
-  }, [facingMode, enumerateCameras, onCameraReady, onError, startScanLoop])
+  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop])
 
   const switchCamera = useCallback(async () => {
     // Don't use stopCameraScanning as it sets isScanningRef to false

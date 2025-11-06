@@ -159,6 +159,7 @@ export function FountainQRDataScanner({
 
   // Continuous data scanning is the most battery-critical operation
   // Use 30 fps (33ms interval) for faster QR code decoding with zxing-wasm binary mode
+  // Use low-res mode on mobile for better performance
   const { videoRef, canvasRef } = useZXingQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback && !success,
@@ -168,7 +169,8 @@ export function FountainQRDataScanner({
       onAckTransitionStatus(true)
     },
     scanInterval: 33, // ~30 fps
-    binary: true // Return Uint8Array for fountain binary data
+    binary: true, // Return Uint8Array for fountain binary data
+    preferLowRes: true // Use lower resolution on mobile for better performance and battery life
   })
 
   // Stop scanning when receiverMode changes away from 'data-scanning' or when success becomes true
