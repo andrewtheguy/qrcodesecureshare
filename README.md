@@ -55,7 +55,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 1. **Use "Generate QR Code"** tab
 2. **Enter your text** and generate QR
 3. **Share the QR code**
-4. **If text is too long**, use the in-place “Generate Compressed QR” option to pack more text into a single code
+4. **If text is too long**, use the in-place "Generate Compressed QR" option to pack more text into a single code
 
 ### Scanning QR Codes
 
@@ -63,11 +63,13 @@ QR-based offline file transfer and text QR generation. Share files between devic
 2. **Allow camera access** or upload a QR image
 3. **Scan QR codes** to extract data
 
-### Offline Transfer
+### Offline QR File Transfer
 
-1. **Use "Upload File"** tab
-2. **Choose transfer method** (Fountain Codes or Sequential QR)
-3. **Send or receive** files using QR codes only - completely offline, no servers involved
+1. **Use "Offline QR File Transfer"** tab (📤 Offline Transfer)
+2. **Choose role**: Send a file or Receive a file
+3. **Send mode**: Select a file to encode into animated QR codes, choose transfer mode (Fountain Code Recommended/Basic or Sequential)
+4. **Receive mode**: Scan the metadata QR code and watch the receiver scan the animated QR codes
+5. **Transfer completely offline** - no internet, servers, or services required
 
 ## 🏗️ Architecture
 
@@ -92,12 +94,13 @@ QR-based offline file transfer and text QR generation. Share files between devic
 - Replace sequential scanning Base64 encoding with ZXing WASM encoder for binary mode transfers to provide even better performance and compatibility
 
 ### Key Components
-- `GenerateQR.tsx`: Text QR generator
-- `Scan.tsx`: QR code scanning
-- `OfflineTransfer.tsx`: Offline file transfer workflow
-- `OfflineQRMode.tsx`: Mode selection and metadata preparation for offline QR transfers
-- `OfflineQRReceiver.tsx`: Metadata scanning and receiver component selection for offline QR transfers
-- Various sender/receiver components for different transfer modes
+- `GenerateQR.tsx`: Text/URL QR code generator with compression support
+- `Scan.tsx`: QR code scanning from camera or image upload
+- `OfflineTransfer.tsx`: Offline QR file transfer workflow (Send/Receive mode selection)
+- `OfflineQRMode.tsx`: Transfer mode selection and metadata QR generation for offline file transfers
+- `OfflineQRReceiver.tsx`: Receiver-side metadata scanning and data collection for offline transfers
+- `FountainQRSender.tsx` / `FountainQRReceiver.tsx`: Fountain code-based transfer implementation
+- `SequentialQRSender.tsx` / `SequentialQRReceiver.tsx`: Sequential QR code transfer implementation
 
 ## 🔋 Performance & Battery Optimization
 
@@ -119,10 +122,12 @@ These optimizations significantly reduce battery consumption and heat generation
 
 ## 🔒 Security Considerations
 
-- **Offline by design**: Offline transfers do not require servers or internet access
-- **No server storage**: Offline transfer data stays on the participating devices
+- **Offline by design**: Offline QR transfers do not require servers or internet access
+- **No intermediaries**: Transfer data stays only on the participating devices - never transmitted through third parties
 - **Camera permissions**: The scanner only uses camera access while actively scanning
 - **Compressed text QR**: Uses gzip compression with a binary payload header (`CMPQR1:`) that this app can auto-decompress on scan
+- **Data integrity**: Fountain and Sequential modes use CRC32 checksums to verify transfer completeness
+- **Local processing**: All QR code generation and scanning happens locally in the browser (WebWorkers)
 
 ## 🚀 Deployment
 
