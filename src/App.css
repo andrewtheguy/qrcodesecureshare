@@ -41,3 +41,27 @@
 .read-the-docs {
   color: #888;
 }
+
+/* Mobile menu performance optimizations */
+/* Enable GPU acceleration for Sheet animations */
+[class*="SheetContent"] {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-font-smoothing: antialiased;
+  -webkit-transform: translateZ(0);
+}
+
+/* Optimize navbar rendering */
+nav {
+  will-change: auto;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Reduce paint operations on backdrop blur */
+@supports (backdrop-filter: blur(1px)) {
+  nav {
+    will-change: backdrop-filter;
+  }
+}
