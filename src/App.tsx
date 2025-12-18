@@ -15,9 +15,8 @@ function App() {
 
   const tabs = [
     { path: "/", label: "Generate QR Code", icon: "🔲" },
-    { path: "/upload", label: "Upload File", icon: "📤" },
+    { path: "/offline", label: "Upload File", icon: "📤" },
     { path: "/scan", label: "Scan QR", icon: "📸" },
-    { path: "/offline", label: "Offline Transfer", icon: "🔄" },
   ]
 
   const activeTabInfo = tabs.find(tab => {
@@ -132,8 +131,8 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
         <Routes>
-          <Route path="/" element={<UploadWithState mode="text" />} />
-          <Route path="/upload" element={<Upload mode="file" />} />
+          <Route path="/" element={<UploadWithState />} />
+          <Route path="/upload" element={<Navigate to="/offline" replace />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
@@ -151,7 +150,7 @@ function App() {
 }
 
 // Wrapper component for Upload that handles location state
-function UploadWithState({ mode }: { mode: 'text' | 'file' }) {
+function UploadWithState() {
   const location = useLocation()
   const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
 
@@ -166,7 +165,7 @@ function UploadWithState({ mode }: { mode: 'text' | 'file' }) {
     }
   }, [location.state])
 
-  return <Upload ref={uploadRef} mode={mode} />
+  return <Upload ref={uploadRef} />
 }
 
 // Wrapper component for Scan that handles navigation to Generate
