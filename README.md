@@ -17,7 +17,6 @@ QR-based offline file transfer and text QR generation. Share files between devic
 - **Generate QR Codes**: Create QR codes from text
 - **Scan QR Codes**: Built-in QR scanner (camera or image upload)
 - **Offline Mode**: Full offline file transfer capability
-- **PWA Support**: Install as a web app with network-first caching strategy
 
 ## 📋 Prerequisites
 
@@ -80,7 +79,6 @@ QR-based offline file transfer and text QR generation. Share files between devic
 - **QR Code Scanning**: ZXing WASM (high-performance WebAssembly-based scanner)
 - **QR Code Generation**: qrcode library (for one-off QR code generation)
 - **Binary Transfer**: Fountain codes (LT codes with Robust Soliton distribution) for efficient large file transfers
-- **PWA**: Vite PWA plugin
 
 ### QR Code Implementation Details
 
@@ -145,14 +143,7 @@ For reliable testing of the built application, use the provided test deployment 
 This script builds the project, serves it locally on port 6943 with caching disabled, and creates a Cloudflare tunnel for external access.
 
 ### As a PWA
-The app is a Progressive Web App with network-first caching strategy for optimal performance and offline capability. Visit **[PWA_SETUP.md](./PWA_SETUP.md)** for detailed PWA documentation including:
-- Installation instructions for different platforms
-- Network-first caching strategy details
-- Offline behavior and automatic updates
-- Cache management and troubleshooting
-
-## 🤝 Contributing
-
+Th
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes

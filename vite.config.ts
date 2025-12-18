@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
-import { VitePWA } from 'vite-plugin-pwa'
 
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
@@ -98,147 +97,6 @@ export default defineConfig(({ mode }) => ({
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
     }),
-    // PWA plugin - only enabled in production builds
-    ...(mode === 'production' ? [VitePWA({
-      registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'icon.svg', 'icon-ios.svg', 'apple-touch-icon-180x180.png'],
-      manifest: {
-        name: 'QR Code Secure Share',
-        short_name: 'QR Secure',
-        description: 'Secure file transfer via QR codes with offline support',
-        theme_color: '#000000',
-        background_color: '#000000',
-        display: 'standalone',
-        start_url: '/',
-        scope: '/',
-        icons: [
-          {
-            src: 'pwa-64x64.png',
-            sizes: '64x64',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          },
-          {
-            src: 'maskable-icon-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable'
-          }
-        ]
-      },
-      workbox: {
-        // Network-first strategy: Always try network first, fallback to cache
-        runtimeCaching: [
-          // HTML pages - network first with short timeout
-          {
-            urlPattern: ({ request }) => request.mode === 'navigate',
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'pages-cache',
-              expiration: {
-                maxEntries: 50,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-              },
-              networkTimeoutSeconds: 5
-            }
-          },
-          // JavaScript and CSS - network first with longer timeout
-          {
-            urlPattern: /\.(?:js|css)$/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'scripts-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-              },
-              networkTimeoutSeconds: 8
-            }
-          },
-          // Worker files - network first
-          {
-            urlPattern: /\.worker\.(?:js|ts)$/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'workers-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-              },
-              networkTimeoutSeconds: 8
-            }
-          },
-          // WASM modules - network first
-          {
-            urlPattern: /\.wasm$/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'wasm-cache',
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-              },
-              networkTimeoutSeconds: 10
-            }
-          },
-          // Fonts - network first with longer cache time (fonts rarely change)
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-fonts-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
-              },
-              networkTimeoutSeconds: 5
-            }
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'google-fonts-files-cache',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year (font files don't change)
-              },
-              networkTimeoutSeconds: 5
-            }
-          },
-          // Images - network first with shorter cache
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/,
-            handler: 'NetworkFirst',
-            options: {
-              cacheName: 'images-cache',
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
-              },
-              networkTimeoutSeconds: 5
-            }
-          }
-        ],
-        // Skip waiting and claim clients for immediate updates
-        skipWaiting: true,
-        clientsClaim: true,
-        // Clean up old caches
-        cleanupOutdatedCaches: true
-      },
-      devOptions: {
-        enabled: false // Explicitly disable in development
-      }
-    })] : [])
   ],
   // Testing Recommendations:
   // 1. Run `npm run build` and check the `dist` directory for worker chunks
@@ -246,5 +104,4 @@ export default defineConfig(({ mode }) => ({
   // 3. Test in production build using `npm run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-  // 6. For PWA: Check Application tab in DevTools for service worker and manifest
 }))
