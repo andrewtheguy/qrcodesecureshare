@@ -6,13 +6,13 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { COMPRESSED_TEXT_MAGIC } from '@/constants'
 
-export interface UploadRef {
+export interface GenerateQRRef {
   setTextFromScan: (text: string) => void
 }
 
 const MAX_QR_TEXT_LENGTH = 700
 
-const Upload = forwardRef<UploadRef>((_props, ref) => {
+const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
@@ -248,4 +248,4 @@ const Upload = forwardRef<UploadRef>((_props, ref) => {
   )
 })
 
-export default Upload
+export default GenerateQR

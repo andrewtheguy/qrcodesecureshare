@@ -90,7 +90,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 - Replace sequential scanning Base64 encoding with ZXing WASM encoder for binary mode transfers to provide even better performance and compatibility
 
 ### Key Components
-- `Upload.tsx`: Text QR generator
+- `GenerateQR.tsx`: Text QR generator
 - `Scan.tsx`: QR code scanning
 - `OfflineTransfer.tsx`: Offline file transfer workflow
 - `OfflineQRMode.tsx`: Mode selection and metadata preparation for offline QR transfers

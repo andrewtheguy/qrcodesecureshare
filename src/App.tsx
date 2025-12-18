@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import Upload from './components/Upload'
+import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
 import Logo from './components/Logo'
@@ -131,7 +131,7 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
         <Routes>
-          <Route path="/" element={<UploadWithState />} />
+          <Route path="/" element={<GenerateQRWithState />} />
           <Route path="/upload" element={<Navigate to="/offline" replace />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
@@ -149,23 +149,23 @@ function App() {
   )
 }
 
-// Wrapper component for Upload that handles location state
-function UploadWithState() {
+// Wrapper component for GenerateQR that handles location state
+function GenerateQRWithState() {
   const location = useLocation()
-  const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
+  const generateQrRef = useRef<GenerateQRRef>(null)
 
   // Handle text passed from Scan component via navigation state
   useEffect(() => {
     const state = location.state as { text?: string } | null
-    if (state?.text && uploadRef.current) {
+    if (state?.text && generateQrRef.current) {
       const text = state.text
       setTimeout(() => {
-        uploadRef.current?.setTextFromScan(text)
+        generateQrRef.current?.setTextFromScan(text)
       }, 100)
     }
   }, [location.state])
 
-  return <Upload ref={uploadRef} />
+  return <GenerateQR ref={generateQrRef} />
 }
 
 // Wrapper component for Scan that handles navigation to Generate
