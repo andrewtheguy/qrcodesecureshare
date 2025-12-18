@@ -32,7 +32,6 @@ export const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<C
   )
 }
 
-// (Legacy computePublicKeyFingerprint removed in favor of SSH-style fingerprint from utils/fingerprint.ts)
 
 /**
  * Detects if the current device is likely mobile by combining touch support,

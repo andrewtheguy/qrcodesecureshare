@@ -7,7 +7,6 @@ import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
-import './utils/generateKeys' // Load key generation utility
 
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
