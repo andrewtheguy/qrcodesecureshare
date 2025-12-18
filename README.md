@@ -6,6 +6,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 
 ### ✉️ Text QR Generator
 - Generate QR codes from text or URLs for quick sharing
+- Large text can be compressed into a single QR (binary payload) for a second attempt at fitting into one code
 
 ### 📱 Offline QR File Transfer
 - Transfer files using QR codes only - no internet, servers, or third-party services required
@@ -54,6 +55,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 1. **Use "Generate QR Code"** tab
 2. **Enter your text** and generate QR
 3. **Share the QR code**
+4. **If text is too long**, use the in-place “Generate Compressed QR” option to pack more text into a single code
 
 ### Scanning QR Codes
 
@@ -120,6 +122,7 @@ These optimizations significantly reduce battery consumption and heat generation
 - **Offline by design**: Offline transfers do not require servers or internet access
 - **No server storage**: Offline transfer data stays on the participating devices
 - **Camera permissions**: The scanner only uses camera access while actively scanning
+- **Compressed text QR**: Uses gzip compression with a binary payload header (`CMPQR1:`) that this app can auto-decompress on scan
 
 ## 🚀 Deployment
 
