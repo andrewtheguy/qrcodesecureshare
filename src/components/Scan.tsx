@@ -100,6 +100,15 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       }
     } else {
       data = qrData
+      if (data.startsWith(COMPRESSED_TEXT_MAGIC)) {
+        const compressedString = data.slice(COMPRESSED_TEXT_MAGIC.length)
+        const bytes = new Uint8Array(compressedString.length)
+        for (let i = 0; i < compressedString.length; i += 1) {
+          bytes[i] = compressedString.charCodeAt(i) & 0xff
+        }
+        compressedPayload = bytes
+        data = ''
+      }
     }
 
     console.log('QR code detected:', data || '[binary]')
