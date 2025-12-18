@@ -1,7 +1,20 @@
 // QR Generation Worker
 // Offloads expensive writeBarcode calls from main thread
 
-import { writeBarcode } from 'zxing-wasm/full'
+import { writeBarcode, prepareZXingModule } from 'zxing-wasm/full'
+
+// Configure zxing-wasm to use local WASM file (cached by service worker for offline support)
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string, prefix: string) => {
+      if (path.endsWith('.wasm')) {
+        return `/${path}`
+      }
+      return prefix + path
+    },
+  },
+  fireImmediately: true,
+})
 
 // Listen for messages from main thread
 self.onmessage = async (e: MessageEvent) => {

@@ -50,13 +50,6 @@ export default defineConfig(({ mode }) => ({
       'localhost',
       '.trycloudflare.com'
     ],
-    // Disable all caching in development
-    headers: {
-      'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'Surrogate-Control': 'no-store'
-    },
     // Disable HMR
     hmr: false,
   },
@@ -103,24 +96,41 @@ export default defineConfig(({ mode }) => ({
       devOptions: {
         enabled: false, // Disable PWA in development to avoid caching issues
       },
+      workbox: {
+        // Cache all static assets including workers and WASM
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,wasm}'],
+        // Increase max file size for WASM files (zxing-wasm can be large)
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
+      },
       manifest: {
-        name: 'QR Code Secure Share',
-        short_name: 'QR Share',
-        description: 'Securely share data via QR codes',
-        theme_color: '#ffffff',
+        name: 'Secure Send',
+        short_name: 'SecureSend',
+        description: 'Share files and text securely with end-to-end encryption',
+        theme_color: '#000000',
+        background_color: '#000000',
+        display: 'standalone',
+        orientation: 'portrait',
+        scope: '/',
+        start_url: '/',
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      }
+            type: 'image/png',
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
     }),
   ],
   // Testing Recommendations:

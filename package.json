@@ -11,7 +11,8 @@
     "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
     "test": "cd rust/fountain-wasm && cargo test --all --release",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "cp node_modules/zxing-wasm/dist/reader/zxing_reader.wasm public/ && cp node_modules/zxing-wasm/dist/full/zxing_full.wasm public/"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",
