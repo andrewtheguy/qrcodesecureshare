@@ -15,8 +15,8 @@ function App() {
 
   const tabs = [
     { path: "/", label: "Generate QR Code", icon: "🔲" },
-    { path: "/offline", label: "Upload File", icon: "📤" },
     { path: "/scan", label: "Scan QR", icon: "📸" },
+    { path: "/offline", label: "Upload File", icon: "📤" },
   ]
 
   const activeTabInfo = tabs.find(tab => {
