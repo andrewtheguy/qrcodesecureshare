@@ -122,6 +122,9 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         if (typeof DecompressionStream === 'undefined') {
           throw new Error('Decompression is not supported in this browser.')
         }
+        if (compressedPayload.length < 2 || compressedPayload[0] !== 0x1f || compressedPayload[1] !== 0x8b) {
+          throw new Error('Compressed payload is missing the gzip header.')
+        }
         const stream = new Blob([compressedPayload]).stream().pipeThrough(new DecompressionStream('gzip'))
         const buffer = await new Response(stream).arrayBuffer()
         return new TextDecoder().decode(buffer)
@@ -135,7 +138,8 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         })
         .catch((error) => {
           console.error('Failed to decompress QR payload:', error)
-          setScannedText('Failed to decompress QR payload.')
+          const message = error instanceof Error ? error.message : 'Failed to decompress QR payload.'
+          setScannedText(`Compressed QR error: ${message}`)
           setParsedQRData({ type: 'text' })
           setWasCompressed(false)
         })
