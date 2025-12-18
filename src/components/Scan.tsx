@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { OFFLINE_METADATA_MAGIC } from '../constants'
+import { COMPRESSED_TEXT_MAGIC, OFFLINE_METADATA_MAGIC } from '../constants'
 import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -63,6 +63,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const [scanning, setScanning] = useState(false)
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode)
   const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
+  const [wasCompressed, setWasCompressed] = useState(false)
   // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
   const [cameraError, setCameraError] = useState<string | null>(null)
@@ -85,13 +86,54 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
     // Process the first QR code for now (can be extended to handle multiple in the future)
     const qrData = qrCodes[0]
-    // Convert Uint8Array to string if needed
-    const data = qrData instanceof Uint8Array ? new TextDecoder().decode(qrData) : qrData
-    console.log('QR code detected:', data)
+    let data: string
+    let compressedPayload: Uint8Array | null = null
+
+    if (qrData instanceof Uint8Array) {
+      const magicBytes = new TextEncoder().encode(COMPRESSED_TEXT_MAGIC)
+      const isCompressed = qrData.length >= magicBytes.length && magicBytes.every((b, i) => qrData[i] === b)
+      if (isCompressed) {
+        compressedPayload = qrData.slice(magicBytes.length)
+        data = ''
+      } else {
+        data = new TextDecoder().decode(qrData)
+      }
+    } else {
+      data = qrData
+    }
+
+    console.log('QR code detected:', data || '[binary]')
 
     // Always set the scanned text
-    setScannedText(data)
     setScanning(false)
+    setWasCompressed(false)
+
+    if (compressedPayload) {
+      const decompressToText = async () => {
+        if (typeof DecompressionStream === 'undefined') {
+          throw new Error('Decompression is not supported in this browser.')
+        }
+        const stream = new Blob([compressedPayload]).stream().pipeThrough(new DecompressionStream('gzip'))
+        const buffer = await new Response(stream).arrayBuffer()
+        return new TextDecoder().decode(buffer)
+      }
+
+      decompressToText()
+        .then((text) => {
+          setScannedText(text)
+          setParsedQRData({ type: 'text' })
+          setWasCompressed(true)
+        })
+        .catch((error) => {
+          console.error('Failed to decompress QR payload:', error)
+          setScannedText('Failed to decompress QR payload.')
+          setParsedQRData({ type: 'text' })
+          setWasCompressed(false)
+        })
+      return
+    }
+
+    setScannedText(data)
 
     if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
       try {
@@ -406,6 +448,18 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                 </AlertDescription>
               </Alert>
             )}
+            {wasCompressed && (
+              <Alert className="bg-emerald-50 border-emerald-200">
+                <AlertDescription className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    ✅ Compressed QR Detected
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This QR code contained compressed text and was automatically decompressed.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-3">
               <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
@@ -435,6 +489,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                     setScannedText(null)
                     setParsedQRData(null)
                     setUploadMode('camera')
+                    setWasCompressed(false)
                   }}
                 >
                   📷 Scan Another QR
