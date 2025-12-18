@@ -138,6 +138,7 @@ export default defineConfig(({ mode }) => ({
       workbox: {
         // Network-first strategy: Always try network first, fallback to cache
         runtimeCaching: [
+          // HTML pages - network first with short timeout
           {
             urlPattern: ({ request }) => request.mode === 'navigate',
             handler: 'NetworkFirst',
@@ -145,37 +146,94 @@ export default defineConfig(({ mode }) => ({
               cacheName: 'pages-cache',
               expiration: {
                 maxEntries: 50,
-                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+              },
+              networkTimeoutSeconds: 5
+            }
+          },
+          // JavaScript and CSS - network first with longer timeout
+          {
+            urlPattern: /\.(?:js|css)$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'scripts-cache',
+              expiration: {
+                maxEntries: 100,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+              },
+              networkTimeoutSeconds: 8
+            }
+          },
+          // Worker files - network first
+          {
+            urlPattern: /\.worker\.(?:js|ts)$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'workers-cache',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+              },
+              networkTimeoutSeconds: 8
+            }
+          },
+          // WASM modules - network first
+          {
+            urlPattern: /\.wasm$/,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'wasm-cache',
+              expiration: {
+                maxEntries: 10,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
               },
               networkTimeoutSeconds: 10
             }
           },
+          // Fonts - network first with longer cache time (fonts rarely change)
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'google-fonts-cache',
               expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
-              }
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
+              },
+              networkTimeoutSeconds: 5
             }
           },
           {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: 'CacheFirst',
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'google-fonts-files-cache',
+              expiration: {
+                maxEntries: 20,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year (font files don't change)
+              },
+              networkTimeoutSeconds: 5
+            }
+          },
+          // Images - network first with shorter cache
+          {
+            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/,
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'images-cache',
               expiration: {
-                maxEntries: 60,
-                maxAgeSeconds: 30 * 24 * 60 * 60 // 30 days
-              }
+                maxEntries: 100,
+                maxAgeSeconds: 7 * 24 * 60 * 60 // 7 days
+              },
+              networkTimeoutSeconds: 5
             }
           }
         ],
         // Skip waiting and claim clients for immediate updates
         skipWaiting: true,
-        clientsClaim: true
+        clientsClaim: true,
+        // Clean up old caches
+        cleanupOutdatedCaches: true
       },
       devOptions: {
         enabled: false // Explicitly disable in development
