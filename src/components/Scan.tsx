@@ -79,36 +79,22 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   }, [location.pathname])
 
   // Handle QR scan results (multiple QR codes from a single scan)
-  const handleQRScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
+  const handleQRScan = useCallback((qrCodes: Uint8Array[]) => {
     if (!qrCodes || qrCodes.length === 0) {
       return
     }
 
     // Process the first QR code for now (can be extended to handle multiple in the future)
     const qrData = qrCodes[0]
-    let data: string
+    let data = ''
     let compressedPayload: Uint8Array | null = null
 
-    if (qrData instanceof Uint8Array) {
-      const magicBytes = new TextEncoder().encode(COMPRESSED_TEXT_MAGIC)
-      const isCompressed = qrData.length >= magicBytes.length && magicBytes.every((b, i) => qrData[i] === b)
-      if (isCompressed) {
-        compressedPayload = qrData.slice(magicBytes.length)
-        data = ''
-      } else {
-        data = new TextDecoder().decode(qrData)
-      }
+    const magicBytes = new TextEncoder().encode(COMPRESSED_TEXT_MAGIC)
+    const isCompressed = qrData.length >= magicBytes.length && magicBytes.every((b, i) => qrData[i] === b)
+    if (isCompressed) {
+      compressedPayload = qrData.slice(magicBytes.length)
     } else {
-      data = qrData
-      if (data.startsWith(COMPRESSED_TEXT_MAGIC)) {
-        const compressedString = data.slice(COMPRESSED_TEXT_MAGIC.length)
-        const bytes = new Uint8Array(compressedString.length)
-        for (let i = 0; i < compressedString.length; i += 1) {
-          bytes[i] = compressedString.charCodeAt(i) & 0xff
-        }
-        compressedPayload = bytes
-        data = ''
-      }
+      data = new TextDecoder().decode(qrData)
     }
 
     console.log('QR code detected:', data || '[binary]')
@@ -186,6 +172,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
+    binary: true,
     // Maximize detection for challenging QR codes (worn, angled, poor lighting, color variations)
     readerOptions: {
       formats: ['QRCode'],
@@ -268,7 +255,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('Processing uploaded image for QR code...')
 
       // Decode the QR codes using zxing-wasm worker
-      const results = await decodeQRFromImage(file)
+      const results = await decodeQRFromImage(file, undefined, true)
 
       if (!results || results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
@@ -278,7 +265,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('QR codes detected from uploaded image:', results)
 
       // Use the same handler as camera scan, passing all detected QR codes
-      handleQRScan(results)
+      handleQRScan(results as Uint8Array[])
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')
