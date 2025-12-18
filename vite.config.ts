@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
 
@@ -96,6 +97,30 @@ export default defineConfig(({ mode }) => ({
       // failOnWarning: false, // Don't fail the build on warnings
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
+    }),
+    VitePWA({
+      registerType: 'autoUpdate',
+      devOptions: {
+        enabled: false, // Disable PWA in development to avoid caching issues
+      },
+      manifest: {
+        name: 'QR Code Secure Share',
+        short_name: 'QR Share',
+        description: 'Securely share data via QR codes',
+        theme_color: '#ffffff',
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      }
     }),
   ],
   // Testing Recommendations:
