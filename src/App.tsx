@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import Scan from './components/Scan'
@@ -9,27 +9,29 @@ import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
 
+const TABS = [
+  { path: "/", label: "Generate QR Code", icon: "🔲" },
+  { path: "/scan", label: "Scan QR", icon: "📸" },
+  { path: "/offline", label: "Upload File", icon: "📤" },
+] as const
+
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const location = useLocation()
 
-  const tabs = [
-    { path: "/", label: "Generate QR Code", icon: "🔲" },
-    { path: "/scan", label: "Scan QR", icon: "📸" },
-    { path: "/offline", label: "Upload File", icon: "📤" },
-  ]
-
-  const activeTabInfo = tabs.find(tab => {
-    // For scan route, match both /scan/camera and /scan/upload
-    if (tab.path === '/scan') {
-      return location.pathname.startsWith('/scan')
-    }
-    // For offline route, match /offline, /offline/send and /offline/receive
-    if (tab.path === '/offline') {
-      return location.pathname.startsWith('/offline')
-    }
-    return location.pathname === tab.path
-  }) || tabs[0]
+  const activeTabInfo = useMemo(() => {
+    return TABS.find(tab => {
+      // For scan route, match both /scan/camera and /scan/upload
+      if (tab.path === '/scan') {
+        return location.pathname.startsWith('/scan')
+      }
+      // For offline route, match /offline, /offline/send and /offline/receive
+      if (tab.path === '/offline') {
+        return location.pathname.startsWith('/offline')
+      }
+      return location.pathname === tab.path
+    }) || TABS[0]
+  }, [location.pathname])
 
   return (
     <div className="min-h-screen">
@@ -68,7 +70,7 @@ function App() {
                 </SheetTrigger>
                 <SheetContent side="right" className="w-72">
                   <div className="flex flex-col gap-2 mt-8">
-                    {tabs.map((tab) => (
+                    {TABS.map((tab) => (
                       <NavLink
                         key={tab.path}
                         to={tab.path}
@@ -101,7 +103,7 @@ function App() {
 
             {/* Desktop Navigation Links */}
             <div className="hidden md:flex space-x-1">
-              {tabs.map((tab) => (
+              {TABS.map((tab) => (
                 <NavLink
                   key={tab.path}
                   to={tab.path}
