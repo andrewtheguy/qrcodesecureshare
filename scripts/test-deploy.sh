@@ -12,14 +12,15 @@ if lsof -Pi :$PORT -sTCP:LISTEN -t >/dev/null ; then
     exit 1
 fi
 
-# Ensure tmp directory exists
-mkdir -p $TMP_PATH
-
 # Remove existing test output directory
 rm -rf $TMP_PATH
 
+# Ensure tmp directory exists
+mkdir -p $TMP_PATH
+
 # Build the project and output to $OUTPUT_DIR
-npm run build -- --outDir $OUTPUT_DIR
+npm run build:wasm
+npm run build:js -- --outDir $OUTPUT_DIR
 
 echo "Built project to $OUTPUT_DIR"
 export CLOUDFLARE_LOG="$TMP_PATH/cloudflare.log"

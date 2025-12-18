@@ -3,7 +3,7 @@ import type { ReaderOptions } from 'zxing-wasm/reader'
 
 interface ScanResult {
   type: 'result'
-  data: string[] | null
+  data: (string | Uint8Array)[] | null
   error?: string
 }
 
@@ -25,7 +25,11 @@ const MAXIMIZED_DETECTION_OPTIONS: Partial<ReaderOptions> = {
  * @param readerOptions Optional custom reader options for detection tuning
  * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export function decodeQRFromImage(file: File, readerOptions?: Partial<ReaderOptions>): Promise<string[] | null> {
+export function decodeQRFromImage(
+  file: File,
+  readerOptions?: Partial<ReaderOptions>,
+  binary = false
+): Promise<(string | Uint8Array)[] | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -79,6 +83,7 @@ export function decodeQRFromImage(file: File, readerOptions?: Partial<ReaderOpti
             {
               type: 'scan',
               imageData,
+              binary,
               options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
             },
             [imageData.data.buffer]
@@ -109,7 +114,11 @@ export function decodeQRFromImage(file: File, readerOptions?: Partial<ReaderOpti
  * @param readerOptions Optional custom reader options for detection tuning
  * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
  */
-export function decodeQRFromImageData(imageData: ImageData, readerOptions?: Partial<ReaderOptions>): Promise<string[] | null> {
+export function decodeQRFromImageData(
+  imageData: ImageData,
+  readerOptions?: Partial<ReaderOptions>,
+  binary = false
+): Promise<(string | Uint8Array)[] | null> {
   return new Promise((resolve, reject) => {
     const worker = new ZXingWorker()
 
@@ -141,6 +150,7 @@ export function decodeQRFromImageData(imageData: ImageData, readerOptions?: Part
       {
         type: 'scan',
         imageData,
+        binary,
         options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
       },
       [imageData.data.buffer]

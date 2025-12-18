@@ -11,9 +11,7 @@
     "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
     "test": "cd rust/fountain-wasm && cargo test --all --release",
-    "preview": "vite preview",
-    "fingerprint": "node scripts/print-public-key-fingerprint.cjs",
-    "generate-keys": "node scripts/generate-keys.cjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.3.3",

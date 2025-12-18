@@ -94,6 +94,39 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto p-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Online File Transfer</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            For larger files and higher reliability, use Secure Send at{' '}
+            <a
+              href="https://secure-send-web.andrewtheguy.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              secure-send-web.andrewtheguy.com
+            </a>
+            . It supports transfers up to 100MB, uses WebRTC P2P for speed, and can
+            automatically fall back to encrypted cloud transfer (Nostr mode) if P2P fails.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            No accounts required, and all data is encrypted client-side before any transfer.
+          </p>
+          <Button asChild>
+            <a
+              href="https://secure-send-web.andrewtheguy.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Open Secure Send
+            </a>
+          </Button>
+        </CardContent>
+      </Card>
+
       <header className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Offline QR File Transfer</h1>
         <p className="text-muted-foreground">
@@ -200,6 +233,18 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             <CardTitle>How It Works</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Need online transfers instead? Use{' '}
+              <a
+                href="https://secure-send-web.andrewtheguy.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                Secure Send
+              </a>{' '}
+              for larger files and more reliable delivery.
+            </p>
             <div className="space-y-2">
               <h3 className="font-semibold">✨ Features:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">

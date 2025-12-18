@@ -1,40 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { ENCRYPTED_FILE_MAGIC, WEBRTC_TRANSFER_MAGIC, OFFLINE_METADATA_MAGIC } from '../constants'
+import { COMPRESSED_TEXT_MAGIC, OFFLINE_METADATA_MAGIC } from '../constants'
 import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Label } from '@/components/ui/label'
-import { Input } from '@/components/ui/input'
-import { deriveKey } from '@/lib/utils'
-import { importAndSetPrivateKey, getPrivateKey as vaultGetPrivateKey, clearPrivateKey as vaultClearPrivateKey } from '@/utils/privateKeyVault'
-import { getJwkSshFingerprint } from '@/utils/fingerprint'
-import { WebRTCReceiver } from './WebRTCReceiver'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
-
-interface EncryptedFileData {
-  url: string
-  passphrase?: string
-  privateKey?: string
-  filename: string
-  uploadedAt?: string
-  encryptionType?: 'symmetric' | 'asymmetric'
-  publicKeyFingerprint?: string
-}
-
-interface ScanState {
-  showingDetails: boolean
-  confirmDownload: boolean
-}
-
-interface WebRTCScanData {
-  type: 'webrtc-transfer'
-  peerId: string
-  encryptionKey: string
-  filename: string
-  fileSize: number
-}
 
 interface SequentialMetadata {
   type: 'METADATA'
@@ -77,31 +48,26 @@ interface ScanProps {
   defaultMode?: 'camera' | 'file'
 }
 
-interface WebRTCReceiveState {
-  isReceiving: boolean
-  data: WebRTCScanData | null
-}
-
-type QRCodeType = 'encrypted-file' | 'webrtc-transfer' | 'offline-metadata' | 'text'
+type QRCodeType = 'offline-metadata' | 'text'
 
 interface ParsedQRData {
   type: QRCodeType
-  encryptedFileData?: EncryptedFileData
-  webrtcData?: WebRTCScanData
   offlineMetadata?: OfflineMetadata
 }
 
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const location = useLocation()
   const navigate = useNavigate()
-  const [scannedData, setScannedData] = useState<EncryptedFileData | null>(null)
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null)
-  const [webrtcReceive, setWebrtcReceive] = useState<WebRTCReceiveState>({ isReceiving: false, data: null })
   const [scanning, setScanning] = useState(false)
-  const [decrypting, setDecrypting] = useState(false)
-  const [scanState, setScanState] = useState<ScanState>({ showingDetails: false, confirmDownload: false })
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode)
+  const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
+  const [wasCompressed, setWasCompressed] = useState(false)
+  // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
+  const [cameraError, setCameraError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Sync uploadMode with route changes
   useEffect(() => {
@@ -111,67 +77,64 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       setUploadMode('file')
     }
   }, [location.pathname])
-  const [privateKeyInput, setPrivateKeyInput] = useState('') // raw input field (cleared after load)
-  const [privateKeyStatus, setPrivateKeyStatus] = useState<'empty' | 'importing' | 'loaded' | 'error'>('empty')
-  const [privateKeyFingerprint, setPrivateKeyFingerprint] = useState<string | null>(null)
-  const [privateKeyError, setPrivateKeyError] = useState<string | null>(null)
-  const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
-  // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
-  const [cameraError, setCameraError] = useState<string | null>(null)
-  const privateKeyImportDebounceRef = useRef<number | null>(null)
-  const pageHiddenAtRef = useRef<number | null>(null)
-  const VISIBILITY_CLEAR_THRESHOLD_MS = 60_000 // Clear if tab hidden > 60s
-  // Timer ref to auto-clear private key after inactivity
-  const privateKeyClearTimeoutRef = useRef<number | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Handle QR scan results (multiple QR codes from a single scan)
-  const handleQRScan = useCallback((qrCodes: (string | Uint8Array)[]) => {
+  const handleQRScan = useCallback((qrCodes: Uint8Array[]) => {
     if (!qrCodes || qrCodes.length === 0) {
       return
     }
 
     // Process the first QR code for now (can be extended to handle multiple in the future)
     const qrData = qrCodes[0]
-    // Convert Uint8Array to string if needed
-    const data = qrData instanceof Uint8Array ? new TextDecoder().decode(qrData) : qrData
-    console.log('QR code detected:', data)
+    let data = ''
+    let compressedPayload: Uint8Array | null = null
+
+    const magicBytes = new TextEncoder().encode(COMPRESSED_TEXT_MAGIC)
+    const isCompressed = qrData.length >= magicBytes.length && magicBytes.every((b, i) => qrData[i] === b)
+    if (isCompressed) {
+      compressedPayload = qrData.slice(magicBytes.length)
+    } else {
+      data = new TextDecoder().decode(qrData)
+    }
+
+    console.log('QR code detected:', data || '[binary]')
 
     // Always set the scanned text
-    setScannedText(data)
     setScanning(false)
+    setWasCompressed(false)
 
-    // Check if QR code contains encrypted file data
-    if (data.startsWith(ENCRYPTED_FILE_MAGIC)) {
-      try {
-        const jsonData = data.substring(ENCRYPTED_FILE_MAGIC.length)
-        const parsedData = JSON.parse(jsonData) as EncryptedFileData
-        console.log('Parsed encrypted file data:', parsedData)
-        setParsedQRData({
-          type: 'encrypted-file',
-          encryptedFileData: parsedData
-        })
-      } catch (error) {
-        console.error('Invalid encrypted file data in QR code:', error)
-        setParsedQRData({ type: 'text' })
+    if (compressedPayload) {
+      const decompressToText = async () => {
+        if (typeof DecompressionStream === 'undefined') {
+          throw new Error('Decompression is not supported in this browser.')
+        }
+        if (compressedPayload.length < 2 || compressedPayload[0] !== 0x1f || compressedPayload[1] !== 0x8b) {
+          throw new Error('Compressed payload is missing the gzip header.')
+        }
+        const stream = new Blob([compressedPayload]).stream().pipeThrough(new DecompressionStream('gzip'))
+        const buffer = await new Response(stream).arrayBuffer()
+        return new TextDecoder().decode(buffer)
       }
-    } else if (data.startsWith(WEBRTC_TRANSFER_MAGIC)) {
-      // Check if it's a WebRTC transfer QR code
-      try {
-        const jsonData = data.substring(WEBRTC_TRANSFER_MAGIC.length)
-        const parsedData = JSON.parse(jsonData) as WebRTCScanData
-        console.log('Parsed WebRTC transfer data:', parsedData)
-        setParsedQRData({
-          type: 'webrtc-transfer',
-          webrtcData: parsedData
+
+      decompressToText()
+        .then((text) => {
+          setScannedText(text)
+          setParsedQRData({ type: 'text' })
+          setWasCompressed(true)
         })
-      } catch (error) {
-        console.error('Invalid WebRTC transfer data in QR code:', error)
-        setParsedQRData({ type: 'text' })
-      }
-    } else if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
-      // Check if it's an offline file transfer metadata QR code
+        .catch((error) => {
+          console.error('Failed to decompress QR payload:', error)
+          const message = error instanceof Error ? error.message : 'Failed to decompress QR payload.'
+          setScannedText(`Compressed QR error: ${message}`)
+          setParsedQRData({ type: 'text' })
+          setWasCompressed(false)
+        })
+      return
+    }
+
+    setScannedText(data)
+
+    if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
       try {
         const jsonData = data.substring(OFFLINE_METADATA_MAGIC.length)
         const parsedData = JSON.parse(jsonData) as OfflineMetadata
@@ -209,6 +172,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
+    binary: true,
     // Maximize detection for challenging QR codes (worn, angled, poor lighting, color variations)
     readerOptions: {
       formats: ['QRCode'],
@@ -261,180 +225,10 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     })
   }
 
-  const handleProceedToEncryptedFile = () => {
-    if (parsedQRData?.type === 'encrypted-file' && parsedQRData.encryptedFileData) {
-      setScannedData(parsedQRData.encryptedFileData)
-      setScanState({ showingDetails: true, confirmDownload: true })
-      setScannedText(null)
-      setParsedQRData(null)
-    }
-  }
-
-  const handleProceedToWebRTC = () => {
-    if (parsedQRData?.type === 'webrtc-transfer' && parsedQRData.webrtcData) {
-      setWebrtcReceive({ isReceiving: true, data: parsedQRData.webrtcData })
-      setScannedText(null)
-      setParsedQRData(null)
-    }
-  }
-
   const handleProceedToOfflineReceive = () => {
     if (parsedQRData?.type === 'offline-metadata' && parsedQRData.offlineMetadata) {
       // Navigate to /offline/receive with metadata in location state
       navigate('/offline/receive', { state: { metadata: parsedQRData.offlineMetadata } })
-    }
-  }
-
-
-  const decryptFileSymmetric = async (encryptedData: ArrayBuffer, passphrase: string): Promise<{ data: ArrayBuffer, filename: string }> => {
-    try {
-      const encryptedBytes = new Uint8Array(encryptedData)
-
-      // Extract salt, IV, and encrypted data
-      const salt = encryptedBytes.slice(0, 16)
-      const iv = encryptedBytes.slice(16, 28) // 12 bytes for GCM
-      const encrypted = encryptedBytes.slice(28)
-
-      // Derive key from passphrase
-      const key = await deriveKey(passphrase, salt)
-
-      // Decrypt the data using AES-GCM
-      const decryptedData = await crypto.subtle.decrypt(
-        {
-          name: 'AES-GCM',
-          iv: iv
-        },
-        key,
-        encrypted
-      )
-
-      return {
-        data: decryptedData,
-        filename: scannedData?.filename || 'decrypted-file'
-      }
-    } catch (error) {
-      console.error('Decryption failed:', error)
-      throw new Error('Failed to decrypt file. Please check the passphrase.')
-    }
-  }
-
-  const decryptFileAsymmetric = async (encryptedData: ArrayBuffer): Promise<{ data: ArrayBuffer, filename: string }> => {
-    try {
-      const encryptedBytes = new Uint8Array(encryptedData)
-
-      // Extract encrypted AES key length (4 bytes)
-      const aesKeyLengthBytes = encryptedBytes.slice(0, 4)
-      const aesKeyLength = new Uint32Array(aesKeyLengthBytes.buffer)[0]
-
-      // Extract encrypted AES key, IV, and encrypted data
-      const encryptedAesKey = encryptedBytes.slice(4, 4 + aesKeyLength)
-      const iv = encryptedBytes.slice(4 + aesKeyLength, 4 + aesKeyLength + 12)
-      const encrypted = encryptedBytes.slice(4 + aesKeyLength + 12)
-
-      // Retrieve already-imported private CryptoKey
-      const privateKey = vaultGetPrivateKey()
-      if (!privateKey) {
-        throw new Error('Private key not loaded')
-      }
-
-      // Decrypt the AES key using RSA private key
-      const decryptedAesKeyBytes = await crypto.subtle.decrypt(
-        { name: 'RSA-OAEP' },
-        privateKey,
-        encryptedAesKey
-      )
-
-      // Import the AES key
-      const aesKey = await crypto.subtle.importKey(
-        'raw',
-        decryptedAesKeyBytes,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      )
-
-      // Decrypt the file data with AES-GCM
-      const decryptedData = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv },
-        aesKey,
-        encrypted
-      )
-
-      return {
-        data: decryptedData,
-        filename: scannedData?.filename || 'decrypted-file'
-      }
-    } catch (error) {
-      console.error('Decryption failed:', error)
-      throw new Error('Failed to decrypt file. Please check the private key.')
-    }
-  }
-
-  const downloadDecryptedFile = async () => {
-    if (!scannedData) return
-
-    // For asymmetric encryption, require private key input
-      if (scannedData.encryptionType === 'asymmetric') {
-        if (!vaultGetPrivateKey()) {
-          alert('Please load/import the private key to decrypt this file')
-          return
-        }
-      }
-
-    try {
-      setDecrypting(true)
-
-      // Use CORS proxy to fetch the encrypted file
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(scannedData.url)}`
-      const response = await fetch(proxyUrl)
-
-      if (!response.ok) {
-        throw new Error(`Failed to download file: ${response.status}`)
-      }
-
-      const encryptedData = await response.arrayBuffer()
-
-      // Decrypt the file based on encryption type
-      let result: { data: ArrayBuffer, filename: string }
-
-      if (scannedData.encryptionType === 'asymmetric') {
-        result = await decryptFileAsymmetric(encryptedData)
-      } else if (scannedData.passphrase) {
-        result = await decryptFileSymmetric(encryptedData, scannedData.passphrase)
-      } else {
-        throw new Error('Missing decryption credentials')
-      }
-
-      const { data, filename } = result
-
-      // Create blob and download decrypted file
-      const blob = new Blob([data])
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      // Clear private key immediately after successful asymmetric decryption & download
-      if (scannedData.encryptionType === 'asymmetric') {
-        setPrivateKeyInput('')
-        vaultClearPrivateKey()
-        setPrivateKeyStatus('empty')
-        setPrivateKeyFingerprint(null)
-        if (privateKeyClearTimeoutRef.current) {
-          clearTimeout(privateKeyClearTimeoutRef.current)
-          privateKeyClearTimeoutRef.current = null
-        }
-      }
-
-    } catch (error) {
-      console.error('Download and decrypt failed:', error)
-      alert(error instanceof Error ? error.message : 'Failed to decrypt and download file')
-    } finally {
-      setDecrypting(false)
     }
   }
 
@@ -461,7 +255,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('Processing uploaded image for QR code...')
 
       // Decode the QR codes using zxing-wasm worker
-      const results = await decodeQRFromImage(file)
+      const results = await decodeQRFromImage(file, undefined, true)
 
       if (!results || results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
@@ -471,7 +265,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('QR codes detected from uploaded image:', results)
 
       // Use the same handler as camera scan, passing all detected QR codes
-      handleQRScan(results)
+      handleQRScan(results as Uint8Array[])
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')
@@ -489,115 +283,6 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     }
   }, [])
 
-  // Reset inactivity timer whenever a private key is LOADED (CryptoKey present); auto-clear after 5 minutes
-  useEffect(() => {
-    if (privateKeyClearTimeoutRef.current) {
-      clearTimeout(privateKeyClearTimeoutRef.current)
-      privateKeyClearTimeoutRef.current = null
-    }
-    if (privateKeyStatus === 'loaded') {
-      privateKeyClearTimeoutRef.current = window.setTimeout(() => {
-        setPrivateKeyInput('')
-        vaultClearPrivateKey()
-        setPrivateKeyStatus('empty')
-        setPrivateKeyFingerprint(null)
-      }, 5 * 60 * 1000)
-    }
-  }, [privateKeyStatus])
-
-  // On mount, hydrate status from vault (component remount within tab lifetime)
-  useEffect(() => {
-    const existing = vaultGetPrivateKey()
-    if (existing) {
-      setPrivateKeyStatus('loaded')
-    }
-  }, [])
-
-  // Visibility change handling: clear key if tab hidden longer than threshold
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState === 'hidden') {
-        pageHiddenAtRef.current = Date.now()
-      } else if (document.visibilityState === 'visible') {
-        if (pageHiddenAtRef.current) {
-          const hiddenFor = Date.now() - pageHiddenAtRef.current
-          if (hiddenFor > VISIBILITY_CLEAR_THRESHOLD_MS && vaultGetPrivateKey()) {
-            vaultClearPrivateKey()
-            setPrivateKeyStatus('empty')
-            setPrivateKeyInput('')
-            setPrivateKeyFingerprint(null)
-            if (privateKeyClearTimeoutRef.current) {
-              clearTimeout(privateKeyClearTimeoutRef.current)
-              privateKeyClearTimeoutRef.current = null
-            }
-          }
-          pageHiddenAtRef.current = null
-        }
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibility)
-    return () => document.removeEventListener('visibilitychange', handleVisibility)
-  }, [])
-
-  const handleImportPrivateKey = useCallback(async (raw?: string) => {
-    const candidate = (raw !== undefined ? raw : privateKeyInput).trim()
-    if (!candidate) return
-    setPrivateKeyStatus('importing')
-    setPrivateKeyError(null)
-    try {
-      // Compute Base58 fingerprint (public portion) before import
-      try {
-        const fp = await getJwkSshFingerprint(candidate)
-        setPrivateKeyFingerprint(fp)
-      } catch (err) {
-        console.warn('Failed to compute fingerprint:', err)
-        // If fingerprint cannot be computed (unsupported key), we proceed without it
-        setPrivateKeyFingerprint(null)
-      }
-      await importAndSetPrivateKey(candidate)
-      // Clear raw input immediately after successful import
-      setPrivateKeyInput('')
-      setPrivateKeyStatus('loaded')
-    } catch (e: unknown) {
-      setPrivateKeyStatus('error')
-      const errorMessage = e instanceof Error ? e.message : 'Failed to import private key'
-      setPrivateKeyError(errorMessage)
-      setPrivateKeyFingerprint(null)
-    }
-  }, [privateKeyInput, setPrivateKeyStatus, setPrivateKeyError, setPrivateKeyFingerprint, setPrivateKeyInput])
-
-  // Attempt auto-import (debounced) when user types a likely complete JWK
-  useEffect(() => {
-    if (privateKeyStatus === 'loaded' || privateKeyStatus === 'importing') return
-    if (privateKeyImportDebounceRef.current) {
-      clearTimeout(privateKeyImportDebounceRef.current)
-      privateKeyImportDebounceRef.current = null
-    }
-    const candidate = privateKeyInput.trim()
-    if (!candidate) return
-    // Heuristic: must start with { and end with } and contain '"kty"' + '"d"'
-    if (candidate.startsWith('{') && candidate.endsWith('}') && /"kty"/.test(candidate) && /"d"/.test(candidate)) {
-      privateKeyImportDebounceRef.current = window.setTimeout(() => {
-        handleImportPrivateKey()
-      }, 500) // 500ms debounce
-    }
-  }, [privateKeyInput, privateKeyStatus, handleImportPrivateKey])
-
-  // Paste-detect immediate import
-  const handlePrivateKeyPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    const raw = e.clipboardData.getData('text')
-    const text = raw.trim()
-    setPrivateKeyInput(text)
-    if (text.startsWith('{') && text.endsWith('}') && /"kty"/.test(text)) {
-      if (privateKeyImportDebounceRef.current) {
-        clearTimeout(privateKeyImportDebounceRef.current)
-        privateKeyImportDebounceRef.current = null
-      }
-      // Direct import using raw text to avoid race with async state update
-      handleImportPrivateKey(text)
-    }
-  }
-
   return (
     <div className="space-y-6">
       {copiedFeedback && (
@@ -605,7 +290,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
           ✓ {copiedFeedback}
         </div>
       )}
-      {!scanning && !scannedData && !scannedText && !webrtcReceive.isReceiving && (
+      {!scanning && !scannedText && (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-6">
@@ -613,10 +298,10 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold">Scan QR Code</h2>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Scan any QR code to view its content. Supports encrypted files, WebRTC transfers, offline file transfers, and plain text.
+                  Scan any QR code to view its content. Supports offline file transfer metadata and plain text.
                 </p>
               </div>
-              
+
               {/* Mode selection */}
               <div className="flex justify-center gap-2 mb-4">
                 <NavLink to="/scan/camera">
@@ -643,7 +328,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
               {uploadMode === 'camera' ? (
                 <div className="space-y-4">
-                  <div 
+                  <div
                     onClick={startScanning}
                     className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors"
                   >
@@ -687,7 +372,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
           </CardContent>
         </Card>
       )}
-        
+
       {scanning && (
         <Card>
           <CardContent className="p-8 text-center">
@@ -725,280 +410,6 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
           </CardContent>
         </Card>
       )}
-        
-      {scannedData && scanState.confirmDownload && (
-        <Card>
-          <CardHeader className="text-center">
-            <CardTitle className="text-green-600 flex items-center justify-center gap-2">
-              🔐 This QR Code is an Encrypted File
-            </CardTitle>
-            <CardDescription className="text-lg font-semibold">
-              File Details
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-4">
-              <div className="grid gap-3">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-muted-foreground">📄 Filename:</span>
-                  <code className="bg-muted px-2 py-1 rounded font-mono text-sm">
-                    {scannedData.filename}
-                  </code>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-muted-foreground">🔗 URL:</span>
-                  <code className="bg-muted px-2 py-1 rounded font-mono text-xs break-all">
-                    {scannedData.url}
-                  </code>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => copyToClipboard(scannedData.url)}
-                  >
-                    📋
-                  </Button>
-                </div>
-                {scannedData.uploadedAt && (
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-muted-foreground">📅 Uploaded:</span>
-                    <span className="text-sm">
-                      {new Date(scannedData.uploadedAt).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {scannedData.encryptionType === 'asymmetric' ? (
-              <>
-                <Alert>
-                  <AlertDescription className="space-y-4">
-                    <div className="font-medium flex items-center gap-2">
-                      🔑 Asymmetric Encryption (RSA-OAEP)
-                    </div>
-                    {scannedData.publicKeyFingerprint && (
-                      <div className="flex flex-wrap items-center gap-2 w-full overflow-x-auto">
-                        <span className="font-medium text-muted-foreground">🆔 Public Key Fingerprint:</span>
-                        <code className="bg-muted px-2 py-1 rounded font-mono text-xs break-all whitespace-pre-wrap w-full max-w-full">
-                          {scannedData.publicKeyFingerprint}
-                        </code>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => copyToClipboard(scannedData.publicKeyFingerprint!)}
-                          className="h-6 px-2 text-xs"
-                        >
-                          Copy
-                        </Button>
-                      </div>
-                    )}
-                    <div className="space-y-2 w-full justify-self-stretch">
-                      <Label htmlFor="privateKeyDec" className="text-sm">Private Key (JWK):</Label>
-                      <div className="w-full flex flex-col gap-2">
-                        <div className="flex gap-2 items-start">
-                          <Input
-                            id="privateKeyDec"
-                            type="password"
-                            value={privateKeyInput}
-                            onChange={(e) => setPrivateKeyInput(e.target.value)}
-                            onPaste={handlePrivateKeyPaste}
-                            onFocus={(e) => {
-                              // Select all existing text to make replacement/paste easier
-                              // Wrap in setTimeout to ensure mobile browsers sometimes honor it after focus
-                              setTimeout(() => {
-                                try { e.target.select() } catch {
-                                  /* noop */
-                                }
-                              }, 0)
-                            }}
-                            placeholder={privateKeyStatus === 'loaded' ? 'Private key loaded' : 'Paste private key (JWK JSON format)'}
-                            disabled={privateKeyStatus === 'importing'}
-                            className="font-mono text-[11px] w-full block !w-full justify-self-stretch"
-                          />
-                          {privateKeyStatus !== 'loaded' && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={!privateKeyInput.trim() || privateKeyStatus === 'importing'}
-                              className="shrink-0 h-8 text-xs"
-                              onClick={() => handleImportPrivateKey()}
-                            >
-                              {privateKeyStatus === 'importing' ? 'Loading...' : 'Load'}
-                            </Button>
-                          )}
-                          {privateKeyStatus === 'loaded' && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              className="shrink-0 h-8 text-xs"
-                              onClick={() => {
-                                setPrivateKeyInput('')
-                                vaultClearPrivateKey()
-                                setPrivateKeyStatus('empty')
-                                if (privateKeyClearTimeoutRef.current) {
-                                  clearTimeout(privateKeyClearTimeoutRef.current)
-                                  privateKeyClearTimeoutRef.current = null
-                                }
-                              }}
-                            >
-                              Clear
-                            </Button>
-                          )}
-                        </div>
-                        {privateKeyStatus === 'loaded' && (
-                          <div className="flex flex-col gap-1">
-                            <p className="text-xs text-green-600">✓ Private key imported & stored ephemerally (auto-clears after 5 min inactivity, after download, tab hide, or manual clear)</p>
-                            {privateKeyFingerprint && (
-                              <div className="flex items-center gap-2 flex-wrap text-xs w-full overflow-x-auto">
-                                <span className="font-medium text-muted-foreground">Fingerprint:</span>
-                                <code className="bg-muted px-2 py-1 rounded font-mono text-[10px] break-all whitespace-pre-wrap w-full max-w-full">
-                                  {privateKeyFingerprint}
-                                </code>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  className="h-6 px-2 text-[10px]"
-                                  type="button"
-                                  onClick={() => copyToClipboard(privateKeyFingerprint)}
-                                >
-                                  Copy Full
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        {privateKeyStatus === 'error' && (
-                          <p className="text-xs text-red-600">{privateKeyError}</p>
-                        )}
-                        {privateKeyStatus === 'importing' && (
-                          <p className="text-xs text-muted-foreground">Importing private key…</p>
-                        )}
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground">
-                      Provide the matching private key to decrypt the embedded AES key and recover the original file.
-                    </p>
-                  </AlertDescription>
-                </Alert>
-                <div className="mt-6 space-y-2 text-left">
-                  <div className="flex items-center justify-between gap-4">
-                    <p className="text-xs text-muted-foreground font-medium m-0">QR Payload (no secrets):</p>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="h-6 px-2 text-xs"
-                      onClick={() => copyToClipboard(ENCRYPTED_FILE_MAGIC + JSON.stringify({
-                        url: scannedData.url,
-                        filename: scannedData.filename,
-                        encryptionType: 'asymmetric',
-                        publicKeyFingerprint: scannedData.publicKeyFingerprint
-                      }))}
-                    >
-                      Copy
-                    </Button>
-                  </div>
-                  <pre className="bg-muted p-3 rounded text-[10px] leading-snug overflow-x-auto whitespace-pre-wrap break-all max-h-40 border border-border w-full max-w-full">
-{ENCRYPTED_FILE_MAGIC + JSON.stringify({
-  url: scannedData.url,
-  filename: scannedData.filename,
-  encryptionType: 'asymmetric',
-  publicKeyFingerprint: scannedData.publicKeyFingerprint
-})}
-                  </pre>
-                </div>
-              </>
-            ) : (
-              <Alert>
-                <AlertDescription className="space-y-3">
-                  <div className="font-medium flex items-center gap-2">
-                    🔐 Decryption Passphrase:
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <code className="bg-muted px-3 py-2 rounded font-mono text-sm break-all flex-1 min-w-0">
-                      {scannedData.passphrase}
-                    </code>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => copyToClipboard(scannedData.passphrase!)}
-                    >
-                      📋 Copy
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    This file uses symmetric encryption (AES-GCM)
-                  </p>
-                </AlertDescription>
-              </Alert>
-            )}
-            
-            <div className="flex gap-3 justify-center flex-wrap">
-              <Button
-                onClick={downloadDecryptedFile}
-                disabled={decrypting || (scannedData.encryptionType === 'asymmetric' && privateKeyStatus !== 'loaded')}
-                className="flex items-center gap-2"
-              >
-                {decrypting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Decrypting...
-                  </>
-                ) : (
-                  '📥 Download Original File'
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setScannedData(null)
-                  setScannedText(null)
-                  setParsedQRData(null)
-                  setWebrtcReceive({ isReceiving: false, data: null })
-                  setScanState({ showingDetails: false, confirmDownload: false })
-                  setUploadMode('camera')
-                }}
-                disabled={decrypting}
-              >
-                Scan Another QR
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {webrtcReceive.isReceiving && webrtcReceive.data && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-semibold">🌐 WebRTC File Transfer</h2>
-            <Button
-              onClick={() => {
-                setWebrtcReceive({ isReceiving: false, data: null })
-                setUploadMode('camera')
-              }}
-              variant="outline"
-            >
-              ← Back to Scan
-            </Button>
-          </div>
-          <WebRTCReceiver
-            peerId={webrtcReceive.data.peerId}
-            encryptionKey={webrtcReceive.data.encryptionKey}
-            filename={webrtcReceive.data.filename}
-            fileSize={webrtcReceive.data.fileSize}
-            onComplete={(file) => {
-              console.log('WebRTC file received:', file)
-              // Optionally show success message or auto-reset
-            }}
-            onReset={() => {
-              setWebrtcReceive({ isReceiving: false, data: null })
-              setUploadMode('camera')
-            }}
-          />
-        </div>
-      )}
 
       {scannedText && (
         <Card>
@@ -1012,45 +423,6 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Show detected type alert if it's encrypted file or WebRTC */}
-            {parsedQRData?.type === 'encrypted-file' && (
-              <Alert className="bg-blue-50 border-blue-200">
-                <AlertDescription className="space-y-2">
-                  <div className="font-medium flex items-center gap-2">
-                    🔐 Encrypted File Detected
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    This QR code contains an encrypted file download link. Click below to proceed to decryption.
-                  </p>
-                  {parsedQRData.encryptedFileData && (
-                    <div className="text-sm space-y-1">
-                      <div><span className="font-semibold">Filename:</span> {parsedQRData.encryptedFileData.filename}</div>
-                      <div><span className="font-semibold">Type:</span> {parsedQRData.encryptedFileData.encryptionType === 'asymmetric' ? 'Asymmetric (RSA)' : 'Symmetric (AES)'}</div>
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
-            {parsedQRData?.type === 'webrtc-transfer' && (
-              <Alert className="bg-purple-50 border-purple-200">
-                <AlertDescription className="space-y-2">
-                  <div className="font-medium flex items-center gap-2">
-                    🌐 WebRTC Transfer Detected
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    This QR code is for a direct peer-to-peer file transfer. Click below to connect and receive the file.
-                  </p>
-                  {parsedQRData.webrtcData && (
-                    <div className="text-sm space-y-1">
-                      <div><span className="font-semibold">Filename:</span> {parsedQRData.webrtcData.filename}</div>
-                      <div><span className="font-semibold">Size:</span> {(parsedQRData.webrtcData.fileSize / 1024).toFixed(2)}KB</div>
-                    </div>
-                  )}
-                </AlertDescription>
-              </Alert>
-            )}
-
             {parsedQRData?.type === 'offline-metadata' && (
               <Alert className="bg-amber-50 border-amber-200">
                 <AlertDescription className="space-y-2">
@@ -1076,34 +448,23 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                 </AlertDescription>
               </Alert>
             )}
+            {wasCompressed && (
+              <Alert className="bg-emerald-50 border-emerald-200">
+                <AlertDescription className="space-y-2">
+                  <div className="font-medium flex items-center gap-2">
+                    ✅ Compressed QR Detected
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This QR code contained compressed text and was automatically decompressed.
+                  </p>
+                </AlertDescription>
+              </Alert>
+            )}
 
             <div className="space-y-3">
               <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {renderTextWithLinks(scannedText)}
               </div>
-
-              {/* Show proceed CTAs for encrypted file or WebRTC */}
-              {parsedQRData?.type === 'encrypted-file' && (
-                <div className="flex justify-center">
-                  <Button
-                    onClick={handleProceedToEncryptedFile}
-                    className="flex items-center gap-2"
-                  >
-                    🔐 Proceed to File Decryption
-                  </Button>
-                </div>
-              )}
-
-              {parsedQRData?.type === 'webrtc-transfer' && (
-                <div className="flex justify-center">
-                  <Button
-                    onClick={handleProceedToWebRTC}
-                    className="flex items-center gap-2"
-                  >
-                    🌐 Connect to WebRTC Transfer
-                  </Button>
-                </div>
-              )}
 
               {parsedQRData?.type === 'offline-metadata' && (
                 <div className="flex justify-center">
@@ -1125,11 +486,10 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                 </Button>
                 <Button
                   onClick={() => {
-                    setScannedData(null)
                     setScannedText(null)
                     setParsedQRData(null)
-                    setWebrtcReceive({ isReceiving: false, data: null })
                     setUploadMode('camera')
+                    setWasCompressed(false)
                   }}
                 >
                   📷 Scan Another QR

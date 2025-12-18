@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
-import Upload from './components/Upload'
+import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
 import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
-import './utils/generateKeys' // Load key generation utility
 
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -15,9 +14,8 @@ function App() {
 
   const tabs = [
     { path: "/", label: "Generate QR Code", icon: "🔲" },
-    { path: "/upload", label: "Upload File", icon: "📤" },
     { path: "/scan", label: "Scan QR", icon: "📸" },
-    { path: "/offline", label: "Offline Transfer", icon: "🔄" },
+    { path: "/offline", label: "Upload File", icon: "📤" },
   ]
 
   const activeTabInfo = tabs.find(tab => {
@@ -132,8 +130,8 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
         <Routes>
-          <Route path="/" element={<UploadWithState mode="text" />} />
-          <Route path="/upload" element={<Upload mode="file" />} />
+          <Route path="/" element={<GenerateQRWithState />} />
+          <Route path="/upload" element={<Navigate to="/offline" replace />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
@@ -150,23 +148,23 @@ function App() {
   )
 }
 
-// Wrapper component for Upload that handles location state
-function UploadWithState({ mode }: { mode: 'text' | 'file' }) {
+// Wrapper component for GenerateQR that handles location state
+function GenerateQRWithState() {
   const location = useLocation()
-  const uploadRef = useRef<{ setTextFromScan: (text: string) => void }>(null)
+  const generateQrRef = useRef<GenerateQRRef>(null)
 
   // Handle text passed from Scan component via navigation state
   useEffect(() => {
     const state = location.state as { text?: string } | null
-    if (state?.text && uploadRef.current) {
+    if (state?.text && generateQrRef.current) {
       const text = state.text
       setTimeout(() => {
-        uploadRef.current?.setTextFromScan(text)
+        generateQrRef.current?.setTextFromScan(text)
       }, 100)
     }
   }, [location.state])
 
-  return <Upload ref={uploadRef} mode={mode} />
+  return <GenerateQR ref={generateQrRef} />
 }
 
 // Wrapper component for Scan that handles navigation to Generate
