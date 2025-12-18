@@ -23,11 +23,11 @@ Once installed, the app:
 - Can be updated automatically when new versions are available
 
 ### 🔄 Automatic Updates
-The app automatically:
+The app automatically updates when internet is available:
 1. Checks for service worker updates on every page load
-2. Notifies users when updates are available
-3. Allows users to update immediately or defer
-4. Updates in the background if skipped
+2. When a new version is detected and you have internet, the app silently reloads to apply the update
+3. If you're offline, the update will be applied the next time you're online
+4. No user action required - updates happen seamlessly
 
 ### 📊 Caching Strategy
 
@@ -102,13 +102,13 @@ In Chrome DevTools:
 - App continues to function normally
 - New assets are fetched when needed
 
-## Update Notifications
+## Automatic Updates
 
-When a new version is deployed:
-1. Service worker detects the update
-2. A dialog appears asking to update
-3. User can choose "Update Now" or "Later"
-4. Selecting "Update" reloads the app with new version
+When a new version is deployed and you have internet:
+1. Service worker detects the update on next page load
+2. App automatically reloads to apply the new version
+3. You'll get the latest features and bug fixes without any action needed
+4. If offline, the update applies when you reconnect to the internet
 
 ## Cache Management
 

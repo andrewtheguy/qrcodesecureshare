@@ -16,6 +16,7 @@ const handlers: Set<PWAHandler> = new Set()
 
 /**
  * Register PWA service worker and handle updates
+ * With network-first strategy, updates are applied automatically
  */
 export async function registerPWA(handler?: PWAHandler) {
   if (!('serviceWorker' in navigator)) {
@@ -41,14 +42,18 @@ export async function registerPWA(handler?: PWAHandler) {
     }
 
     if (registration) {
-      // Listen for updates
+      // Listen for updates and auto-reload with network-first strategy
       registration.addEventListener('updatefound', () => {
         const newWorker = registration?.installing
         if (newWorker) {
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New service worker is ready, app needs refresh
-              notifyHandlers({ type: 'update-available' })
+              // New service worker is ready
+              // With network-first strategy and autoUpdate, reload to apply update
+              if (isOnline()) {
+                console.log('App update available, reloading...')
+                window.location.reload()
+              }
             }
           })
         }
@@ -84,25 +89,6 @@ export function isOffline(): boolean {
  */
 export function isOnline(): boolean {
   return navigator.onLine
-}
-
-/**
- * Skip waiting and reload (install pending update)
- */
-export async function skipWaitingAndReload() {
-  // Get all service workers
-  const registrations = await navigator.serviceWorker.getRegistrations()
-
-  for (const reg of registrations) {
-    if (reg.waiting) {
-      reg.waiting.postMessage({ type: 'SKIP_WAITING' })
-      // Listen for controller change and reload
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        window.location.reload()
-      })
-      break
-    }
-  }
 }
 
 /**
