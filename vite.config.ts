@@ -103,9 +103,9 @@ export default defineConfig(({ mode }) => ({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
       },
       manifest: {
-        name: 'Secure Send',
-        short_name: 'SecureSend',
-        description: 'Share files and text securely with end-to-end encryption',
+        name: 'QR Code Secure Share',
+        short_name: 'QR Secure',
+        description: 'QR Scanner with secure file transfer via QR codes offline',
         theme_color: '#000000',
         background_color: '#000000',
         display: 'standalone',
