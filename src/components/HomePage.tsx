@@ -27,7 +27,7 @@ const features = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-4rem)] px-4 py-2 md:py-8">
+    <div className="min-h-[calc(100vh-4rem)] px-4 py-2 lg:py-8">
       {/* Hero Section */}
       <header className="text-center py-4 md:py-12">
         <div className="inline-block px-8 py-6 rounded-2xl bg-white/80 border border-slate-200/70 shadow-sm backdrop-blur-sm">
