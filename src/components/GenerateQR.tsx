@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import QRCode from 'qrcode'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { COMPRESSED_TEXT_MAGIC } from '@/constants'
@@ -155,6 +155,10 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   return (
     <div className="space-y-6">
       <Card>
+        <CardHeader className="text-center">
+          <CardTitle>Generate QR Code</CardTitle>
+          <CardDescription>Turn text into a scannable QR code, with optional compression for large content.</CardDescription>
+        </CardHeader>
         <CardContent className="space-y-4 px-2">
           <div className="space-y-2">
             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 text-sm text-muted-foreground">
