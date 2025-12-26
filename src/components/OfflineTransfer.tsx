@@ -94,13 +94,16 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto p-4">
+      <header className="text-center space-y-2">
+        <h1 className="text-3xl font-bold">Online File Transfer</h1>
+      </header>
       <Card>
         <CardHeader>
-          <CardTitle>Online File Transfer</CardTitle>
+          <CardTitle>Send Large Files/Folder online securely</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm text-muted-foreground">
-            For larger files and higher reliability, use Secure Send at{' '}
+            For larger files or folders and faster speed, use Secure Send at{' '}
             <a
               href="https://secure-send-web.andrewtheguy.com/"
               target="_blank"
