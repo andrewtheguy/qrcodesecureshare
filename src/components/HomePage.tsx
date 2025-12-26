@@ -47,14 +47,14 @@ export default function HomePage() {
         {features.map((feature) => (
           <Card
             key={feature.link}
-            className="transition-all duration-200 hover:shadow-xl hover:-translate-y-1 shadow-lg"
+            className="transition-all duration-200 hover:shadow-xl hover:-translate-y-1 shadow-lg h-full flex flex-col"
           >
-            <CardHeader>
+            <CardHeader className="items-center text-center flex-1">
               <div className="text-4xl mb-2">{feature.icon}</div>
               <CardTitle className="text-xl">{feature.title}</CardTitle>
               <CardDescription>{feature.description}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="mt-auto">
               <Button asChild className="w-full">
                 <Link to={feature.link}>{feature.buttonText}</Link>
               </Button>
