@@ -39,10 +39,7 @@ export default function HomePage() {
       </header>
 
       {/* Feature Cards Grid */}
-      <div
-        className="grid gap-6"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))' }}
-      >
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {features.map((feature) => (
           <Card
             key={feature.link}
