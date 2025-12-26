@@ -1,15 +1,17 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
-import { Routes, Route, NavLink, Navigate, useNavigate, useLocation } from 'react-router-dom'
+import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, Link } from 'react-router-dom'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import Scan from './components/Scan'
 import OfflineTransfer from './components/OfflineTransfer'
+import HomePage from './components/HomePage'
 import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import './App.css'
 
 const TABS = [
-  { path: "/", label: "Generate QR Code", icon: "🔲" },
+  { path: "/", label: "Home", icon: "🏠" },
+  { path: "/generate", label: "Generate QR Code", icon: "🔲" },
   { path: "/scan", label: "Scan QR", icon: "📸" },
   { path: "/offline", label: "Upload File", icon: "📤" },
 ] as const
@@ -20,15 +22,19 @@ function App() {
 
   const activeTabInfo = useMemo(() => {
     return TABS.find(tab => {
-      // For scan route, match both /scan/camera and /scan/upload
+      if (tab.path === '/') {
+        return location.pathname === '/'
+      }
+      if (tab.path === '/generate') {
+        return location.pathname === '/generate'
+      }
       if (tab.path === '/scan') {
         return location.pathname.startsWith('/scan')
       }
-      // For offline route, match /offline, /offline/send and /offline/receive
       if (tab.path === '/offline') {
         return location.pathname.startsWith('/offline')
       }
-      return location.pathname === tab.path
+      return false
     }) || TABS[0]
   }, [location.pathname])
 
@@ -39,18 +45,18 @@ function App() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
-            <div className="flex items-center gap-3">
+            <Link to="/" className="flex items-center gap-3">
               <Logo />
               <h1 className="hidden md:block text-lg sm:text-xl font-bold text-foreground">
                 QR Secure Share
               </h1>
-            </div>
+            </Link>
 
             {/* Mobile: Current Selection */}
             <div className="flex items-center gap-2 md:hidden">
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-primary text-primary-foreground">
-                <span className="text-lg">{activeTabInfo?.icon}</span>
-                <span className="text-sm font-semibold">{activeTabInfo?.label}</span>
+                <span className="text-lg">{activeTabInfo.icon}</span>
+                <span className="text-sm font-semibold">{activeTabInfo.label}</span>
               </div>
             </div>
 
@@ -71,10 +77,14 @@ function App() {
                         key={tab.path}
                         to={tab.path}
                         onClick={() => setMobileMenuOpen(false)}
-                        className={({ isActive }) => {
+                        className={() => {
                           // For nested routes, also match nested paths
-                          let active = isActive
-                          if (tab.path === '/scan') {
+                          let active = false
+                          if (tab.path === '/') {
+                            active = location.pathname === '/'
+                          } else if (tab.path === '/generate') {
+                            active = location.pathname === '/generate'
+                          } else if (tab.path === '/scan') {
                             active = location.pathname.startsWith('/scan')
                           } else if (tab.path === '/offline') {
                             active = location.pathname.startsWith('/offline')
@@ -103,10 +113,14 @@ function App() {
                 <NavLink
                   key={tab.path}
                   to={tab.path}
-                  className={({ isActive }) => {
+                  className={() => {
                     // For nested routes, also match nested paths
-                    let active = isActive
-                    if (tab.path === '/scan') {
+                    let active = false
+                    if (tab.path === '/') {
+                      active = location.pathname === '/'
+                    } else if (tab.path === '/generate') {
+                      active = location.pathname === '/generate'
+                    } else if (tab.path === '/scan') {
                       active = location.pathname.startsWith('/scan')
                     } else if (tab.path === '/offline') {
                       active = location.pathname.startsWith('/offline')
@@ -132,7 +146,8 @@ function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-2 py-4">
         <Routes>
-          <Route path="/" element={<GenerateQRWithState />} />
+          <Route path="/" element={<HomePage />} />
+          <Route path="/generate" element={<GenerateQRWithState />} />
           <Route path="/upload" element={<Navigate to="/offline" replace />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
@@ -174,7 +189,7 @@ function ScanWithNavigation({ defaultMode }: { defaultMode?: 'camera' | 'file' }
   const navigate = useNavigate()
 
   const handleGenerateQR = (text: string) => {
-    navigate('/', { state: { text } })
+    navigate('/generate', { state: { text } })
   }
 
   return <Scan onGenerateQR={handleGenerateQR} defaultMode={defaultMode} />

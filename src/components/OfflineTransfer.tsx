@@ -93,7 +93,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
   } as const
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto p-4">
+    <div className="space-y-6 max-w-2xl mx-auto p-4">
       <Card>
         <CardHeader>
           <CardTitle>Online File Transfer</CardTitle>
