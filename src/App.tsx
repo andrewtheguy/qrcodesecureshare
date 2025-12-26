@@ -41,7 +41,7 @@ function App() {
   return (
     <div className="min-h-screen">
       {/* Navbar */}
-      <nav className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <nav className="border-b border-white/10 bg-transparent">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo/Brand */}
@@ -144,7 +144,7 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-2 py-4">
+      <main className="max-w-4xl mx-auto px-2 py-4 min-h-[calc(100vh-4rem)]">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/generate" element={<GenerateQRWithState />} />

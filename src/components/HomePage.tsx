@@ -28,14 +28,14 @@ const features = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-5rem)] -mx-2 -mt-4 px-4 py-8 bg-[linear-gradient(to_top,_rgb(30_41_82)_0%,_rgb(15_23_60)_50%,_rgb(30_41_82)_100%)] w-screen relative left-1/2 -translate-x-1/2">
+    <div className="min-h-[calc(100vh-4rem)] px-4 py-8">
       {/* Hero Section */}
       <header className="text-center py-12">
-        <div className="inline-block px-8 py-6 rounded-2xl bg-slate-900/80 backdrop-blur-sm">
-          <h1 className="text-4xl md:text-5xl font-bold text-white">
+        <div className="inline-block px-8 py-6 rounded-2xl bg-white/80 border border-slate-200/70 shadow-sm backdrop-blur-sm">
+          <h1 className="text-4xl md:text-5xl font-bold text-slate-900">
             QR Secure Share
           </h1>
-          <p className="text-lg text-slate-200 max-w-2xl mx-auto mt-4">
+          <p className="text-lg text-slate-600 max-w-2xl mx-auto mt-4">
             Generate, scan, and transfer data securely using QR codes.
             Works completely offline with client-side processing.
           </p>
