@@ -28,7 +28,7 @@ const features = [
 
 export default function HomePage() {
   return (
-    <div className="min-h-[calc(100vh-5rem)] -mx-2 -mt-4 px-4 py-8 bg-[linear-gradient(to_top,_rgb(124_58_237/0.8)_0%,_rgb(99_102_241/0.9)_50%,_rgb(124_58_237/0.8)_100%)] w-screen relative left-1/2 -translate-x-1/2">
+    <div className="min-h-[calc(100vh-5rem)] -mx-2 -mt-4 px-4 py-8 bg-[linear-gradient(to_top,_rgb(30_41_82)_0%,_rgb(15_23_60)_50%,_rgb(30_41_82)_100%)] w-screen relative left-1/2 -translate-x-1/2">
       {/* Hero Section */}
       <header className="text-center py-12">
         <div className="inline-block px-8 py-6 rounded-2xl bg-slate-900/80 backdrop-blur-sm">
