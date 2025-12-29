@@ -12,7 +12,7 @@ const features = [
   {
     icon: '📸',
     title: 'Scan QR Code',
-    description: 'Scan QR codes using your camera or upload an image. Automatically detects compressed content and extracts data.',
+    description: 'Scan QR codes using your camera or choose an image. Automatically detects compressed content and extracts data.',
     link: '/scan',
     buttonText: 'Scan QR'
   },

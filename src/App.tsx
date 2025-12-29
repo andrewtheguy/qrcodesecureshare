@@ -13,7 +13,7 @@ const TABS = [
   { path: "/", label: "Home", icon: "🏠" },
   { path: "/generate", label: "Generate QR Code", icon: "🔲" },
   { path: "/scan", label: "Scan QR", icon: "📸" },
-  { path: "/offline", label: "Upload File", icon: "📤" },
+  { path: "/offline", label: "Send File", icon: "📤" },
 ] as const
 
 function App() {
@@ -148,7 +148,7 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/generate" element={<GenerateQRWithState />} />
-          <Route path="/upload" element={<Navigate to="/offline" replace />} />
+          <Route path="/send" element={<Navigate to="/offline" replace />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
