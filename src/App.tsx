@@ -13,7 +13,7 @@ const TABS = [
   { path: "/", label: "Home", icon: "🏠" },
   { path: "/generate", label: "Generate QR Code", icon: "🔲" },
   { path: "/scan", label: "Scan QR", icon: "📸" },
-  { path: "/offline", label: "Send File", icon: "📤" },
+  { path: "/transfer", label: "Send File", icon: "📤" },
 ] as const
 
 function App() {
@@ -31,8 +31,8 @@ function App() {
       if (tab.path === '/scan') {
         return location.pathname.startsWith('/scan')
       }
-      if (tab.path === '/offline') {
-        return location.pathname.startsWith('/offline')
+      if (tab.path === '/transfer') {
+        return location.pathname === '/transfer' || location.pathname.startsWith('/offline')
       }
       return false
     }) || TABS[0]
@@ -86,8 +86,8 @@ function App() {
                             active = location.pathname === '/generate'
                           } else if (tab.path === '/scan') {
                             active = location.pathname.startsWith('/scan')
-                          } else if (tab.path === '/offline') {
-                            active = location.pathname.startsWith('/offline')
+                          } else if (tab.path === '/transfer') {
+                            active = location.pathname === '/transfer' || location.pathname.startsWith('/offline')
                           }
                           return `px-4 py-3 rounded-md text-left font-medium transition-colors ${
                             active
@@ -122,8 +122,8 @@ function App() {
                       active = location.pathname === '/generate'
                     } else if (tab.path === '/scan') {
                       active = location.pathname.startsWith('/scan')
-                    } else if (tab.path === '/offline') {
-                      active = location.pathname.startsWith('/offline')
+                    } else if (tab.path === '/transfer') {
+                      active = location.pathname === '/transfer' || location.pathname.startsWith('/offline')
                     }
                     return `px-4 py-2 rounded-md text-sm font-medium transition-colors ${
                       active
@@ -148,14 +148,13 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/generate" element={<GenerateQRWithState />} />
-          <Route path="/send" element={<Navigate to="/offline" replace />} />
+          <Route path="/transfer" element={<OfflineTransfer defaultMode="select" />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
             <Route path="upload" element={<ScanWithNavigation defaultMode="file" />} />
           </Route>
           <Route path="/offline">
-            <Route index element={<OfflineTransfer defaultMode="select" />} />
             <Route path="send" element={<OfflineTransfer defaultMode="send" />} />
             <Route path="receive" element={<OfflineTransfer defaultMode="receive" />} />
           </Route>

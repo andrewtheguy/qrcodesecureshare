@@ -20,7 +20,7 @@ const features = [
     icon: '📤',
     title: 'Offline File Transfer',
     description: 'Transfer files between devices using animated QR codes - no internet required. Uses fountain codes for reliable delivery.',
-    link: '/offline',
+    link: '/transfer',
     buttonText: 'Transfer Files'
   }
 ]

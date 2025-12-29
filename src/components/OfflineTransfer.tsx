@@ -20,10 +20,12 @@ interface OfflineTransferProps {
   defaultMode?: 'select' | 'send' | 'receive'
 }
 
+let cachedSelectedFile: File | null = null
+
 export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTransferProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(cachedSelectedFile)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
 
   // Sync mode with route changes
@@ -32,15 +34,15 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
       setMode('send')
     } else if (location.pathname === '/offline/receive') {
       setMode('receive')
-    } else if (location.pathname === '/offline' || location.pathname === '/offline/') {
+    } else if (location.pathname === '/transfer' || location.pathname === '/transfer/') {
       setMode('select')
     }
   }, [location.pathname])
 
-  // Redirect to /offline if on /send route but no file is selected
+  // Redirect to /transfer if on /send route but no file is selected
   useEffect(() => {
     if (location.pathname === '/offline/send' && !selectedFile) {
-      navigate('/offline', { replace: true })
+      navigate('/transfer', { replace: true })
     }
   }, [location.pathname, selectedFile, navigate])
   const [backDialogOpen, setBackDialogOpen] = useState(false)
@@ -55,13 +57,15 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
         return
       }
       setSelectedFile(file)
+      cachedSelectedFile = file
       navigate('/offline/send')
     }
   }
 
   const handleReset = () => {
     setSelectedFile(null)
-    navigate('/offline')
+    cachedSelectedFile = null
+    navigate('/transfer')
   }
 
   const requestBackNavigation = (context: 'send' | 'receive') => {
