@@ -1,159 +1,139 @@
 # QR Secure Share
 
-QR-based offline file transfer and text QR generation. Share files between devices with no internet required using animated QR codes, or create simple text/URL QR codes for quick sharing.
+Offline file transfer and QR code generation. Share files between devices using animated QR codes with no internet required.
 
 **Demo: [qrsecure.kuvi.app](https://qrsecure.kuvi.app/)**
 
 ## Features
 
 ### Text QR Generator
-- Generate QR codes from text or URLs for quick sharing
-- Large text can be compressed into a single QR (binary payload) for a second attempt at fitting into one code
+- Generate QR codes from text or URLs
+- Automatic compression for large text (gzip with binary payload)
 
-### Offline QR File Transfer
-- Transfer files using QR codes only - no internet, servers, or third-party services required
-- **Fountain Codes**: Robust QR code sequences for large files with error correction
-- **Sequential QR**: Multiple QR codes for larger data with progress tracking
+### Offline File Transfer
+- Transfer files using QR codes only - no internet, servers, or third-party services
+- Fountain codes (LT codes) for robust large file transfers with error correction
+- Sequential QR mode for simpler transfers
+- CRC32 checksums for data integrity verification
 
-### Core Functionality
-- **Generate QR Codes**: Create QR codes from text
-- **Scan QR Codes**: Built-in QR scanner (camera or image upload)
-- **Offline Mode**: Full offline file transfer capability
+### QR Scanner
+- Camera-based scanning with ZXing WASM
+- Image upload support
+- Auto-decompression of compressed QR payloads
+
+## Tech Stack
+
+- **Frontend**: React 19 + TypeScript + Vite
+- **Styling**: Tailwind CSS + Radix UI
+- **QR Scanning**: ZXing WASM (WebAssembly)
+- **QR Generation**: qrcode library + ZXing WASM (binary mode)
+- **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-wasm-architecture.md))
 
 ## Prerequisites
 
 - Node.js 18+
-- npm or yarn
+- Rust toolchain with `wasm-pack` (for building fountain-wasm)
 
 ## Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd qrcodesecureshare
-   ```
+```bash
+# Clone and install
+git clone <repository-url>
+cd qrcodesecureshare
+npm install
 
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
+# Development (uses pre-built WASM)
+npm run dev
 
-3. **Start development server**
-   ```bash
-   npm run dev
-   ```
-
-4. **Build for production**
-   ```bash
-   npm run build
-   npm run preview
-   ```
+# Production build (rebuilds WASM)
+npm run build
+```
 
 ## Usage
 
-### Text Sharing
+### Generate QR Code
+1. Go to "Generate QR Code" tab
+2. Enter text or URL
+3. Download or share the QR code
 
-1. **Use "Generate QR Code"** tab
-2. **Enter your text** and generate QR
-3. **Share the QR code**
-4. **If text is too long**, use the in-place "Generate Compressed QR" option to pack more text into a single code
+### Scan QR Code
+1. Go to "Scan QR" tab
+2. Use camera or upload an image
+3. Scanned data is displayed and can be copied
 
-### Scanning QR Codes
+### Send File (Offline Transfer)
+1. Go to "Send File" tab
+2. Select a file to transfer
+3. Choose transfer mode (Fountain Code recommended for large files)
+4. Display animated QR codes for receiver to scan
 
-1. **Use "Scan QR"** tab
-2. **Allow camera access** or upload a QR image
-3. **Scan QR codes** to extract data
+### Receive File
+1. Go to "Send File" > "Receive a file"
+2. Scan the metadata QR code from sender
+3. Continue scanning animated QR codes until transfer completes
+4. Download the reconstructed file
 
-### Offline QR File Transfer
+## Project Structure
 
-1. **Use "Offline QR File Transfer"** tab (📤 Offline Transfer)
-2. **Choose role**: Send a file or Receive a file
-3. **Send mode**: Select a file to encode into animated QR codes, choose transfer mode (Fountain Code Recommended/Basic or Sequential)
-4. **Receive mode**: Scan the metadata QR code and watch the receiver scan the animated QR codes
-5. **Transfer completely offline** - no internet, servers, or services required
+```
+src/
+├── components/
+│   ├── GenerateQR.tsx      # Text/URL QR generator
+│   ├── Scan.tsx            # QR scanner (camera/upload)
+│   ├── OfflineTransfer.tsx # File transfer workflow
+│   ├── fountain_qr/        # Fountain code transfer UI
+│   └── ui/                 # Shared UI components (shadcn)
+├── workers/                # Web Workers (QR scanning, decoding)
+└── wasm/                   # WASM bindings
 
-## Architecture
+rust/
+└── fountain-wasm/          # LT fountain codes implementation
+```
 
-### Tech Stack
-- **Frontend**: React 19 + TypeScript
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS + Radix UI
-- **QR Code Scanning**: ZXing WASM (high-performance WebAssembly-based scanner)
-- **QR Code Generation**: qrcode library (for one-off QR code generation)
-- **Binary Transfer**: Fountain codes (LT codes with Robust Soliton distribution) for efficient large file transfers
+## Performance
 
-### QR Code Implementation Details
+Mobile-optimized scanning:
+- Reduced scan rates (8 fps mobile, 15+ fps desktop)
+- Resolution limiting to reduce processing overhead
+- Smart throttling for battery preservation
 
-**Current Scanning & Encoding:**
-- **ZXing WASM**: Primary QR code scanner for all QR scanning operations, used throughout the application (src/workers/zxing-qr-scanner.worker.ts)
-- **Fountain Code Encoding**: Using ZXing WASM for QR code generation for binary-compatible encoding to eliminate the need for Base64
-- **qrcode Library**: Retained for one-off QR code generation (simple text/URL QR codes)
-- **qr-scanner Library**: Previously used, now replaced by ZXing WASM for better performance
+## Security
 
-**Future Plans:**
-- Replace sequential scanning Base64 encoding with ZXing WASM encoder for binary mode transfers to provide even better performance and compatibility
+- **Offline by design**: No servers or internet required for file transfers
+- **Local processing**: All QR operations happen in-browser via WebWorkers
+- **No intermediaries**: Data stays on participating devices only
+- **Integrity checks**: CRC32 checksums verify transfer completeness
 
-### Key Components
-- `GenerateQR.tsx`: Text/URL QR code generator with compression support
-- `Scan.tsx`: QR code scanning from camera or image upload
-- `OfflineTransfer.tsx`: Offline QR file transfer workflow (Send/Receive mode selection)
-- `OfflineQRMode.tsx`: Transfer mode selection and metadata QR generation for offline file transfers
-- `OfflineQRReceiver.tsx`: Receiver-side metadata scanning and data collection for offline transfers
-- `FountainQRSender.tsx` / `FountainQRReceiver.tsx`: Fountain code-based transfer implementation
-- `SequentialQRSender.tsx` / `SequentialQRReceiver.tsx`: Sequential QR code transfer implementation
+## Development
 
-## Performance & Battery Optimization
+```bash
+# Run development server
+npm run dev
 
-QR code scanning is automatically optimized for mobile devices to reduce battery consumption and heat generation:
+# Run tests (Rust)
+npm run test
 
-- **Reduced scan rates**: 8 fps on mobile vs 15+ fps on desktop for continuous scanning
-- **Smart visual hints**: Highlights disabled on mobile to reduce rendering overhead
-- **Resolution limiting**: Video resolution constrained to prevent unnecessary high-resolution processing
-- **Adaptive optimization**: Different scan rates for different use cases (metadata vs. continuous scanning)
+# Lint
+npm run lint
 
-### Tips for Best Mobile Performance
-
-- **Keep device steady**: Reduces missed scans and improves efficiency
-- **Ensure good lighting**: Better lighting enables faster detection at lower scan rates
-- **Position QR code properly**: Fill most of the camera view with the QR code
-- **Trust the optimization**: The reduced scan rate (8 fps) is intentional for battery preservation and still provides excellent performance
-
-These optimizations significantly reduce battery consumption and heat generation, especially during extended scanning sessions with Fountain Code transfers.
-
-## Security Considerations
-
-- **Offline by design**: Offline QR transfers do not require servers or internet access
-- **No intermediaries**: Transfer data stays only on the participating devices - never transmitted through third parties
-- **Camera permissions**: The scanner only uses camera access while actively scanning
-- **Compressed text QR**: Uses gzip compression with a binary payload header (`CMPQR1:`) that this app can auto-decompress on scan
-- **Data integrity**: Fountain and Sequential modes use CRC32 checksums to verify transfer completeness
-- **Local processing**: All QR code generation and scanning happens locally in the browser (WebWorkers)
+# Build WASM only
+npm run build:wasm
+```
 
 ## Deployment
 
-### As a Web App
 ```bash
+# Build for production
 npm run build
-# Deploy the dist/ folder to your web server
+
+# Preview build locally
+npm run preview
+
+# Deploy dist/ folder to any static hosting
 ```
 
-### Testing with Local Server
-For reliable testing of the built application, use the provided test deployment script:
-```bash
-./scripts/test-deploy.sh
-```
-This script builds the project, serves it locally on port 6943 with caching disabled, and creates a Cloudflare tunnel for external access.
-
-### As a PWA
-Th
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test thoroughly
-5. Submit a pull request
+See [CLOUDFLARE_DEPLOY.md](docs/CLOUDFLARE_DEPLOY.md) for Cloudflare Pages deployment.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
+MIT License - see LICENSE file for details.
