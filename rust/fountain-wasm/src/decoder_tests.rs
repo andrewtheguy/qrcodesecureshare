@@ -4,10 +4,16 @@ mod decoder_tests {
     use crate::encoder::FountainEncoder;
     use crate::types::FountainEncoderOptions;
 
+    fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
+        let mut options = FountainEncoderOptions::default();
+        options.block_size = block_size;
+        options
+    }
+
     #[test]
     fn test_decoder_simple() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -73,7 +79,7 @@ mod decoder_tests {
     #[test]
     fn test_decoder_chunk_count() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data,
@@ -100,7 +106,7 @@ mod decoder_tests {
     #[test]
     fn test_decoder_decoded_indices() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data,
@@ -141,7 +147,7 @@ mod decoder_tests {
         // This ensures truncation works correctly for the last block
         let data = vec![1, 2, 3, 4, 5, 6, 7]; // 7 bytes
         let block_size = 4; // Will create 2 blocks (4 bytes + 3 bytes padded to 4)
-        let options = FountainEncoderOptions::default().with_block_size(block_size);
+        let options = options_with_block_size(block_size);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -198,7 +204,7 @@ mod decoder_tests {
             data.push((i % 256) as u8); // Sequential pattern
         }
 
-        let options = FountainEncoderOptions::default().with_block_size(block_size);
+        let options = options_with_block_size(block_size);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -282,7 +288,7 @@ mod decoder_tests {
         // With adaptive strategy: 2 blocks need ceil(2 * 1.10) = 3 chunks for first decode
         // Then max(ceil(2 * 0.05), 10) = 10 chunks for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -352,7 +358,7 @@ mod decoder_tests {
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
         // Then max(ceil(2 * 0.05), 10) = 10 for next decode
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -431,7 +437,7 @@ mod decoder_tests {
     #[test]
     fn test_flush_empty_queue_returns_zero() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let encoder = FountainEncoder::new(
             data.clone(),
@@ -462,7 +468,7 @@ mod decoder_tests {
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
         // Then max(ceil(2 * 0.05), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -538,7 +544,7 @@ mod decoder_tests {
         // With adaptive: 2 blocks need ceil(2 * 1.10) = 3 for first decode
         // Then max(ceil(2 * 0.05), 10) = 10 for subsequent decodes
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -628,7 +634,7 @@ mod decoder_tests {
     #[test]
     fn test_set_get_throttle_count() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let encoder = FountainEncoder::new(
             data.clone(),
@@ -661,7 +667,7 @@ mod decoder_tests {
     #[test]
     fn test_throttle_triggers_at_exact_threshold() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -725,7 +731,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_successful() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -798,7 +804,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_checksum_error() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -839,7 +845,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_duplicate() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -887,7 +893,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_completion() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -950,7 +956,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_part_based_mode() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
         let part_size = 6; // 2 parts: [1,2,3,4,5,6] and [7,8,9,10,11,12]
 
         let mut encoder = FountainEncoder::new(
@@ -1013,7 +1019,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_progress_tracking() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1065,7 +1071,7 @@ mod decoder_tests {
     #[test]
     fn test_process_binary_chunk_integrity_check_fail() {
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1116,7 +1122,7 @@ mod decoder_tests {
     fn test_deduplication_multiple_duplicates() {
         // Test that the same chunk can be sent multiple times and is detected as duplicate each time
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1167,7 +1173,7 @@ mod decoder_tests {
     fn test_deduplication_does_not_increment_received_count() {
         // Test that duplicates don't increment the received_chunk_count
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1215,7 +1221,7 @@ mod decoder_tests {
     fn test_deduplication_session_id_change_clears_cache() {
         // Test that changing session ID clears the dedup cache
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1271,7 +1277,7 @@ mod decoder_tests {
     fn test_deduplication_interleaved_duplicates() {
         // Test duplicates mixed with new chunks
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1335,7 +1341,7 @@ mod decoder_tests {
     fn test_deduplication_chunk_key_consistency() {
         // Test that chunk keys are generated consistently for the same chunk
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1391,7 +1397,7 @@ mod decoder_tests {
     fn test_deduplication_many_chunks() {
         // Test deduplication with many chunks
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1445,7 +1451,7 @@ mod decoder_tests {
     fn test_deduplication_with_progress() {
         // Test that duplicates maintain correct progress reporting
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1496,7 +1502,7 @@ mod decoder_tests {
     fn test_deduplication_session_id_same_does_not_clear() {
         // Test that setting the same session ID does NOT clear the cache
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1545,7 +1551,7 @@ mod decoder_tests {
     fn test_deduplication_does_not_add_to_pending_queue() {
         // Test that duplicates don't get added to the pending chunks queue
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1598,7 +1604,7 @@ mod decoder_tests {
     fn test_deduplication_does_not_decode_blocks() {
         // Test that duplicates don't cause any blocks to be decoded
         let data = vec![1, 2, 3, 4];
-        let options = FountainEncoderOptions::default().with_block_size(2);
+        let options = options_with_block_size(2);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1663,7 +1669,7 @@ mod decoder_tests {
     fn test_deduplication_does_not_affect_subsequent_unique_chunks() {
         // Test that after processing duplicates, new unique chunks still work correctly
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1752,7 +1758,7 @@ mod decoder_tests {
     fn test_deduplication_zero_blocks_decoded_in_result() {
         // Test that duplicate result reports zero blocks decoded
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1809,7 +1815,7 @@ mod decoder_tests {
         // Test that files requiring less than 10 chunks still decode successfully
         // This verifies the "max(5%, 10)" logic works when total chunks < 10
         let data = vec![1, 2, 3, 4]; // Very small file: 4 bytes
-        let options = FountainEncoderOptions::default().with_block_size(2); // 2 blocks total
+        let options = options_with_block_size(2); // 2 blocks total
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1875,7 +1881,7 @@ mod decoder_tests {
     fn test_adaptive_110_percent_threshold_first_decode() {
         // Test that first decode waits for 110% of required chunks
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]; // 10 bytes
-        let options = FountainEncoderOptions::default().with_block_size(2); // 5 blocks
+        let options = options_with_block_size(2); // 5 blocks
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -1948,7 +1954,7 @@ mod decoder_tests {
         // Test that after first decode, threshold is max(5%, 10 chunks)
         // Also tests early decode at max(10, 2%) chunks
         let data = vec![0u8; 1000]; // Large file to ensure 5% > 10
-        let options = FountainEncoderOptions::default().with_block_size(20); // 50 blocks
+        let options = options_with_block_size(20); // 50 blocks
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -2036,7 +2042,7 @@ mod decoder_tests {
     fn test_adaptive_complete_single_part_file_decode() {
         // Test complete decode flow for a single-part file with adaptive strategy
         let data = vec![0u8; 200]; // 200 bytes
-        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks
+        let options = options_with_block_size(10); // 20 blocks
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -2113,7 +2119,7 @@ mod decoder_tests {
         // Test that 110% threshold applies to each part separately in multi-part mode
         // Also tests early decode at max(10, 2%) chunks
         let data = vec![0u8; 200]; // 200 bytes
-        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks total
+        let options = options_with_block_size(10); // 20 blocks total
         let part_size = 100; // 2 parts of 100 bytes each (10 blocks per part)
 
         let mut encoder = FountainEncoder::new(
@@ -2191,7 +2197,7 @@ mod decoder_tests {
         // Create a file with 1000 blocks, so 5% = 50 chunks > 10 chunks
         // Also tests early decode at max(10, 2%) = 20 chunks, then 110% decode at 1100 chunks
         let data = vec![0u8; 10000]; // 10000 bytes
-        let options = FountainEncoderOptions::default().with_block_size(10); // 1000 blocks
+        let options = options_with_block_size(10); // 1000 blocks
 
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -2289,7 +2295,7 @@ mod decoder_tests {
         // Test that first_decode_attempted flag resets when moving to next part
         // With early decode: Part 1 should trigger at max(10, 2%) = 10 chunks (early), then 110% (11 chunks)
         let data = vec![0u8; 200]; // 200 bytes
-        let options = FountainEncoderOptions::default().with_block_size(10); // 20 blocks
+        let options = options_with_block_size(10); // 20 blocks
         let part_size = 100; // 2 parts, 10 blocks each
 
         let mut encoder = FountainEncoder::new(

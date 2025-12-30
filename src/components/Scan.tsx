@@ -7,21 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 
-interface SequentialMetadata {
-  type: 'METADATA'
-  mode: 'sequential'
-  version: 1
-  sessionId: number
-  fileName: string
-  fileType: string
-  fileSize: number
-  totalChunks: number
-  chunkSize: number
-  timestamp: number
-  checksumAlg: 'crc32'
-  checksum: string
-}
-
 interface FountainMetadata {
   type: 'METADATA'
   mode: 'fountain'
@@ -41,7 +26,7 @@ interface FountainMetadata {
   partSize?: number
 }
 
-type OfflineMetadata = SequentialMetadata | FountainMetadata
+type OfflineMetadata = FountainMetadata
 
 interface ScanProps {
   onGenerateQR?: (text: string) => void
@@ -140,7 +125,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         const parsedData = JSON.parse(jsonData) as OfflineMetadata
         console.log('Parsed offline metadata:', parsedData)
         // Validate that it's actually metadata
-        if (parsedData.type === 'METADATA' && (parsedData.mode === 'sequential' || parsedData.mode === 'fountain')) {
+        if (parsedData.type === 'METADATA' && parsedData.mode === 'fountain') {
           setParsedQRData({
             type: 'offline-metadata',
             offlineMetadata: parsedData
@@ -436,13 +421,8 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                     <div className="text-sm space-y-1">
                       <div><span className="font-semibold">Filename:</span> {parsedQRData.offlineMetadata.fileName}</div>
                       <div><span className="font-semibold">Size:</span> {(parsedQRData.offlineMetadata.fileSize / 1024).toFixed(2)}KB</div>
-                      <div><span className="font-semibold">Mode:</span> {parsedQRData.offlineMetadata.mode === 'sequential' ? 'Sequential' : 'Fountain'}</div>
-                      {parsedQRData.offlineMetadata.mode === 'sequential' && (
-                        <div><span className="font-semibold">Chunks:</span> {parsedQRData.offlineMetadata.totalChunks}</div>
-                      )}
-                      {parsedQRData.offlineMetadata.mode === 'fountain' && (
-                        <div><span className="font-semibold">Blocks:</span> {parsedQRData.offlineMetadata.totalSourceBlocks}</div>
-                      )}
+                      <div><span className="font-semibold">Mode:</span> Fountain</div>
+                      <div><span className="font-semibold">Blocks:</span> {parsedQRData.offlineMetadata.totalSourceBlocks}</div>
                     </div>
                   )}
                 </AlertDescription>

@@ -54,7 +54,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     if (autoStartScanning && currentMode === 'idle') {
       setCurrentMode('scanning');
     }
-  }, [autoStartScanning]);
+  }, [autoStartScanning, currentMode]);
 
   const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedback) => {
     try {

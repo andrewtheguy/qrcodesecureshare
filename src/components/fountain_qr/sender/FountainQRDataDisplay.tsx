@@ -785,7 +785,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
             <li>Can skip/miss chunks and still decode successfully</li>
             <li>Keep playing until receiver shows 100% decoded</li>
-            <li>More robust than sequential chunk transfer</li>
+            <li>More robust than ordered chunk transfer</li>
           </ol>
         </AlertDescription>
       </Alert>

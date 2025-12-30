@@ -5,16 +5,19 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 import { globalIgnores } from 'eslint/config'
 
-export default tseslint.config([
-  globalIgnores(['dist']),
+export default [
+  globalIgnores([
+    'dist',
+    'rust/fountain-wasm/pkg',
+    'src/wasm',
+    'tmp',
+  ]),
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
+  reactHooks.configs['recommended-latest'],
+  reactRefresh.configs.vite,
   {
     files: ['**/*.{ts,tsx}'],
-    extends: [
-      js.configs.recommended,
-      tseslint.configs.recommended,
-      reactHooks.configs['recommended-latest'],
-      reactRefresh.configs.vite,
-    ],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -23,4 +26,14 @@ export default tseslint.config([
       '@typescript-eslint/no-unused-vars': 'error',
     },
   },
-])
+  {
+    files: ['scripts/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'error',
+    },
+  },
+]

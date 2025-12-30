@@ -4,7 +4,6 @@ import { OFFLINE_METADATA_MAGIC } from '@/constants'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { SequentialQRSender, CHUNK_SIZE as SEQUENTIAL_CHUNK_SIZE } from './SequentialQRSender'
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import QRCode from 'qrcode'
 import { Progress } from '@/components/ui/progress'
@@ -20,7 +19,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-const kb = (n: number) => `${Math.round(n / 1024)}KB`
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
 
@@ -29,26 +27,10 @@ interface OfflineQRModeProps {
   onReset?: () => void
 }
 
-export const MAX_FILE_SIZE_SEQUENTIAL = 512 * 1024
 export const MAX_FILE_SIZE_FOUNTAIN_FEEDBACK = 5 * 1024 * 1024  // 5MB for feedback mode
 export const MAX_FILE_SIZE_FOUNTAIN_SIMPLE = 2 * 1024 * 1024    // 2MB for simple mode
 
-type TransferMode = 'sequential' | 'fountain-feedback' | 'fountain-simple'
-
-interface SequentialMetadata {
-  type: 'METADATA'
-  mode: 'sequential'
-  version: 1
-  sessionId: number
-  fileName: string
-  fileType: string
-  fileSize: number
-  totalChunks: number
-  chunkSize: number
-  timestamp: number
-  checksumAlg: 'crc32'
-  checksum: string
-}
+type TransferMode = 'fountain-feedback' | 'fountain-simple'
 
 interface FountainMetadata {
   type: 'METADATA'
@@ -69,7 +51,7 @@ interface FountainMetadata {
   partSize?: number
 }
 
-type MetadataJson = SequentialMetadata | FountainMetadata | null
+type MetadataJson = FountainMetadata | null
 
 export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
    const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
@@ -99,50 +81,16 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         setMetadataError('')
         setMetadataQR('')
 
-        if (transferMode === 'sequential') {
-           // Sequential metadata requires file length + chunk calculation
-           const arrayBuffer = await file.arrayBuffer()
-             // arrayBuffer length is available but we need byte length specifically
-           const bytes = new Uint8Array(arrayBuffer)
-           const totalDataChunks = Math.ceil(bytes.length / SEQUENTIAL_CHUNK_SIZE)
-           const checksum = await computeChecksum(bytes, 'crc32')
-           const sessionId = Math.floor(Math.random() * 65536)
-           setCurrentSessionId(sessionId)
-           const meta: SequentialMetadata = {
-             type: 'METADATA',
-             mode: 'sequential',
-             version: 1,
-             sessionId: sessionId,
-             fileName: file.name,
-             fileType: file.type || 'application/octet-stream',
-             fileSize: bytes.length,
-             totalChunks: totalDataChunks,
-             chunkSize: SEQUENTIAL_CHUNK_SIZE,
-             timestamp: Date.now(),
-             checksumAlg: 'crc32',
-             checksum
-           }
-          if (cancelled) return
-          const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
-          const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
-            width: 400,
-            margin: 2,
-            errorCorrectionLevel: 'M',
-            color: { dark: '#000000', light: '#FFFFFF' }
-          })
-          if (cancelled) return
-          setMetadataJson(meta)
-          setMetadataQR(qrUrl)
-        } else if (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') {
-           // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
-           const arrayBuffer = await file.arrayBuffer()
-           const size = arrayBuffer.byteLength
-           const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
-           const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
-           const sessionId = Math.floor(Math.random() * 65536)
-           setCurrentSessionId(sessionId)
+        if (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') {
+          // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
+          const arrayBuffer = await file.arrayBuffer()
+          const size = arrayBuffer.byteLength
+          const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
+          const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
+          const sessionId = Math.floor(Math.random() * 65536)
+          setCurrentSessionId(sessionId)
 
-           // Window mode removed - always disabled
+          // Window mode removed - always disabled
 
           const meta: FountainMetadata = {
             type: 'METADATA',
@@ -163,16 +111,16 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
           }
           if (cancelled) return
-            const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
-            const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
-              width: 400,
-              margin: 2,
-              errorCorrectionLevel: 'M',
-              color: { dark: '#000000', light: '#FFFFFF' }
-            })
-            if (cancelled) return
-            setMetadataJson(meta)
-            setMetadataQR(qrUrl)
+          const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
+          const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
+            width: 400,
+            margin: 2,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#000000', light: '#FFFFFF' }
+          })
+          if (cancelled) return
+          setMetadataJson(meta)
+          setMetadataQR(qrUrl)
         }
       } catch (e) {
         if (!cancelled) {
@@ -185,7 +133,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     }
     prepare()
     return () => { cancelled = true }
-  }, [file, transferMode, step, feedbackEnabled])
+  }, [file, transferMode, step, feedbackEnabled, partSizeOption])
 
   const handleSelectMode = (mode: TransferMode) => {
      if (!file) return
@@ -193,10 +141,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
      let maxSize: number
      let modeName: string
 
-     if (mode === 'sequential') {
-       maxSize = MAX_FILE_SIZE_SEQUENTIAL
-       modeName = 'Sequential'
-     } else if (mode === 'fountain-feedback') {
+     if (mode === 'fountain-feedback') {
        maxSize = MAX_FILE_SIZE_FOUNTAIN_FEEDBACK
        modeName = 'Fountain (Recommended)'
      } else {
@@ -224,8 +169,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
       setStep('partSize')
     } else if (mode === 'fountain-simple') {
       setFeedbackEnabled(false)
-      setStep('metadata')
-    } else {
       setStep('metadata')
     }
 
@@ -374,22 +317,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             </div>
           </Button>
 
-          {/* Sequential Mode - Legacy/Backup */}
-          <Button
-            onClick={() => handleSelectMode('sequential')}
-            variant="outline"
-            className="w-full h-auto py-6 flex flex-col items-start gap-2"
-          >
-            <div className="font-bold text-lg">📋 Sequential Transfer</div>
-            <div className="text-sm text-left text-muted-foreground">
-              • Sends chunks in order (1, 2, 3...)<br/>
-              • Receiver needs ALL chunks, which might need to be repeated<br/>
-              • Can speed up by skipping received chunks with feedback QR<br/>
-              • Not ideal for large files<br/>
-              • Maximum file size: {kb(MAX_FILE_SIZE_SEQUENTIAL)}
-            </div>
-          </Button>
-
           {onReset && (
             <Button onClick={onReset} variant="outline" className="w-full">
               Select Different File
@@ -463,11 +390,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-center">
-            {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple')
-              ? '🔁 Fountain Transfer Metadata'
-              : '📋 Sequential Transfer Metadata'}
-          </CardTitle>
+          <CardTitle className="text-center">🔁 Fountain Transfer Metadata</CardTitle>
           <div className="text-sm text-muted-foreground text-center space-y-1">
             <p className="font-medium">{file.name}</p>
             <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
@@ -518,12 +441,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   <div className="grid grid-cols-2 gap-2">
                     <div><span className="font-semibold">Name:</span> {metadataJson.fileName}</div>
                     <div><span className="font-semibold">Size:</span> {(metadataJson.fileSize / 1024).toFixed(2)}KB</div>
-                    {transferMode === 'sequential' && metadataJson.mode === 'sequential' && (
-                      <>
-                        <div><span className="font-semibold">Chunks:</span> {metadataJson.totalChunks}</div>
-                        <div><span className="font-semibold">Chunk Size:</span> {metadataJson.chunkSize} bytes</div>
-                      </>
-                    )}
                     {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson.mode === 'fountain' && (
                       <>
                         <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
@@ -595,11 +512,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-center">
-          {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple')
-            ? '🔁 Fountain Code Transfer'
-            : '📋 Sequential Transfer'}
-        </CardTitle>
+        <CardTitle className="text-center">🔁 Fountain Code Transfer</CardTitle>
         <div className="text-sm text-muted-foreground text-center space-y-1">
           <p className="font-medium">{file.name}</p>
           <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
@@ -634,20 +547,16 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         {/* Render appropriate sender component */}
         {metadataJson && (
           <>
-            {transferMode === 'sequential' ? (
-              <SequentialQRSender key={`seq-${senderRemountKey}`} file={file} sessionId={currentSessionId} />
-            ) : (
-              (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
-                <FountainQRSender
-                  key={`fount-${senderRemountKey}`}
-                  file={file}
-                  sessionId={currentSessionId}
-                  feedbackEnabled={feedbackEnabled}
-                  checksum={metadataJson.checksum}
-                  checksumAlg={metadataJson.checksumAlg}
-                  partSizeOption={partSizeOption}
-                />
-              )
+            {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
+              <FountainQRSender
+                key={`fount-${senderRemountKey}`}
+                file={file}
+                sessionId={currentSessionId}
+                feedbackEnabled={feedbackEnabled}
+                checksum={metadataJson.checksum}
+                checksumAlg={metadataJson.checksumAlg}
+                partSizeOption={partSizeOption}
+              />
             )}
           </>
         )}
