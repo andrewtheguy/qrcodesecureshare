@@ -191,15 +191,6 @@ impl FountainEncoder {
         Some(FountainChunk::new_unchecked(seed, degree, indices, data))
     }
 
-    /// Generate multiple chunks at once
-    ///
-    /// Returns a vector of generated chunks. If `generate_chunk()` returns `None`,
-    /// the iteration stops early. The returned vector may contain fewer than `count`
-    /// chunks if no blocks become available before `count` iterations.
-    pub fn generate_chunks(&mut self, count: usize) -> Vec<FountainChunk> {
-        (0..count).map_while(|_| self.generate_chunk()).collect()
-    }
-
     /// Get the metadata
     pub fn get_metadata(&self) -> FountainMetadata {
         self.metadata.clone()
@@ -379,6 +370,12 @@ impl FountainEncoder {
 mod tests {
     use super::*;
 
+    fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
+        let mut options = FountainEncoderOptions::default();
+        options.block_size = block_size;
+        options
+    }
+
     #[test]
     fn test_encoder_creation() {
         let data = vec![0u8; 1000];
@@ -401,7 +398,7 @@ mod tests {
     #[test]
     fn test_generate_chunk() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        let options = FountainEncoderOptions::default().with_block_size(5);
+        let options = options_with_block_size(5);
         let mut encoder = FountainEncoder::new(
             data,
             "test.dat".to_string(),
@@ -435,7 +432,12 @@ mod tests {
             None,
         );
 
-        let chunks = encoder.generate_chunks(10);
+        let mut chunks = Vec::new();
+        for _ in 0..10 {
+            if let Some(chunk) = encoder.generate_chunk() {
+                chunks.push(chunk);
+            }
+        }
         assert_eq!(chunks.len(), 10);
 
         // Check that seeds are unique and sequential
@@ -447,7 +449,7 @@ mod tests {
     #[test]
     fn test_chunk_determinism() {
         let data = vec![1, 2, 3, 4, 5, 6, 7, 8];
-        let options = FountainEncoderOptions::default().with_block_size(4);
+        let options = options_with_block_size(4);
 
         let mut encoder1 = FountainEncoder::new(
             data.clone(),
@@ -554,7 +556,12 @@ mod tests {
 
         // Generate some chunks to exhaust the first part
         let block_count = encoder.block_count();
-        let chunks = encoder.generate_chunks(block_count * 2);
+        let mut chunks = Vec::new();
+        for _ in 0..(block_count * 2) {
+            if let Some(chunk) = encoder.generate_chunk() {
+                chunks.push(chunk);
+            }
+        }
         assert!(!chunks.is_empty());
 
         // Mark the current part as completed (clears its blocks)
@@ -636,7 +643,7 @@ mod tests {
     fn test_part_based_mode_large_part_size() {
         // Test with part_size > total data size
         let data = vec![1, 2, 3, 4, 5]; // 5 bytes
-        let options = FountainEncoderOptions::default().with_block_size(1);
+        let options = options_with_block_size(1);
         let part_size = 1000; // Much larger than data
         let mut encoder = FountainEncoder::new(
             data.clone(),
@@ -667,7 +674,7 @@ mod tests {
     fn test_part_based_mode_single_byte_parts() {
         // Test with very small part_size (edge case)
         let data = vec![10, 20, 30, 40, 50]; // 5 bytes
-        let options = FountainEncoderOptions::default().with_block_size(1);
+        let options = options_with_block_size(1);
         let part_size = 1; // Single byte per part
         let mut encoder = FountainEncoder::new(
             data,
@@ -715,7 +722,7 @@ mod tests {
         // Create data
         let data: Vec<u8> = (0..total_bytes).map(|i| (i % 256) as u8).collect();
 
-        let options = FountainEncoderOptions::default().with_block_size(1000);
+        let options = options_with_block_size(1000);
         let mut encoder = FountainEncoder::new(
             data.clone(),
             "large_file.dat".to_string(),
@@ -996,7 +1003,7 @@ mod tests {
     fn test_part_based_mode_chunk_generation_stops_when_all_parts_completed() {
         // Create data with multiple blocks: 800 bytes / 200 bytes per block = 4 blocks
         let data = vec![0u8; 800];
-        let options = FountainEncoderOptions::default().with_block_size(200);
+        let options = options_with_block_size(200);
         let part_size = 200; // 4 parts, each covering 1 block
         let mut encoder = FountainEncoder::new(
             data,

@@ -19,6 +19,12 @@ mod integration_tests {
         (0..size).map(|i| (i % 256) as u8).collect()
     }
 
+    fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
+        let mut options = FountainEncoderOptions::default();
+        options.block_size = block_size;
+        options
+    }
+
     /// Create a test encoder with sensible defaults for non-part-based mode
     ///
     /// Sets:
@@ -65,7 +71,7 @@ mod integration_tests {
         let data = generate_test_data(100);
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(25);
+        let options = options_with_block_size(25);
         let mut encoder = make_test_encoder(data.clone(), "test.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -107,7 +113,7 @@ mod integration_tests {
         let data = generate_test_data(5000);
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(400);
+        let options = options_with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "medium.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -135,7 +141,7 @@ mod integration_tests {
         let data = generate_test_data(50000);
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(1000);
+        let options = options_with_block_size(1000);
         let mut encoder = make_test_encoder(data.clone(), "large.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -169,7 +175,7 @@ mod integration_tests {
 
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(250);
+        let options = options_with_block_size(250);
         let mut encoder = make_test_encoder(data.clone(), "random.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -197,7 +203,7 @@ mod integration_tests {
         let data = vec![0u8; 2000];
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(500);
+        let options = options_with_block_size(500);
         let mut encoder = make_test_encoder(data.clone(), "zeros.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -225,7 +231,7 @@ mod integration_tests {
         let data = vec![0xFFu8; 2000];
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(500);
+        let options = options_with_block_size(500);
         let mut encoder = make_test_encoder(data.clone(), "ones.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -271,7 +277,7 @@ mod integration_tests {
         let data = generate_test_data(5000);
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(400);
+        let options = options_with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "lossy.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -323,7 +329,7 @@ mod integration_tests {
         let data = generate_test_data(2000);
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(400);
+        let options = options_with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "progress.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -366,7 +372,7 @@ mod integration_tests {
         let original_checksum = crc32(&data);
         let part_size = 2500;
 
-        let options = FountainEncoderOptions::default().with_block_size(400);
+        let options = options_with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "parts.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -424,7 +430,7 @@ mod integration_tests {
             expected_part_checksums.push(crc32(part_data));
         }
 
-        let options = FountainEncoderOptions::default().with_block_size(400);
+        let options = options_with_block_size(400);
         let mut encoder = make_test_encoder(data.clone(), "parts_check.dat", options);
 
         let metadata = encoder.get_metadata();
@@ -461,7 +467,7 @@ mod integration_tests {
         let data = vec![42u8];
         let original_checksum = crc32(&data);
 
-        let options = FountainEncoderOptions::default().with_block_size(10);
+        let options = options_with_block_size(10);
         let mut encoder = make_test_encoder(data.clone(), "single.dat", options);
 
         let metadata = encoder.get_metadata();

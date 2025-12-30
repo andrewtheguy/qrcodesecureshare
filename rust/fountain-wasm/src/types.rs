@@ -491,70 +491,6 @@ impl Default for FountainEncoderOptions {
 }
 
 impl FountainEncoderOptions {
-    pub fn with_block_size(mut self, block_size: usize) -> Self {
-        self.block_size = block_size;
-        self
-    }
-
-    pub fn with_c(mut self, c: f64) -> Self {
-        self.c = c;
-        self
-    }
-
-    pub fn with_delta(mut self, delta: f64) -> Self {
-        self.delta = delta;
-        self
-    }
-
-    pub fn with_max_degree(mut self, max_degree: usize) -> Self {
-        self.max_degree = Some(max_degree);
-        self
-    }
-
-    /// Clear the max_degree constraint, allowing it to be auto-calculated.
-    ///
-    /// When max_degree is None, the encoder will automatically calculate an appropriate
-    /// maximum degree based on the robust soliton distribution parameters and the number
-    /// of source blocks.
-    ///
-    /// # Example
-    ///
-    /// ```rust,ignore
-    /// let options = FountainEncoderOptions::default()
-    ///     .with_max_degree(10)
-    ///     .without_max_degree();  // Reset to auto-calculation
-    /// assert_eq!(options.max_degree, None);
-    /// ```
-    pub fn without_max_degree(mut self) -> Self {
-        self.max_degree = None;
-        self
-    }
-
-    pub fn with_degree1_rate(mut self, degree1_rate: f64) -> Self {
-        self.degree1_rate = degree1_rate;
-        self
-    }
-
-    pub fn with_low_degree_rate(mut self, low_degree_rate: f64) -> Self {
-        self.low_degree_rate = low_degree_rate;
-        self
-    }
-
-    pub fn with_max_qr_data_size(mut self, max_qr_data_size: usize) -> Self {
-        self.max_qr_data_size = max_qr_data_size;
-        self
-    }
-
-    pub fn with_fixed_overhead(mut self, fixed_overhead: usize) -> Self {
-        self.fixed_overhead = fixed_overhead;
-        self
-    }
-
-    pub fn with_part_overhead(mut self, part_overhead: usize) -> Self {
-        self.part_overhead = part_overhead;
-        self
-    }
-
     /// Validate all algorithm parameters for correctness and consistency.
     ///
     /// # Validation Rules
@@ -768,59 +704,19 @@ mod tests {
     }
 
     #[test]
-    fn test_fountain_encoder_options_builder() {
-        let options = FountainEncoderOptions::default()
-            .with_block_size(512)
-            .with_c(0.3)
-            .with_delta(0.02)
-            .with_max_degree(10)
-            .with_degree1_rate(0.1);
+    fn test_fountain_encoder_options_customization() {
+        let mut options = FountainEncoderOptions::default();
+        options.block_size = 512;
+        options.c = 0.3;
+        options.delta = 0.02;
+        options.max_degree = Some(10);
+        options.degree1_rate = 0.1;
 
         assert_eq!(options.block_size, 512);
         assert_eq!(options.c, 0.3);
         assert_eq!(options.delta, 0.02);
         assert_eq!(options.max_degree, Some(10));
         assert_eq!(options.degree1_rate, 0.1);
-    }
-
-    #[test]
-    fn test_fountain_encoder_options_without_max_degree() {
-        // Test setting and then clearing max_degree
-        let options = FountainEncoderOptions::default()
-            .with_max_degree(10)
-            .without_max_degree();
-
-        assert_eq!(
-            options.max_degree, None,
-            "without_max_degree() should clear max_degree"
-        );
-    }
-
-    #[test]
-    fn test_fountain_encoder_options_without_max_degree_fluent() {
-        // Test fluent chaining with without_max_degree
-        let options = FountainEncoderOptions::default()
-            .with_block_size(400)
-            .with_max_degree(20)
-            .with_delta(0.01)
-            .without_max_degree()
-            .with_c(0.25);
-
-        assert_eq!(options.block_size, 400);
-        assert_eq!(options.max_degree, None);
-        assert_eq!(options.delta, 0.01);
-        assert_eq!(options.c, 0.25);
-    }
-
-    #[test]
-    fn test_fountain_encoder_options_without_max_degree_when_none() {
-        // Test calling without_max_degree when max_degree is already None
-        let options = FountainEncoderOptions::default().without_max_degree();
-
-        assert_eq!(
-            options.max_degree, None,
-            "without_max_degree() on default (already None) should stay None"
-        );
     }
 
     #[test]

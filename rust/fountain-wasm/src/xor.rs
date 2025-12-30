@@ -55,27 +55,6 @@ pub fn xor_into(dest: &mut [u8], src: &[u8]) {
     }
 }
 
-/// XOR a block into a destination starting at a specific offset
-pub fn xor_into_offset(dest: &mut [u8], src: &[u8], offset: usize) {
-    let len = src.len();
-
-    // Use checked arithmetic to prevent overflow in bounds check
-    let end = offset.checked_add(len).expect(
-        "Source block doesn't fit in destination at offset (overflow: offset + len exceeds usize::MAX)"
-    );
-
-    assert!(
-        end <= dest.len(),
-        "Source block doesn't fit in destination at offset (end={} exceeds dest.len()={})",
-        end,
-        dest.len()
-    );
-
-    for i in 0..len {
-        dest[offset + i] ^= src[i];
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,13 +91,6 @@ mod tests {
         assert_eq!(dest, vec![0xF0, 0xF0, 0xFF, 0xFF]);
     }
 
-    #[test]
-    fn test_xor_into_offset() {
-        let mut dest = vec![0x00, 0x00, 0xFF, 0xFF, 0x00, 0x00];
-        let src = vec![0xAA, 0x55];
-        xor_into_offset(&mut dest, &src, 2);
-        assert_eq!(dest, vec![0x00, 0x00, 0x55, 0xAA, 0x00, 0x00]);
-    }
 
     #[test]
     #[should_panic]
@@ -142,11 +114,4 @@ mod tests {
         xor_into(&mut dest, &src);
     }
 
-    #[test]
-    #[should_panic]
-    fn test_xor_into_offset_out_of_bounds() {
-        let mut dest = vec![0x00, 0x00, 0x00, 0x00];
-        let src = vec![0xFF, 0xFF, 0xFF];
-        xor_into_offset(&mut dest, &src, 2);
-    }
 }
