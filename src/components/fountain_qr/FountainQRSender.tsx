@@ -421,7 +421,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>Receiver doesn't need ALL chunks - just enough (~110%)</li>
                 <li>Can skip/miss chunks and still decode successfully</li>
                 <li>Keep playing until receiver shows 100% decoded</li>
-                <li>More robust than sequential chunk transfer</li>
+                <li>More robust than ordered chunk transfer</li>
                 <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
                 <li>After scanning feedback, sender will display ACK QR automatically</li>
                 <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>

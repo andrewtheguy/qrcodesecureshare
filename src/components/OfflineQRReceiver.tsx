@@ -3,7 +3,6 @@ import { useLocation } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { SequentialQRReceiver } from './SequentialQRReceiver'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import {
@@ -15,21 +14,16 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 
-type TransferMode = 'sequential' | 'fountain' | null
+type TransferMode = 'fountain' | null
 
 interface DetectedMetadata {
-  mode: 'sequential' | 'fountain'
+  mode: 'fountain'
   name: string
   size: number
   type: string
   sessionId: number
   checksum: string
   checksumAlg: string
-}
-
-interface SequentialDetectedMetadata extends DetectedMetadata {
-  mode: 'sequential'
-  totalChunks: number
 }
 
 interface FountainDetectedMetadata extends DetectedMetadata {
@@ -44,7 +38,7 @@ interface FountainDetectedMetadata extends DetectedMetadata {
 export function OfflineQRReceiver() {
   const location = useLocation()
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
-  const [detectedMetadata, setDetectedMetadata] = useState<SequentialDetectedMetadata | FountainDetectedMetadata | null>(null)
+  const [detectedMetadata, setDetectedMetadata] = useState<FountainDetectedMetadata | null>(null)
   const [debugLog, setDebugLog] = useState<string[]>([])
   const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
@@ -63,14 +57,13 @@ export function OfflineQRReceiver() {
   useEffect(() => {
     interface LocationState {
       metadata?: {
-        mode: 'sequential' | 'fountain'
+        mode: 'fountain'
         fileName: string
         fileSize: number
         fileType: string
         sessionId: number
         checksum: string
         checksumAlg: string
-        totalChunks?: number
         totalSourceBlocks?: number
         blockSize?: number
         feedbackEnabled?: boolean
@@ -83,19 +76,7 @@ export function OfflineQRReceiver() {
       const parsed = state.metadata
       addDebugLog('Loading metadata from navigation state')
 
-      if (parsed.mode === 'sequential' && parsed.totalChunks !== undefined) {
-        setDetectedMetadata({
-          mode: 'sequential',
-          name: parsed.fileName,
-          size: parsed.fileSize,
-          type: parsed.fileType,
-          sessionId: parsed.sessionId,
-          totalChunks: parsed.totalChunks,
-          checksum: parsed.checksum,
-          checksumAlg: parsed.checksumAlg
-        })
-        addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
-      } else if (parsed.mode === 'fountain' && parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
+      if (parsed.mode === 'fountain' && parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
         setDetectedMetadata({
           mode: 'fountain',
           name: parsed.fileName,
@@ -135,7 +116,7 @@ export function OfflineQRReceiver() {
       if (parsed.type !== 'METADATA') {
         throw new Error('Missing METADATA type field')
       }
-      if (parsed.mode !== 'sequential' && parsed.mode !== 'fountain') {
+      if (parsed.mode !== 'fountain') {
         throw new Error('Unknown transfer mode')
       }
 
@@ -144,19 +125,7 @@ export function OfflineQRReceiver() {
         throw new Error('Invalid sessionId: must be a number between 0 and 65535')
       }
 
-      if (parsed.mode === 'sequential') {
-        setDetectedMetadata({
-          mode: 'sequential',
-          name: parsed.fileName,
-          size: parsed.fileSize,
-          type: parsed.fileType,
-          sessionId: parsed.sessionId,
-          totalChunks: parsed.totalChunks,
-          checksum: parsed.checksum,
-          checksumAlg: parsed.checksumAlg
-        })
-        addDebugLog(`✓ Sequential metadata: ${parsed.fileName} (${parsed.totalChunks} chunks)`)
-      } else if (parsed.mode === 'fountain') {
+      if (parsed.mode === 'fountain') {
         setDetectedMetadata({
           mode: 'fountain',
           name: parsed.fileName,
@@ -361,17 +330,15 @@ export function OfflineQRReceiver() {
 
   // Metadata detected - show confirmation screen
   if (detectedMetadata && !transferMode) {
-    const estimatedChunks = detectedMetadata.mode === 'fountain' && detectedMetadata.totalSourceBlocks
+    const estimatedChunks = detectedMetadata.totalSourceBlocks
       ? Math.ceil(detectedMetadata.totalSourceBlocks * 1.1)
-      : (detectedMetadata.mode === 'fountain' ? null : (detectedMetadata.totalChunks || 0))
+      : null
 
     return (
       <>
         <Card>
           <CardHeader>
-            <CardTitle className="text-center">
-              {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Transfer' : '📋 Sequential Transfer'}
-            </CardTitle>
+            <CardTitle className="text-center">🔁 Fountain Code Transfer</CardTitle>
             <p className="text-sm text-muted-foreground text-center">
               Transfer mode detected automatically
             </p>
@@ -384,14 +351,8 @@ export function OfflineQRReceiver() {
                   <p className="font-medium text-lg">{detectedMetadata.name}</p>
                   <div className="text-sm text-muted-foreground space-y-1">
                     <p>📦 Size: {(detectedMetadata.size / 1024).toFixed(2)}KB</p>
-                    {detectedMetadata.mode === 'fountain' ? (
-                      <>
-                        <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
-                        <p>📊 Est. Chunks Needed: ~{estimatedChunks || "unavailable"}</p>
-                      </>
-                    ) : (
-                      <p>🔢 Total Chunks: {detectedMetadata.totalChunks}</p>
-                    )}
+                    <p>🔢 Source Blocks: {detectedMetadata.totalSourceBlocks}</p>
+                    <p>📊 Est. Chunks Needed: ~{estimatedChunks || "unavailable"}</p>
                   </div>
                 </div>
               </AlertDescription>
@@ -400,23 +361,11 @@ export function OfflineQRReceiver() {
             {/* Mode Info */}
             <Alert>
               <AlertDescription>
-                <p className="font-medium mb-2">
-                  {detectedMetadata.mode === 'fountain' ? '🔁 Fountain Code Mode' : '📋 Sequential Mode'}
-                </p>
+                <p className="font-medium mb-2">🔁 Fountain Code Mode</p>
                 <ul className="list-disc list-inside space-y-1 text-sm">
-                  {detectedMetadata.mode === 'fountain' ? (
-                    <>
-                      <li>Receives random coded chunks</li>
-                      <li>Only needs ~110% of chunks to decode</li>
-                      <li>Can skip/miss chunks and still succeed</li>
-                    </>
-                  ) : (
-                    <>
-                      <li>Receives chunks in sequential order</li>
-                      <li>Needs ALL chunks to complete</li>
-                      <li>Can request missing chunks via feedback QR</li>
-                    </>
-                  )}
+                  <li>Receives random coded chunks</li>
+                  <li>Only needs ~110% of chunks to decode</li>
+                  <li>Can skip/miss chunks and still succeed</li>
                 </ul>
               </AlertDescription>
             </Alert>
@@ -442,9 +391,7 @@ export function OfflineQRReceiver() {
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-center">
-            {transferMode === 'sequential' ? '📋 Sequential Receiver' : '🔁 Fountain Code Receiver'}
-          </CardTitle>
+          <CardTitle className="text-center">🔁 Fountain Code Receiver</CardTitle>
           {detectedMetadata && (
             <p className="text-sm text-muted-foreground text-center">
               {detectedMetadata.name} • {(detectedMetadata.size / 1024).toFixed(2)}KB
@@ -463,25 +410,7 @@ export function OfflineQRReceiver() {
           </Button>
 
           {/* Render appropriate receiver component */}
-          {detectedMetadata && (transferMode === 'sequential' ? (
-            (() => {
-              const seqMeta = detectedMetadata as SequentialDetectedMetadata
-              return (
-                <SequentialQRReceiver
-                  key={receiverKey}
-                  initialMetadata={{
-                    name: seqMeta.name,
-                    size: seqMeta.size,
-                    type: seqMeta.type,
-                    sessionId: seqMeta.sessionId,
-                    totalChunks: seqMeta.totalChunks,
-                    checksum: seqMeta.checksum,
-                    checksumAlg: seqMeta.checksumAlg
-                  }}
-                />
-              )
-            })()
-          ) : transferMode === 'fountain' ? (
+          {detectedMetadata && transferMode === 'fountain' ? (
             (() => {
               const fountainMeta = detectedMetadata as FountainDetectedMetadata
               return (
@@ -497,13 +426,13 @@ export function OfflineQRReceiver() {
                     checksum: fountainMeta.checksum,
                     checksumAlg: fountainMeta.checksumAlg,
                     feedbackEnabled: fountainMeta.feedbackEnabled,
-                    partBasedMode: fountainMeta.partBasedMode,
-                    partSize: fountainMeta.partSize
-                  }}
-                />
-              )
+                  partBasedMode: fountainMeta.partBasedMode,
+                  partSize: fountainMeta.partSize
+                }}
+              />
+            )
             })()
-          ) : null)}
+          ) : null}
         </CardContent>
       </Card>
       {resetConfirmationDialog}
