@@ -109,12 +109,12 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
           <p className="text-sm text-muted-foreground">
             For larger files or folders and faster speed, use Secure Send at{' '}
             <a
-              href="https://secure-send-web.andrewtheguy.com/"
+              href="https://securesend.kuvi.app/"
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline"
             >
-              secure-send-web.andrewtheguy.com
+              securesend.kuvi.app
             </a>
             . It supports transfers up to 100MB, uses WebRTC P2P for speed, and can
             automatically fall back to encrypted cloud transfer (Nostr mode) if P2P fails.
@@ -124,7 +124,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
           </p>
           <Button asChild>
             <a
-              href="https://secure-send-web.andrewtheguy.com/"
+              href="https://securesend.kuvi.app/"
               target="_blank"
               rel="noopener noreferrer"
             >
@@ -243,7 +243,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             <p className="text-sm text-muted-foreground">
               Need online transfers instead? Use{' '}
               <a
-                href="https://secure-send-web.andrewtheguy.com/"
+                href="https://securesend.kuvi.app/"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-primary hover:underline"
