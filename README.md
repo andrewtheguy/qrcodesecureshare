@@ -2,28 +2,30 @@
 
 QR-based offline file transfer and text QR generation. Share files between devices with no internet required using animated QR codes, or create simple text/URL QR codes for quick sharing.
 
-## 🚀 Features
+**Demo: [qrsecure.kuvi.app](https://qrsecure.kuvi.app/)**
 
-### ✉️ Text QR Generator
+## Features
+
+### Text QR Generator
 - Generate QR codes from text or URLs for quick sharing
 - Large text can be compressed into a single QR (binary payload) for a second attempt at fitting into one code
 
-### 📱 Offline QR File Transfer
+### Offline QR File Transfer
 - Transfer files using QR codes only - no internet, servers, or third-party services required
 - **Fountain Codes**: Robust QR code sequences for large files with error correction
 - **Sequential QR**: Multiple QR codes for larger data with progress tracking
 
-### 🎯 Core Functionality
+### Core Functionality
 - **Generate QR Codes**: Create QR codes from text
 - **Scan QR Codes**: Built-in QR scanner (camera or image upload)
 - **Offline Mode**: Full offline file transfer capability
 
-## 📋 Prerequisites
+## Prerequisites
 
 - Node.js 18+
 - npm or yarn
 
-## 🛠️ Installation
+## Installation
 
 1. **Clone the repository**
    ```bash
@@ -47,7 +49,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
    npm run preview
    ```
 
-## 📖 Usage
+## Usage
 
 ### Text Sharing
 
@@ -70,7 +72,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 4. **Receive mode**: Scan the metadata QR code and watch the receiver scan the animated QR codes
 5. **Transfer completely offline** - no internet, servers, or services required
 
-## 🏗️ Architecture
+## Architecture
 
 ### Tech Stack
 - **Frontend**: React 19 + TypeScript
@@ -100,7 +102,7 @@ QR-based offline file transfer and text QR generation. Share files between devic
 - `FountainQRSender.tsx` / `FountainQRReceiver.tsx`: Fountain code-based transfer implementation
 - `SequentialQRSender.tsx` / `SequentialQRReceiver.tsx`: Sequential QR code transfer implementation
 
-## 🔋 Performance & Battery Optimization
+## Performance & Battery Optimization
 
 QR code scanning is automatically optimized for mobile devices to reduce battery consumption and heat generation:
 
@@ -118,7 +120,7 @@ QR code scanning is automatically optimized for mobile devices to reduce battery
 
 These optimizations significantly reduce battery consumption and heat generation, especially during extended scanning sessions with Fountain Code transfers.
 
-## 🔒 Security Considerations
+## Security Considerations
 
 - **Offline by design**: Offline QR transfers do not require servers or internet access
 - **No intermediaries**: Transfer data stays only on the participating devices - never transmitted through third parties
@@ -127,7 +129,7 @@ These optimizations significantly reduce battery consumption and heat generation
 - **Data integrity**: Fountain and Sequential modes use CRC32 checksums to verify transfer completeness
 - **Local processing**: All QR code generation and scanning happens locally in the browser (WebWorkers)
 
-## 🚀 Deployment
+## Deployment
 
 ### As a Web App
 ```bash
@@ -150,10 +152,10 @@ Th
 4. Test thoroughly
 5. Submit a pull request
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
 
-**Share files offline with QR Secure Share!** 📷📁
+**Share files offline with QR Secure Share!**
