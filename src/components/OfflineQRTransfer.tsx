@@ -16,13 +16,14 @@ import {
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
-interface OfflineTransferProps {
+interface OfflineQRTransferProps {
   defaultMode?: 'select' | 'send' | 'receive'
+  onModeChange?: (mode: 'select' | 'send' | 'receive') => void
 }
 
 let cachedSelectedFile: File | null = null
 
-export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTransferProps) {
+export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange }: OfflineQRTransferProps) {
   const location = useLocation()
   const navigate = useNavigate()
   const [selectedFile, setSelectedFile] = useState<File | null>(cachedSelectedFile)
@@ -38,6 +39,11 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
       setMode('select')
     }
   }, [location.pathname])
+
+  // Notify parent of mode changes
+  useEffect(() => {
+    onModeChange?.(mode)
+  }, [mode, onModeChange])
 
   // Redirect to /transfer if on /send route but no file is selected
   useEffect(() => {
@@ -97,45 +103,9 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
   } as const
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto p-4">
+    <div className="space-y-6">
       <header className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Online File Transfer</h1>
-      </header>
-      <Card>
-        <CardHeader>
-          <CardTitle>Send Large Files/Folder online securely</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <p className="text-sm text-muted-foreground">
-            For larger files or folders and faster speed, use Secure Send at{' '}
-            <a
-              href="https://securesend.kuvi.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary hover:underline"
-            >
-              securesend.kuvi.app
-            </a>
-            . It supports transfers up to 100MB, uses WebRTC P2P for speed, and can
-            automatically fall back to encrypted cloud transfer (Nostr mode) if P2P fails.
-          </p>
-          <p className="text-sm text-muted-foreground">
-            No accounts required, and all data is encrypted client-side before any transfer.
-          </p>
-          <Button asChild>
-            <a
-              href="https://securesend.kuvi.app/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Open Secure Send
-            </a>
-          </Button>
-        </CardContent>
-      </Card>
-
-      <header className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Offline QR File Transfer</h1>
+        <h2 className="text-2xl font-bold">Offline QR File Transfer</h2>
         <p className="text-muted-foreground">
           Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB using animated QR codes - no internet required!
         </p>
@@ -146,7 +116,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
         <div className="grid md:grid-cols-2 gap-4">
           <Card className="cursor-pointer hover:border-primary transition-colors">
             <CardHeader>
-              <CardTitle className="text-center">📤 Send a File</CardTitle>
+              <CardTitle className="text-center">Send a File</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
@@ -174,7 +144,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
           <NavLink to="/scan/camera">
             <Card className="cursor-pointer hover:border-primary transition-colors">
               <CardHeader>
-                <CardTitle className="text-center">📥 Receive a File</CardTitle>
+                <CardTitle className="text-center">Receive a File</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -197,13 +167,13 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-semibold">Send File</h2>
             <Button onClick={() => requestBackNavigation('send')} variant="outline">
-              ← Back
+              Back
             </Button>
           </div>
 
           <Alert>
             <AlertDescription>
-              <p className="font-medium mb-2">📱 Instructions:</p>
+              <p className="font-medium mb-2">Instructions:</p>
               <ul className="list-disc list-inside space-y-1 text-sm">
                 <li>First, select your transfer mode (Fountain Recommended/Basic or Sequential)</li>
                 <li>Have the receiver scan the metadata QR code to initialize the session</li>
@@ -225,7 +195,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-semibold">Receive File</h2>
             <Button onClick={() => requestBackNavigation('receive')} variant="outline">
-              ← Back
+              Back
             </Button>
           </div>
 
@@ -240,20 +210,8 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             <CardTitle>How It Works</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Need online transfers instead? Use{' '}
-              <a
-                href="https://securesend.kuvi.app/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                Secure Send
-              </a>{' '}
-              for larger files and more reliable delivery.
-            </p>
             <div className="space-y-2">
-              <h3 className="font-semibold">✨ Features:</h3>
+              <h3 className="font-semibold">Features:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 <li>Three transfer modes: Fountain Code (Recommended), Fountain Code (Basic), and Sequential</li>
                 <li>Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB completely offline with feedback mode</li>
@@ -266,7 +224,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             </div>
 
             <div className="space-y-2">
-              <h3 className="font-semibold">🔧 Technical Details:</h3>
+              <h3 className="font-semibold">Technical Details:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 <li><strong>Fountain Mode:</strong> 1000-byte source blocks, requires ~105-115% reception for completion</li>
                 <li><strong>Sequential Mode:</strong> 800-byte chunks transmitted in order, requires all chunks</li>
@@ -280,7 +238,7 @@ export default function OfflineTransfer({ defaultMode = 'select' }: OfflineTrans
             </div>
 
             <div className="space-y-2">
-              <h3 className="font-semibold">💡 Best Practices:</h3>
+              <h3 className="font-semibold">Best Practices:</h3>
               <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
                 <li>Use <strong>Fountain Code (Recommended)</strong> for reliable transfers with feedback</li>
                 <li>Choose appropriate part size: smaller for slower devices/poor cameras, larger for faster transfers</li>
