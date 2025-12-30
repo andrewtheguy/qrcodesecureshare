@@ -43,7 +43,7 @@ const verifyWorkerBuildPlugin = () => {
 
 
 // https://vite.dev/config/
-export default defineConfig(() => ({
+export default defineConfig({
   server: {
     host: true,
     allowedHosts: [
@@ -73,7 +73,7 @@ export default defineConfig(() => ({
   // Note: fountainDecoder.worker.ts and qrGenerator.worker.ts dependencies (fountainCode, checksum)
   // are properly bundled and not externalized, ensuring workers are self-contained
   worker: {
-    format: 'es',
+    format: 'es' as const,
     rollupOptions: {
       output: {
         entryFileNames: 'assets/[name]-[hash].js',
@@ -139,4 +139,4 @@ export default defineConfig(() => ({
   // 3. Test in production build using `npm run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-}))
+})
