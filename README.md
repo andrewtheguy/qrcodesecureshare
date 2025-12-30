@@ -157,5 +157,3 @@ Th
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ---
-
-**Share files offline with QR Secure Share!**
