@@ -91,7 +91,7 @@ const dist = buildDegreeDistribution(k, c, delta, maxDegree);
 const samplerOpts = { degree1Rate, lowDegreeRate };
 
 console.log("// Test vectors for Rust integration test");
-console.log("// Parameters: k=10, blockSize=400, c=0.2, delta=0.01, maxDegree=8");
+console.log(`// Parameters: k=10, blockSize=${blockSize}, c=0.2, delta=0.01, maxDegree=8`);
 console.log("// degree1Rate=0.08, lowDegreeRate=0.18");
 console.log("");
 
