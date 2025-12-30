@@ -426,8 +426,8 @@ export function OfflineQRReceiver() {
                     checksum: fountainMeta.checksum,
                     checksumAlg: fountainMeta.checksumAlg,
                     feedbackEnabled: fountainMeta.feedbackEnabled,
-                  partBasedMode: fountainMeta.partBasedMode,
-                  partSize: fountainMeta.partSize
+                    partBasedMode: fountainMeta.partBasedMode,
+                    partSize: fountainMeta.partSize
                 }}
               />
             )
