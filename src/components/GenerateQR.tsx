@@ -173,7 +173,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                 </Button>
                 <Button
                   size="sm"
-                  onClick={() => setTextInput(window.location.href)}
+                  onClick={() => setTextInput(window.location.origin)}
                   className="h-6 px-2 text-xs"
                   variant="outline"
                 >
