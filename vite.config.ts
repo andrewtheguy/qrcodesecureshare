@@ -43,7 +43,7 @@ const verifyWorkerBuildPlugin = () => {
 
 
 // https://vite.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(() => ({
   server: {
     host: true,
     allowedHosts: [

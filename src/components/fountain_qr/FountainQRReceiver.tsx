@@ -5,7 +5,7 @@
  * decode files sent via fountain-coded QR streams.
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
@@ -34,7 +34,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const feedbackEnabled = initialMetadata.feedbackEnabled ?? true
 
   // Initialize metadata and decoder immediately (always provided by parent)
-  const initialMeta: FountainMetadata = {
+  const initialMeta: FountainMetadata = useMemo(() => ({
     name: initialMetadata.name,
     size: initialMetadata.size,
     fileType: initialMetadata.type,
@@ -45,7 +45,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     checksumAlg: initialMetadata.checksumAlg,
     partBasedMode: initialMetadata.partBasedMode ?? false,
     partSize: initialMetadata.partSize ?? 0,
-  }
+  }), [
+    initialMetadata.name,
+    initialMetadata.size,
+    initialMetadata.type,
+    initialMetadata.totalSourceBlocks,
+    initialMetadata.blockSize,
+    initialMetadata.checksum,
+    initialMetadata.checksumAlg,
+    initialMetadata.partBasedMode,
+    initialMetadata.partSize,
+  ])
 
   // Metadata is immutable for this mount (component remounted per file)
   const fountainMetadata: FountainMetadata = initialMeta
@@ -203,7 +213,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
         case 'complete': {
           const { data: reconstructedData, integrityOk, calculatedChecksum } = data
-          const blob = new Blob([reconstructedData], { type: fountainMetadata.fileType || 'application/octet-stream' })
+          const blob = new Blob([reconstructedData], { type: initialMeta.fileType || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
 
           // Sync final chunk count to UI
@@ -271,7 +281,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         workerRef.current = null
       }
     }
-  }, []) // Empty dependency array - only run on mount/unmount
+  }, [initialMeta, sessionId]) // Initialize worker when metadata changes
 
   // Warn user before navigating away if file is decoded but not downloaded
   useEffect(() => {

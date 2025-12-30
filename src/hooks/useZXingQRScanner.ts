@@ -292,6 +292,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
 
   // Cleanup on unmount
   useEffect(() => {
+    const videoEl = videoRef.current
     return () => {
       isScanningRef.current = false
       if (cameraStreamRef.current) {
@@ -302,11 +303,9 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
       // Add a small delay to ensure camera is fully released before new instance tries to access it
       // This prevents "media was removed from the document" errors when rapidly switching components
-      if (videoRef.current) {
+      if (videoEl) {
         setTimeout(() => {
-          if (videoRef.current) {
-            videoRef.current.srcObject = null
-          }
+          videoEl.srcObject = null
         }, 50)
       }
     }

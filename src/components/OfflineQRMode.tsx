@@ -133,7 +133,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     }
     prepare()
     return () => { cancelled = true }
-  }, [file, transferMode, step, feedbackEnabled])
+  }, [file, transferMode, step, feedbackEnabled, partSizeOption])
 
   const handleSelectMode = (mode: TransferMode) => {
      if (!file) return
