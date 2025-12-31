@@ -34,6 +34,10 @@ interface FountainQRDataDisplayProps {
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
   maxQRDataSize: number
+  /**
+   * Optional token to externally reset the auto-pause timer.
+   * Bump this numeric value when you want to restart the auto-pause timeout.
+   */
   autoPauseResetToken?: number
 }
 
