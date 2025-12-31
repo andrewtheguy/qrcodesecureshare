@@ -17,6 +17,8 @@ import { computeChecksum } from '@/utils/checksum'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 const DEFAULT_PART_CHECKSUM = '00000000'
+const AUTO_PAUSE_PADDING = 2
+const AUTO_PAUSE_MIN_MS = 120000
 
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
@@ -61,9 +63,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [workerFallbackHint, setWorkerFallbackHint] = useState('')
   const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
   const autoPauseTimeoutRef = useRef<number | null>(null)
-
-  const AUTO_PAUSE_PADDING = 2
-  const AUTO_PAUSE_MIN_MS = 120000
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
@@ -180,12 +179,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     const baseChunks = estimatedChunksNeeded || encoder?.getMetadata().totalSourceBlocks || 0
-    if (!baseChunks || fpsRef.current <= 0) {
+    if (!baseChunks || fps <= 0) {
       return
     }
 
     const paddedChunks = Math.ceil(baseChunks * AUTO_PAUSE_PADDING)
-    const estimatedMs = Math.max(AUTO_PAUSE_MIN_MS, Math.ceil((paddedChunks / fpsRef.current) * 1000))
+    const estimatedMs = Math.max(AUTO_PAUSE_MIN_MS, Math.ceil((paddedChunks / fps) * 1000))
 
     if (autoPauseTimeoutRef.current !== null) {
       clearTimeout(autoPauseTimeoutRef.current)
