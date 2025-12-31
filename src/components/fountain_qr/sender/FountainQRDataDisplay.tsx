@@ -17,6 +17,8 @@ import { computeChecksum } from '@/utils/checksum'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 const DEFAULT_PART_CHECKSUM = '00000000'
+const AUTO_PAUSE_PADDING = 2
+const AUTO_PAUSE_MIN_MS = 120000
 
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
@@ -32,6 +34,11 @@ interface FountainQRDataDisplayProps {
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
   maxQRDataSize: number
+  /**
+   * Optional token to externally reset the auto-pause timer.
+   * Bump this numeric value when you want to restart the auto-pause timeout.
+   */
+  autoPauseResetToken?: number
 }
 
 const DEFAULT_FPS = 25
@@ -47,7 +54,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onChunkGenerated,
     onBufferUpdate,
     onError,
-    maxQRDataSize
+    maxQRDataSize,
+    autoPauseResetToken = 0
   } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -58,6 +66,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
   const [workerFallbackHint, setWorkerFallbackHint] = useState('')
   const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
+  const autoPauseTimeoutRef = useRef<number | null>(null)
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
@@ -163,6 +172,40 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [chunkCount])
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
+
+  useEffect(() => {
+    if (!isPlaying) {
+      if (autoPauseTimeoutRef.current !== null) {
+        clearTimeout(autoPauseTimeoutRef.current)
+        autoPauseTimeoutRef.current = null
+      }
+      return
+    }
+
+    const baseChunks = estimatedChunksNeeded || encoder?.getMetadata().totalSourceBlocks || 0
+    if (!baseChunks || fps <= 0) {
+      return
+    }
+
+    const paddedChunks = Math.ceil(baseChunks * AUTO_PAUSE_PADDING)
+    const estimatedMs = Math.max(AUTO_PAUSE_MIN_MS, Math.ceil((paddedChunks / fps) * 1000))
+
+    if (autoPauseTimeoutRef.current !== null) {
+      clearTimeout(autoPauseTimeoutRef.current)
+    }
+
+    autoPauseTimeoutRef.current = window.setTimeout(() => {
+      console.log('[FountainQRDataDisplay] Auto-pausing playback after timeout')
+      setIsPlaying(false)
+    }, estimatedMs)
+
+    return () => {
+      if (autoPauseTimeoutRef.current !== null) {
+        clearTimeout(autoPauseTimeoutRef.current)
+        autoPauseTimeoutRef.current = null
+      }
+    }
+  }, [isPlaying, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
 
   // Initialize encoder state
   useEffect(() => {
@@ -667,6 +710,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
   const receivedBlocksCount = receivedBlocks.size
   const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
+  const partInfo = encoder?.getPartInfo()
 
   return (
     <div className="space-y-4">
@@ -721,6 +765,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           <div className="flex flex-wrap justify-center gap-2 text-center">
             <span className="font-medium">Sent {chunkCount} chunk{chunkCount === 1 ? '' : 's'}</span>
             <span className="opacity-70">(~{estimatedChunksNeeded} typically needed)</span>
+            {partInfo?.partBasedMode && (
+              <span className="rounded-full border border-sky-200/70 bg-sky-400/70 px-2.5 py-0.5 text-[11px] font-semibold text-slate-950 shadow-sm">
+                Part {partInfo.currentPartIndex + 1}/{partInfo.totalParts}
+              </span>
+            )}
           </div>
           <div className="flex items-center justify-center gap-3 text-xs flex-wrap">
             {receivedBlocksCount > 0 ? (

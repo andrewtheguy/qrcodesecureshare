@@ -30,6 +30,7 @@ interface FountainQRDataScannerProps {
   invalidChecksumCount: number
   senderFeedbackMessage: string
   receivedFountainChunks: number
+  currentPartChunkCount: number
   decodedBlockIndices?: number[]
   currentPartIndex?: number
   totalParts?: number
@@ -56,6 +57,7 @@ export function FountainQRDataScanner({
   invalidChecksumCount,
   senderFeedbackMessage,
   receivedFountainChunks,
+  currentPartChunkCount,
   decodedBlockIndices = [],
   currentPartIndex = 0,
   totalParts = 1,
@@ -69,16 +71,19 @@ export function FountainQRDataScanner({
   onModeChange,
   onAckTransitionStatus
 }: FountainQRDataScannerProps) {
-  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
-  const [showDebugLog, setShowDebugLog] = useState(false)
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
   const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
-    setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
+
+  useEffect(() => {
+    console.log(
+      `[FountainQRDataScanner] Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`
+    )
+  }, [fountainMetadata.name, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize])
 
   const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
     // ════════════════════════════════════════════════════════════════════════════
@@ -211,6 +216,7 @@ export function FountainQRDataScanner({
   // Use part-specific values when in multi-part mode, otherwise use total blocks
   const displayDecodedBlocks = isMultiPartMode ? currentPartDecodedBlocks : decodedBlocks
   const displayTotalBlocks = isMultiPartMode ? currentPartTotalBlocks : fountainMetadata.totalSourceBlocks
+  const displayChunksScanned = isMultiPartMode ? currentPartChunkCount : receivedFountainChunks
   const progress = displayTotalBlocks > 0 ? (displayDecodedBlocks / displayTotalBlocks) * 100 : 0
 
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
@@ -250,9 +256,9 @@ export function FountainQRDataScanner({
       {/* Video Preview */}
       {receiverMode === 'data-scanning' && (
         <div className="space-y-3">
-          <div className="relative mx-auto w-full max-w-md">
-            <div className="pointer-events-none absolute inset-x-10 -top-6 h-32 rounded-full bg-sky-500/15 blur-3xl" />
-            <div className="relative overflow-hidden rounded-2xl border border-sky-500/35 bg-slate-950/90 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)] p-3">
+          <div className="relative mx-auto w-full max-w-xl">
+            <div className="pointer-events-none absolute inset-x-6 -top-10 h-40 rounded-full bg-sky-500/20 blur-[48px]" />
+            <div className="relative overflow-hidden rounded-3xl border border-sky-500/40 bg-slate-950/90 shadow-[0_45px_80px_-35px_rgba(56,189,248,0.75)] p-4 sm:p-5">
               <div className="relative overflow-hidden rounded-xl bg-black">
                 <video
                   ref={videoRef}
@@ -325,7 +331,7 @@ export function FountainQRDataScanner({
           </div>
           <Progress value={progress} />
           <div className="text-xs text-muted-foreground">
-            Chunks scanned: {receivedFountainChunks} (est. {estimatedChunksNeeded} needed)
+            Chunks scanned: {displayChunksScanned} (est. {estimatedChunksNeeded} needed)
             {invalidChecksumCount > 0 && (
               <div className="text-red-600">
                 Invalid checksums: {invalidChecksumCount} chunks skipped
@@ -438,31 +444,6 @@ export function FountainQRDataScanner({
           </AlertDescription>
         </Alert>
       )}
-
-      {/* Debug Log Section */}
-      <div className="border-t pt-3">
-        <Button
-          onClick={() => setShowDebugLog(!showDebugLog)}
-          variant="ghost"
-          size="sm"
-          className="w-full text-xs"
-        >
-          {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
-        </Button>
-        {showDebugLog && (
-          <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-            {debugLog.length === 0 ? (
-              <p className="text-muted-foreground">No logs yet...</p>
-            ) : (
-              debugLog.map((log, i) => (
-                <div key={i} className="py-0.5">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Control Buttons */}
       <div className="flex justify-end">

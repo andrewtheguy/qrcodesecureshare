@@ -27,6 +27,7 @@ interface FountainQRFeedbackDisplayProps {
   feedbackSequence: number
   lastSenderFeedbackSequence: number
   receiverMode: 'data-scanning' | 'feedback-display' | 'ack-scanning'
+  success: boolean
   isActive: boolean
   onFeedbackGenerated: (feedbackUrl: string, mode: 'part-complete', sequence: number) => void
   onAckReceived: (acknowledgedSequence: number, message: string, partTransition?: boolean, newPartIndex?: number) => void
@@ -54,6 +55,7 @@ export function FountainQRFeedbackDisplay({
   feedbackSequence,
   lastSenderFeedbackSequence,
   receiverMode,
+  success,
   isActive,
   onFeedbackGenerated,
   onAckReceived,
@@ -79,6 +81,7 @@ export function FountainQRFeedbackDisplay({
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
+  const decodedBlocksRef = useRef<number>(decodedBlocks)
   const lastGeneratedSequenceRef = useRef<number>(-1)
   const pendingAckSequenceRef = useRef<number | null>(null)
 
@@ -87,7 +90,8 @@ export function FountainQRFeedbackDisplay({
     decodedBlockIndicesRef.current = decodedBlockIndices
     fountainMetadataRef.current = fountainMetadata
     sessionIdRef.current = sessionId
-  }, [decodedBlockIndices, fountainMetadata, sessionId])
+    decodedBlocksRef.current = decodedBlocks
+  }, [decodedBlockIndices, fountainMetadata, sessionId, decodedBlocks])
 
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
@@ -109,8 +113,27 @@ export function FountainQRFeedbackDisplay({
 
       // Validate that partCompleteInfo is available for part-based mode
       if (!partCompleteInfo) {
+        // skip generating feedback when transfer already succeeded
+        if (success) {
+          console.log('[FountainQRFeedbackDisplay] Skipping feedback generation because transfer is complete')
+          generatingRef.current = false
+          return
+        }
+        // determine if receiver already has all source blocks
+        const transferComplete = decodedBlocksRef.current >= fountainMetadataRef.current.totalSourceBlocks
+        // skip feedback when not in part-based mode or when transfer is locally complete
+        if (!fountainMetadataRef.current.partBasedMode || transferComplete) {
+          console.log('[FountainQRFeedbackDisplay] Skipping feedback generation', {
+            partBasedMode: fountainMetadataRef.current.partBasedMode,
+            transferComplete
+          })
+          generatingRef.current = false
+          return
+        }
+        // in part-based mode but missing part info — treat as fatal for feedback generation
         console.error('[FountainQRFeedbackDisplay] Part info is required for feedback generation')
         setError('Part information not available for feedback generation')
+        onError('Feedback generation failed: missing part info while in part-based mode. Please restart the receiver.')
         generatingRef.current = false
         return
       }
@@ -156,7 +179,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange, success, onError])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
@@ -269,10 +292,13 @@ export function FountainQRFeedbackDisplay({
   })
 
   useEffect(() => {
+    if (success) {
+      return
+    }
     if (isActive && receiverMode === 'feedback-display' && !feedbackQRUrl) {
       handleGenerateFeedbackQR()
     }
-  }, [isActive, receiverMode, feedbackQRUrl, handleGenerateFeedbackQR])
+  }, [isActive, receiverMode, feedbackQRUrl, handleGenerateFeedbackQR, success])
 
   // Cleanup for pending delayed transition on mode change
   useEffect(() => {

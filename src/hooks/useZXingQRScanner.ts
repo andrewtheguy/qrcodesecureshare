@@ -44,6 +44,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const scanLoopRef = useRef<number | null>(null)
   const isScanningRef = useRef<boolean>(false)
+  const desiredScanningRef = useRef<boolean>(false)
+  const startTokenRef = useRef<number>(0)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const workerRef = useRef<Worker | null>(null)
   const lastScannedRef = useRef<string>('')
@@ -169,6 +171,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
 
   const stopCameraScanning = useCallback(() => {
     isScanningRef.current = false
+    desiredScanningRef.current = false
+    startTokenRef.current += 1
 
     // Stop camera stream
     if (cameraStreamRef.current) {
@@ -189,10 +193,16 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   }, [])
 
   const startCameraScanning = useCallback(async () => {
+    const startToken = startTokenRef.current + 1
+    startTokenRef.current = startToken
+    desiredScanningRef.current = true
     try {
       // Wait for video element to be rendered in DOM
       await new Promise((resolve) => setTimeout(resolve, 100))
 
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        return
+      }
       if (!videoRef.current) {
         throw new Error('Video element not available')
       }
@@ -211,27 +221,41 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        return
+      }
       cameraStreamRef.current = stream
       videoRef.current.srcObject = stream
 
       // Wait for video to load and play
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        cameraStreamRef.current = null
+        if (videoRef.current) {
+          videoRef.current.srcObject = null
+        }
+        return
+      }
       await videoRef.current.play()
 
       await enumerateCameras()
 
-      if (onCameraReady) {
+      if (onCameraReady && startTokenRef.current === startToken && desiredScanningRef.current) {
         onCameraReady()
       }
 
-      startScanLoop()
+      if (startTokenRef.current === startToken && desiredScanningRef.current) {
+        startScanLoop()
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to access camera'
-      if (onError) {
+      if (onError && desiredScanningRef.current && startTokenRef.current === startToken) {
         onError(`Camera access denied or unavailable. Please check your permissions. ${errorMessage}`)
       }
-      isScanningRef.current = false
+      stopCameraScanning()
     }
-  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop])
+  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop, stopCameraScanning])
 
   const switchCamera = useCallback(async () => {
     // Don't use stopCameraScanning as it sets isScanningRef to false
@@ -295,6 +319,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     const videoEl = videoRef.current
     return () => {
       isScanningRef.current = false
+      desiredScanningRef.current = false
+      startTokenRef.current += 1
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((track) => track.stop())
       }
