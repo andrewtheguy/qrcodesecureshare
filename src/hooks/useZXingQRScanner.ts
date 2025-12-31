@@ -200,7 +200,10 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       // Wait for video element to be rendered in DOM
       await new Promise((resolve) => setTimeout(resolve, 100))
 
-      if (!videoRef.current || startTokenRef.current !== startToken || !desiredScanningRef.current) {
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        return
+      }
+      if (!videoRef.current) {
         throw new Error('Video element not available')
       }
 
@@ -223,12 +226,22 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         return
       }
       cameraStreamRef.current = stream
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        stream.getTracks().forEach((track) => track.stop())
+        cameraStreamRef.current = null
+        return
+      }
       if (videoRef.current) {
         videoRef.current.srcObject = stream
       }
 
       // Wait for video to load and play
       if (videoRef.current) {
+        if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+          stream.getTracks().forEach((track) => track.stop())
+          cameraStreamRef.current = null
+          return
+        }
         await videoRef.current.play()
       }
 
@@ -281,7 +294,6 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   // Start/stop scanning based on isScanning prop
   useEffect(() => {
     if (isScanning && !isScanningRef.current) {
-      desiredScanningRef.current = true
       startCameraScanning()
     } else if (!isScanning && isScanningRef.current) {
       stopCameraScanning()

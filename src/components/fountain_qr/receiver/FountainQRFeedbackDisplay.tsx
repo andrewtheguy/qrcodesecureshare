@@ -109,6 +109,11 @@ export function FountainQRFeedbackDisplay({
 
       // Validate that partCompleteInfo is available for part-based mode
       if (!partCompleteInfo) {
+        const transferComplete = decodedBlocks >= fountainMetadata.totalSourceBlocks
+        if (!fountainMetadata.partBasedMode || transferComplete) {
+          generatingRef.current = false
+          return
+        }
         console.error('[FountainQRFeedbackDisplay] Part info is required for feedback generation')
         setError('Part information not available for feedback generation')
         generatingRef.current = false
@@ -156,7 +161,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange])
+  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange, decodedBlocks, fountainMetadata])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
