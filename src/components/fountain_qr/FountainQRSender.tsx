@@ -5,7 +5,7 @@
  * transmit files via fountain-coded QR streams.
  */
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -43,6 +43,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
   const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
+  const [autoPauseResetToken, setAutoPauseResetToken] = useState(0)
+  const lastSenderModeRef = useRef(senderMode)
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   // Calculate max QR data size once - used by both encoder and display component
@@ -138,6 +140,13 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       setActivationToken(1);
     }
   }, [encoder, senderMode, activationToken]);
+
+  useEffect(() => {
+    if (senderMode === 'data-display' && lastSenderModeRef.current === 'ack-display') {
+      setAutoPauseResetToken((token) => token + 1)
+    }
+    lastSenderModeRef.current = senderMode
+  }, [senderMode])
 
   useEffect(() => {
     setAckPayload(null)
@@ -252,6 +261,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           receivedBlocks={receivedBlocks}
           isActive={senderMode === 'data-display'}
           activationToken={activationToken}
+          autoPauseResetToken={autoPauseResetToken}
           onChunkGenerated={handleChunkGenerated}
           onBufferUpdate={handleBufferUpdate}
           onError={handleDataDisplayError}

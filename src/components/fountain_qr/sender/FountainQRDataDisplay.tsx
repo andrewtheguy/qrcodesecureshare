@@ -32,6 +32,7 @@ interface FountainQRDataDisplayProps {
   onBufferUpdate: (bufferSize: number) => void
   onError: (error: string) => void
   maxQRDataSize: number
+  autoPauseResetToken?: number
 }
 
 const DEFAULT_FPS = 25
@@ -47,7 +48,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onChunkGenerated,
     onBufferUpdate,
     onError,
-    maxQRDataSize
+    maxQRDataSize,
+    autoPauseResetToken = 0
   } = props
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isPlaying, setIsPlaying] = useState(false)
@@ -58,6 +60,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
   const [workerFallbackHint, setWorkerFallbackHint] = useState('')
   const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
+  const autoPauseTimeoutRef = useRef<number | null>(null)
+
+  const AUTO_PAUSE_PADDING = 2
+  const AUTO_PAUSE_MIN_MS = 120000
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
@@ -163,6 +169,40 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [chunkCount])
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
+
+  useEffect(() => {
+    if (!isPlaying) {
+      if (autoPauseTimeoutRef.current !== null) {
+        clearTimeout(autoPauseTimeoutRef.current)
+        autoPauseTimeoutRef.current = null
+      }
+      return
+    }
+
+    const baseChunks = estimatedChunksNeeded || encoder?.getMetadata().totalSourceBlocks || 0
+    if (!baseChunks || fpsRef.current <= 0) {
+      return
+    }
+
+    const paddedChunks = Math.ceil(baseChunks * AUTO_PAUSE_PADDING)
+    const estimatedMs = Math.max(AUTO_PAUSE_MIN_MS, Math.ceil((paddedChunks / fpsRef.current) * 1000))
+
+    if (autoPauseTimeoutRef.current !== null) {
+      clearTimeout(autoPauseTimeoutRef.current)
+    }
+
+    autoPauseTimeoutRef.current = window.setTimeout(() => {
+      console.log('[FountainQRDataDisplay] Auto-pausing playback after timeout')
+      setIsPlaying(false)
+    }, estimatedMs)
+
+    return () => {
+      if (autoPauseTimeoutRef.current !== null) {
+        clearTimeout(autoPauseTimeoutRef.current)
+        autoPauseTimeoutRef.current = null
+      }
+    }
+  }, [isPlaying, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
 
   // Initialize encoder state
   useEffect(() => {
