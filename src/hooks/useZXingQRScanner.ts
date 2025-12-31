@@ -3,6 +3,32 @@ import { isMobileDevice } from '@/lib/utils'
 import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
 import type { ReaderOptions } from 'zxing-wasm/reader'
 
+// Eager-load worker on module import for offline support
+const scannerWorker = new ZXingWorker()
+
+let currentOnScan: ((data: (string | Uint8Array)[]) => void) | null = null
+let currentOnError: ((error: string) => void) | null = null
+
+scannerWorker.onmessage = (e: MessageEvent) => {
+  if (e.data.type === 'result') {
+    if (e.data.error && currentOnError) {
+      currentOnError(e.data.error)
+    }
+    if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
+      currentOnScan?.(e.data.data)
+    }
+  }
+}
+
+scannerWorker.onerror = (err) => {
+  if (currentOnError) {
+    const message = err instanceof Error ? err.message : 'Worker error'
+    currentOnError(message)
+  } else {
+    console.error('Worker error:', err)
+  }
+}
+
 interface UseZXingQRScannerOptionsBase {
   onError?: (error: string) => void
   onCameraReady?: () => void
@@ -47,7 +73,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const desiredScanningRef = useRef<boolean>(false)
   const startTokenRef = useRef<number>(0)
   const cameraStreamRef = useRef<MediaStream | null>(null)
-  const workerRef = useRef<Worker | null>(null)
+  const workerRef = useRef<Worker>(scannerWorker)
   const lastScannedRef = useRef<string>('')
   const lastScanTimeRef = useRef<number>(0)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
@@ -62,43 +88,41 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [])
 
-  // Initialize worker
-  useEffect(() => {
-    const worker = new ZXingWorker()
-    workerRef.current = worker
-
-    worker.onmessage = (e: MessageEvent) => {
-      if (e.data.type === 'result') {
-        if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
-          // Debounce duplicate scans
-          const scannedData = e.data.data[0]
-          const now = Date.now()
-          if (debounceMs > 0 && scannedData === lastScannedRef.current && now - lastScanTimeRef.current < debounceMs) {
-            // Skip this duplicate scan
-            return
-          }
-          lastScannedRef.current = scannedData
-          lastScanTimeRef.current = now
-
-          // QR codes found! Pass all detected QR codes
-          onScan(e.data.data)
-        }
-        // If error or no data, silently continue scanning
-        if (e.data.error) {
-          console.error('Worker decode error:', e.data.error)
-        }
+  const handleWorkerResult = useCallback((data: (string | Uint8Array)[]) => {
+    // Debounce duplicate scans
+    const scannedData = data[0]
+    const now = Date.now()
+    if (debounceMs > 0) {
+      let hash = ''
+      if (typeof scannedData === 'string') {
+        hash = scannedData
+      } else if (scannedData instanceof Uint8Array) {
+        hash = Array.from(scannedData.slice(0, 32)).join(',')
+      }
+      if (hash && hash === lastScannedRef.current && now - lastScanTimeRef.current < debounceMs) {
+        return
+      }
+      if (hash) {
+        lastScannedRef.current = hash
+        lastScanTimeRef.current = now
       }
     }
 
-    worker.onerror = (err) => {
-      console.error('Worker error:', err)
-    }
+    onScan(data as Uint8Array[] & string[])
+  }, [debounceMs, onScan])
 
+  useEffect(() => {
+    currentOnScan = handleWorkerResult
+    currentOnError = onError ?? null
     return () => {
-      worker.terminate()
-      workerRef.current = null
+      if (currentOnScan === handleWorkerResult) {
+        currentOnScan = null
+      }
+      if (currentOnError === onError) {
+        currentOnError = null
+      }
     }
-  }, [onScan, debounceMs])
+  }, [handleWorkerResult, onError])
 
   const scanVideoFrame = useCallback(() => {
     if (!videoRef.current || !canvasRef.current || !workerRef.current) return
