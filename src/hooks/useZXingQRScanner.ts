@@ -232,6 +232,9 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         stream.getTracks().forEach((track) => track.stop())
         cameraStreamRef.current = null
+        if (videoRef.current) {
+          videoRef.current.srcObject = null
+        }
         return
       }
       await videoRef.current.play()
@@ -250,8 +253,6 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       if (onError && desiredScanningRef.current && startTokenRef.current === startToken) {
         onError(`Camera access denied or unavailable. Please check your permissions. ${errorMessage}`)
       }
-      desiredScanningRef.current = false
-      isScanningRef.current = false
       stopCameraScanning()
     }
   }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop, stopCameraScanning])
