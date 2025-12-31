@@ -710,18 +710,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
   const receivedBlocksCount = receivedBlocks.size
   const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
-  const partInfo = encoder?.getPartInfo()
 
   return (
     <div className="space-y-4">
       {/* QR Code Display (styled to match receiver scanning palette) */}
       <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-sky-500/40 bg-slate-950/90 p-6 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
         <div className="pointer-events-none absolute inset-4 rounded-2xl border border-sky-400/30" />
-        {partInfo?.partBasedMode && (
-          <div className="absolute left-4 top-4 z-10 rounded-full bg-sky-500/90 px-3 py-1 text-xs font-semibold text-white shadow-md">
-            Part {partInfo.currentPartIndex + 1}/{partInfo.totalParts}
-          </div>
-        )}
         <div className="relative flex items-center justify-center">
           {qrCodeUrl ? (
             <img
