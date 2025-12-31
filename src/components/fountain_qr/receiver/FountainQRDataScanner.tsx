@@ -81,7 +81,7 @@ export function FountainQRDataScanner({
     console.log(
       `[FountainQRDataScanner] Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`
     )
-  }, [fountainMetadata])
+  }, [fountainMetadata.name, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize])
 
   const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
     // ════════════════════════════════════════════════════════════════════════════

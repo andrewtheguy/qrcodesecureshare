@@ -226,24 +226,15 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
         return
       }
       cameraStreamRef.current = stream
+      videoRef.current.srcObject = stream
+
+      // Wait for video to load and play
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         stream.getTracks().forEach((track) => track.stop())
         cameraStreamRef.current = null
         return
       }
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-      }
-
-      // Wait for video to load and play
-      if (videoRef.current) {
-        if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-          stream.getTracks().forEach((track) => track.stop())
-          cameraStreamRef.current = null
-          return
-        }
-        await videoRef.current.play()
-      }
+      await videoRef.current.play()
 
       await enumerateCameras()
 
@@ -259,9 +250,11 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       if (onError && desiredScanningRef.current && startTokenRef.current === startToken) {
         onError(`Camera access denied or unavailable. Please check your permissions. ${errorMessage}`)
       }
+      desiredScanningRef.current = false
       isScanningRef.current = false
+      stopCameraScanning()
     }
-  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop])
+  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop, stopCameraScanning])
 
   const switchCamera = useCallback(async () => {
     // Don't use stopCameraScanning as it sets isScanningRef to false
@@ -325,6 +318,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     const videoEl = videoRef.current
     return () => {
       isScanningRef.current = false
+      desiredScanningRef.current = false
+      startTokenRef.current += 1
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((track) => track.stop())
       }

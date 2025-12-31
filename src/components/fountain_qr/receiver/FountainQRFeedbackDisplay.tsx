@@ -113,11 +113,16 @@ export function FountainQRFeedbackDisplay({
       if (!partCompleteInfo) {
         const transferComplete = decodedBlocksRef.current >= fountainMetadataRef.current.totalSourceBlocks
         if (!fountainMetadataRef.current.partBasedMode || transferComplete) {
+          console.log('[FountainQRFeedbackDisplay] Skipping feedback generation', {
+            partBasedMode: fountainMetadataRef.current.partBasedMode,
+            transferComplete
+          })
           generatingRef.current = false
           return
         }
         console.error('[FountainQRFeedbackDisplay] Part info is required for feedback generation')
         setError('Part information not available for feedback generation')
+        onError('Feedback generation failed: missing part info while in part-based mode. Please restart the receiver.')
         generatingRef.current = false
         return
       }
