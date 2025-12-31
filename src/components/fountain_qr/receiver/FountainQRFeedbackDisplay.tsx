@@ -79,6 +79,7 @@ export function FountainQRFeedbackDisplay({
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
   const fountainMetadataRef = useRef<FountainMetadata>(fountainMetadata)
   const sessionIdRef = useRef<number>(sessionId)
+  const decodedBlocksRef = useRef<number>(decodedBlocks)
   const lastGeneratedSequenceRef = useRef<number>(-1)
   const pendingAckSequenceRef = useRef<number | null>(null)
 
@@ -87,7 +88,8 @@ export function FountainQRFeedbackDisplay({
     decodedBlockIndicesRef.current = decodedBlockIndices
     fountainMetadataRef.current = fountainMetadata
     sessionIdRef.current = sessionId
-  }, [decodedBlockIndices, fountainMetadata, sessionId])
+    decodedBlocksRef.current = decodedBlocks
+  }, [decodedBlockIndices, fountainMetadata, sessionId, decodedBlocks])
 
   const handleGenerateFeedbackQR = useCallback(async () => {
     if (generatingRef.current) return; generatingRef.current = true
@@ -109,8 +111,8 @@ export function FountainQRFeedbackDisplay({
 
       // Validate that partCompleteInfo is available for part-based mode
       if (!partCompleteInfo) {
-        const transferComplete = decodedBlocks >= fountainMetadata.totalSourceBlocks
-        if (!fountainMetadata.partBasedMode || transferComplete) {
+        const transferComplete = decodedBlocksRef.current >= fountainMetadataRef.current.totalSourceBlocks
+        if (!fountainMetadataRef.current.partBasedMode || transferComplete) {
           generatingRef.current = false
           return
         }
@@ -161,7 +163,7 @@ export function FountainQRFeedbackDisplay({
       onSequenceIncrement()
       onModeChange('feedback-display')
     } finally { generatingRef.current = false; }
-  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange, decodedBlocks, fountainMetadata])
+  }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange])
 
   const showAckError = (message: string) => {
     // Clear any existing timeout
