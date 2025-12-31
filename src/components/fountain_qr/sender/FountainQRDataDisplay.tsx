@@ -710,6 +710,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
   const receivedBlocksCount = receivedBlocks.size
   const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
+  const partInfo = encoder?.getPartInfo()
 
   return (
     <div className="space-y-4">
@@ -764,6 +765,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           <div className="flex flex-wrap justify-center gap-2 text-center">
             <span className="font-medium">Sent {chunkCount} chunk{chunkCount === 1 ? '' : 's'}</span>
             <span className="opacity-70">(~{estimatedChunksNeeded} typically needed)</span>
+            {partInfo?.partBasedMode && (
+              <span className="rounded-full border border-sky-200/70 bg-sky-400/70 px-2.5 py-0.5 text-[11px] font-semibold text-slate-950 shadow-sm">
+                Part {partInfo.currentPartIndex + 1}/{partInfo.totalParts}
+              </span>
+            )}
           </div>
           <div className="flex items-center justify-center gap-3 text-xs flex-wrap">
             {receivedBlocksCount > 0 ? (
