@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "predev": "npm run postinstall",
     "build:js": "tsc -b && vite build",
     "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
     "build": "npm run build:wasm && npm run build:js",
