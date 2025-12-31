@@ -457,6 +457,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           feedbackSequence={feedbackSequence}
           lastSenderFeedbackSequence={lastSenderFeedbackSequence}
           receiverMode={receiverMode}
+          success={success}
           isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
           onFeedbackGenerated={handleFeedbackGenerated}
           onAckReceived={handleAckReceived}
