@@ -253,9 +253,14 @@ export function FountainQRDataScanner({
       {/* Video Preview */}
       {receiverMode === 'data-scanning' && (
         <div className="space-y-3">
-          <div className="relative mx-auto w-full max-w-md">
-            <div className="pointer-events-none absolute inset-x-10 -top-6 h-32 rounded-full bg-sky-500/15 blur-3xl" />
-            <div className="relative overflow-hidden rounded-2xl border border-sky-500/35 bg-slate-950/90 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)] p-3">
+          <div className="relative mx-auto w-full max-w-xl">
+            <div className="pointer-events-none absolute inset-x-6 -top-10 h-40 rounded-full bg-sky-500/20 blur-[48px]" />
+            <div className="relative overflow-hidden rounded-3xl border border-sky-500/40 bg-slate-950/90 shadow-[0_45px_80px_-35px_rgba(56,189,248,0.75)] p-4 sm:p-5">
+              {isMultiPartMode && (
+                <div className="absolute left-4 top-4 z-10 rounded-full bg-sky-500/90 px-3 py-1 text-xs font-semibold text-white shadow-md">
+                  Part {currentPartIndex + 1}/{totalParts}
+                </div>
+              )}
               <div className="relative overflow-hidden rounded-xl bg-black">
                 <video
                   ref={videoRef}
