@@ -69,16 +69,19 @@ export function FountainQRDataScanner({
   onModeChange,
   onAckTransitionStatus
 }: FountainQRDataScannerProps) {
-  const [debugLog, setDebugLog] = useState<string[]>([`[${new Date().toLocaleTimeString()}] 📦 Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`])
-  const [showDebugLog, setShowDebugLog] = useState(false)
   const [showMetadataInfo, setShowMetadataInfo] = useState(false)
   const [error, setError] = useState<string>('')
   const [hasAutoStarted, setHasAutoStarted] = useState(false)
 
   const addDebugLog = useCallback((message: string) => {
     console.log(`[FountainQRDataScanner] ${message}`)
-    setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }, [])
+
+  useEffect(() => {
+    console.log(
+      `[FountainQRDataScanner] Initialized with metadata: ${fountainMetadata.name} (${fountainMetadata.totalSourceBlocks} blocks, ${fountainMetadata.blockSize} bytes/block)`
+    )
+  }, [fountainMetadata])
 
   const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
     // ════════════════════════════════════════════════════════════════════════════
@@ -438,31 +441,6 @@ export function FountainQRDataScanner({
           </AlertDescription>
         </Alert>
       )}
-
-      {/* Debug Log Section */}
-      <div className="border-t pt-3">
-        <Button
-          onClick={() => setShowDebugLog(!showDebugLog)}
-          variant="ghost"
-          size="sm"
-          className="w-full text-xs"
-        >
-          {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
-        </Button>
-        {showDebugLog && (
-          <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-            {debugLog.length === 0 ? (
-              <p className="text-muted-foreground">No logs yet...</p>
-            ) : (
-              debugLog.map((log, i) => (
-                <div key={i} className="py-0.5">
-                  {log}
-                </div>
-              ))
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Control Buttons */}
       <div className="flex justify-end">

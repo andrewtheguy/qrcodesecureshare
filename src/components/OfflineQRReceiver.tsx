@@ -39,8 +39,6 @@ export function OfflineQRReceiver() {
   const location = useLocation()
   const [transferMode, setTransferMode] = useState<TransferMode>(null)
   const [detectedMetadata, setDetectedMetadata] = useState<FountainDetectedMetadata | null>(null)
-  const [debugLog, setDebugLog] = useState<string[]>([])
-  const [showDebugLog, setShowDebugLog] = useState(false)
   // Used to force remount receiver component when a new file is chosen/confirmed
   const [receiverKey, setReceiverKey] = useState(0)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
@@ -50,7 +48,6 @@ export function OfflineQRReceiver() {
 
   const addDebugLog = (message: string) => {
     console.log(`[AnimatedQRReceiver] ${message}`)
-    setDebugLog(prev => [...prev.slice(-20), `[${new Date().toLocaleTimeString()}] ${message}`])
   }
 
   // Load metadata from location state on mount
@@ -172,7 +169,6 @@ export function OfflineQRReceiver() {
     setIsScanning(true)
     setError('')
     setDetectedMetadata(null)
-    setDebugLog([])
     setMetadataDetected(false)
   }
 
@@ -181,7 +177,6 @@ export function OfflineQRReceiver() {
     setDetectedMetadata(null)
     setTransferMode(null)
     setError('')
-    setDebugLog([])
     setMetadataDetected(false)
   }
 
@@ -283,29 +278,6 @@ export function OfflineQRReceiver() {
                   </ol>
                 </AlertDescription>
               </Alert>
-            )}
-
-            {/* Debug Log */}
-            {debugLog.length > 0 && (
-              <div className="border-t pt-3">
-                <Button
-                  onClick={() => setShowDebugLog(!showDebugLog)}
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-xs"
-                >
-                  {showDebugLog ? '▼' : '▶'} Debug Log ({debugLog.length})
-                </Button>
-                {showDebugLog && (
-                  <div className="mt-2 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono max-h-48 overflow-y-auto">
-                    {debugLog.map((log, i) => (
-                      <div key={i} className="py-0.5">
-                        {log}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
 
             {/* Control Buttons */}
