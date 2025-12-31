@@ -92,6 +92,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   const [totalParts, setTotalParts] = useState<number>(1)
   const [currentPartDecodedBlocks, setCurrentPartDecodedBlocks] = useState<number>(0)
   const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(0)
+  const [currentPartChunkCount, setCurrentPartChunkCount] = useState<number>(0)
+  const currentPartChunkCountRef = useRef<number>(0)
+  const lastPartIndexRef = useRef<number>(0)
 
   // Subcomponent state
   const [isScanning, setIsScanning] = useState(false)
@@ -140,13 +143,21 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
             partTotalBlocks
           })
 
+          if (partIndex !== undefined && partIndex !== lastPartIndexRef.current) {
+            lastPartIndexRef.current = partIndex
+            currentPartChunkCountRef.current = 0
+            setCurrentPartChunkCount(0)
+          }
+
           // Increment chunk counter only for non-duplicate chunks
           // Batch UI updates to every 500ms to avoid slowing down decoding
           if (!duplicate) {
             chunkCounterRef.current++
+            currentPartChunkCountRef.current++
             const now = Date.now()
             if (now - lastUIUpdateRef.current >= 500) {
               setReceivedFountainChunks(chunkCounterRef.current)
+              setCurrentPartChunkCount(currentPartChunkCountRef.current)
               lastUIUpdateRef.current = now
             }
           }
@@ -218,6 +229,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Sync final chunk count to UI
           setReceivedFountainChunks(chunkCounterRef.current)
+          setCurrentPartChunkCount(currentPartChunkCountRef.current)
 
           setDownloadUrl(url)
           setSuccess(true)
@@ -235,6 +247,9 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           console.log(`[FountainQRReceiver] Transitioned to part ${newPartIndex + 1}/${totalParts}`)
           // Clear part completion info to allow new part processing
           setPartCompleteInfo(null)
+          lastPartIndexRef.current = newPartIndex
+          currentPartChunkCountRef.current = 0
+          setCurrentPartChunkCount(0)
           break
         }
 
@@ -545,6 +560,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         invalidChecksumCount={invalidChecksumCount}
         senderFeedbackMessage={senderFeedbackMessage}
         receivedFountainChunks={receivedFountainChunks}
+        currentPartChunkCount={currentPartChunkCount}
         decodedBlockIndices={decodedBlockIndicesRef.current}
         currentPartIndex={currentPartIndex}
         totalParts={totalParts}
@@ -561,6 +577,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Reset chunk counter when starting a new scan
           chunkCounterRef.current = 0
           setReceivedFountainChunks(0)
+          currentPartChunkCountRef.current = 0
+          setCurrentPartChunkCount(0)
           lastUIUpdateRef.current = Date.now()
         }}
         onScanStop={() => {

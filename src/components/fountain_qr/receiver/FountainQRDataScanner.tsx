@@ -30,6 +30,7 @@ interface FountainQRDataScannerProps {
   invalidChecksumCount: number
   senderFeedbackMessage: string
   receivedFountainChunks: number
+  currentPartChunkCount: number
   decodedBlockIndices?: number[]
   currentPartIndex?: number
   totalParts?: number
@@ -56,6 +57,7 @@ export function FountainQRDataScanner({
   invalidChecksumCount,
   senderFeedbackMessage,
   receivedFountainChunks,
+  currentPartChunkCount,
   decodedBlockIndices = [],
   currentPartIndex = 0,
   totalParts = 1,
@@ -214,6 +216,7 @@ export function FountainQRDataScanner({
   // Use part-specific values when in multi-part mode, otherwise use total blocks
   const displayDecodedBlocks = isMultiPartMode ? currentPartDecodedBlocks : decodedBlocks
   const displayTotalBlocks = isMultiPartMode ? currentPartTotalBlocks : fountainMetadata.totalSourceBlocks
+  const displayChunksScanned = isMultiPartMode ? currentPartChunkCount : receivedFountainChunks
   const progress = displayTotalBlocks > 0 ? (displayDecodedBlocks / displayTotalBlocks) * 100 : 0
 
   // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
@@ -328,7 +331,7 @@ export function FountainQRDataScanner({
           </div>
           <Progress value={progress} />
           <div className="text-xs text-muted-foreground">
-            Chunks scanned: {receivedFountainChunks} (est. {estimatedChunksNeeded} needed)
+            Chunks scanned: {displayChunksScanned} (est. {estimatedChunksNeeded} needed)
             {invalidChecksumCount > 0 && (
               <div className="text-red-600">
                 Invalid checksums: {invalidChecksumCount} chunks skipped
