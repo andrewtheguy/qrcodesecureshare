@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
-import QRCode from 'qrcode'
+import { generateQRDataURL } from '@/utils/qrUtils'
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
@@ -112,11 +112,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           }
           if (cancelled) return
           const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
-          const qrUrl = await QRCode.toDataURL([{ data: utf8Bytes, mode: 'byte' }], {
+          const qrUrl = await generateQRDataURL(utf8Bytes, {
             width: 400,
-            margin: 2,
-            errorCorrectionLevel: 'M',
-            color: { dark: '#000000', light: '#FFFFFF' }
+            errorCorrectionLevel: 'M'
           })
           if (cancelled) return
           setMetadataJson(meta)

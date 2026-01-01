@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
-import QRCode from 'qrcode'
+import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { generateQRDataURL } from '@/utils/qrUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -11,6 +11,7 @@ export interface GenerateQRRef {
 }
 
 const MAX_QR_TEXT_LENGTH = 700
+const QR_CODE_WIDTH = 300
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
@@ -19,7 +20,6 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [isOverLimit, setIsOverLimit] = useState(false)
   const [isCompressedQr, setIsCompressedQr] = useState(false)
   const [compressionError, setCompressionError] = useState<string | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
@@ -30,25 +30,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCode = useCallback(async (payload: string) => {
     try {
-      const canvas = canvasRef.current
-      if (canvas) {
-        await QRCode.toCanvas(canvas, payload, {
-          width: 300,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
-        })
-      }
-      const dataUrl = await QRCode.toDataURL(payload, {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
+      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)
@@ -57,25 +39,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCodeBytes = useCallback(async (payload: Uint8Array) => {
     try {
-      const canvas = canvasRef.current
-      if (canvas) {
-        await QRCode.toCanvas(canvas, [{ data: payload, mode: 'byte' }], {
-          width: 300,
-          margin: 2,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
-        })
-      }
-      const dataUrl = await QRCode.toDataURL([{ data: payload, mode: 'byte' }], {
-        width: 300,
-        margin: 2,
-        color: {
-          dark: '#000000',
-          light: '#FFFFFF'
-        }
-      })
+      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)
@@ -233,10 +197,6 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       {textQrGenerated && qrCodeUrl && (
         <Card>
           <CardContent className="text-center">
-            <canvas
-              ref={canvasRef}
-              style={{ display: 'none' }}
-            />
             <img
               src={qrCodeUrl}
               alt="QR Code with text content"
