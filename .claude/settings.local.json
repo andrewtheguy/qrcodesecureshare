@@ -36,7 +36,8 @@
       "Bash(npm run build:wasm:dev:*)",
       "Bash(cargo build:*)",
       "Bash(cargo check:*)",
-      "Bash(rustup show:*)"
+      "Bash(rustup show:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []
