@@ -11,6 +11,7 @@ export interface GenerateQRRef {
 }
 
 const MAX_QR_TEXT_LENGTH = 700
+const QR_CODE_WIDTH = 300
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
@@ -29,7 +30,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCode = useCallback(async (payload: string) => {
     try {
-      const dataUrl = await generateQRDataURL(payload, { width: 300 })
+      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)
@@ -38,7 +39,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCodeBytes = useCallback(async (payload: Uint8Array) => {
     try {
-      const dataUrl = await generateQRDataURL(payload, { width: 300 })
+      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)
