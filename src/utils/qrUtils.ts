@@ -2,6 +2,58 @@ import { writeBarcode } from 'zxing-wasm/full'
 import { NON_DATA_QR_OPTIONS } from '@/constants'
 
 /**
+ * Scale an image blob to a target width and return as a PNG data URL.
+ * Creates/revokes object URL, uses canvas for scaling, and handles errors.
+ *
+ * @param blob - The source image blob to scale
+ * @param targetWidth - The desired output width (height uses image aspect ratio)
+ * @param preservePixelation - When true, disables image smoothing for crisp pixel scaling (useful for QR codes)
+ * @returns Promise resolving to a PNG data URL
+ */
+function scaleImageBlob(
+  blob: Blob,
+  targetWidth: number,
+  preservePixelation = false
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const img = new Image()
+    const objectUrl = URL.createObjectURL(blob)
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl)
+
+      // Calculate height based on aspect ratio
+      const aspectRatio = img.naturalHeight / img.naturalWidth
+      const targetHeight = Math.round(targetWidth * aspectRatio)
+
+      const canvas = document.createElement('canvas')
+      canvas.width = targetWidth
+      canvas.height = targetHeight
+
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('Failed to get canvas 2D context'))
+        return
+      }
+
+      if (preservePixelation) {
+        ctx.imageSmoothingEnabled = false
+      }
+
+      ctx.drawImage(img, 0, 0, targetWidth, targetHeight)
+      resolve(canvas.toDataURL('image/png'))
+    }
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl)
+      reject(new Error('Failed to load image from blob'))
+    }
+
+    img.src = objectUrl
+  })
+}
+
+/**
  * Generate a QR code from string or binary data and return as a data URL.
  * Drop-in replacement for QRCode.toDataURL() from the qrcode package.
  *
@@ -34,33 +86,12 @@ export async function generateQRDataURL(
       throw new Error(result.error)
     }
 
-    const blob = result.image as Blob
+    if (!result.image || !(result.image instanceof Blob)) {
+      throw new TypeError('Expected result.image to be a Blob, got: ' + typeof result.image)
+    }
 
-    // Scale the image to target width
-    return new Promise<string>((resolve, reject) => {
-      const img = new Image()
-      const objectUrl = URL.createObjectURL(blob)
-      img.onload = () => {
-        URL.revokeObjectURL(objectUrl)
-        const canvas = document.createElement('canvas')
-        canvas.width = targetWidth
-        canvas.height = targetWidth
-        const ctx = canvas.getContext('2d')
-        if (!ctx) {
-          reject(new Error('Failed to get canvas context'))
-          return
-        }
-        // Use pixelated rendering for crisp QR scaling
-        ctx.imageSmoothingEnabled = false
-        ctx.drawImage(img, 0, 0, targetWidth, targetWidth)
-        resolve(canvas.toDataURL('image/png'))
-      }
-      img.onerror = () => {
-        URL.revokeObjectURL(objectUrl)
-        reject(new Error('Failed to load QR image'))
-      }
-      img.src = objectUrl
-    })
+    // Scale QR image to target width with pixelation preserved for crisp modules
+    return await scaleImageBlob(result.image, targetWidth, true)
   } catch (err) {
     console.error('Failed to generate QR data URL:', err)
     throw err
@@ -93,8 +124,12 @@ export const generateNonDataQR = async (payload: object, opts?: {
       throw new Error(result.error)
     }
 
+    if (!result.image || !(result.image instanceof Blob)) {
+      throw new TypeError('Expected result.image to be a Blob, got: ' + typeof result.image)
+    }
+
     // Convert Blob to data URL
-    const blob = result.image as Blob
+    const blob = result.image
     return new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => {
