@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
-import { generateQRDataURL } from '@/utils/qrUtils'
+import { generateQRTextDataURL, generateQRBinaryDataURL } from '@/utils/qrUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -30,7 +30,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCode = useCallback(async (payload: string) => {
     try {
-      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
+      const dataUrl = await generateQRTextDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)
@@ -39,7 +39,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const generateQRCodeBytes = useCallback(async (payload: Uint8Array) => {
     try {
-      const dataUrl = await generateQRDataURL(payload, { width: QR_CODE_WIDTH })
+      const dataUrl = await generateQRBinaryDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
     } catch (error) {
       console.error('QR Code generation failed:', error)

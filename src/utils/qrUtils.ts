@@ -54,28 +54,23 @@ function scaleImageBlob(
 }
 
 /**
- * Generate a QR code from string or binary data and return as a data URL.
- * Drop-in replacement for QRCode.toDataURL() from the qrcode package.
+ * Generate a QR code from binary data and return as a data URL.
  *
  * Note: zxing-wasm's sizeHint controls module size, not output size.
  * We generate with small modules then scale up for consistent density.
  */
-export async function generateQRDataURL(
-  payload: string | Uint8Array,
+export async function generateQRBinaryDataURL(
+  payload: Uint8Array,
   options?: {
     width?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
 ): Promise<string> {
   try {
-    const binaryData = typeof payload === 'string'
-      ? new TextEncoder().encode(payload)
-      : payload
-
     const targetWidth = options?.width || 300
 
     // Use small sizeHint for dense QR, then scale up
-    const result = await writeBarcode(binaryData, {
+    const result = await writeBarcode(payload, {
       format: 'QRCode',
       ecLevel: options?.errorCorrectionLevel || 'M',
       sizeHint: 4, // Small module size for density
@@ -93,7 +88,48 @@ export async function generateQRDataURL(
     // Scale QR image to target width with pixelation preserved for crisp modules
     return await scaleImageBlob(result.image, targetWidth, true)
   } catch (err) {
-    console.error('Failed to generate QR data URL:', err)
+    console.error('Failed to generate QR binary data URL:', err)
+    throw err
+  }
+}
+
+/**
+ * Generate a QR code from text string and return as a data URL.
+ * Passes the string directly to writeBarcode for proper text mode encoding.
+ *
+ * Note: zxing-wasm's sizeHint controls module size, not output size.
+ * We generate with small modules then scale up for consistent density.
+ */
+export async function generateQRTextDataURL(
+  payload: string,
+  options?: {
+    width?: number
+    errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
+  }
+): Promise<string> {
+  try {
+    const targetWidth = options?.width || 300
+
+    // Pass string directly to writeBarcode for text mode (not as Uint8Array)
+    const result = await writeBarcode(payload, {
+      format: 'QRCode',
+      ecLevel: options?.errorCorrectionLevel || 'M',
+      sizeHint: 4, // Small module size for density
+      withQuietZones: true
+    })
+
+    if (result.error) {
+      throw new Error(result.error)
+    }
+
+    if (!result.image || !(result.image instanceof Blob)) {
+      throw new TypeError('Expected result.image to be a Blob, got: ' + typeof result.image)
+    }
+
+    // Scale QR image to target width with pixelation preserved for crisp modules
+    return await scaleImageBlob(result.image, targetWidth, true)
+  } catch (err) {
+    console.error('Failed to generate QR text data URL:', err)
     throw err
   }
 }
