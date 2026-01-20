@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import { generateQRBinaryDataURL } from '@/utils/qrUtils'
-import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
@@ -305,9 +304,19 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
           <div className="grid md:grid-cols-2 gap-4">
              {/* Interactive Mode (Recommended) */}
-             <div 
+             <div
                 className="relative group cursor-pointer"
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectMode('fountain-feedback')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    if (event.key === ' ') {
+                      event.preventDefault()
+                    }
+                    handleSelectMode('fountain-feedback')
+                  }
+                }}
              >
                 <div className="absolute inset-0 bg-primary/5 rounded-xl border-2 border-primary/20 group-hover:border-primary transition-colors" />
                 <div className="relative p-6 space-y-4">
@@ -343,9 +352,19 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
              </div>
 
              {/* Basic Mode */}
-             <div 
+             <div
                 className="relative group cursor-pointer"
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectMode('fountain-simple')}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    if (event.key === ' ') {
+                      event.preventDefault()
+                    }
+                    handleSelectMode('fountain-simple')
+                  }
+                }}
              >
                 <div className="absolute inset-0 bg-muted/30 rounded-xl border-2 border-transparent group-hover:border-muted-foreground/30 transition-colors" />
                 <div className="relative p-6 space-y-4">
@@ -513,7 +532,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             </div>
           )}
 
-          {metadataLoading && <Progress value={45} className="w-full h-2" />}
         </CardContent>
 
         <CardFooter className="flex flex-col gap-3 bg-muted/10 p-6 pt-2">
@@ -597,21 +615,19 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         </div>
 
         {/* Render appropriate sender component */}
-        {metadataJson && (
-          <>
-            {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
-              <FountainQRSender
-                key={`fount-${senderRemountKey}`}
-                file={file}
-                sessionId={currentSessionId}
-                feedbackEnabled={feedbackEnabled}
-                checksum={metadataJson.checksum}
-                checksumAlg={metadataJson.checksumAlg}
-                partSizeOption={partSizeOption}
-              />
-            )}
-          </>
-        )}
+        {metadataJson &&
+          (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') &&
+          metadataJson.mode === 'fountain' && (
+            <FountainQRSender
+              key={`fount-${senderRemountKey}`}
+              file={file}
+              sessionId={currentSessionId}
+              feedbackEnabled={feedbackEnabled}
+              checksum={metadataJson.checksum}
+              checksumAlg={metadataJson.checksumAlg}
+              partSizeOption={partSizeOption}
+            />
+          )}
         <Dialog
           open={exitDialogOpen}
           onOpenChange={(open) => {
