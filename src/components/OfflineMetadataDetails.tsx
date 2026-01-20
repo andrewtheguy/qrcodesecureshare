@@ -1,5 +1,7 @@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
+const REDUNDANCY_FACTOR = 1.1
+
 interface OfflineMetadataDetailsProps {
   metadata: {
     fileName: string
@@ -9,7 +11,8 @@ interface OfflineMetadataDetailsProps {
 }
 
 export function OfflineMetadataDetails({ metadata }: OfflineMetadataDetailsProps) {
-  const estimatedChunks = Math.ceil(metadata.totalSourceBlocks * 1.1)
+  const estimatedChunks = Math.ceil(metadata.totalSourceBlocks * REDUNDANCY_FACTOR)
+  const redundancyPercent = Math.round(REDUNDANCY_FACTOR * 100)
 
   return (
     <div className="space-y-3">
@@ -33,7 +36,7 @@ export function OfflineMetadataDetails({ metadata }: OfflineMetadataDetailsProps
           <p className="font-medium mb-2">🔁 Fountain Code Mode</p>
           <ul className="list-disc list-inside space-y-1 text-sm">
             <li>Receives random coded chunks</li>
-            <li>Only needs ~110% of chunks to decode</li>
+            <li>Only needs ~{redundancyPercent}% of chunks to decode</li>
             <li>Can skip/miss chunks and still succeed</li>
           </ul>
         </AlertDescription>

@@ -23,6 +23,7 @@ export function OfflineQRReceiver() {
   const location = useLocation()
   const navigate = useNavigate()
   const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)
+  const [metadataError, setMetadataError] = useState<string | null>(null)
 
   // Load metadata from location state on mount
   useEffect(() => {
@@ -59,6 +60,15 @@ export function OfflineQRReceiver() {
           partBasedMode: parsed.partBasedMode,
           partSize: parsed.partSize
         })
+      } else {
+        // Metadata exists but is missing required fields
+        const missingFields: string[] = []
+        if (parsed.totalSourceBlocks === undefined) missingFields.push('totalSourceBlocks')
+        if (parsed.blockSize === undefined) missingFields.push('blockSize')
+        if (parsed.feedbackEnabled === undefined) missingFields.push('feedbackEnabled')
+        const errorMsg = `Malformed metadata: missing ${missingFields.join(', ')}`
+        console.warn('[OfflineQRReceiver]', errorMsg, parsed)
+        setMetadataError(errorMsg)
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -74,7 +84,7 @@ export function OfflineQRReceiver() {
         <CardContent className="space-y-4">
           <Alert variant="destructive">
             <AlertDescription>
-              No metadata found. Please scan a metadata QR code first from the Scan page.
+              {metadataError || 'No metadata found. Please scan a metadata QR code first from the Scan page.'}
             </AlertDescription>
           </Alert>
           <Button onClick={() => navigate('/scan/camera')} className="w-full">
@@ -104,21 +114,7 @@ export function OfflineQRReceiver() {
           ← Back to Scan
         </Button>
 
-        <FountainQRReceiver
-          initialMetadata={{
-            name: detectedMetadata.name,
-            size: detectedMetadata.size,
-            type: detectedMetadata.type,
-            sessionId: detectedMetadata.sessionId,
-            totalSourceBlocks: detectedMetadata.totalSourceBlocks,
-            blockSize: detectedMetadata.blockSize,
-            checksum: detectedMetadata.checksum,
-            checksumAlg: detectedMetadata.checksumAlg,
-            feedbackEnabled: detectedMetadata.feedbackEnabled,
-            partBasedMode: detectedMetadata.partBasedMode,
-            partSize: detectedMetadata.partSize
-          }}
-        />
+        <FountainQRReceiver initialMetadata={detectedMetadata} />
       </CardContent>
     </Card>
   )
