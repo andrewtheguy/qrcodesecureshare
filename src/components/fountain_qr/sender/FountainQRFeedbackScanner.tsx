@@ -79,91 +79,90 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
     }
 
     setProcessingRef(true);
-    const data = JSON.parse(qrCode) as FountainFeedback;
-    if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
-      onError('Invalid feedback QR code: wrong type, session, or sequence.');
-      setCurrentMode('idle');
-      return;
-    }
+    try {
+      const data = JSON.parse(qrCode) as FountainFeedback;
+      if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
+        onError('Invalid feedback QR code: wrong type, session, or sequence.');
+        setCurrentMode('idle');
+        return;
+      }
 
-    if (data.sequence <= lastProcessedSequence) {
-      console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
-      onError('Stale feedback QR code: sequence already processed.');
-      setCurrentMode('idle');
-      setProcessingRef(false);
-      return;
-    }
+      if (data.sequence <= lastProcessedSequence) {
+        console.log('Ignoring duplicate or stale feedback sequence:', data.sequence);
+        onError('Stale feedback QR code: sequence already processed.');
+        setCurrentMode('idle');
+        return;
+      }
 
-    // Validate encoder exists before processing
-    if (!encoder) {
-      console.error('[FountainQRFeedbackScanner] CRITICAL: Encoder is null when processing feedback');
-      onError('Encoder not available. Cannot process feedback.');
-      setProcessingRef(false);
-      return;
-    }
+      // Validate encoder exists before processing
+      if (!encoder) {
+        console.error('[FountainQRFeedbackScanner] CRITICAL: Encoder is null when processing feedback');
+        onError('Encoder not available. Cannot process feedback.');
+        return;
+      }
 
-    if (data.mode === 'part-complete') {
-      // SYNC REQUIREMENT: Validate these fields match exactly with:
-      // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
-      // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for part-complete mode
-      // 3. checksum.ts - generateFeedbackConfirmationCode()
-      //
-      // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts
-      // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
-      console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
+      if (data.mode === 'part-complete') {
+        // SYNC REQUIREMENT: Validate these fields match exactly with:
+        // 1. FountainQRFeedbackDisplay.tsx - feedback generation for part-complete mode
+        // 2. FountainQRManualFeedbackInput.tsx - validateInputs() for part-complete mode
+        // 3. checksum.ts - generateFeedbackConfirmationCode()
+        //
+        // Expected fields: type, mode, sessionId, sequence, currentPart, totalParts
+        // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
+        console.log(`[FountainQRFeedbackScanner] Processing part-complete feedback for part ${data.currentPart + 1}/${data.totalParts}`);
 
-      // If receiver sent feedback, it means the part was completed successfully
-      // (receiver aborts and doesn't send feedback if checksum is invalid)
-      console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
+        // If receiver sent feedback, it means the part was completed successfully
+        // (receiver aborts and doesn't send feedback if checksum is invalid)
+        console.log(`[FountainQRFeedbackScanner] Part ${data.currentPart + 1}/${data.totalParts} completed successfully`);
 
-      let partTransition = false;
-      let newPartIndex: number | undefined;
+        let partTransition = false;
+        let newPartIndex: number | undefined;
 
-      // Move encoder to next part (encoder is already null-checked above)
-      const moved = encoder.moveToNextPart();
-      if (moved) {
-        partTransition = true;
-        const partInfo = encoder.getPartInfo();
-        newPartIndex = partInfo.currentPartIndex;
-        console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
+        // Move encoder to next part (encoder is already null-checked above)
+        const moved = encoder.moveToNextPart();
+        if (moved) {
+          partTransition = true;
+          const partInfo = encoder.getPartInfo();
+          newPartIndex = partInfo.currentPartIndex;
+          console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
+        } else {
+          console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
+        }
+
+        // Determine message based on part transition
+        let ackMessage = `Part completion acknowledged.`;
+        if (partTransition && newPartIndex !== undefined) {
+          ackMessage = `Part ${data.currentPart + 1} complete. Moving to part ${newPartIndex + 1}.`;
+        }
+
+        const ackFeedback: SenderFeedbackAcknowledge = {
+          type: 'SENDER_FEEDBACK',
+          sessionId,
+          sequence: senderFeedbackSequence,
+          command: 'acknowledge',
+          acknowledgedSequence: data.sequence,
+          message: ackMessage,
+          ...(partTransition && { partTransition, newPartIndex })
+        };
+
+        await generateSenderFeedbackQR(ackFeedback);
+        setCurrentMode('idle');
+
+        onFeedbackProcessed({
+          sequence: data.sequence,
+          message: ackFeedback.message,
+        });
+
+        onModeChange('ack-display');
       } else {
-        console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
+        // Handle unrecognized or legacy modes (e.g., 'targeted' which was removed)
+        console.warn(`[FountainQRFeedbackScanner] Unrecognized feedback mode: '${data.mode}' (sequence: ${data.sequence}). Only 'part-complete' mode is supported.`);
+        onError(`Unsupported feedback mode: '${data.mode}'. Please ensure sender and receiver are using compatible versions.`);
+        setCurrentMode('idle');
       }
-
-      // Determine message based on part transition
-      let ackMessage = `Part completion acknowledged.`;
-      if (partTransition && newPartIndex !== undefined) {
-        ackMessage = `Part ${data.currentPart + 1} complete. Moving to part ${newPartIndex + 1}.`;
-      }
-
-      const ackFeedback: SenderFeedbackAcknowledge = {
-        type: 'SENDER_FEEDBACK',
-        sessionId,
-        sequence: senderFeedbackSequence,
-        command: 'acknowledge',
-        acknowledgedSequence: data.sequence,
-        message: ackMessage,
-        ...(partTransition && { partTransition, newPartIndex })
-      };
-
-      await generateSenderFeedbackQR(ackFeedback);
-      setCurrentMode('idle');
-
-      onFeedbackProcessed({
-        sequence: data.sequence,
-        message: ackFeedback.message,
-      });
-
-      onModeChange('ack-display');
-      setProcessingRef(false);
-    } else {
-      // Handle unrecognized or legacy modes (e.g., 'targeted' which was removed)
-      console.warn(`[FountainQRFeedbackScanner] Unrecognized feedback mode: '${data.mode}' (sequence: ${data.sequence}). Only 'part-complete' mode is supported.`);
-      onError(`Unsupported feedback mode: '${data.mode}'. Please ensure sender and receiver are using compatible versions.`);
-      setCurrentMode('idle');
+    } finally {
       setProcessingRef(false);
     }
-
   }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, processingRef]);
 
   // Initialize scanner hook after handleFeedbackScan is defined

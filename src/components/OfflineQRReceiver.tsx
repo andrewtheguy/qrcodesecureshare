@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -19,60 +19,68 @@ interface DetectedMetadata {
   partSize?: number
 }
 
+interface LocationState {
+  metadata?: {
+    fileName: string
+    fileSize: number
+    fileType: string
+    sessionId: number
+    checksum: string
+    checksumAlg: string
+    totalSourceBlocks?: number
+    blockSize?: number
+    feedbackEnabled?: boolean
+    partBasedMode?: boolean
+    partSize?: number
+  }
+}
+
+// Parse and validate metadata from location state
+function parseLocationMetadata(state: LocationState | null): { metadata: DetectedMetadata | null; error: string | null } {
+  if (!state?.metadata) {
+    return { metadata: null, error: null }
+  }
+
+  const parsed = state.metadata
+
+  if (parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
+    return {
+      metadata: {
+        name: parsed.fileName,
+        size: parsed.fileSize,
+        type: parsed.fileType,
+        sessionId: parsed.sessionId,
+        totalSourceBlocks: parsed.totalSourceBlocks,
+        blockSize: parsed.blockSize,
+        checksum: parsed.checksum,
+        checksumAlg: parsed.checksumAlg,
+        feedbackEnabled: parsed.feedbackEnabled,
+        partBasedMode: parsed.partBasedMode,
+        partSize: parsed.partSize
+      },
+      error: null
+    }
+  }
+
+  // Metadata exists but is missing required fields
+  const missingFields: string[] = []
+  if (parsed.totalSourceBlocks === undefined) missingFields.push('totalSourceBlocks')
+  if (parsed.blockSize === undefined) missingFields.push('blockSize')
+  if (parsed.feedbackEnabled === undefined) missingFields.push('feedbackEnabled')
+  const errorMsg = `Malformed metadata: missing ${missingFields.join(', ')}`
+  console.warn('[OfflineQRReceiver]', errorMsg, parsed)
+  return { metadata: null, error: errorMsg }
+}
+
 export function OfflineQRReceiver() {
   const location = useLocation()
   const navigate = useNavigate()
-  const [detectedMetadata, setDetectedMetadata] = useState<DetectedMetadata | null>(null)
-  const [metadataError, setMetadataError] = useState<string | null>(null)
 
-  // Load metadata from location state on mount
-  useEffect(() => {
-    interface LocationState {
-      metadata?: {
-        fileName: string
-        fileSize: number
-        fileType: string
-        sessionId: number
-        checksum: string
-        checksumAlg: string
-        totalSourceBlocks?: number
-        blockSize?: number
-        feedbackEnabled?: boolean
-        partBasedMode?: boolean
-        partSize?: number
-      }
-    }
-    const state = location.state as LocationState | null
-    if (state?.metadata) {
-      const parsed = state.metadata
-
-      if (parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
-        setDetectedMetadata({
-          name: parsed.fileName,
-          size: parsed.fileSize,
-          type: parsed.fileType,
-          sessionId: parsed.sessionId,
-          totalSourceBlocks: parsed.totalSourceBlocks,
-          blockSize: parsed.blockSize,
-          checksum: parsed.checksum,
-          checksumAlg: parsed.checksumAlg,
-          feedbackEnabled: parsed.feedbackEnabled,
-          partBasedMode: parsed.partBasedMode,
-          partSize: parsed.partSize
-        })
-      } else {
-        // Metadata exists but is missing required fields
-        const missingFields: string[] = []
-        if (parsed.totalSourceBlocks === undefined) missingFields.push('totalSourceBlocks')
-        if (parsed.blockSize === undefined) missingFields.push('blockSize')
-        if (parsed.feedbackEnabled === undefined) missingFields.push('feedbackEnabled')
-        const errorMsg = `Malformed metadata: missing ${missingFields.join(', ')}`
-        console.warn('[OfflineQRReceiver]', errorMsg, parsed)
-        setMetadataError(errorMsg)
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // Initialize metadata synchronously from location.state to avoid error flash
+  const [{ detectedMetadata, metadataError }] = useState(() => {
+    const { metadata, error } = parseLocationMetadata(location.state as LocationState | null)
+    return { detectedMetadata: metadata, metadataError: error }
+  })
 
   // Error state - should not happen during normal flow
   if (!detectedMetadata) {
