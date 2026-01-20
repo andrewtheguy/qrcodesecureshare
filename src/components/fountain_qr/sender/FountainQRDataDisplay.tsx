@@ -179,6 +179,16 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   ): Promise<Uint8Array> => {
     const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
     const numIndices = chunk.indices.length
+
+    // Validate that degree and numIndices fit in a single byte (max 255)
+    // These are encoded as uint8, so values > 255 would be silently truncated
+    if (chunk.degree > 255) {
+      throw new Error(`Chunk degree ${chunk.degree} exceeds maximum allowed value of 255 (uint8 limit)`)
+    }
+    if (numIndices > 255) {
+      throw new Error(`Number of indices ${numIndices} exceeds maximum allowed value of 255 (uint8 limit)`)
+    }
+
     const binaryData = new Uint8Array(expectedSize)
 
     let offset = 0
@@ -189,11 +199,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     binaryData[offset++] = (chunk.seed >> 8) & 0xFF
     binaryData[offset++] = chunk.seed & 0xFF
 
-    // Degree (1 byte)
-    binaryData[offset++] = chunk.degree & 0xFF
+    // Degree (1 byte) - validated above to be <= 255
+    binaryData[offset++] = chunk.degree
 
-    // Number of indices (1 byte)
-    binaryData[offset++] = numIndices & 0xFF
+    // Number of indices (1 byte) - validated above to be <= 255
+    binaryData[offset++] = numIndices
 
     // Indices (2 bytes each)
     for (const idx of chunk.indices) {
