@@ -77,7 +77,7 @@ export default function HomePage() {
             <p className="mt-4 text-lg leading-7 text-slate-600">
               Generate, scan, and transfer data securely using QR codes.
               <span className="block mt-1 font-medium text-slate-900">
-                Works completely offline with client-side processing.
+                Works completely offline with client-side only processing.
               </span>
             </p>
             <div className="mt-8 flex items-center justify-center gap-x-4">
