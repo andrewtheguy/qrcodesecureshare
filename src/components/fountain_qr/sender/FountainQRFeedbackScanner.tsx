@@ -45,7 +45,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 }) => {
   const [currentMode, setCurrentMode] = useState<'scanning' | 'idle'>('idle');
   const [senderFeedbackSequence, setSenderFeedbackSequence] = useState(0);
-  const [processingRef, setProcessingRef] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Auto-start scanning if parent is in feedback-scanning mode
   useEffect(() => {
@@ -67,7 +67,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   }, [onAckGenerated, onError]);
 
   const handleFeedbackScan = useCallback(async (qrCodeData: string | Uint8Array) => {
-    if (processingRef) return;
+    if (isProcessing) return;
 
     // Convert Uint8Array to string if needed
     const qrCode = qrCodeData instanceof Uint8Array ? new TextDecoder().decode(qrCodeData) : qrCodeData
@@ -78,7 +78,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       return;
     }
 
-    setProcessingRef(true);
+    setIsProcessing(true);
     try {
       const data = JSON.parse(qrCode) as FountainFeedback;
       if (data.type !== 'FOUNTAIN_FEEDBACK' || data.sessionId !== sessionId || typeof data.sequence !== 'number') {
@@ -97,6 +97,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       // Validate encoder exists before processing
       if (!encoder) {
         console.error('[FountainQRFeedbackScanner] CRITICAL: Encoder is null when processing feedback');
+        setCurrentMode('idle');
         onError('Encoder not available. Cannot process feedback.');
         return;
       }
@@ -160,10 +161,16 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
         onError(`Unsupported feedback mode: '${data.mode}'. Please ensure sender and receiver are using compatible versions.`);
         setCurrentMode('idle');
       }
+    } catch (error) {
+      // Handle JSON.parse errors and other runtime errors
+      console.error('[FountainQRFeedbackScanner] Error processing feedback QR:', error);
+      setCurrentMode('idle');
+      onError('Invalid feedback QR code: parse error');
+      return;
     } finally {
-      setProcessingRef(false);
+      setIsProcessing(false);
     }
-  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, processingRef]);
+  }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, isProcessing]);
 
   // Initialize scanner hook after handleFeedbackScan is defined
   const { videoRef, canvasRef } = useZXingQRScanner({

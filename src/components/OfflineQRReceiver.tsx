@@ -43,33 +43,46 @@ function parseLocationMetadata(state: LocationState | null): { metadata: Detecte
 
   const parsed = state.metadata
 
-  if (parsed.totalSourceBlocks !== undefined && parsed.blockSize !== undefined && parsed.feedbackEnabled !== undefined) {
-    return {
-      metadata: {
-        name: parsed.fileName,
-        size: parsed.fileSize,
-        type: parsed.fileType,
-        sessionId: parsed.sessionId,
-        totalSourceBlocks: parsed.totalSourceBlocks,
-        blockSize: parsed.blockSize,
-        checksum: parsed.checksum,
-        checksumAlg: parsed.checksumAlg,
-        feedbackEnabled: parsed.feedbackEnabled,
-        partBasedMode: parsed.partBasedMode,
-        partSize: parsed.partSize
-      },
-      error: null
-    }
-  }
-
-  // Metadata exists but is missing required fields
+  // Validate all required fields
   const missingFields: string[] = []
+  if (!parsed.fileName) missingFields.push('fileName')
+  if (parsed.fileSize === undefined) missingFields.push('fileSize')
+  if (!parsed.fileType) missingFields.push('fileType')
+  if (parsed.sessionId === undefined) missingFields.push('sessionId')
+  if (!parsed.checksum) missingFields.push('checksum')
+  if (!parsed.checksumAlg) missingFields.push('checksumAlg')
   if (parsed.totalSourceBlocks === undefined) missingFields.push('totalSourceBlocks')
   if (parsed.blockSize === undefined) missingFields.push('blockSize')
   if (parsed.feedbackEnabled === undefined) missingFields.push('feedbackEnabled')
-  const errorMsg = `Malformed metadata: missing ${missingFields.join(', ')}`
-  console.warn('[OfflineQRReceiver]', errorMsg, parsed)
-  return { metadata: null, error: errorMsg }
+
+  if (missingFields.length > 0) {
+    const errorMsg = `Malformed metadata: missing ${missingFields.join(', ')}`
+    console.warn('[OfflineQRReceiver]', errorMsg, parsed)
+    return { metadata: null, error: errorMsg }
+  }
+
+  // Build metadata with required fields (guaranteed to be defined after validation above)
+  const metadata: DetectedMetadata = {
+    name: parsed.fileName,
+    size: parsed.fileSize,
+    type: parsed.fileType,
+    sessionId: parsed.sessionId,
+    checksum: parsed.checksum,
+    checksumAlg: parsed.checksumAlg,
+    totalSourceBlocks: parsed.totalSourceBlocks!,
+    blockSize: parsed.blockSize!,
+    feedbackEnabled: parsed.feedbackEnabled!,
+  }
+
+  // Add optional part-based fields only if defined
+  if (parsed.partBasedMode !== undefined) {
+    metadata.partBasedMode = parsed.partBasedMode
+  }
+  if (parsed.partSize !== undefined) {
+    metadata.partSize = parsed.partSize
+  }
+
+  return { metadata, error: null }
 }
 
 export function OfflineQRReceiver() {
