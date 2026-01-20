@@ -802,7 +802,7 @@ When sender detects part completion (via feedback or time-based):
 
 ### Overview
 
-Feedback allows bi-directional communication to optimize transfer:
+Feedback enables coordination between sender and receiver for part-based transfers. The sender can receive feedback either by **scanning QR codes with a camera** or through **manual input** - making feedback work on any device, with or without a camera.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -814,61 +814,118 @@ Feedback allows bi-directional communication to optimize transfer:
 │   │              │   Data QR Stream        │              │                 │
 │   │   Display    │ ═══════════════════►    │   Camera     │                 │
 │   │              │                         │              │                 │
-│   │              │                         │              │                 │
-│   │   Camera     │   Feedback QR           │   Display    │                 │
-│   │  (optional)  │ ◄═══════════════════    │  (feedback)  │                 │
-│   │              │                         │              │                 │
+│   │  ┌────────┐  │                         │              │                 │
+│   │  │ Camera │  │   Feedback QR           │   Display    │                 │
+│   │  │   OR   │  │ ◄═══════════════════    │  (feedback)  │                 │
+│   │  │ Manual │  │                         │              │                 │
+│   │  │ Input  │  │                         │              │                 │
+│   │  └────────┘  │                         │              │                 │
 │   └──────────────┘                         └──────────────┘                 │
 │                                                                              │
 │   Feedback enables:                                                          │
 │   • Part completion notification → Sender advances to next part             │
 │   • Transfer completion → Sender displays ACK                               │
 │                                                                              │
+│   Two input methods for sender:                                              │
+│   • Camera scan: Point camera at receiver's feedback QR                     │
+│   • Manual input: Type confirmation code shown on receiver's screen         │
+│                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Part-Complete Feedback Mode
+### Sender Input Methods
 
-When receiver completes a part:
-1. Decoder verifies part checksum
-2. Receiver generates "part_complete" feedback QR
-3. Displays feedback QR for sender's camera
-4. Sender acknowledges and transitions to next part
-5. Receiver resumes scanning for next part's chunks
+The sender can receive feedback information through two methods:
 
-### ACK Protocol Flow
+| Method | When to Use | How It Works |
+|--------|-------------|--------------|
+| **Camera Scan** | Sender has working camera | Point camera at receiver's amber feedback QR card |
+| **Manual Input** | No camera, or camera not working | Type the short confirmation code displayed on receiver's screen |
+
+Both methods provide the same information to the sender and trigger identical acknowledgment flows.
+
+### Part-Complete Feedback Flow
+
+```mermaid
+flowchart TD
+    A[Receiver completes part] --> B[Verify part checksum]
+    B --> C{Checksum valid?}
+    C -->|No| D[Continue scanning<br/>Report error]
+    C -->|Yes| E[Generate feedback QR<br/>+ confirmation code]
+    E --> F[Display feedback card]
+    F --> G{Sender input method?}
+    G -->|Camera| H[Sender scans QR]
+    G -->|Manual| I[Sender types code]
+    H --> J[Sender generates ACK QR]
+    I --> J
+    J --> K[Sender displays ACK]
+    K --> L[Receiver scans ACK]
+    L --> M[Both advance to next part]
+
+    style A fill:#e1f5fe
+    style E fill:#fff3e0
+    style J fill:#c8e6c9
+    style M fill:#c8e6c9
+```
+
+**Step-by-step:**
+
+1. **Receiver completes part**: All blocks for current part are decoded
+2. **Checksum verification**: Computed CRC32 compared against expected value
+3. **Feedback generation**: Receiver displays:
+   - Amber QR code containing part completion data
+   - Short confirmation code (e.g., "A3X9") for manual entry
+4. **Sender receives feedback** (one of two methods):
+   - **Camera**: Scans the amber feedback QR
+   - **Manual**: Clicks "Manual Input" and types the confirmation code
+5. **Sender generates ACK**: Creates acknowledgment QR with part transition info
+6. **Receiver scans ACK**: Confirms sender received feedback, both advance
+
+### Manual Input Details
+
+When the sender doesn't have a camera (or prefers not to use it):
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                    ACK PROTOCOL                                              │
+│                    MANUAL INPUT FLOW                                         │
 ├─────────────────────────────────────────────────────────────────────────────┤
 │                                                                              │
-│   1. Receiver completes decoding and verifies file checksum                 │
+│   RECEIVER SCREEN                         SENDER SCREEN                      │
+│   ┌─────────────────────┐                ┌─────────────────────┐            │
+│   │                     │                │                     │            │
+│   │  [Feedback QR]      │                │  Manual Input Mode  │            │
+│   │                     │    visually    │                     │            │
+│   │  Confirmation Code: │ ───────────►   │  Enter code: [____] │            │
+│   │      A3X9           │   (side by     │                     │            │
+│   │                     │    side)       │  [Submit]           │            │
+│   └─────────────────────┘                └─────────────────────┘            │
 │                                                                              │
-│   2. Receiver displays "transfer_complete" feedback QR                      │
-│                                                                              │
-│   3. Sender's camera captures feedback QR                                   │
-│                                                                              │
-│   4. Sender stops data stream, displays ACK QR                              │
-│                                                                              │
-│   5. Receiver scans ACK QR, confirms sender knows transfer complete         │
-│                                                                              │
-│   6. Both parties show "Transfer Complete" UI                               │
-│                                                                              │
-│   Without ACK: Receiver might keep waiting for more chunks                  │
-│   With ACK: Clean termination, both sides know transfer succeeded           │
+│   Sender looks at receiver's screen and types the code.                     │
+│   Devices are typically side-by-side during transfer.                       │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Manual Fallback for Senders Without Cameras
+**Confirmation code properties:**
+- Short (4-6 characters) for easy typing
+- Alphanumeric, avoiding ambiguous characters (0/O, 1/I/l)
+- Derived from session ID, part index, and sequence number
+- Validates that the correct feedback is being acknowledged
 
-If sender device has no camera (or user declines camera access):
-1. Receiver shows visual completion indicator (checkmark, progress 100%)
-2. Sender observes receiver's screen visually
-3. Sender manually clicks "Complete" button
-4. Displays ACK QR for receiver to scan
-5. Receiver confirms via ACK
+### ACK Protocol
+
+After receiving feedback (via camera or manual input), the sender displays an ACK QR:
+
+1. **Sender processes feedback**: Validates session ID and sequence
+2. **Sender advances encoder**: Moves to next part (if applicable)
+3. **Sender displays ACK QR**: Green card with acknowledgment
+4. **Receiver scans ACK**: Confirms feedback was received
+5. **Both continue**: Receiver resumes data scanning, sender resumes QR stream
+
+**Why ACK is important:**
+- Without ACK, receiver doesn't know if sender advanced to next part
+- Prevents receiver from generating duplicate feedback
+- Ensures synchronized part transitions
 
 ---
 
