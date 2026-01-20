@@ -36,9 +36,7 @@ interface FountainQRSenderProps {
 export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'MEDIUM', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
-  const [receivedBlocks, setReceivedBlocks] = useState<Set<number>>(new Set())
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [lastFeedbackMode, setLastFeedbackMode] = useState<'part-complete' | 'targeted' | null>(null)
   const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
   const [activationToken, setActivationToken] = useState<number>(0)
   const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
@@ -155,17 +153,9 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
-    mode: 'part-complete' | 'targeted';
-    receivedBlocks?: Set<number>;
     message: string;
   }) => {
     setLastProcessedSequence(feedbackData.sequence);
-    setLastFeedbackMode(feedbackData.mode);
-    if (feedbackData.mode === 'targeted') {
-      setReceivedBlocks(feedbackData.receivedBlocks || new Set());
-    } else {
-      setReceivedBlocks(new Set());
-    }
     console.log('Feedback processed:', feedbackData);
   };
 
@@ -211,37 +201,8 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     )
   }
 
-  const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-  const receivedBlocksCount = receivedBlocks.size
-  const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
-
   return (
     <div className="space-y-4">
-
-
-      {/* Receiver Progress Alert */}
-      {receivedBlocksCount > 0 && (
-        <Alert>
-          <AlertDescription>
-            <div className="space-y-2">
-              <p className="font-medium">📊 Receiver Progress {lastFeedbackMode === 'targeted' ? '(Targeted Mode Active)' : '(Part-Complete Mode)'}</p>
-              <div className="text-sm">
-                <p>Decoded {receivedBlocksCount} / {sourceBlocks} blocks ({decodingProgress.toFixed(1)}%)</p>
-                {decodingProgress >= 100 ? (
-                  <p className="text-green-600 dark:text-green-400 font-medium mt-1">
-                    ✅ Transfer complete! You can stop sending.
-                  </p>
-                ) : (
-                  <p className="text-blue-600 dark:text-blue-400 font-medium mt-1">
-                    🎯 Targeted Mode Active - Focusing on {sourceBlocks - receivedBlocksCount} missing blocks
-                  </p>
-                )}
-              </div>
-            </div>
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* No-feedback mode alert */}
       {!feedbackEnabled && (
         <Alert>
@@ -258,7 +219,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           encoder={encoder}
           sessionId={sessionId}
           qrOptions={currentQROptions}
-          receivedBlocks={receivedBlocks}
           isActive={senderMode === 'data-display'}
           activationToken={activationToken}
           autoPauseResetToken={autoPauseResetToken}
@@ -439,7 +399,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>Receiver must scan ACK before resuming data scanning</li>
                 <li>If you don't have a camera, use 'Manual Input' mode to type feedback details from the receiver's display</li>
                   <li className="text-blue-600 dark:text-blue-400">For part-based transfers, feedback QR signals part completion with checksum validation</li>
-                  <li className="text-blue-600 dark:text-blue-400">When only a few blocks remain (≤10), feedback includes block details for targeted encoding</li>
               </>
             ) : (
               <>

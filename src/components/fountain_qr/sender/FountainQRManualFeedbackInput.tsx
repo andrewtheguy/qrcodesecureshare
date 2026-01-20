@@ -21,7 +21,6 @@ import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/u
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'part-complete';
   message: string;
 }
 
@@ -254,7 +253,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onFeedbackProcessed({
         sequence: feedback.sequence,
-        mode: 'part-complete',
         message: ackFeedback.message,
       });
 

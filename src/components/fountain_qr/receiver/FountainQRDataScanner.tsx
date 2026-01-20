@@ -86,13 +86,6 @@ export function FountainQRDataScanner({
   }, [fountainMetadata.name, fountainMetadata.totalSourceBlocks, fountainMetadata.blockSize])
 
   const handleBinaryFountainChunk = useCallback(async (bytes: Uint8Array) => {
-    // ════════════════════════════════════════════════════════════════════════════
-    // TARGETED MODE TEST LOGIC: IGNORE BLOCKS TO SIMULATE TARGETED MODE
-    // To enable: set ENABLE_TARGETED_MODE_TEST to true above
-    // Suggested test file size: 60KB (100 blocks) for meaningful targeted mode testing
-    // ════════════════════════════════════════════════════════════════════════════
-    // ════════════════════════════════════════════════════════════════════════════
-
     // Parse seed from bytes (big-endian from bytes[2] and bytes[3])
     const seed = (bytes[2] << 8) | bytes[3]
 
