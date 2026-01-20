@@ -28,8 +28,7 @@ import {
   QrCode,
   FileDigit,
   TriangleAlert,
-  Play,
-  RotateCcw
+  Play
 } from 'lucide-react'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
@@ -562,84 +561,84 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // -----------------------------------------------------------
   // Show selected transfer mode component (skip their internal metadata stage)
   return (
-    <Card className="border-primary/20 shadow-lg">
-      <CardHeader className="bg-muted/10 pb-4 border-b">
-        <div className="flex items-center justify-between">
-           <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <CardTitle className="text-lg">Transfer Active</CardTitle>
-           </div>
-           
-           <div className="flex gap-1">
-              <Button
-                 onClick={() => requestExitAction('metadata')}
-                 variant="ghost"
-                 size="sm"
-                 className="h-8 px-2 text-muted-foreground"
-                 title="Show Metadata"
-              >
-                 <QrCode className="w-4 h-4" />
-              </Button>
-              <Button
-                 onClick={() => requestExitAction('reset')}
-                 variant="ghost"
-                 size="sm"
-                 className="h-8 px-2 text-destructive hover:text-destructive"
-                 title="Stop Transfer"
-              >
-                 <RotateCcw className="w-4 h-4" />
-              </Button>
-           </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-center">🔁 Fountain Code Transfer</CardTitle>
+        <div className="text-sm text-muted-foreground text-center space-y-1">
+          <p className="font-medium">{file.name}</p>
+          <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
         </div>
       </CardHeader>
-      
-      <CardContent className="p-0">
+      <CardContent className="space-y-4">
+        {/* Mode Switch Button */}
+        <div className="flex gap-2 flex-wrap">
+          <Button
+            onClick={() => requestExitAction('metadata')}
+            variant="outline"
+            size="sm"
+            className="flex-1"
+          >
+            ← Metadata
+          </Button>
+          <Button
+            onClick={() => requestExitAction('mode')}
+            variant="outline"
+            size="sm"
+            className="flex-1"
+          >
+            Change Mode
+          </Button>
+          {onReset && (
+            <Button onClick={() => requestExitAction('reset')} variant="outline" size="sm" className="flex-1">
+              Reset Session
+            </Button>
+          )}
+        </div>
+
+        {/* Render appropriate sender component */}
         {metadataJson && (
           <>
             {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
-              <div className="p-4">
-                 <FountainQRSender
-                   key={`fount-${senderRemountKey}`}
-                   file={file}
-                   sessionId={currentSessionId}
-                   feedbackEnabled={feedbackEnabled}
-                   checksum={metadataJson.checksum}
-                   checksumAlg={metadataJson.checksumAlg}
-                   partSizeOption={partSizeOption}
-                 />
-              </div>
+              <FountainQRSender
+                key={`fount-${senderRemountKey}`}
+                file={file}
+                sessionId={currentSessionId}
+                feedbackEnabled={feedbackEnabled}
+                checksum={metadataJson.checksum}
+                checksumAlg={metadataJson.checksumAlg}
+                partSizeOption={partSizeOption}
+              />
             )}
           </>
         )}
+        <Dialog
+          open={exitDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleCancelExitAction()
+            }
+          }}
+        >
+          {pendingExitAction && (
+            <DialogContent showCloseButton={false}>
+              <DialogHeader>
+                <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
+                <DialogDescription>
+                  {exitActionContent[pendingExitAction].description}
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button variant="outline" onClick={handleCancelExitAction}>
+                  Cancel
+                </Button>
+                <Button variant="destructive" onClick={handleConfirmExitAction}>
+                  {exitActionContent[pendingExitAction].confirmLabel}
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          )}
+        </Dialog>
       </CardContent>
-
-      <Dialog
-        open={exitDialogOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            handleCancelExitAction()
-          }
-        }}
-      >
-        {pendingExitAction && (
-          <DialogContent showCloseButton={false}>
-            <DialogHeader>
-              <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
-              <DialogDescription>
-                {exitActionContent[pendingExitAction].description}
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleCancelExitAction}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={handleConfirmExitAction}>
-                {exitActionContent[pendingExitAction].confirmLabel}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        )}
-      </Dialog>
     </Card>
   )
 }
