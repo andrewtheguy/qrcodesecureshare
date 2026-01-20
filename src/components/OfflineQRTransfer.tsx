@@ -69,9 +69,9 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
-        const maxSizeMB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(2)
+        const maxSizeMB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0)
         const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2)
-        alert(`File size must be under ${maxSizeMB} MB. Selected file is ${selectedSizeMB} MB.`)
+        alert(`File size must be under ${maxSizeMB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`)
         return
       }
       setSelectedFile(file)
@@ -120,7 +120,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Header - Only show in select mode for cleaner look during transfer */}
       {mode === 'select' && (
-        <header className="text-center space-y-2 mb-8">
+        <header className="text-center space-y-1 mb-4">
           <h2 className="text-3xl font-bold tracking-tight">File Transfer</h2>
           <p className="text-muted-foreground text-lg">
             Choose your preferred transfer method
@@ -130,8 +130,8 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
 
       {/* Mode Selection */}
       {mode === 'select' && (
-        <div className="space-y-8">
-          <div className="grid md:grid-cols-3 gap-6">
+        <div className="space-y-5">
+          <div className="grid md:grid-cols-2 gap-6">
             {/* Send Card */}
             <Card 
               className="relative overflow-hidden group cursor-pointer border-emerald-500/20 shadow-lg hover:border-emerald-600 hover:shadow-2xl transition-all duration-300 ring-1 ring-emerald-500/20"
@@ -149,9 +149,14 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                 </div>
                 <div className="space-y-2 flex-1">
                   <h3 className="text-xl font-bold text-foreground">Offline Send</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Convert file to QR stream for receiver to scan
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      Convert file to QR stream for receiver to scan
+                    </p>
+                    <p className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold px-2">
+                      Up to 5MB. For larger files, use the alternative method below.
+                    </p>
+                  </div>
                 </div>
                 <div className="w-full pt-2">
                   <input
@@ -205,48 +210,43 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                 </CardContent>
               </Card>
             </NavLink>
+          </div>
 
-            {/* Online Transfer Card */}
+          <div>
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">Alternative Transfer Methods</h2>
             <Card 
-              className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full"
+              className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300"
               onClick={() => setOnlineConfirmOpen(true)}
             >
               <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
+              <CardContent className="p-5 flex flex-col sm:flex-row items-center gap-4 relative z-0">
                 <div className="p-4 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
                   <Globe className="w-8 h-8" />
                 </div>
-                <div className="space-y-2 flex-1">
-                  <div className="flex items-center justify-center gap-2">
-                    <h3 className="text-xl font-bold">Online Send</h3>
+                <div className="flex-1 text-center sm:text-left min-w-0">
+                  <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                    <h3 className="font-bold text-xl text-foreground">Online Send</h3>
                     <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
                   </div>
-                  <div className="space-y-1">
-                    <p className="text-sm text-muted-foreground">
-                      Up to 100MB via WebRTC/Nostr
-                    </p>
-                    <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                      <Shield className="w-3 h-3" />
-                      <span>AES-256 End-to-End Encrypted</span>
-                    </div>
+                  <p className="text-muted-foreground text-sm leading-relaxed">
+                    Transfer files up to 100MB via secure WebRTC P2P connection. Perfect for larger files when both devices have internet access.
+                  </p>
+                  <div className="flex items-center justify-center sm:justify-start gap-1 mt-2 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>AES-256 End-to-End Encrypted</span>
                   </div>
                 </div>
-                <div className="w-full pt-2">
-                  <Button className="w-full" variant="outline">
+                <div className="flex-shrink-0 w-full sm:w-auto">
+                  <Button variant="outline" className="w-full sm:w-auto gap-2">
                     Open Secure Send
-                    <ExternalLink className="ml-2 w-3 h-3" />
+                    <ExternalLink className="w-4 h-4" />
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          <div className="flex flex-col items-center space-y-4">
-            <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/30 px-4 py-2 rounded-full border border-amber-200 dark:border-amber-900">
-              <Info className="w-4 h-4" />
-              <span>Offline transfer is optimized for files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB</span>
-            </div>
-
+          <div className="flex flex-col items-center space-y-4 pt-4 border-t border-border">
             <Accordion type="single" collapsible className="w-full max-w-3xl">
               <AccordionItem value="how-it-works" className="border-none">
                 <AccordionTrigger className="justify-center text-muted-foreground hover:text-foreground hover:no-underline py-2">
