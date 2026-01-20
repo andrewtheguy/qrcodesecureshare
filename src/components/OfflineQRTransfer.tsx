@@ -28,12 +28,13 @@ interface OfflineQRTransferProps {
   onModeChange?: (mode: 'select' | 'send' | 'receive') => void
 }
 
-let cachedSelectedFile: File | null = null
-
 export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange }: OfflineQRTransferProps) {
   const location = useLocation()
   const navigate = useNavigate()
-  const [selectedFile, setSelectedFile] = useState<File | null>(cachedSelectedFile)
+  const [selectedFile, setSelectedFile] = useState<File | null>(() => {
+    const state = location.state as { selectedFile?: File } | null
+    return state?.selectedFile instanceof File ? state.selectedFile : null
+  })
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
 
   // Sync mode with route changes
@@ -74,14 +75,12 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
         return
       }
       setSelectedFile(file)
-      cachedSelectedFile = file
-      navigate('/offline/send')
+      navigate('/offline/send', { state: { selectedFile: file } })
     }
   }
 
   const handleReset = () => {
     setSelectedFile(null)
-    cachedSelectedFile = null
     navigate('/transfer')
     // Reset file input value so selecting the same file again works
     if (fileInputRef.current) {
