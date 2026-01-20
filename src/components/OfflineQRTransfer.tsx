@@ -13,6 +13,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Shield } from 'lucide-react'
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
@@ -29,7 +35,6 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
   const navigate = useNavigate()
   const [selectedFile, setSelectedFile] = useState<File | null>(cachedSelectedFile)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
-  const [showInfo, setShowInfo] = useState(false)
 
   // Sync mode with route changes
   useEffect(() => {
@@ -233,84 +238,82 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
               <span>Offline transfer is optimized for files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB</span>
             </div>
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowInfo(!showInfo)}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              {showInfo ? 'Hide Technical Details' : 'How does Offline Transfer work?'}
-            </Button>
+            <Accordion type="single" collapsible className="w-full max-w-3xl">
+              <AccordionItem value="how-it-works" className="border-none">
+                <AccordionTrigger className="justify-center text-muted-foreground hover:text-foreground hover:no-underline py-2">
+                   How does Offline Transfer work?
+                </AccordionTrigger>
+                <AccordionContent>
+                  <Card className="bg-muted/50 border-none shadow-none mt-4">
+                    <CardContent className="p-6 space-y-6">
+                      <div className="grid sm:grid-cols-2 gap-6">
+                        <div className="space-y-3">
+                          <h3 className="font-semibold flex items-center gap-2">
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                            Fountain Data Stream
+                          </h3>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            Files are split into small chunks using Fountain codes. This acts like a "data fountain" where the sender broadcasts a continuous stream of QR frames.
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          <h3 className="font-semibold flex items-center gap-2">
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                            Feedback System
+                          </h3>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            The receiver shows feedback QR codes back to the sender to signal which parts are missing, making the transfer significantly faster and more reliable.
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          <h3 className="font-semibold flex items-center gap-2">
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                            Air-Gapped Security
+                          </h3>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            All processing is local. No data ever leaves your device via the internet, making it ideal for highly sensitive data or air-gapped environments.
+                          </p>
+                        </div>
+                        <div className="space-y-3">
+                          <h3 className="font-semibold flex items-center gap-2">
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
+                            Device Agnostic
+                          </h3>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            No Wi-Fi, Bluetooth, or local network pairing required. Works between any devices with a screen and camera regardless of OS.
+                          </p>
+                        </div>
+                        <div className="space-y-3 sm:col-span-2 border-t pt-4">
+                          <h3 className="font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                            <TriangleAlert className="w-4 h-4" />
+                            Limitations & Requirements
+                          </h3>
+                          <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
+                            <li className="flex items-start gap-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span><strong>File Size:</strong> Optimized for small files (up to 5MB). Larger files take significantly longer due to QR density limits.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span><strong>Speed Factors:</strong> Transfer speed depends on screen brightness, camera focus, and device processing power (typically 5-20 KB/s).</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span><strong>Environment:</strong> Requires steady hands and decent lighting. Glare on screens or very low light can interfere with QR scanning.</span>
+                            </li>
+                            <li className="flex items-start gap-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span><strong>Visual Path:</strong> Needs a clear line of sight between devices. Screen protectors or scratched lenses may reduce reliability.</span>
+                            </li>
+                          </ul>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </div>
-
-          {showInfo && (
-            <Card className="bg-muted/50 border-none shadow-none animate-in fade-in slide-in-from-top-2">
-              <CardContent className="p-6 space-y-6">
-                <div className="grid sm:grid-cols-2 gap-6">
-                  <div className="space-y-3">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
-                      Fountain Data Stream
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Files are split into small chunks using Fountain codes. This acts like a "data fountain" where the sender broadcasts a continuous stream of QR frames.
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
-                      Feedback System
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      The receiver shows feedback QR codes back to the sender to signal which parts are missing, making the transfer significantly faster and more reliable.
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
-                      Air-Gapped Security
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      All processing is local. No data ever leaves your device via the internet, making it ideal for highly sensitive data or air-gapped environments.
-                    </p>
-                  </div>
-                  <div className="space-y-3">
-                    <h3 className="font-semibold flex items-center gap-2">
-                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
-                      Device Agnostic
-                    </h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      No Wi-Fi, Bluetooth, or local network pairing required. Works between any devices with a screen and camera regardless of OS.
-                    </p>
-                  </div>
-                  <div className="space-y-3 sm:col-span-2 border-t pt-4">
-                    <h3 className="font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                      <TriangleAlert className="w-4 h-4" />
-                      Limitations & Requirements
-                    </h3>
-                    <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2">
-                        <span className="text-primary font-bold">•</span>
-                        <span><strong>File Size:</strong> Optimized for small files (up to 5MB). Larger files take significantly longer due to QR density limits.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-primary font-bold">•</span>
-                        <span><strong>Speed Factors:</strong> Transfer speed depends on screen brightness, camera focus, and device processing power (typically 5-20 KB/s).</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-primary font-bold">•</span>
-                        <span><strong>Environment:</strong> Requires steady hands and decent lighting. Glare on screens or very low light can interfere with QR scanning.</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                        <span className="text-primary font-bold">•</span>
-                        <span><strong>Visual Path:</strong> Needs a clear line of sight between devices. Screen protectors or scratched lenses may reduce reliability.</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          )}
         </div>
       )}
 
