@@ -288,11 +288,11 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         <div className="space-y-6">
           <div className="text-center space-y-1">
              <h3 className="text-lg font-semibold">Select Transfer Mode</h3>
-             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                <FileDigit className="w-4 h-4" />
-                <span className="font-medium truncate max-w-[200px]">{file.name}</span>
+             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground flex-wrap">
+                <FileDigit className="w-4 h-4 shrink-0" />
+                <span className="font-medium break-all">{file.name}</span>
                 <span className="opacity-50">|</span>
-                <span>{(file.size / 1024).toFixed(2)} KB</span>
+                <span className="shrink-0">{(file.size / 1024).toFixed(2)} KB</span>
              </div>
           </div>
 
