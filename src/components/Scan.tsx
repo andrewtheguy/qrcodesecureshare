@@ -409,37 +409,40 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {parsedQRData?.type === 'offline-metadata' && (
-              <Alert className="bg-amber-50 border-amber-200">
-                <AlertDescription className="space-y-2">
-                  <div className="font-medium flex items-center gap-2">
-                    📡 Offline File Transfer Detected
+            {parsedQRData?.type === 'offline-metadata' && (() => {
+              const metadata = parsedQRData.offlineMetadata
+              return (
+                <>
+                  <Alert className="bg-amber-50 border-amber-200">
+                    <AlertDescription className="space-y-2">
+                      <div className="font-medium flex items-center gap-2">
+                        📡 Offline File Transfer Detected
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        This QR code contains metadata for an offline file transfer. Click below to proceed to receive the file data.
+                      </p>
+                    </AlertDescription>
+                  </Alert>
+                  <div className="flex justify-center">
+                    <Button
+                      onClick={handleProceedToOfflineReceive}
+                      className="flex items-center gap-2"
+                    >
+                      📡 Proceed to Receive Data
+                    </Button>
                   </div>
-                  <p className="text-sm text-muted-foreground">
-                    This QR code contains metadata for an offline file transfer. Click below to proceed to receive the file data.
-                  </p>
-                </AlertDescription>
-              </Alert>
-            )}
-            {parsedQRData?.type === 'offline-metadata' && (
-              <div className="flex justify-center">
-                <Button
-                  onClick={handleProceedToOfflineReceive}
-                  className="flex items-center gap-2"
-                >
-                  📡 Proceed to Receive Data
-                </Button>
-              </div>
-            )}
-            {parsedQRData?.type === 'offline-metadata' && parsedQRData.offlineMetadata && (
-              <OfflineMetadataDetails
-                metadata={{
-                  fileName: parsedQRData.offlineMetadata.fileName,
-                  fileSize: parsedQRData.offlineMetadata.fileSize,
-                  totalSourceBlocks: parsedQRData.offlineMetadata.totalSourceBlocks
-                }}
-              />
-            )}
+                  {metadata && (
+                    <OfflineMetadataDetails
+                      metadata={{
+                        fileName: metadata.fileName,
+                        fileSize: metadata.fileSize,
+                        totalSourceBlocks: metadata.totalSourceBlocks
+                      }}
+                    />
+                  )}
+                </>
+              )
+            })()}
             {wasCompressed && (
               <Alert className="bg-emerald-50 border-emerald-200">
                 <AlertDescription className="space-y-2">

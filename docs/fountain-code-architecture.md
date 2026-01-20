@@ -656,7 +656,7 @@ The first QR code contains JSON metadata:
 │   {                                                                          │
 │     "type": "FOUNTAIN_FEEDBACK",                                            │
 │     "mode": "part-complete",                                                │
-│     "sessionId": 12345,                                                     │
+│     "sessionId": "a1b2c3d4",                                               │
 │     "sequence": 1,                                                          │
 │     "currentPart": 0,                                                       │
 │     "totalParts": 3                                                         │

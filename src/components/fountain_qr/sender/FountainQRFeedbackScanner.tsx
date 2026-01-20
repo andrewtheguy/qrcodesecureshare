@@ -19,7 +19,6 @@ import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'part-complete';
   message: string;
 }
 
@@ -152,7 +151,6 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
       onFeedbackProcessed({
         sequence: data.sequence,
-        mode: 'part-complete',
         message: ackFeedback.message,
       });
 

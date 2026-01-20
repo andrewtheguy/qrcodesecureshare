@@ -153,7 +153,6 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
 
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
-    mode: 'part-complete';
     message: string;
   }) => {
     setLastProcessedSequence(feedbackData.sequence);
