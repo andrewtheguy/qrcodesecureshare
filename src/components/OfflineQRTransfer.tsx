@@ -218,7 +218,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       </p>
                       <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400">
                         <Shield className="w-3 h-3" />
-                        <span>AES-256 E2E Encrypted</span>
+                        <span>AES-256 End-to-End Encrypted</span>
                       </div>
                     </div>
                   </div>
@@ -306,6 +306,18 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                               <span><strong>Visual Path:</strong> Needs a clear line of sight between devices. Screen protectors or scratched lenses may reduce reliability.</span>
                             </li>
                           </ul>
+
+                          <div className="mt-4 bg-blue-50 dark:bg-blue-900/20 p-4 rounded-md border border-blue-100 dark:border-blue-900/50">
+                            <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-300 flex items-center gap-2 mb-2">
+                              <Globe className="w-3 h-3" />
+                              When to use Online Send instead?
+                            </h4>
+                            <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1 ml-5 list-disc">
+                              <li>Transferring <strong>large files</strong> (up to 100MB) or folders</li>
+                              <li>When <strong>speed</strong> is a priority (uses WebRTC P2P)</li>
+                              <li>When devices are <strong>remote</strong> or not side-by-side</li>
+                            </ul>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
