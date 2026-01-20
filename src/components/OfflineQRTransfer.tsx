@@ -68,7 +68,9 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
-        alert(`File size must be under ${MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB. Selected file is ${(file.size / 1024).toFixed(2)}KB.`)
+        const maxSizeMB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(2)
+        const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2)
+        alert(`File size must be under ${maxSizeMB} MB. Selected file is ${selectedSizeMB} MB.`)
         return
       }
       setSelectedFile(file)
@@ -289,7 +291,10 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                           <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>File Size:</strong> Optimized for small files (up to 5MB). Larger files take significantly longer due to QR density limits.</span>
+                            <li className="flex items-start gap-2">
+                              <span className="text-primary font-bold">•</span>
+                              <span><strong>File Size:</strong> Optimized for small files (up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB). Larger files take significantly longer due to QR density limits.</span>
+                            </li>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
