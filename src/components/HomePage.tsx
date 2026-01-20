@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import Logo from '@/components/Logo'
 import { cn } from '@/lib/utils'
 
@@ -113,9 +113,9 @@ export default function HomePage() {
               <h3 className="font-semibold text-lg text-slate-900">{feature.title}</h3>
               <p className="text-slate-600 text-sm">{feature.description}</p>
             </div>
-            <div className={cn(buttonVariants(), "flex-shrink-0 w-24")}>
+            <Button className="flex-shrink-0 w-24 pointer-events-none">
               {feature.buttonText}
-            </div>
+            </Button>
           </Link>
         ))}
       </div>

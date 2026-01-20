@@ -73,6 +73,8 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
         const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2)
         alert(`File size must be under ${MAX_SIZE_MB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`)
+        // Clear the file input so re-selecting the same file works
+        e.target.value = ''
         return
       }
       setSelectedFile(file)
