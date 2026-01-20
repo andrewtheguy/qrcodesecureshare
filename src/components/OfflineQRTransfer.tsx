@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe } from 'lucide-react'
+import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert } from 'lucide-react'
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
@@ -221,15 +221,19 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             </a>
           </div>
 
-          <div className="flex justify-center">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/30 px-4 py-2 rounded-full border border-amber-200 dark:border-amber-900">
+              <Info className="w-4 h-4" />
+              <span>Offline transfer is optimized for files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB</span>
+            </div>
+
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setShowInfo(!showInfo)}
               className="text-muted-foreground hover:text-foreground"
             >
-              <Info className="w-4 h-4 mr-2" />
-              {showInfo ? 'Hide Details' : 'How does it work?'}
+              {showInfo ? 'Hide Technical Details' : 'How does Offline Transfer work?'}
             </Button>
           </div>
 
@@ -240,38 +244,62 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
                       <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
-                      Fountain Codes
+                      Fountain Data Stream
                     </h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      Files are split into small chunks using Fountain codes. This acts like a "data fountain" - you just need to catch enough droplets (QR frames) to reconstruct the file.
+                      Files are split into small chunks using Fountain codes. This acts like a "data fountain" where the sender broadcasts a continuous stream of QR frames.
                     </p>
                   </div>
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
                       <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
-                      Feedback Loop
+                      Feedback System
                     </h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      For best performance, the receiver shows feedback QR codes back to the sender, telling it which parts are missing. This makes the transfer much faster and reliable.
+                      The receiver shows feedback QR codes back to the sender to signal which parts are missing, making the transfer significantly faster and more reliable.
                     </p>
                   </div>
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
                       <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
-                      Completely Offline
+                      Air-Gapped Security
                     </h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      All processing happens locally in your browser. No data ever leaves your device via the internet. It works in airplane mode!
+                      All processing is local. No data ever leaves your device via the internet, making it ideal for highly sensitive data or air-gapped environments.
                     </p>
                   </div>
                   <div className="space-y-3">
                     <h3 className="font-semibold flex items-center gap-2">
                       <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
-                      No Setup
+                      Device Agnostic
                     </h3>
                     <p className="text-sm text-muted-foreground leading-relaxed">
-                      No Wi-Fi pairing or Bluetooth required. Just point the camera and start scanning. Works between any devices with a screen and camera.
+                      No Wi-Fi, Bluetooth, or local network pairing required. Works between any devices with a screen and camera regardless of OS.
                     </p>
+                  </div>
+                  <div className="space-y-3 sm:col-span-2 border-t pt-4">
+                    <h3 className="font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                      <TriangleAlert className="w-4 h-4" />
+                      Limitations & Requirements
+                    </h3>
+                    <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary font-bold">•</span>
+                        <span><strong>File Size:</strong> Optimized for small files (up to 5MB). Larger files take significantly longer due to QR density limits.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary font-bold">•</span>
+                        <span><strong>Speed Factors:</strong> Transfer speed depends on screen brightness, camera focus, and device processing power (typically 5-20 KB/s).</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary font-bold">•</span>
+                        <span><strong>Environment:</strong> Requires steady hands and decent lighting. Glare on screens or very low light can interfere with QR scanning.</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-primary font-bold">•</span>
+                        <span><strong>Visual Path:</strong> Needs a clear line of sight between devices. Screen protectors or scratched lenses may reduce reliability.</span>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </CardContent>
