@@ -119,12 +119,12 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
       let partTransition = false;
       let newPartIndex: number | undefined;
 
-      // Move encoder to next part
-      const moved = encoder?.moveToNextPart();
+      // Move encoder to next part (encoder is already null-checked above)
+      const moved = encoder.moveToNextPart();
       if (moved) {
         partTransition = true;
-        const partInfo = encoder?.getPartInfo();
-        newPartIndex = partInfo?.currentPartIndex;
+        const partInfo = encoder.getPartInfo();
+        newPartIndex = partInfo.currentPartIndex;
         console.log(`[FountainQRFeedbackScanner] Moved to part ${(newPartIndex ?? 0) + 1}`);
       } else {
         console.log('[FountainQRFeedbackScanner] Part complete, but this was the last part');
@@ -156,14 +156,23 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
 
       onModeChange('ack-display');
       setProcessingRef(false);
+    } else {
+      // Handle unrecognized or legacy modes (e.g., 'targeted' which was removed)
+      console.warn(`[FountainQRFeedbackScanner] Unrecognized feedback mode: '${data.mode}' (sequence: ${data.sequence}). Only 'part-complete' mode is supported.`);
+      onError(`Unsupported feedback mode: '${data.mode}'. Please ensure sender and receiver are using compatible versions.`);
+      setCurrentMode('idle');
+      setProcessingRef(false);
     }
-    setProcessingRef(false);
 
   }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, processingRef]);
 
   // Initialize scanner hook after handleFeedbackScan is defined
   const { videoRef, canvasRef } = useZXingQRScanner({
-    onScan: (data) => handleFeedbackScan(data[0]),
+    onScan: (data) => {
+      if (Array.isArray(data) && data.length > 0) {
+        handleFeedbackScan(data[0]);
+      }
+    },
     isScanning: currentMode === 'scanning',
     onError: (error) => onError(error),
     scanInterval: 100 // 10 fps for brief feedback scanning
