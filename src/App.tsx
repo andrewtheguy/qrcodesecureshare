@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react'
 import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, Link } from 'react-router-dom'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import Scan from './components/Scan'
-import FileTransferPortal from './components/FileTransferPortal'
+import OfflineTransfer from './components/OfflineTransfer'
 import HomePage from './components/HomePage'
 import Logo from './components/Logo'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
@@ -148,15 +148,15 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/generate" element={<GenerateQRWithState />} />
-          <Route path="/transfer" element={<FileTransferPortal defaultMode="select" />} />
+          <Route path="/transfer" element={<OfflineTransfer defaultMode="select" />} />
           <Route path="/scan">
             <Route index element={<Navigate to="/scan/camera" replace />} />
             <Route path="camera" element={<ScanWithNavigation defaultMode="camera" />} />
             <Route path="upload" element={<ScanWithNavigation defaultMode="file" />} />
           </Route>
           <Route path="/offline">
-            <Route path="send" element={<FileTransferPortal defaultMode="send" />} />
-            <Route path="receive" element={<FileTransferPortal defaultMode="receive" />} />
+            <Route path="send" element={<OfflineTransfer defaultMode="send" />} />
+            <Route path="receive" element={<OfflineTransfer defaultMode="receive" />} />
           </Route>
         </Routes>
       </main>
