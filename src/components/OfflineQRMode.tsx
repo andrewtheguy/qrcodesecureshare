@@ -394,6 +394,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
     const isLargeFile = file && file.size > 1024 * 1024
+    const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
 
     return (
       <Card>
@@ -412,7 +413,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           <div className="space-y-3">
             <Label className="text-base font-medium">Part Size</Label>
             <p className="text-sm text-muted-foreground">
-              Smaller parts work better on older phones. Larger parts are faster on modern devices.
+              Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel} based on your file size.</strong>
             </p>
             
             <RadioGroup 
@@ -422,9 +423,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             >
               {[
                 { val: 'TINY', label: '32 KB', desc: 'Debug only' },
-                { val: 'SMALL', label: '256 KB', desc: 'For slow devices' },
-                { val: 'MEDIUM', label: '512 KB', desc: 'Balanced' },
-                { val: 'LARGE', label: '1 MB', desc: 'Fastest' }
+                { val: 'SMALL', label: '256 KB', desc: 'For older/slower devices' },
+                { val: 'MEDIUM', label: '512 KB', desc: 'Standard configuration' },
+                { val: 'LARGE', label: '1 MB', desc: 'For large transfers' }
               ].map((opt) => (
                 <div key={opt.val}>
                   <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
