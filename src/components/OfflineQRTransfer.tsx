@@ -154,7 +154,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       Convert file to QR stream for receiver to scan
                     </p>
                     <p className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold px-2">
-                      Up to 5MB. For larger files, use the alternative method below.
+                      Up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB. For larger files, use the alternative method below.
                     </p>
                   </div>
                 </div>
