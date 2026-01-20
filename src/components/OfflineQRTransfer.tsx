@@ -134,16 +134,21 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
           <div className="grid md:grid-cols-3 gap-6">
             {/* Send Card */}
             <Card 
-              className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300"
+              className="relative overflow-hidden group cursor-pointer border-emerald-500/20 shadow-lg hover:border-emerald-600 hover:shadow-2xl transition-all duration-300 ring-1 ring-emerald-500/20"
               onClick={() => fileInputRef.current?.click()}
             >
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
-                <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform duration-300">
+              <div className="absolute top-3 right-3 z-10">
+                <span className="bg-emerald-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                  SEND
+                </span>
+              </div>
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 via-transparent to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+              <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full relative z-0">
+                <div className="p-4 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 shadow-sm">
                   <FileUp className="w-8 h-8" />
                 </div>
                 <div className="space-y-2 flex-1">
-                  <h3 className="text-xl font-bold">Offline Send</h3>
+                  <h3 className="text-xl font-bold text-foreground">Offline Send</h3>
                   <p className="text-sm text-muted-foreground">
                     Convert file to QR stream for receiver to scan
                   </p>
@@ -163,8 +168,8 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       e.stopPropagation()
                       fileInputRef.current?.click()
                     }}
-                    className="w-full"
-                    variant="outline"
+                    className="w-full shadow-md bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
+                    variant="default"
                   >
                     Select File
                   </Button>
@@ -174,20 +179,25 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
 
             {/* Receive Card */}
             <NavLink to="/scan/camera" className="block h-full">
-              <Card className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full">
-                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
-                  <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform duration-300">
+              <Card className="relative overflow-hidden group cursor-pointer border-primary/20 shadow-md hover:border-primary hover:shadow-xl transition-all duration-300 ring-1 ring-primary/5 h-full">
+                <div className="absolute top-3 right-3 z-10">
+                  <span className="bg-primary text-primary-foreground text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                    RECEIVE
+                  </span>
+                </div>
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-transparent to-transparent opacity-50 group-hover:opacity-100 transition-opacity" />
+                <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full relative z-0">
+                  <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300 shadow-sm">
                     <Smartphone className="w-8 h-8" />
                   </div>
                   <div className="space-y-2 flex-1">
-                    <h3 className="text-xl font-bold">Offline Receive</h3>
+                    <h3 className="text-xl font-bold text-foreground">Offline Receive</h3>
                     <p className="text-sm text-muted-foreground">
                       Scan QR stream to receive and save file
                     </p>
                   </div>
                   <div className="w-full pt-2">
-                    <Button className="w-full" variant="outline">
+                    <Button className="w-full shadow-sm" variant="default">
                       <ScanLine className="mr-2 h-4 w-4" />
                       Scan
                     </Button>
@@ -290,10 +300,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                           <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                            <li className="flex items-start gap-2">
-                              <span className="text-primary font-bold">•</span>
                               <span><strong>File Size:</strong> Optimized for small files (up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB). Larger files take significantly longer due to QR density limits.</span>
-                            </li>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
