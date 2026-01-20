@@ -156,6 +156,85 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     )
   }, [])
 
+  // Helper function to serialize a chunk into binary format for QR encoding
+  // Binary format:
+  // [0xFF][0xFD] - magic bytes for fountain chunk
+  // [seed(2 bytes)]
+  // [degree(1 byte)]
+  // [numIndices(1 byte)]
+  // [indices... (2 bytes each)]
+  // [currentPart(2 bytes)] - optional, only if part-based mode
+  // [totalParts(2 bytes)] - optional, only if part-based mode
+  // [partChecksum(4 bytes)] - optional, only if part-based mode
+  // [chunk data...]
+  // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+partMetadata+data
+  const serializeChunkToBinary = useCallback(async (
+    chunk: FountainChunk,
+    partInfo: {
+      partBasedMode: boolean
+      currentPartIndex: number
+      totalParts: number
+      currentPartChecksum?: string
+    }
+  ): Promise<Uint8Array> => {
+    const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
+    const numIndices = chunk.indices.length
+    const binaryData = new Uint8Array(expectedSize)
+
+    let offset = 0
+    binaryData[offset++] = 0xFF // Magic byte 1
+    binaryData[offset++] = 0xFD // Magic byte 2
+
+    // Seed (2 bytes)
+    binaryData[offset++] = (chunk.seed >> 8) & 0xFF
+    binaryData[offset++] = chunk.seed & 0xFF
+
+    // Degree (1 byte)
+    binaryData[offset++] = chunk.degree & 0xFF
+
+    // Number of indices (1 byte)
+    binaryData[offset++] = numIndices & 0xFF
+
+    // Indices (2 bytes each)
+    for (const idx of chunk.indices) {
+      binaryData[offset++] = (idx >> 8) & 0xFF
+      binaryData[offset++] = idx & 0xFF
+    }
+
+    // Part metadata (if part-based mode is enabled)
+    if (partInfo.partBasedMode) {
+      // Current part index (2 bytes)
+      binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
+      binaryData[offset++] = partInfo.currentPartIndex & 0xFF
+
+      // Total parts (2 bytes)
+      binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
+      binaryData[offset++] = partInfo.totalParts & 0xFF
+
+      // Part checksum (4 bytes) - stored as hex string, convert to bytes
+      const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
+      for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
+        const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
+        binaryData[offset++] = byte
+      }
+    }
+
+    // Chunk data
+    binaryData.set(chunk.data, offset)
+    offset += chunk.data.length
+
+    // Compute and append CRC32 checksum over complete chunk metadata and data
+    // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
+    const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
+    const checksumHex = await computeChecksum(checksumPayload, 'crc32')
+    for (let i = 0; i < 8; i += 2) {
+      const byte = parseInt(checksumHex.slice(i, i + 2), 16)
+      binaryData[offset++] = byte
+    }
+
+    return binaryData
+  }, [calculateExpectedChunkSize])
+
   // Sync the actual chunk count ref to state periodically (every 500ms / half second) to avoid excessive re-renders
   useEffect(() => {
     const interval = setInterval(() => {
@@ -421,67 +500,15 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             try {
               const chunk = encoder.generateChunk()
               const partInfo = encoder.getPartInfo()
-              const numIndices = chunk.indices.length
 
-              // Calculate expected size using shared helper
+              // Calculate expected size and track oversized chunks
               const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
-
-              // Track oversized chunks but continue with generation
               if (expectedSize > maxQRDataSize) {
                 setOversizedChunkCount(prev => prev + 1)
               }
 
-              const binaryData = new Uint8Array(expectedSize)
-              let offset = 0
-              binaryData[offset++] = 0xFF // Magic byte 1
-              binaryData[offset++] = 0xFD // Magic byte 2
-
-              // Seed (2 bytes)
-              binaryData[offset++] = (chunk.seed >> 8) & 0xFF
-              binaryData[offset++] = chunk.seed & 0xFF
-
-              // Degree (1 byte)
-              binaryData[offset++] = chunk.degree & 0xFF
-
-              // Number of indices (1 byte)
-              binaryData[offset++] = numIndices & 0xFF
-
-              // Indices (2 bytes each)
-              for (const idx of chunk.indices) {
-                binaryData[offset++] = (idx >> 8) & 0xFF
-                binaryData[offset++] = idx & 0xFF
-              }
-
-              // Part metadata (if part-based mode is enabled)
-              if (partInfo.partBasedMode) {
-                // Current part index (2 bytes)
-                binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
-                binaryData[offset++] = partInfo.currentPartIndex & 0xFF
-
-                // Total parts (2 bytes)
-                binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
-                binaryData[offset++] = partInfo.totalParts & 0xFF
-
-                // Part checksum (4 bytes) - stored as hex string, convert to bytes
-                const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
-                for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
-                  const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
-                  binaryData[offset++] = byte
-                }
-              }
-
-              // Chunk data
-              binaryData.set(chunk.data, offset)
-              offset += chunk.data.length
-
-              // Compute and append CRC32 checksum over complete chunk metadata and data
-              // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
-              const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
-              const checksumHex = await computeChecksum(checksumPayload, 'crc32')
-              for (let i = 0; i < 8; i += 2) {
-                const byte = parseInt(checksumHex.slice(i, i + 2), 16)
-                binaryData[offset++] = byte
-              }
+              // Serialize chunk to binary format
+              const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
               const dataUrl = await generateQRInWorker(binaryData, {
                   width: 400,
@@ -518,7 +545,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize, serializeChunkToBinary])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -532,81 +559,15 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Generate next fountain-coded chunk (internally tuned distribution + doping)
         const chunk = encoder.generateChunk()
         const partInfo = encoder.getPartInfo()
-        const numIndices = chunk.indices.length
 
-        // Binary format for fountain chunk:
-        // [0xFF][0xFD] - magic bytes for fountain chunk
-        // [seed(2 bytes)]
-        // [degree(1 byte)]
-        // [numIndices(1 byte)]
-        // [indices... (2 bytes each)]
-        // [currentPart(2 bytes)] - optional, only if part-based mode
-        // [totalParts(2 bytes)] - optional, only if part-based mode
-        // [partChecksum(4 bytes)] - optional, only if part-based mode
-        // [chunk data...]
-        // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+partMetadata+data
-
-        // Calculate expected size using shared helper
+        // Calculate expected size and track oversized chunks
         const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
-
-        // Track oversized chunks but continue with generation
         if (expectedSize > maxQRDataSize) {
           setOversizedChunkCount(prev => prev + 1)
         }
 
-        const binaryData = new Uint8Array(expectedSize)
-
-        let offset = 0
-        binaryData[offset++] = 0xFF // Magic byte 1
-        binaryData[offset++] = 0xFD // Magic byte 2 (different from metadata)
-
-        // Seed (2 bytes)
-        binaryData[offset++] = (chunk.seed >> 8) & 0xFF
-        binaryData[offset++] = chunk.seed & 0xFF
-
-        // Degree (1 byte)
-        binaryData[offset++] = chunk.degree & 0xFF
-
-        // Number of indices (1 byte)
-        binaryData[offset++] = numIndices & 0xFF
-
-        // Indices (2 bytes each)
-        for (const idx of chunk.indices) {
-          binaryData[offset++] = (idx >> 8) & 0xFF
-          binaryData[offset++] = idx & 0xFF
-        }
-
-        // Part metadata (if part-based mode is enabled)
-        if (partInfo.partBasedMode) {
-          // Current part index (2 bytes)
-          binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
-          binaryData[offset++] = partInfo.currentPartIndex & 0xFF
-
-          // Total parts (2 bytes)
-          binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
-          binaryData[offset++] = partInfo.totalParts & 0xFF
-
-          // Part checksum (4 bytes) - stored as hex string, convert to bytes
-          const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
-          for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
-            const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
-            binaryData[offset++] = byte
-          }
-        }
-
-        // Chunk data
-        binaryData.set(chunk.data, offset)
-        offset += chunk.data.length
-
-        // Compute and append CRC32 checksum over complete chunk metadata and data
-        // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
-        const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
-        const checksumHex = await computeChecksum(checksumPayload, 'crc32')
-        // Convert hex string to 4 bytes (big-endian)
-        for (let i = 0; i < 8; i += 2) {
-          const byte = parseInt(checksumHex.slice(i, i + 2), 16)
-          binaryData[offset++] = byte
-        }
+        // Serialize chunk to binary format
+        const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
         const dataUrl = await generateQRInWorker(binaryData, {
           width: 400,
@@ -739,9 +700,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           isPlaying ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/40' : 'bg-sky-200 text-sky-700'
         }`}>
           <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse shadow-[0_0_6px_theme(colors.white/70%)]' : 'bg-sky-500'}`} /> LIVE
-        </span>
-        <span className={`hidden`}>
-          Buffer: {bufferLength || 0}
         </span>
       </div>
 
