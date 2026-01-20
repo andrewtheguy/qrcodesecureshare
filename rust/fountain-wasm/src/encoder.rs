@@ -146,7 +146,7 @@ impl FountainEncoder {
     /// `mark_part_completed()`, subsequent calls to `generate_chunk()` will
     /// return `None` for that part until `move_to_next_part()` is called.
     pub fn generate_chunk(&mut self) -> Option<FountainChunk> {
-        // Get available blocks (respects targeted mode and part-based mode)
+        // Get available blocks (respects part-based mode)
         let available_blocks = self.get_available_blocks();
 
         // If no blocks available (all received or part is empty), return None

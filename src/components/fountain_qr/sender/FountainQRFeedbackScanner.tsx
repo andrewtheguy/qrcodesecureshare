@@ -19,8 +19,7 @@ import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
 
 interface ProcessedFeedbackData {
   sequence: number;
-  mode: 'part-complete' | 'targeted';
-  receivedBlocks?: Set<number>;
+  mode: 'part-complete';
   message: string;
 }
 

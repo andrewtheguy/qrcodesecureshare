@@ -27,7 +27,6 @@ interface FountainQRDataDisplayProps {
     errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
     margin: number
   }
-  receivedBlocks: Set<number>
   isActive: boolean
   activationToken: number
   onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
@@ -48,7 +47,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     encoder,
     sessionId,
     qrOptions,
-    receivedBlocks,
     isActive,
     activationToken,
     onChunkGenerated,
@@ -707,9 +705,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
   }
 
-  const sourceBlocks = encoder?.getMetadata().totalSourceBlocks || 0
-  const receivedBlocksCount = receivedBlocks.size
-  const decodingProgress = sourceBlocks > 0 ? (receivedBlocksCount / sourceBlocks) * 100 : 0
   const partInfo = encoder?.getPartInfo()
 
   return (
@@ -772,17 +767,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             )}
           </div>
           <div className="flex items-center justify-center gap-3 text-xs flex-wrap">
-            {receivedBlocksCount > 0 ? (
-              <p className="text-muted-foreground">
-                Receiver has decoded {receivedBlocksCount}/{sourceBlocks} blocks ({decodingProgress.toFixed(0)}%)
-              </p>
-            ) : (
-              <p className="text-muted-foreground">
-                {chunkCount >= estimatedChunksNeeded
-                  ? '✅ Receiver should now be able to decode'
-                  : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
-              </p>
-            )}
+            <p className="text-muted-foreground">
+              {chunkCount >= estimatedChunksNeeded
+                ? '✅ Receiver should now be able to decode'
+                : `${estimatedChunksNeeded - chunkCount} more recommended for high success chance`}
+            </p>
             {oversizedChunkCount > 0 && (
               <p className="text-muted-foreground">
                 ℹ️ {oversizedChunkCount} chunk{oversizedChunkCount === 1 ? '' : 's'} exceeded theoretical size limit

@@ -185,8 +185,8 @@ flowchart TD
 
 #### Step 6: Feedback Reception (Optional)
 - If sender has camera, can receive feedback QR from receiver
-- Feedback indicates which parts completed or which blocks missing
-- Allows targeted retransmission for faster completion
+- Feedback indicates which parts have been completed
+- Allows sender to advance to next part for faster completion
 
 #### Step 7: ACK Display
 - When feedback indicates completion, sender shows ACK QR
@@ -269,9 +269,9 @@ flowchart TD
 - Scanning rate and decode efficiency metrics
 
 #### Step 7: Feedback Generation
-- When part completes (or nearing completion):
-  - Generate feedback QR with part status
-  - Or generate targeted feedback with missing block indices
+- When a part completes:
+  - Verify part checksum matches expected value
+  - Generate feedback QR with part completion status
 - Display feedback QR for sender to scan
 
 #### Step 8: File Reconstruction
@@ -654,18 +654,12 @@ The first QR code contains JSON metadata:
 │                                                                              │
 │   Part-Complete Feedback:                                                   │
 │   {                                                                          │
-│     "type": "part_complete",                                                │
-│     "sessionId": "a1b2c3d4",                                                │
-│     "partIndex": 0,                                                         │
-│     "partChecksum": "a1b2c3d4"          // Verified checksum                │
-│   }                                                                          │
-│                                                                              │
-│   Targeted Feedback (missing blocks):                                       │
-│   {                                                                          │
-│     "type": "missing_blocks",                                               │
-│     "sessionId": "a1b2c3d4",                                                │
-│     "partIndex": 2,                                                         │
-│     "missingIndices": [45, 67, 89, 102]                                     │
+│     "type": "FOUNTAIN_FEEDBACK",                                            │
+│     "mode": "part-complete",                                                │
+│     "sessionId": 12345,                                                     │
+│     "sequence": 1,                                                          │
+│     "currentPart": 0,                                                       │
+│     "totalParts": 3                                                         │
 │   }                                                                          │
 │                                                                              │
 │   Full-Complete Feedback:                                                   │
@@ -828,7 +822,6 @@ Feedback allows bi-directional communication to optimize transfer:
 │                                                                              │
 │   Feedback enables:                                                          │
 │   • Part completion notification → Sender advances to next part             │
-│   • Missing block hints → Sender can generate targeted chunks               │
 │   • Transfer completion → Sender displays ACK                               │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -842,14 +835,6 @@ When receiver completes a part:
 3. Displays feedback QR for sender's camera
 4. Sender acknowledges and transitions to next part
 5. Receiver resumes scanning for next part's chunks
-
-### Targeted Feedback Mode (Final Blocks)
-
-When decoder is close to complete but missing specific blocks:
-1. Decoder identifies which blocks are still needed
-2. Receiver generates "missing_blocks" feedback with indices
-3. Sender's encoder generates chunks targeting those blocks
-4. Focused transmission completes transfer faster
 
 ### ACK Protocol Flow
 
