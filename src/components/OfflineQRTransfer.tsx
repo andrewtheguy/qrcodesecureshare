@@ -138,7 +138,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                 <div className="space-y-2 flex-1">
                   <h3 className="text-xl font-bold">Offline Send</h3>
                   <p className="text-sm text-muted-foreground">
-                    Convert file to QR stream
+                    Convert file to QR stream for receiver to scan
                   </p>
                 </div>
                 <div className="w-full pt-2">
@@ -176,7 +176,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                   <div className="space-y-2 flex-1">
                     <h3 className="text-xl font-bold">Offline Receive</h3>
                     <p className="text-sm text-muted-foreground">
-                      Scan QR codes with camera
+                      Scan QR stream to receive and save file
                     </p>
                   </div>
                   <div className="w-full pt-2">
