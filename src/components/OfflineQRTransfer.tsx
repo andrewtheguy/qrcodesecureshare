@@ -154,7 +154,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                   <h3 className="text-xl font-bold text-foreground">Offline Send</h3>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">
-                      Convert file to QR stream for receiver to scan
+                      Stream a file as QR codes. Receiver can miss some codes and still complete the transfer.
                     </p>
                     <p className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold px-2">
                       Up to {MAX_SIZE_MB}MB. For larger files, use the alternative method below.
