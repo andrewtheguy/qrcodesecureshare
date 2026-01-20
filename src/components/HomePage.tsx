@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import Logo from '@/components/Logo'
+import { cn } from '@/lib/utils'
 
 const features = [
   {
@@ -79,18 +80,17 @@ export default function HomePage() {
               <span className="block mt-1 font-medium text-slate-900">
                 Works completely offline with client-side only processing.
               </span>
+              <span className="block mt-1 text-sm text-slate-500 italic">
+                Processed entirely on your device — nothing is ever sent to a server.
+              </span>
             </p>
             <div className="mt-8 flex items-center justify-center gap-x-4">
-              <Link to="/generate">
-                <Button size="lg" className="rounded-full px-8 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all">
-                  🔲 Generate QR
-                </Button>
-              </Link>
-              <Link to="/scan">
-                <Button size="lg" variant="outline" className="rounded-full px-8 h-12 text-base font-semibold bg-white/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
-                  📸 Scan QR
-                </Button>
-              </Link>
+              <Button asChild size="lg" className="rounded-full px-8 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all">
+                <Link to="/generate">🔲 Generate QR</Link>
+              </Button>
+              <Button asChild size="lg" variant="outline" className="rounded-full px-8 h-12 text-base font-semibold bg-white/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
+                <Link to="/scan">📸 Scan QR</Link>
+              </Button>
             </div>
           </div>
         </div>
@@ -103,14 +103,19 @@ export default function HomePage() {
           <Link
             key={feature.link}
             to={feature.link}
-            className={`flex items-center gap-4 p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all ${feature.bgClass}`}
+            className={cn(
+              "flex items-center gap-4 p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all",
+              feature.bgClass
+            )}
           >
             <div className="text-3xl flex-shrink-0">{feature.icon}</div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-lg text-slate-900">{feature.title}</h3>
               <p className="text-slate-600 text-sm">{feature.description}</p>
             </div>
-            <Button className="flex-shrink-0 w-24">{feature.buttonText}</Button>
+            <div className={cn(buttonVariants(), "flex-shrink-0 w-24")}>
+              {feature.buttonText}
+            </div>
           </Link>
         ))}
       </div>
