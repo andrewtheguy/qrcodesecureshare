@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert } from 'lucide-react'
+import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Shield } from 'lucide-react'
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
@@ -207,9 +207,15 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       <h3 className="text-xl font-bold">Online Send</h3>
                       <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      Up to 100MB via WebRTC/Nostr
-                    </p>
+                    <div className="space-y-1">
+                      <p className="text-sm text-muted-foreground">
+                        Up to 100MB via WebRTC/Nostr
+                      </p>
+                      <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                        <Shield className="w-3 h-3" />
+                        <span>AES-256 E2E Encrypted</span>
+                      </div>
+                    </div>
                   </div>
                   <div className="w-full pt-2">
                     <Button className="w-full" variant="outline">
