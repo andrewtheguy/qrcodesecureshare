@@ -405,11 +405,11 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       <Dialog open={onlineConfirmOpen} onOpenChange={setOnlineConfirmOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Leave Offline Mode?</DialogTitle>
+            <DialogTitle>Continue to Online Transfer?</DialogTitle>
             <DialogDescription>
               You are about to visit <strong>securesend.kuvi.app</strong> for online file transfer.
               <br /><br />
-              This is an external service that uses internet connection. Your files will be encrypted before sending.
+              This is a <strong>sister site</strong> managed by the same developer. It requires an internet connection and uses end-to-end encryption to keep your files secure.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
