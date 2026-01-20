@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { computeChecksum } from '@/utils/checksum'
 import { OFFLINE_METADATA_MAGIC } from '@/constants'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
@@ -18,6 +18,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { 
+  RefreshCw, 
+  ArrowRight, 
+  ShieldCheck, 
+  Smartphone, 
+  Maximize2, 
+  Settings,
+  QrCode,
+  FileDigit,
+  TriangleAlert,
+  Play,
+  RotateCcw
+} from 'lucide-react'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
@@ -267,134 +280,195 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     )
   }
 
-  // Mode selection screen
+  // -----------------------------------------------------------
+  // STEP 1: MODE SELECTION
+  // -----------------------------------------------------------
   if (step === 'mode' || !transferMode) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">Select Transfer Mode</CardTitle>
-          <div className="text-sm text-muted-foreground text-center space-y-1">
-            <p className="font-medium">{file.name}</p>
-            <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
+      <Card className="border-none shadow-none bg-transparent">
+        <div className="space-y-6">
+          <div className="text-center space-y-1">
+             <h3 className="text-lg font-semibold">Select Transfer Mode</h3>
+             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <FileDigit className="w-4 h-4" />
+                <span className="font-medium truncate max-w-[200px]">{file.name}</span>
+                <span className="opacity-50">|</span>
+                <span>{(file.size / 1024).toFixed(2)} KB</span>
+             </div>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+
           {modeSizeError && (
             <Alert variant="destructive">
+               <TriangleAlert className="h-4 w-4" />
               <AlertDescription>{modeSizeError}</AlertDescription>
             </Alert>
           )}
-          <Button
-            onClick={() => handleSelectMode('fountain-feedback')}
-            variant="outline"
-            className="w-full h-auto py-6 flex flex-col items-start gap-2 border-2 border-primary"
-          >
-            <div className="font-bold text-lg">🔁 Fountain Code (Recommended)</div>
-            <div className="text-sm text-left text-muted-foreground">
-              • Works with or without camera on sender<br/>
-              • Supports feedback via QR scan or manual code input<br/>
-              • Generates random coded chunks with windowing<br/>
-              • Receiver needs ~105-115% of source blocks<br/>
-              • Best for reliable transfers<br/>
-              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}
-            </div>
-          </Button>
 
-          <Button
-            onClick={() => handleSelectMode('fountain-simple')}
-            variant="outline"
-            className="w-full h-auto py-6 flex flex-col items-start gap-2"
-          >
-            <div className="font-bold text-lg">🔁 Fountain Code (Basic)</div>
-            <div className="text-sm text-left text-muted-foreground">
-              • For senders without cameras and are difficult to type for manual input<br/>
-              • Uses pure random chunk generation (no feedback)<br/>
-              • Transfer completes by one-way communication without feedback from receiver to sender<br/>
-              • Might be slow for large files<br/>
-              • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN_SIMPLE)}
-            </div>
-          </Button>
+          <div className="grid md:grid-cols-2 gap-4">
+             {/* Interactive Mode (Recommended) */}
+             <div 
+                className="relative group cursor-pointer"
+                onClick={() => handleSelectMode('fountain-feedback')}
+             >
+                <div className="absolute inset-0 bg-primary/5 rounded-xl border-2 border-primary/20 group-hover:border-primary transition-colors" />
+                <div className="relative p-6 space-y-4">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-primary/10 text-primary">
+                         <RefreshCw className="w-6 h-6" />
+                      </div>
+                      <div className="flex-1">
+                         <h4 className="font-bold text-base">Interactive</h4>
+                         <p className="text-xs text-primary font-medium">Recommended</p>
+                      </div>
+                   </div>
+                   
+                   <ul className="space-y-2 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                         <ShieldCheck className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                         <span>Receiver tells sender what parts are missing</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                         <Smartphone className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                         <span>Works with or without camera on sender</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                         <Settings className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                         <span>Supports QR scan or manual code feedback</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                         <Maximize2 className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                         <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}</span>
+                      </li>
+                   </ul>
+                </div>
+             </div>
 
-          {onReset && (
-            <Button onClick={onReset} variant="outline" className="w-full">
-              Select Different File
-            </Button>
-          )}
-        </CardContent>
+             {/* Basic Mode */}
+             <div 
+                className="relative group cursor-pointer"
+                onClick={() => handleSelectMode('fountain-simple')}
+             >
+                <div className="absolute inset-0 bg-muted/30 rounded-xl border-2 border-transparent group-hover:border-muted-foreground/30 transition-colors" />
+                <div className="relative p-6 space-y-4">
+                   <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-full bg-muted text-muted-foreground">
+                         <ArrowRight className="w-6 h-6" />
+                      </div>
+                      <div>
+                         <h4 className="font-bold text-base">One-Way</h4>
+                         <p className="text-xs text-muted-foreground font-medium">Basic</p>
+                      </div>
+                   </div>
+                   
+                   <ul className="space-y-2 text-sm text-muted-foreground">
+                      <li className="flex items-start gap-2">
+                         <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">1</span>
+                         <span>Blind broadcast (no feedback)</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                         <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">2</span>
+                         <span>Works without sender camera</span>
+                      </li>
+                      <li className="flex items-start gap-2">
+                         <Maximize2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                         <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_SIMPLE)}</span>
+                      </li>
+                   </ul>
+                </div>
+             </div>
+          </div>
+
+          <div className="flex justify-center pt-2">
+            {onReset && (
+               <Button onClick={onReset} variant="ghost" size="sm" className="text-muted-foreground">
+                  Select Different File
+               </Button>
+            )}
+          </div>
+        </div>
       </Card>
     )
   }
 
-  // Part Size Configuration screen (for fountain-feedback mode)
+  // -----------------------------------------------------------
+  // STEP 2: PART SIZE CONFIG
+  // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
     const isLargeFile = file && file.size > 1024 * 1024
-    const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
 
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Part Size Configuration</CardTitle>
-          <p className="text-sm text-muted-foreground mt-2">
-            Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel} based on your file size.</strong>
-          </p>
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 rounded-full bg-primary/10 text-primary">
+              <Settings className="w-5 h-5" />
+            </div>
+            <div>
+              <CardTitle>Transfer Configuration</CardTitle>
+              <p className="text-sm text-muted-foreground">Optimize for your device</p>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <RadioGroup value={partSizeOption} onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} className="space-y-3">
-            <div className="flex items-start space-x-2">
-              <RadioGroupItem value="TINY" id="part-size-tiny" className="mt-1" />
-              <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-tiny" className="text-sm font-medium cursor-pointer">32 KB</Label>
-                <p className="text-xs text-muted-foreground">For testing multi-part transfers</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-2">
-              <RadioGroupItem value="SMALL" id="part-size-small" className="mt-1" />
-              <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-small" className="text-sm font-medium cursor-pointer">256 KB</Label>
-                <p className="text-xs text-muted-foreground">For very slow devices or poor camera quality</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-2">
-              <RadioGroupItem value="MEDIUM" id="part-size-medium" className="mt-1" />
-              <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-medium" className="text-sm font-medium cursor-pointer">512 KB{!isLargeFile ? ' (Default for your file)' : ''}</Label>
-                <p className="text-xs text-muted-foreground">Balanced performance for moderate devices</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-2">
-              <RadioGroupItem value="LARGE" id="part-size-large" className="mt-1" />
-              <div className="flex flex-col flex-1">
-                <Label htmlFor="part-size-large" className="text-sm font-medium cursor-pointer">1024 KB (1 MB){isLargeFile ? ' (Default for your file)' : ''}</Label>
-                <p className="text-xs text-muted-foreground">For devices with good QR decoding speed</p>
-              </div>
-            </div>
-          </RadioGroup>
-
-          <div className="flex gap-2">
-            <Button onClick={() => setStep('mode')} variant="outline" className="flex-1">
-              Back
-            </Button>
-            <Button onClick={handleContinueToMetadata} className="flex-1">
-              Continue to Metadata
-            </Button>
+        <CardContent className="space-y-6">
+          <div className="space-y-3">
+            <Label className="text-base font-medium">Part Size</Label>
+            <p className="text-sm text-muted-foreground">
+              Smaller parts work better on older phones. Larger parts are faster on modern devices.
+            </p>
+            
+            <RadioGroup 
+              value={partSizeOption} 
+              onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} 
+              className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2"
+            >
+              {[
+                { val: 'TINY', label: '32 KB', desc: 'Debug only' },
+                { val: 'SMALL', label: '256 KB', desc: 'For slow devices' },
+                { val: 'MEDIUM', label: '512 KB', desc: 'Balanced' },
+                { val: 'LARGE', label: '1 MB', desc: 'Fastest' }
+              ].map((opt) => (
+                <div key={opt.val}>
+                  <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
+                  <Label
+                    htmlFor={`opt-${opt.val}`}
+                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer h-full"
+                  >
+                    <span className="font-bold text-lg">{opt.label}</span>
+                    <span className="text-xs text-muted-foreground">{opt.desc}</span>
+                    {opt.val === 'MEDIUM' && !isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
+                    {opt.val === 'LARGE' && isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
+                  </Label>
+                </div>
+              ))}
+            </RadioGroup>
           </div>
         </CardContent>
+        <CardFooter className="flex justify-between pt-0 pb-6">
+          <Button onClick={() => setStep('mode')} variant="outline">
+            Back
+          </Button>
+          <Button onClick={handleContinueToMetadata}>
+            Continue
+          </Button>
+        </CardFooter>
       </Card>
     )
   }
 
-  // Metadata screen (centralized metadata QR + info)
+  // -----------------------------------------------------------
+  // STEP 3: METADATA
+  // -----------------------------------------------------------
   if (step === 'metadata' && transferMode) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center">🔁 Fountain Transfer Metadata</CardTitle>
-          <div className="text-sm text-muted-foreground text-center space-y-1">
-            <p className="font-medium">{file.name}</p>
-            <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Card className="overflow-hidden">
+        <div className="bg-muted/30 border-b p-4 text-center">
+           <h3 className="font-semibold flex items-center justify-center gap-2">
+              <QrCode className="w-4 h-4" />
+              Scan on Receiver
+           </h3>
+        </div>
+        
+        <CardContent className="p-6 space-y-6">
           {metadataError && (
             <Alert variant="destructive">
               <AlertDescription>{metadataError}</AlertDescription>
@@ -402,190 +476,170 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           )}
 
           {!metadataError && (
-            <div className="flex flex-col items-center gap-4">
-              {/* QR Code Container (no captions inside to avoid overlap) */}
-              <div className="flex justify-center bg-white p-4 rounded-lg w-full">
-                <div className="relative">
+            <div className="flex flex-col items-center gap-6">
+              {/* QR Code Container */}
+              <div className="relative group">
+                <div className="bg-white p-4 rounded-xl shadow-sm border">
                   {metadataQR ? (
                     <img
                       src={metadataQR}
                       alt="Metadata QR"
-                      className="max-w-full h-auto block"
+                      className="w-full max-w-[280px] h-auto block"
                     />
                   ) : (
-                    <div className="w-[400px] h-[400px] bg-gray-100 rounded" />
+                    <div className="w-[280px] h-[280px] bg-muted/20 animate-pulse rounded" />
                   )}
                 </div>
-              </div>
-
-              {/* Caption / Status moved OUTSIDE the QR area */}
-              <div className="w-full text-center text-xs text-muted-foreground min-h-[1.25rem] flex items-center justify-center">
-                {metadataLoading && 'Preparing metadata QR...'}
-                {!metadataLoading && !metadataQR && 'Awaiting metadata...'}
-                {!metadataLoading && metadataQR && '📦 Scan this metadata QR code first on the receiver'}
-              </div>
-
-              {/* Warning message for no-feedback mode */}
-              {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && !feedbackEnabled && (
-                <Alert variant="default">
-                  <AlertDescription className="text-sm">
-                    ⚠️ Sender cannot scan QR codes - Receiver will operate in no-feedback mode. The receiver should not generate feedback QR codes during transfer. Transfer will complete using random chunk generation only.
-                  </AlertDescription>
-                </Alert>
-              )}
-
-              {metadataJson && (
-                <div className="w-full space-y-2 text-xs text-muted-foreground">
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><span className="font-semibold">Name:</span> {metadataJson.fileName}</div>
-                    <div><span className="font-semibold">Size:</span> {(metadataJson.fileSize / 1024).toFixed(2)}KB</div>
-                    {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson.mode === 'fountain' && (
-                      <>
-                        <div><span className="font-semibold">Blocks:</span> {metadataJson.totalSourceBlocks}</div>
-                        <div><span className="font-semibold">Block Size:</span> {metadataJson.blockSize} bytes</div>
-                      </>
-                    )}
-                    <div className="col-span-2"><span className="font-semibold">Type:</span> {metadataJson.fileType}</div>
-                    {metadataJson.checksum && (
-                      <div className="col-span-2 break-all"><span className="font-semibold">Checksum ({metadataJson.checksumAlg}):</span> {metadataJson.checksum}</div>
-                    )}
-                  </div>
+                {/* Scan indicator */}
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-lg">
+                   SCAN ME
                 </div>
-              )}
+              </div>
+
+              <div className="space-y-4 w-full max-w-sm text-center">
+                 <p className="text-sm text-muted-foreground">
+                    {metadataLoading 
+                       ? 'Generating secure metadata...' 
+                       : 'Scan this code with the receiver device to initialize the secure channel.'}
+                 </p>
+                 
+                 {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && !feedbackEnabled && (
+                    <div className="bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs p-3 rounded-md text-left flex gap-2">
+                       <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                       <p>Receiver will operate in basic (no-feedback) mode.</p>
+                    </div>
+                 )}
+              </div>
             </div>
           )}
 
-          {metadataLoading && (
-            <Progress value={45} />
-          )}
+          {metadataLoading && <Progress value={45} className="w-full h-2" />}
+        </CardContent>
 
-          <div className="flex gap-2 flex-wrap">
-            <Button
-              onClick={() => {
-                setStep('mode')
-                setFeedbackEnabled(true)
-              }}
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              disabled={metadataLoading}
-            >
-              ← Change Mode
-            </Button>
-            {onReset && (
-              <Button
-                onClick={handleResetSession}
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                disabled={metadataLoading}
-              >
-                Different File
-              </Button>
-            )}
-            <Button
+        <CardFooter className="flex flex-col gap-3 bg-muted/10 p-6 pt-2">
+           <Button
               onClick={handleStartTransfer}
-              size="sm"
-              className="flex-1"
+              size="lg"
+              className="w-full text-lg shadow-lg shadow-primary/20"
               disabled={!metadataQR || metadataLoading}
             >
-              Start Transfer ▶
+              <Play className="w-5 h-5 mr-2 fill-current" />
+              Start Transfer
             </Button>
-          </div>
-
-          <Alert>
-            <AlertDescription className="text-xs space-y-1">
-              <p className="font-medium mb-1">Instructions:</p>
-              <p>1. Receiver scans this metadata QR code first.</p>
-              <p>2. Then click Start Transfer to begin animated data QR codes.</p>
-              <p>3. You can always restart the session to regenerate fresh metadata.</p>
-            </AlertDescription>
-          </Alert>
-        </CardContent>
+            
+            <div className="flex gap-2 w-full">
+               <Button
+                  onClick={() => {
+                     setStep('mode')
+                     setFeedbackEnabled(true)
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={metadataLoading}
+               >
+                  Change Mode
+               </Button>
+               {onReset && (
+                  <Button
+                     onClick={handleResetSession}
+                     variant="ghost"
+                     size="sm"
+                     className="flex-1"
+                     disabled={metadataLoading}
+                  >
+                     Cancel
+                  </Button>
+               )}
+            </div>
+        </CardFooter>
       </Card>
     )
   }
 
+  // -----------------------------------------------------------
+  // STEP 4: TRANSFER
+  // -----------------------------------------------------------
   // Show selected transfer mode component (skip their internal metadata stage)
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center">🔁 Fountain Code Transfer</CardTitle>
-        <div className="text-sm text-muted-foreground text-center space-y-1">
-          <p className="font-medium">{file.name}</p>
-          <p>Size: {(file.size / 1024).toFixed(2)}KB</p>
+    <Card className="border-primary/20 shadow-lg">
+      <CardHeader className="bg-muted/10 pb-4 border-b">
+        <div className="flex items-center justify-between">
+           <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <CardTitle className="text-lg">Transfer Active</CardTitle>
+           </div>
+           
+           <div className="flex gap-1">
+              <Button
+                 onClick={() => requestExitAction('metadata')}
+                 variant="ghost"
+                 size="sm"
+                 className="h-8 px-2 text-muted-foreground"
+                 title="Show Metadata"
+              >
+                 <QrCode className="w-4 h-4" />
+              </Button>
+              <Button
+                 onClick={() => requestExitAction('reset')}
+                 variant="ghost"
+                 size="sm"
+                 className="h-8 px-2 text-destructive hover:text-destructive"
+                 title="Stop Transfer"
+              >
+                 <RotateCcw className="w-4 h-4" />
+              </Button>
+           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Mode Switch Button */}
-        <div className="flex gap-2 flex-wrap">
-          <Button
-            onClick={() => requestExitAction('metadata')}
-            variant="outline"
-            size="sm"
-            className="flex-1"
-          >
-            ← Metadata
-          </Button>
-          <Button
-            onClick={() => requestExitAction('mode')}
-            variant="outline"
-            size="sm"
-            className="flex-1"
-          >
-            Change Mode
-          </Button>
-          {onReset && (
-            <Button onClick={() => requestExitAction('reset')} variant="outline" size="sm" className="flex-1">
-              Reset Session
-            </Button>
-          )}
-        </div>
-
-        {/* Render appropriate sender component */}
+      
+      <CardContent className="p-0">
         {metadataJson && (
           <>
             {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && metadataJson && metadataJson.mode === 'fountain' && (
-              <FountainQRSender
-                key={`fount-${senderRemountKey}`}
-                file={file}
-                sessionId={currentSessionId}
-                feedbackEnabled={feedbackEnabled}
-                checksum={metadataJson.checksum}
-                checksumAlg={metadataJson.checksumAlg}
-                partSizeOption={partSizeOption}
-              />
+              <div className="p-4">
+                 <FountainQRSender
+                   key={`fount-${senderRemountKey}`}
+                   file={file}
+                   sessionId={currentSessionId}
+                   feedbackEnabled={feedbackEnabled}
+                   checksum={metadataJson.checksum}
+                   checksumAlg={metadataJson.checksumAlg}
+                   partSizeOption={partSizeOption}
+                 />
+              </div>
             )}
           </>
         )}
-        <Dialog
-          open={exitDialogOpen}
-          onOpenChange={(open) => {
-            if (!open) {
-              handleCancelExitAction()
-            }
-          }}
-        >
-          {pendingExitAction && (
-            <DialogContent showCloseButton={false}>
-              <DialogHeader>
-                <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
-                <DialogDescription>
-                  {exitActionContent[pendingExitAction].description}
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button variant="outline" onClick={handleCancelExitAction}>
-                  Cancel
-                </Button>
-                <Button variant="destructive" onClick={handleConfirmExitAction}>
-                  {exitActionContent[pendingExitAction].confirmLabel}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          )}
-        </Dialog>
       </CardContent>
+
+      <Dialog
+        open={exitDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            handleCancelExitAction()
+          }
+        }}
+      >
+        {pendingExitAction && (
+          <DialogContent showCloseButton={false}>
+            <DialogHeader>
+              <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
+              <DialogDescription>
+                {exitActionContent[pendingExitAction].description}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleCancelExitAction}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleConfirmExitAction}>
+                {exitActionContent[pendingExitAction].confirmLabel}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        )}
+      </Dialog>
     </Card>
   )
 }

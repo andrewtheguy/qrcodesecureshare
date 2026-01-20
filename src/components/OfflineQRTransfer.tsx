@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { OfflineQRMode } from './OfflineQRMode'
 import { OfflineQRReceiver } from './OfflineQRReceiver'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
@@ -13,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe } from 'lucide-react'
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
@@ -28,6 +29,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
   const navigate = useNavigate()
   const [selectedFile, setSelectedFile] = useState<File | null>(cachedSelectedFile)
   const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
+  const [showInfo, setShowInfo] = useState(false)
 
   // Sync mode with route changes
   useEffect(() => {
@@ -51,15 +53,16 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       navigate('/transfer', { replace: true })
     }
   }, [location.pathname, selectedFile, navigate])
+  
   const [backDialogOpen, setBackDialogOpen] = useState(false)
   const [pendingBackContext, setPendingBackContext] = useState<'send' | 'receive' | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
-        alert(`File size must be under ${MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB. Selected file is ${(file.size / 1024).toFixed(2)}KB. Note: Some transfer modes support smaller limits.`)
+        alert(`File size must be under ${MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB. Selected file is ${(file.size / 1024).toFixed(2)}KB.`)
         return
       }
       setSelectedFile(file)
@@ -72,6 +75,10 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
     setSelectedFile(null)
     cachedSelectedFile = null
     navigate('/transfer')
+    // Reset file input value so selecting the same file again works
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
   }
 
   const requestBackNavigation = (context: 'send' | 'receive') => {
@@ -103,84 +110,195 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
   } as const
 
   return (
-    <div className="space-y-6">
-      <header className="text-center space-y-2">
-        <h2 className="text-2xl font-bold">Offline QR File Transfer</h2>
-        <p className="text-muted-foreground">
-          Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB using animated QR codes - no internet required!
-        </p>
-      </header>
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Header - Only show in select mode for cleaner look during transfer */}
+      {mode === 'select' && (
+        <header className="text-center space-y-2 mb-8">
+          <h2 className="text-3xl font-bold tracking-tight">File Transfer</h2>
+          <p className="text-muted-foreground text-lg">
+            Choose your preferred transfer method
+          </p>
+        </header>
+      )}
 
       {/* Mode Selection */}
       {mode === 'select' && (
-        <div className="grid md:grid-cols-2 gap-4">
-          <Card className="cursor-pointer hover:border-primary transition-colors">
-            <CardHeader>
-              <CardTitle className="text-center">Send a File</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground text-center">
-                  Select a file (up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB) to convert into animated QR codes
-                </p>
-                <input
-                  type="file"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  id="offline-file-input"
-                  accept="*/*"
-                />
-                <Button
-                  onClick={() => document.getElementById('offline-file-input')?.click()}
-                  className="w-full"
-                  size="lg"
-                >
-                  Choose File to Send
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <NavLink to="/scan/camera">
-            <Card className="cursor-pointer hover:border-primary transition-colors">
-              <CardHeader>
-                <CardTitle className="text-center">Receive a File</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground text-center">
-                    Use your camera to scan the metadata QR code to begin receiving a file
+        <div className="space-y-8">
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Send Card */}
+            <Card 
+              className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
+                <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform duration-300">
+                  <FileUp className="w-8 h-8" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <h3 className="text-xl font-bold">Offline Send</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Convert file to QR stream
                   </p>
-                  <Button className="w-full" size="lg">
-                    Scan Metadata QR
+                </div>
+                <div className="w-full pt-2">
+                  <input
+                    type="file"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="offline-file-input"
+                    accept="*/*"
+                    ref={fileInputRef}
+                    onClick={(e) => e.stopPropagation()} 
+                  />
+                  <Button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      fileInputRef.current?.click()
+                    }}
+                    className="w-full"
+                    variant="outline"
+                  >
+                    Select File
                   </Button>
                 </div>
               </CardContent>
             </Card>
-          </NavLink>
+
+            {/* Receive Card */}
+            <NavLink to="/scan/camera" className="block h-full">
+              <Card className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
+                  <div className="p-4 rounded-full bg-primary/10 text-primary group-hover:scale-110 transition-transform duration-300">
+                    <Smartphone className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <h3 className="text-xl font-bold">Offline Receive</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Scan QR codes with camera
+                    </p>
+                  </div>
+                  <div className="w-full pt-2">
+                    <Button className="w-full" variant="outline">
+                      <ScanLine className="mr-2 h-4 w-4" />
+                      Scan
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </NavLink>
+
+            {/* Online Transfer Card */}
+            <a 
+              href="https://securesend.kuvi.app/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block h-full"
+            >
+              <Card className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
+                  <div className="p-4 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
+                    <Globe className="w-8 h-8" />
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center justify-center gap-2">
+                      <h3 className="text-xl font-bold">Online Send</h3>
+                      <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      Up to 100MB via WebRTC/Nostr
+                    </p>
+                  </div>
+                  <div className="w-full pt-2">
+                    <Button className="w-full" variant="outline">
+                      Open Secure Send
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </a>
+          </div>
+
+          <div className="flex justify-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowInfo(!showInfo)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Info className="w-4 h-4 mr-2" />
+              {showInfo ? 'Hide Details' : 'How does it work?'}
+            </Button>
+          </div>
+
+          {showInfo && (
+            <Card className="bg-muted/50 border-none shadow-none animate-in fade-in slide-in-from-top-2">
+              <CardContent className="p-6 space-y-6">
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                      Fountain Codes
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Files are split into small chunks using Fountain codes. This acts like a "data fountain" - you just need to catch enough droplets (QR frames) to reconstruct the file.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                      Feedback Loop
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      For best performance, the receiver shows feedback QR codes back to the sender, telling it which parts are missing. This makes the transfer much faster and reliable.
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                      Completely Offline
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      All processing happens locally in your browser. No data ever leaves your device via the internet. It works in airplane mode!
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <h3 className="font-semibold flex items-center gap-2">
+                      <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
+                      No Setup
+                    </h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      No Wi-Fi pairing or Bluetooth required. Just point the camera and start scanning. Works between any devices with a screen and camera.
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 
       {/* Send Mode */}
       {mode === 'send' && selectedFile && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-semibold">Send File</h2>
-            <Button onClick={() => requestBackNavigation('send')} variant="outline">
-              Back
+          <div className="flex items-center gap-2 mb-2">
+            <Button 
+              onClick={() => requestBackNavigation('send')} 
+              variant="ghost" 
+              size="icon"
+              className="rounded-full hover:bg-muted"
+            >
+              <ArrowLeft className="w-5 h-5" />
             </Button>
+            <h2 className="text-xl font-semibold">Setup Transfer</h2>
           </div>
 
-          <Alert>
-            <AlertDescription>
-              <p className="font-medium mb-2">Instructions:</p>
-              <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>Select your transfer mode and configure part size (for Recommended mode)</li>
-                <li>Have the receiver scan the metadata QR code first</li>
-                <li>Click "Start Transfer" to begin animated QR codes (auto-plays)</li>
-                <li>Keep animation playing until receiver shows completion</li>
-                <li>Adjust fps if needed (default: 25 fps, range: 1-60 fps)</li>
-              </ul>
+          <Alert className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
+            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <AlertDescription className="text-blue-700 dark:text-blue-300">
+              Prepare your file for transmission. Follow the steps below to generate the QR stream.
             </AlertDescription>
           </Alert>
 
@@ -191,65 +309,23 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       {/* Receive Mode */}
       {mode === 'receive' && (
         <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-semibold">Receive File</h2>
-            <Button onClick={() => requestBackNavigation('receive')} variant="outline">
-              Back
+          <div className="flex items-center gap-2 mb-2">
+            <Button 
+              onClick={() => requestBackNavigation('receive')} 
+              variant="ghost" 
+              size="icon"
+              className="rounded-full hover:bg-muted"
+            >
+              <ArrowLeft className="w-5 h-5" />
             </Button>
+            <h2 className="text-xl font-semibold">Receive File</h2>
           </div>
 
           <OfflineQRReceiver />
         </div>
       )}
 
-      {/* Info Section */}
-      {mode === 'select' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>How It Works</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <h3 className="font-semibold">Features:</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Two transfer modes: Fountain Code (Recommended) and Fountain Code (Basic)</li>
-                <li>Transfer files up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB completely offline with feedback mode</li>
-                <li>No internet connection required - works completely offline</li>
-                <li>Works between any two devices with cameras (some modes work without sender camera)</li>
-                <li>Automatic chunking and reconstruction with checksum validation</li>
-                <li>Adjustable animation speed (1-60 fps, default 25 fps for fountain mode)</li>
-                <li>Intelligent feedback system for optimized transfers (fountain feedback mode)</li>
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-semibold">Technical Details:</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li><strong>Fountain Mode:</strong> 1000-byte source blocks, requires ~105-115% reception for completion</li>
-                <li><strong>Part-based Transfers:</strong> Large files split into parts (32KB-1MB) with individual checksums</li>
-                <li><strong>Receiver Scanning:</strong> ~30 fps (33ms interval) using zxing-wasm binary mode</li>
-                <li><strong>Feedback Scanning:</strong> ~10 fps (100ms interval) for sender feedback QR codes</li>
-                <li>Binary data encoding (no Base64 overhead in newer modes)</li>
-                <li>CRC32 checksums for data integrity verification</li>
-                <li>Web Worker-based QR code generation for performance</li>
-              </ul>
-            </div>
-
-            <div className="space-y-2">
-              <h3 className="font-semibold">Best Practices:</h3>
-              <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Use <strong>Fountain Code (Recommended)</strong> for reliable transfers with feedback</li>
-                <li>Choose appropriate part size: smaller for slower devices/poor cameras, larger for faster transfers</li>
-                <li>Start with default fps (25), adjust if needed</li>
-                <li>Use good lighting for better scanning accuracy</li>
-                <li>Keep camera steady and focused on the QR code</li>
-                <li>Ensure QR codes fill most of the camera view without cropping</li>
-                <li>For devices without cameras on sender side, use manual feedback input or fountain basic mode</li>
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Back Navigation Confirmation Dialog */}
       <Dialog
         open={backDialogOpen}
         onOpenChange={(open) => {

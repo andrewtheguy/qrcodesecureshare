@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
+import { ArrowLeft, Download, FileText, AlertCircle } from 'lucide-react'
 
 interface DetectedMetadata {
   name: string
@@ -98,18 +99,24 @@ export function OfflineQRReceiver() {
   // Error state - should not happen during normal flow
   if (!detectedMetadata) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-center text-red-600">Error</CardTitle>
+      <Card className="border-destructive/50">
+        <CardHeader className="text-center pb-2">
+          <div className="flex justify-center mb-2">
+            <div className="p-3 rounded-full bg-destructive/10 text-destructive">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+          </div>
+          <CardTitle className="text-xl">Missing Metadata</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <Alert variant="destructive">
             <AlertDescription>
-              {metadataError || 'No metadata found. Please scan a metadata QR code first from the Scan page.'}
+              {metadataError || 'No file metadata found. Please scan the sender\'s metadata QR code first.'}
             </AlertDescription>
           </Alert>
           <Button onClick={() => navigate('/scan/camera')} className="w-full">
-            Go to Scan Page
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Return to Scan
           </Button>
         </CardContent>
       </Card>
@@ -118,24 +125,42 @@ export function OfflineQRReceiver() {
 
   // Show receiver component
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center">🔁 Fountain Code Receiver</CardTitle>
-        <p className="text-sm text-muted-foreground text-center">
-          {detectedMetadata.name} • {(detectedMetadata.size / 1024).toFixed(2)}KB
-        </p>
+    <Card className="overflow-hidden border-primary/20 shadow-lg">
+      <CardHeader className="bg-muted/10 pb-4 border-b">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+             <div className="p-2 rounded-full bg-primary/10 text-primary">
+                <Download className="w-5 h-5" />
+             </div>
+             <div>
+                <CardTitle className="text-lg">Receiving File</CardTitle>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground mt-0.5">
+                   <FileText className="w-3 h-3" />
+                   <span className="font-medium truncate max-w-[150px]">{detectedMetadata.name}</span>
+                   <span className="opacity-50">•</span>
+                   <span>{(detectedMetadata.size / 1024).toFixed(2)} KB</span>
+                </div>
+             </div>
+          </div>
+          
+          <Button
+            onClick={() => navigate('/scan/camera')}
+            variant="ghost"
+            size="sm"
+            className="text-muted-foreground hover:text-foreground"
+            title="Cancel & Return"
+          >
+             <ArrowLeft className="w-4 h-4 mr-2" />
+             Back
+          </Button>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <Button
-          onClick={() => navigate('/scan/camera')}
-          variant="outline"
-          size="sm"
-          className="w-full"
-        >
-          ← Back to Scan
-        </Button>
-
-        <FountainQRReceiver initialMetadata={detectedMetadata} />
+      
+      <CardContent className="p-0">
+        {/* Wrapper for the actual logic component which we don't touch */}
+        <div className="p-4">
+           <FountainQRReceiver initialMetadata={detectedMetadata} />
+        </div>
       </CardContent>
     </Card>
   )
