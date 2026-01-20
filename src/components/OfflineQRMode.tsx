@@ -354,7 +354,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                          <ArrowRight className="w-6 h-6" />
                       </div>
                       <div>
-                         <h4 className="font-bold text-base">One-Way</h4>
+                         <h4 className="font-bold text-base">Automatic</h4>
                          <p className="text-xs text-muted-foreground font-medium">Basic</p>
                       </div>
                    </div>
@@ -362,11 +362,11 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                    <ul className="space-y-2 text-sm text-muted-foreground">
                       <li className="flex items-start gap-2">
                          <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">1</span>
-                         <span>Blind broadcast (no feedback)</span>
+                         <span>No sender interaction required during transfer</span>
                       </li>
                       <li className="flex items-start gap-2">
                          <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">2</span>
-                         <span>Works without sender camera</span>
+                         <span>Continuous data stream until completion</span>
                       </li>
                       <li className="flex items-start gap-2">
                          <Maximize2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
