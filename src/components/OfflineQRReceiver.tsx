@@ -96,12 +96,12 @@ export function OfflineQRReceiver() {
       </CardHeader>
       <CardContent className="space-y-4">
         <Button
-          onClick={() => navigate(-1)}
+          onClick={() => navigate('/scan/camera')}
           variant="outline"
           size="sm"
           className="w-full"
         >
-          ← Go Back
+          ← Back to Scan
         </Button>
 
         <FountainQRReceiver
