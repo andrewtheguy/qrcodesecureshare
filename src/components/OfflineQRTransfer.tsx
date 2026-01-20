@@ -175,12 +175,11 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             <AlertDescription>
               <p className="font-medium mb-2">Instructions:</p>
               <ul className="list-disc list-inside space-y-1 text-sm">
-                <li>First, select your transfer mode (Fountain Recommended or Basic)</li>
-                <li>Have the receiver scan the metadata QR code to initialize the session</li>
-                <li>Click "Play" to start the animated data QR codes</li>
-                <li>For fountain feedback mode: scan receiver's feedback QR or enter confirmation codes manually</li>
-                <li>Keep the animation playing until transfer completes (progress shown on receiver)</li>
-                <li>Adjust fps if needed (default: 25 fps fountain, range: 1-60 fps)</li>
+                <li>Select your transfer mode and configure part size (for Recommended mode)</li>
+                <li>Have the receiver scan the metadata QR code first</li>
+                <li>Click "Start Transfer" to begin animated QR codes (auto-plays)</li>
+                <li>Keep animation playing until receiver shows completion</li>
+                <li>Adjust fps if needed (default: 25 fps, range: 1-60 fps)</li>
               </ul>
             </AlertDescription>
           </Alert>

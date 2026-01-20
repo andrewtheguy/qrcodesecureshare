@@ -292,10 +292,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <div className="font-bold text-lg">🔁 Fountain Code (Recommended)</div>
             <div className="text-sm text-left text-muted-foreground">
               • Works with or without camera on sender<br/>
-              • Sender can scan receiver's feedback for intelligent chunk generation or via manual input with intelligent confirmation code<br/>
+              • Supports feedback via QR scan or manual code input<br/>
               • Generates random coded chunks with windowing<br/>
               • Receiver needs ~105-115% of source blocks<br/>
-              • Best for reliable communication<br/>
+              • Best for reliable transfers<br/>
               • Supports files up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}
             </div>
           </Button>
