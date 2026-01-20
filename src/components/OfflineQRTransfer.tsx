@@ -23,6 +23,8 @@ import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Sh
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
+const MAX_SIZE_MB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0)
+
 interface OfflineQRTransferProps {
   defaultMode?: 'select' | 'send' | 'receive'
   onModeChange?: (mode: 'select' | 'send' | 'receive') => void
@@ -69,9 +71,8 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
     const file = e.target.files?.[0]
     if (file) {
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
-        const maxSizeMB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0)
         const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2)
-        alert(`File size must be under ${maxSizeMB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`)
+        alert(`File size must be under ${MAX_SIZE_MB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`)
         return
       }
       setSelectedFile(file)
@@ -154,7 +155,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       Convert file to QR stream for receiver to scan
                     </p>
                     <p className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold px-2">
-                      Up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB. For larger files, use the alternative method below.
+                      Up to {MAX_SIZE_MB}MB. For larger files, use the alternative method below.
                     </p>
                   </div>
                 </div>
@@ -300,7 +301,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                           <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>File Size:</strong> Optimized for small files (up to {MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024}MB). Larger files take significantly longer due to QR density limits.</span>
+                              <span><strong>File Size:</strong> Optimized for small files (up to {MAX_SIZE_MB}MB). Larger files take significantly longer due to QR density limits.</span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
