@@ -19,7 +19,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Shield } from 'lucide-react'
+import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Shield, ExternalLink } from 'lucide-react'
 
 import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
 
@@ -60,6 +60,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
   }, [location.pathname, selectedFile, navigate])
   
   const [backDialogOpen, setBackDialogOpen] = useState(false)
+  const [onlineConfirmOpen, setOnlineConfirmOpen] = useState(false)
   const [pendingBackContext, setPendingBackContext] = useState<'send' | 'receive' | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -195,41 +196,38 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             </NavLink>
 
             {/* Online Transfer Card */}
-            <a 
-              href="https://securesend.kuvi.app/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="block h-full"
+            <Card 
+              className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full"
+              onClick={() => setOnlineConfirmOpen(true)}
             >
-              <Card className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300 h-full">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
-                  <div className="p-4 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
-                    <Globe className="w-8 h-8" />
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <CardContent className="p-6 flex flex-col items-center text-center space-y-4 h-full">
+                <div className="p-4 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
+                  <Globe className="w-8 h-8" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center justify-center gap-2">
+                    <h3 className="text-xl font-bold">Online Send</h3>
+                    <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
                   </div>
-                  <div className="space-y-2 flex-1">
-                    <div className="flex items-center justify-center gap-2">
-                      <h3 className="text-xl font-bold">Online Send</h3>
-                      <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        Up to 100MB via WebRTC/Nostr
-                      </p>
-                      <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400">
-                        <Shield className="w-3 h-3" />
-                        <span>AES-256 End-to-End Encrypted</span>
-                      </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">
+                      Up to 100MB via WebRTC/Nostr
+                    </p>
+                    <div className="flex items-center justify-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400">
+                      <Shield className="w-3 h-3" />
+                      <span>AES-256 End-to-End Encrypted</span>
                     </div>
                   </div>
-                  <div className="w-full pt-2">
-                    <Button className="w-full" variant="outline">
-                      Open Secure Send
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </a>
+                </div>
+                <div className="w-full pt-2">
+                  <Button className="w-full" variant="outline">
+                    Open Secure Send
+                    <ExternalLink className="ml-2 w-3 h-3" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
 
           <div className="flex flex-col items-center space-y-4">
@@ -401,6 +399,30 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             </DialogFooter>
           </DialogContent>
         )}
+      </Dialog>
+
+      {/* Online Transfer Confirmation Dialog */}
+      <Dialog open={onlineConfirmOpen} onOpenChange={setOnlineConfirmOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Leave Offline Mode?</DialogTitle>
+            <DialogDescription>
+              You are about to visit <strong>securesend.kuvi.app</strong> for online file transfer.
+              <br /><br />
+              This is an external service that uses internet connection. Your files will be encrypted before sending.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOnlineConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button asChild onClick={() => setOnlineConfirmOpen(false)}>
+              <a href="https://securesend.kuvi.app/" target="_blank" rel="noopener noreferrer">
+                Continue to Secure Send <ExternalLink className="ml-2 w-4 h-4" />
+              </a>
+            </Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   )
