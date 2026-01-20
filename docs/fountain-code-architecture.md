@@ -293,7 +293,7 @@ flowchart TD
 
 ### What are LT (Luby Transform) Codes?
 
-LT codes are **rateless erasure codes** - they can generate an unlimited number of encoded chunks from a finite source. Unlike traditional error correction codes with fixed redundancy, fountain codes let the receiver collect "enough" chunks from any subset.
+LT codes are **rateless erasure codes** - they can generate an unlimited number of encoded chunks from a finite source. Unlike traditional error correction codes with fixed redundancy, fountain codes let the receiver collect "enough" chunks from any subset. The required overhead varies with the degree distribution parameters (c, delta) and any doping/repair strategies employed.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -312,7 +312,9 @@ LT codes are **rateless erasure codes** - they can generate an unlimited number 
 │   Encoded Chunks:  ○  ○  ○  ○  ○  ○  ○  ○  ○  ○  ...  ∞                    │
 │                    ↓  ↓  ↓  ↓  ↓  ↓  ↓  ↓  ↓  ↓                            │
 │                                                                              │
-│   Receiver needs ANY ~110% of original size to decode                       │
+│   Receiver needs ANY ~110% of original size to decode (approximate;         │
+│   actual overhead depends on Robust Soliton parameters c/delta and          │
+│   doping rates - may be higher or lower in other configurations)            │
 │   (e.g., 4 blocks → need ~4.4 chunks worth of data)                         │
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
@@ -598,11 +600,11 @@ Each fountain chunk is serialized into a compact binary format for QR encoding:
 │   5        1       NumIndices (uint8)                                       │
 │   6        2*N     Block indices (uint16 each, big-endian)                  │
 │   ...      8       Part metadata (if part-based mode):                      │
-│                      - Current part (uint16)                                │
-│                      - Total parts (uint16)                                 │
-│                      - Part checksum (4 bytes)                              │
+│                      - Current part (uint16, big-endian)                    │
+│                      - Total parts (uint16, big-endian)                     │
+│                      - Part checksum (uint32, big-endian)                   │
 │   ...      var     Chunk data (XORed block content)                         │
-│   -4       4       CRC32 checksum (final 4 bytes)                           │
+│   -4       4       CRC32 checksum (uint32, big-endian)                      │
 │                                                                              │
 │   Example (single-mode, degree 2):                                          │
 │   ┌──┬──┬──┬──┬──┬──┬──┬──┬──┬─────────────────────┬──┬──┬──┬──┐           │
@@ -624,19 +626,21 @@ The first QR code contains JSON metadata:
 │                                                                              │
 │   {                                                                          │
 │     "type": "fountain_metadata",                                            │
-│     "sessionId": "a1b2c3d4",           // Unique transfer identifier        │
+│     "sessionId": "a1b2c3d4",           // 8-char lowercase hex string       │
+│                                        // (unique transfer identifier)      │
 │     "fileName": "document.pdf",         // Original filename                │
 │     "totalSize": 125000,                // File size in bytes               │
 │     "blockSize": 400,                   // Bytes per block                  │
 │     "totalBlocks": 313,                 // Total block count                │
-│     "checksum": "e8f4a2b1",             // Whole-file CRC32                 │
+│     "checksum": "e8f4a2b1",             // Whole-file CRC32, 8-char         │
+│                                        // lowercase hex (e.g., "e8f4a2b1") │
 │     "seedOffset": 12345,                // Session random offset            │
 │                                                                              │
 │     // Part-based mode only:                                                │
 │     "totalParts": 3,                    // Number of parts                  │
 │     "partSize": 512000,                 // Bytes per part                   │
-│     "partChecksums": [                  // Per-part checksums               │
-│       "a1b2c3d4",                                                           │
+│     "partChecksums": [                  // Per-part CRC32 checksums,        │
+│       "a1b2c3d4",                       // each 8-char lowercase hex        │
 │       "e5f6a7b8",                                                           │
 │       "c9d0e1f2"                                                            │
 │     ]                                                                        │
@@ -985,23 +989,37 @@ After receiving feedback (via camera or manual input), the sender displays an AC
 
 ### Encoder Tuning Parameters
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `block_size` | 400 bytes | Size of each source block |
-| `c` | 0.2 | Robust Soliton constant (affects spike location) |
-| `delta` | 0.01 | Failure probability parameter |
-| `degree1_rate` | 0.08 (8%) | Probability of forcing degree-1 chunks |
-| `low_degree_rate` | 0.18 (18%) | Probability of forcing degree 2-3 chunks |
-| `seed_offset` | random | Session-unique offset for chunk seeds |
+| Parameter | Default | Valid Range | Description |
+|-----------|---------|-------------|-------------|
+| `block_size` | 400 bytes | 64–4096 bytes (positive int) | Size of each source block. Too small = high overhead; too large = memory/latency issues |
+| `c` | 0.2 | >0 (typical 0.01–1.0) | Robust Soliton constant; influences spike magnitude in degree distribution |
+| `delta` | 0.01 | (0, 1) (typical 1e-6–0.1) | Failure probability parameter; lower = more reliable but higher overhead |
+| `degree1_rate` | 0.08 (8%) | [0, 1] | Probability of forcing degree-1 chunks. Sum with `low_degree_rate` must be ≤1.0 |
+| `low_degree_rate` | 0.18 (18%) | [0, 1] | Probability of forcing degree 2-3 chunks. Sum with `degree1_rate` must be ≤1.0; remaining probability uses higher degrees from Robust Soliton |
+| `seed_offset` | random | Non-negative int | Session-unique integer/nonce to offset chunk seeds for transfer isolation |
 
 ### QR Capacity Constraints
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | `max_qr_data_size` | 2953 bytes | Maximum QR code binary capacity (version 40-L) |
-| `fixed_overhead` | 10 bytes | Header bytes per chunk (magic, seed, indices) |
-| `part_overhead` | 8 bytes | Additional overhead in part-based mode |
-| `effective_payload` | ~2935 bytes | Available for chunk data |
+| `fixed_overhead` | 10 bytes | Header bytes per chunk (magic 2 + seed 2 + degree 1 + numIndices 1 + CRC32 4) |
+| `part_overhead` | 8 bytes | Additional overhead in part-based mode (currentPart 2 + totalParts 2 + partChecksum 4) |
+| `effective_payload` | variable | Payload for chunk data, computed as: `max_qr_data_size - fixed_overhead - part_overhead - (degree × 2)` where `degree` is the chunk's degree and each index uses 2 bytes |
+
+**Effective payload calculation:**
+```
+usable_payload = max_qr_data_size - fixed_overhead - part_overhead - (degree × 2)
+
+Example (single mode, degree=10):
+  2953 - 10 - 0 - (10 × 2) = 2923 bytes
+
+Example (part-based mode, degree=10):
+  2953 - 10 - 8 - (10 × 2) = 2915 bytes
+
+Example (part-based mode, degree=40):
+  2953 - 10 - 8 - (40 × 2) = 2855 bytes
+```
 
 ### Part Size Options
 
