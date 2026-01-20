@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import Logo from '@/components/Logo'
 import { cn } from '@/lib/utils'
 
@@ -96,27 +96,29 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Feature List */}
       <div className="max-w-3xl mx-auto flex flex-col gap-4 px-4 py-8 lg:pb-16">
         <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2 px-2">Advanced Features</h2>
         {features.map((feature) => (
-          <Link
+          <Button
             key={feature.link}
-            to={feature.link}
+            asChild
+            variant="ghost"
             className={cn(
-              "flex items-center gap-4 p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all",
+              "flex items-center gap-4 p-5 rounded-2xl border border-slate-200/70 shadow-sm hover:shadow-md transition-all h-auto w-full justify-start",
               feature.bgClass
             )}
           >
-            <div className="text-3xl flex-shrink-0">{feature.icon}</div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-lg text-slate-900">{feature.title}</h3>
-              <p className="text-slate-600 text-sm">{feature.description}</p>
-            </div>
-            <Button className="flex-shrink-0 w-24 pointer-events-none">
-              {feature.buttonText}
-            </Button>
-          </Link>
+            <Link to={feature.link}>
+              <div className="text-3xl flex-shrink-0">{feature.icon}</div>
+              <div className="flex-1 min-w-0 text-left">
+                <h3 className="font-semibold text-lg text-slate-900">{feature.title}</h3>
+                <p className="text-slate-600 text-sm whitespace-normal">{feature.description}</p>
+              </div>
+              <div className={cn(buttonVariants(), "flex-shrink-0 w-24 hidden sm:flex")}>
+                {feature.buttonText}
+              </div>
+            </Link>
+          </Button>
         ))}
       </div>
     </div>
