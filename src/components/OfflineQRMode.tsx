@@ -354,7 +354,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                          <ArrowRight className="w-6 h-6" />
                       </div>
                       <div>
-                         <h4 className="font-bold text-base">Automatic</h4>
+                         <h4 className="font-bold text-base">One-Way</h4>
                          <p className="text-xs text-muted-foreground font-medium">Basic</p>
                       </div>
                    </div>
