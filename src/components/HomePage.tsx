@@ -86,10 +86,10 @@ export default function HomePage() {
             </p>
             <div className="mt-8 flex items-center justify-center gap-x-4">
               <Button asChild size="lg" className="rounded-full px-8 h-12 text-base font-semibold shadow-md hover:shadow-lg transition-all">
-                <Link to="/generate">🔲 Generate QR</Link>
+                <Link to="/generate">🔲 Generate <span className="hidden sm:inline">QR</span></Link>
               </Button>
               <Button asChild size="lg" variant="outline" className="rounded-full px-8 h-12 text-base font-semibold bg-white/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-all">
-                <Link to="/scan">📸 Scan QR</Link>
+                <Link to="/scan">📸 Scan <span className="hidden sm:inline">QR</span></Link>
               </Button>
             </div>
           </div>
