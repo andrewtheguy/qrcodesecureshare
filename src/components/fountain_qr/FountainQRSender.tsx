@@ -33,7 +33,7 @@ interface FountainQRSenderProps {
 }
 
 
-export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'MEDIUM', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
+export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'LARGE', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [error, setError] = useState<string>('')
   const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
@@ -255,12 +255,12 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-emerald-500/40 bg-black/80 p-6 shadow-inner">
+            <div className="relative mx-auto overflow-hidden rounded-2xl border border-emerald-500/40 bg-black/80 p-6 shadow-inner w-fit">
               <div className="absolute inset-3 rounded-2xl border border-emerald-400/50" />
               <img
                 src={ackPayload.qrUrl}
                 alt="ACK QR Code"
-                className="relative z-10 w-full h-auto"
+                className="relative z-10 max-w-[300px] w-full h-auto"
               />
             </div>
             <div className="space-y-3 text-sm">

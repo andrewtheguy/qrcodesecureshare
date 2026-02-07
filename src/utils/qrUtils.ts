@@ -23,6 +23,7 @@ export async function generateQRTextDataURL(
   payload: string,
   options?: {
     width?: number
+    margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
 ): Promise<string> {
@@ -31,6 +32,7 @@ export async function generateQRTextDataURL(
 
     const pngBytes = await generateFastQrPngBytes(utf8Bytes, {
       width: options?.width || 300,
+      margin: options?.margin,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
       forceByteMode: false,
     })
@@ -58,8 +60,8 @@ export const generateNonDataQR = async (
     const options = opts || NON_DATA_QR_OPTIONS
 
     const pngBytes = await generateFastQrPngBytes(jsonBytes, {
-      width: options.width || 400,
-      margin: options.margin ?? 2,
+      width: options.width || 300,
+      margin: options.margin ?? 1,
       errorCorrectionLevel: options.errorCorrectionLevel || 'M',
       forceByteMode: false,
     })

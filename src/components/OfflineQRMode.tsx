@@ -8,6 +8,7 @@ import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import {
   Dialog,
@@ -27,10 +28,14 @@ import {
   QrCode,
   FileDigit,
   TriangleAlert,
-  Play
+  Play,
+  Zap,
+  CheckCircle2
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
+const ADVANCED_PART_SIZES_ACCORDION_VALUE = 'advanced-part-sizes'
 
 
 interface OfflineQRModeProps {
@@ -75,9 +80,11 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
-  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('LARGE')
+  const [partSizeAccordionValue, setPartSizeAccordionValue] = useState<string>('')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
+  const isCustomPartSizeSelected = partSizeOption !== 'LARGE'
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -123,7 +130,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           }
           if (cancelled) return
           const qrUrl = await generateQRTextDataURL(OFFLINE_METADATA_MAGIC + JSON.stringify(meta), {
-            width: 400,
+            width: 300,
+            margin: 1,
             errorCorrectionLevel: 'M'
           })
           if (cancelled) return
@@ -167,12 +175,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
     if (mode === 'fountain-feedback') {
       setFeedbackEnabled(true)
-      // Set adaptive default part size based on file size
-      if (file.size > 1024 * 1024) {
-        setPartSizeOption('LARGE')  // Files > 1MB default to 1MB part size
-      } else {
-        setPartSizeOption('MEDIUM') // Files <= 1MB default to 512KB part size
-      }
+      setPartSizeOption('LARGE')
+      setPartSizeAccordionValue('')
       // Go to part size configuration step instead of metadata
       setStep('partSize')
     } else if (mode === 'fountain-simple') {
@@ -194,6 +198,18 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setSenderRemountKey(id => id + 1)
   }
 
+  const handlePartSizeOptionChange = (value: PartSizeOption) => {
+    setPartSizeOption(value)
+    setPartSizeAccordionValue(value === 'LARGE' ? '' : ADVANCED_PART_SIZES_ACCORDION_VALUE)
+  }
+
+  const handlePartSizeAccordionChange = (value: string) => {
+    if (!value && isCustomPartSizeSelected) {
+      return
+    }
+    setPartSizeAccordionValue(value)
+  }
+
   const handleResetSession = () => {
     setTransferMode(null)
     setStep('mode')
@@ -205,6 +221,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setCurrentSessionId(0)
     setModeSizeError('')
     setFeedbackEnabled(true)
+    setPartSizeOption('LARGE')
+    setPartSizeAccordionValue('')
     if (onReset) onReset()
   }
 
@@ -411,8 +429,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // STEP 2: PART SIZE CONFIG
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
-    const isLargeFile = file.size > 1024 * 1024
-    const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
     const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`
 
     return (
@@ -436,36 +452,82 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <span className="shrink-0">{originalFileSizeLabel}</span>
           </div>
 
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Part Size</Label>
-            <p className="text-sm text-muted-foreground">
-              Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel} based on your file size.</strong>
-            </p>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-base font-medium">Part Size</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Optimize how your file is split for transfer. Smaller parts are more reliable for older cameras or slow devices.
+              </p>
+            </div>
             
             <RadioGroup 
               value={partSizeOption} 
-              onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} 
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2"
+              onValueChange={handlePartSizeOptionChange} 
+              className="space-y-3"
             >
-              {[
-                { val: 'TINY', label: '32 KB', desc: 'Debug only' },
-                { val: 'SMALL', label: '256 KB', desc: 'For older/slower devices' },
-                { val: 'MEDIUM', label: '512 KB', desc: 'Standard configuration' },
-                { val: 'LARGE', label: '1 MB', desc: 'For large transfers' }
-              ].map((opt) => (
-                <div key={opt.val}>
-                  <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
-                  <Label
-                    htmlFor={`opt-${opt.val}`}
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer h-full"
-                  >
-                    <span className="font-bold text-lg">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground">{opt.desc}</span>
-                    {opt.val === 'MEDIUM' && !isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
-                    {opt.val === 'LARGE' && isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
-                  </Label>
-                </div>
-              ))}
+              <div className="relative">
+                <RadioGroupItem value="LARGE" id="opt-LARGE" className="peer sr-only" />
+                <Label
+                  htmlFor="opt-LARGE"
+                  className="group flex items-center justify-between rounded-xl border-2 border-muted bg-popover p-5 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:shadow-md relative overflow-hidden"
+                >
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors shadow-sm">
+                      <Zap className="w-6 h-6 fill-current" />
+                    </div>
+                    <div>
+                      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                        <p className="font-bold text-lg leading-none sm:leading-normal">1 MB</p>
+                        <Badge variant="secondary" className="mb-1 w-fit bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold sm:mb-0">
+                          Recommended
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">Fastest transfer speed</p>
+                    </div>
+                  </div>
+                  
+                  <div className="relative z-10">
+                    <CheckCircle2 className="h-4 w-4 text-primary scale-0 group-data-[state=checked]:scale-100 transition-transform" />
+                  </div>
+
+                  {/* Decorative background element */}
+                  <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-data-[state=checked]:bg-primary/10 transition-colors" />
+                </Label>
+              </div>
+
+              <Accordion
+                type="single"
+                collapsible
+                value={partSizeAccordionValue}
+                onValueChange={handlePartSizeAccordionChange}
+                className="w-full"
+              >
+                <AccordionItem value={ADVANCED_PART_SIZES_ACCORDION_VALUE} className="border-none">
+                  <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline flex justify-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    Custom Part Sizes
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      {[
+                        { val: 'MEDIUM', label: '512 KB' },
+                        { val: 'SMALL', label: '256 KB' },
+                        { val: 'TINY', label: '32 KB' }
+                      ].map((opt) => (
+                        <div key={opt.val} className="relative">
+                          <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
+                          <Label
+                            htmlFor={`opt-${opt.val}`}
+                            className="flex flex-col items-center justify-center rounded-xl border-2 border-muted bg-popover p-3 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 h-full text-center"
+                          >
+                            <span className="font-bold text-sm">{opt.label}</span>
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </RadioGroup>
           </div>
         </CardContent>
@@ -510,10 +572,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                     <img
                       src={metadataQR}
                       alt="Metadata QR"
-                      className="w-full max-w-[280px] h-auto block"
+                      className="max-w-[300px] w-full h-auto block"
                     />
                   ) : (
-                    <div className="w-[280px] h-[280px] bg-muted/20 animate-pulse rounded" />
+                    <div className="w-[300px] aspect-square bg-muted/20 animate-pulse rounded" />
                   )}
                 </div>
                 {/* Scan indicator */}

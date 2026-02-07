@@ -150,11 +150,13 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       {textQrGenerated && qrCodeUrl && (
         <Card>
           <CardContent className="text-center">
-            <img
-              src={qrCodeUrl}
-              alt="QR Code with text content"
-              className="mx-auto rounded-lg shadow-sm mb-4"
-            />
+            <div className="max-w-[300px] mx-auto">
+              <img
+                src={qrCodeUrl}
+                alt="QR Code with text content"
+                className="w-full h-auto rounded-lg shadow-sm mb-4"
+              />
+            </div>
             <p className="text-sm text-muted-foreground">
               Scan QR code to read the text
             </p>

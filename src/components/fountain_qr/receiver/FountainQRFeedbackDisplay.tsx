@@ -367,12 +367,12 @@ export function FountainQRFeedbackDisplay({
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="relative mx-auto w-full max-w-sm overflow-hidden rounded-2xl border border-amber-500/40 bg-black/85 p-6 shadow-inner">
+            <div className="relative mx-auto overflow-hidden rounded-2xl border border-amber-500/40 bg-black/85 p-6 shadow-inner w-fit">
               <div className="absolute inset-3 rounded-2xl border border-amber-400/40" />
               <img
                 src={feedbackQRUrl}
                 alt="Feedback QR Code"
-                className="relative z-10 w-full h-auto"
+                className="relative z-10 max-w-[300px] w-full h-auto"
               />
             </div>
             <div className="space-y-3 text-sm">

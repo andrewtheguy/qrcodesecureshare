@@ -35,7 +35,7 @@ export async function generateFastQrPngBytes(
   await ensureFastQrWasmInit()
 
   const width = options.width ?? 300
-  const margin = options.margin ?? 4
+  const margin = options.margin ?? 1
   const normalizedWidth = Number(width)
   if (!Number.isFinite(normalizedWidth) || !Number.isInteger(normalizedWidth) || normalizedWidth <= 0) {
     throw new TypeError('Invalid width: expected a finite integer > 0')

@@ -61,50 +61,67 @@ fn generate_qr_png_internal(
         return Err("Invalid QR module size".to_string());
     }
 
-    // Fail fast if the full QR (including margins) cannot fit the requested output width.
+    // Compute pixel size per module, then size the canvas to fit exactly (no wasted padding).
     let pixel_size = width / module_count;
     if pixel_size == 0 {
         return Err("QR cannot fit in target width. Increase width or reduce margin.".to_string());
     }
 
-    let rendered_size = module_count
+    let actual_size = module_count
         .checked_mul(pixel_size)
         .ok_or_else(|| "Rendered QR size overflow".to_string())?;
-    if rendered_size > width {
-        return Err("Computed QR render size exceeds target width".to_string());
-    }
 
-    let offset = (width - rendered_size) / 2;
-    let render_end = offset
-        .checked_add(rendered_size)
-        .ok_or_else(|| "Render bounds overflow".to_string())?;
-    if render_end > width {
-        return Err("Computed render bounds exceed target canvas".to_string());
-    }
-
-    let mut pixels = vec![255u8; (width * width) as usize];
+    let actual_size_usize =
+        usize::try_from(actual_size).map_err(|_| "Rendered QR size overflow".to_string())?;
+    let pixel_count = actual_size_usize
+        .checked_mul(actual_size_usize)
+        .ok_or_else(|| "Rendered QR size overflow".to_string())?;
+    let mut pixels = vec![255u8; pixel_count];
+    let qr_size_usize =
+        usize::try_from(qr_size).map_err(|_| "QR module count overflow".to_string())?;
 
     for row in 0..qr_size {
+        let row_usize = usize::try_from(row)
+            .map_err(|_| "Computed module bounds exceed target canvas".to_string())?;
         for col in 0..qr_size {
-            let idx = (row * qr_size + col) as usize;
+            let col_usize = usize::try_from(col)
+                .map_err(|_| "Computed module bounds exceed target canvas".to_string())?;
+            let idx = row_usize
+                .checked_mul(qr_size_usize)
+                .and_then(|base| base.checked_add(col_usize))
+                .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
             let is_dark = qrcode.data[idx].value();
 
             if !is_dark {
                 continue;
             }
 
-            let start_x = offset + (margin + col) * pixel_size;
-            let start_y = offset + (margin + row) * pixel_size;
-            let end_x = start_x + pixel_size;
-            let end_y = start_y + pixel_size;
+            let start_x = margin
+                .checked_add(col)
+                .and_then(|value| value.checked_mul(pixel_size))
+                .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
+            let start_y = margin
+                .checked_add(row)
+                .and_then(|value| value.checked_mul(pixel_size))
+                .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
+            let end_x = start_x
+                .checked_add(pixel_size)
+                .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
+            let end_y = start_y
+                .checked_add(pixel_size)
+                .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
 
-            if end_x > width || end_y > width {
+            if end_x > actual_size || end_y > actual_size {
                 return Err("Computed module bounds exceed target canvas".to_string());
             }
 
             for y in start_y..end_y {
                 for x in start_x..end_x {
-                    let pixel_index = (y * width + x) as usize;
+                    let pixel_index = usize::try_from(y)
+                        .ok()
+                        .and_then(|y| y.checked_mul(actual_size_usize))
+                        .and_then(|base| usize::try_from(x).ok().and_then(|x| base.checked_add(x)))
+                        .ok_or_else(|| "Computed module bounds exceed target canvas".to_string())?;
                     pixels[pixel_index] = 0;
                 }
             }
@@ -112,7 +129,7 @@ fn generate_qr_png_internal(
     }
 
     let mut png_data = Vec::new();
-    let mut encoder = Encoder::new(&mut png_data, width, width);
+    let mut encoder = Encoder::new(&mut png_data, actual_size, actual_size);
     encoder.set_color(ColorType::Grayscale);
     encoder.set_depth(BitDepth::Eight);
 
@@ -165,7 +182,10 @@ mod tests {
         assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
 
         let (width, height) = decode_dimensions(&png);
-        assert_eq!((width, height), (300, 300));
+        // Output is pixel_size * module_count which is <= requested width
+        assert!(width <= 300, "Output width should not exceed requested width");
+        assert_eq!(width, height, "Output should be square");
+        assert!(width > 0, "Output should have non-zero dimensions");
     }
 
     #[test]
@@ -178,7 +198,9 @@ mod tests {
         assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
 
         let (width, height) = decode_dimensions(&png);
-        assert_eq!((width, height), (256, 256));
+        assert!(width <= 256, "Output width should not exceed requested width");
+        assert_eq!(width, height, "Output should be square");
+        assert!(width > 0, "Output should have non-zero dimensions");
     }
 
     #[test]

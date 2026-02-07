@@ -19,6 +19,7 @@ import QRWorker from '@/workers/qrGenerator.worker?worker'
 const DEFAULT_PART_CHECKSUM = '00000000'
 const AUTO_PAUSE_PADDING = 2
 const AUTO_PAUSE_MIN_MS = 120000
+const FOUNTAIN_QR_DISPLAY_SIZE = 400
 
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
@@ -521,7 +522,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
               const dataUrl = await generateQRInWorker(binaryData, {
-                  width: 400,
+                  width: FOUNTAIN_QR_DISPLAY_SIZE,
                   margin: currentQROptions.margin,
                   errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
                   color: {
@@ -580,7 +581,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
         const dataUrl = await generateQRInWorker(binaryData, {
-          width: 400,
+          width: FOUNTAIN_QR_DISPLAY_SIZE,
           margin: currentQROptions.margin,
           errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
           color: {
@@ -681,19 +682,17 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   return (
     <div className="space-y-4">
       {/* QR Code Display (styled to match receiver scanning palette) */}
-      <div className="relative mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-sky-500/40 bg-slate-950/90 p-6 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
+      <div className="relative mx-auto w-full max-w-[450px] overflow-hidden rounded-2xl border border-sky-500/40 bg-slate-950/90 p-6 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
         <div className="pointer-events-none absolute inset-4 rounded-2xl border border-sky-400/30" />
         <div className="relative flex items-center justify-center">
           {qrCodeUrl ? (
             <img
               src={qrCodeUrl}
               alt="Fountain coded chunk"
-              className="h-auto max-w-full drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
-              width="400"
-              height="400"
+              className="w-full h-auto drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
             />
           ) : (
-            <div className="flex h-[340px] w-[340px] flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
+            <div className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
               <p className="text-center text-sm font-medium">
                 {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
               </p>
