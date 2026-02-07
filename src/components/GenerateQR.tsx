@@ -1,10 +1,9 @@
 import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
-import { generateQRTextDataURL, generateQRBinaryDataURL } from '@/utils/qrUtils'
+import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { COMPRESSED_TEXT_MAGIC } from '@/constants'
 
 export interface GenerateQRRef {
   setTextFromScan: (text: string) => void
@@ -18,8 +17,6 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textQrGenerated, setTextQrGenerated] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [isOverLimit, setIsOverLimit] = useState(false)
-  const [isCompressedQr, setIsCompressedQr] = useState(false)
-  const [compressionError, setCompressionError] = useState<string | null>(null)
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
@@ -37,52 +34,13 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     }
   }, [])
 
-  const generateQRCodeBytes = useCallback(async (payload: Uint8Array) => {
-    try {
-      const dataUrl = await generateQRBinaryDataURL(payload, { width: QR_CODE_WIDTH })
-      setQrCodeUrl(dataUrl)
-    } catch (error) {
-      console.error('QR Code generation failed:', error)
-    }
-  }, [])
-
-  const compressText = async (text: string): Promise<Uint8Array> => {
-    if (typeof CompressionStream === 'undefined') {
-      throw new Error('Compression is not supported in this browser.')
-    }
-    const encoded = new TextEncoder().encode(text)
-    const stream = new Blob([encoded]).stream().pipeThrough(new CompressionStream('gzip'))
-    const buffer = await new Response(stream).arrayBuffer()
-    return new Uint8Array(buffer)
-  }
-
-  const generateCompressedQR = async (text: string) => {
-    const trimmed = text.trim()
-    if (!trimmed) return
-    try {
-      setCompressionError(null)
-      const compressed = await compressText(trimmed)
-      const magicBytes = new TextEncoder().encode(COMPRESSED_TEXT_MAGIC)
-      const payload = new Uint8Array(magicBytes.length + compressed.length)
-      payload.set(magicBytes, 0)
-      payload.set(compressed, magicBytes.length)
-      await generateQRCodeBytes(payload)
-      setTextQrGenerated(true)
-      setIsCompressedQr(true)
-      setIsOverLimit(false)
-    } catch (error) {
-      setCompressionError(error instanceof Error ? error.message : 'Failed to compress text.')
-    }
-  }
-
   const generatePlainQROverride = async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed) return
+
     await generateQRCode(trimmed)
     setTextQrGenerated(true)
-    setIsCompressedQr(false)
     setIsOverLimit(false)
-    setCompressionError(null)
   }
 
   const generateTextQR = useCallback((text: string) => {
@@ -90,8 +48,6 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     if (!trimmed) {
       setTextQrGenerated(false)
       setIsOverLimit(false)
-      setIsCompressedQr(false)
-      setCompressionError(null)
       setQrCodeUrl('')
       return
     }
@@ -99,15 +55,11 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     if (trimmed.length > MAX_QR_TEXT_LENGTH) {
       setIsOverLimit(true)
       setTextQrGenerated(false)
-      setIsCompressedQr(false)
-      setCompressionError(null)
       setQrCodeUrl('')
       return
     }
 
     setIsOverLimit(false)
-    setIsCompressedQr(false)
-    setCompressionError(null)
     generateQRCode(trimmed)
     setTextQrGenerated(true)
   }, [generateQRCode])
@@ -121,7 +73,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       <Card>
         <CardHeader className="text-center">
           <CardTitle>Generate QR Code</CardTitle>
-          <CardDescription>Turn text into a scannable QR code, with optional compression for large content.</CardDescription>
+          <CardDescription>Turn text into a scannable QR code.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4 px-2">
           <div className="space-y-2">
@@ -163,7 +115,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                   📏 Text is too long for a single QR code ({textInput.length} characters)
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Switch to compressed QR mode (binary payload) to maximize what can fit in one code, or generate a large QR anyway.
+                  You can still try generating it as a single QR code.
                 </p>
                 <div className="flex gap-3 justify-center flex-wrap pt-2">
                   <Button
@@ -172,22 +124,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                   >
                     Generate QR Anyway
                   </Button>
-                  <Button
-                    onClick={() => generateCompressedQR(textInput)}
-                  >
-                    Generate Compressed QR
-                  </Button>
                 </div>
-                {compressionError && (
-                  <p className="text-xs text-red-600">{compressionError}</p>
-                )}
-              </AlertDescription>
-            </Alert>
-          )}
-          {isCompressedQr && !isOverLimit && (
-            <Alert>
-              <AlertDescription className="text-sm text-muted-foreground">
-                ✅ Compressed QR mode active. Scan with this app to automatically decompress the text.
               </AlertDescription>
             </Alert>
           )}

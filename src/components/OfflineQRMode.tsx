@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { FountainQRSender } from './fountain_qr/FountainQRSender'
-import { generateQRBinaryDataURL } from '@/utils/qrUtils'
+import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
@@ -122,8 +122,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
           }
           if (cancelled) return
-          const utf8Bytes = new TextEncoder().encode(OFFLINE_METADATA_MAGIC + JSON.stringify(meta))
-          const qrUrl = await generateQRBinaryDataURL(utf8Bytes, {
+          const qrUrl = await generateQRTextDataURL(OFFLINE_METADATA_MAGIC + JSON.stringify(meta), {
             width: 400,
             errorCorrectionLevel: 'M'
           })

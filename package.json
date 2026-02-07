@@ -7,7 +7,7 @@
     "dev": "vite",
     "predev": "npm run postinstall",
     "build:js": "tsc -b && vite build",
-    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
+    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web && cd ../fast-qr-wasm && wasm-pack build --release --target web",
     "build": "npm run build:wasm && npm run build:js",
     "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
