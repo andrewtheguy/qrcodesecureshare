@@ -475,9 +475,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                       <Zap className="w-6 h-6 fill-current" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-lg">1 MB</p>
-                        <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold">
+                      <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
+                        <p className="font-bold text-lg leading-none sm:leading-normal">1 MB</p>
+                        <Badge variant="secondary" className="mb-1 w-fit bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold sm:mb-0">
                           Recommended
                         </Badge>
                       </div>
