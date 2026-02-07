@@ -2,8 +2,14 @@ import initFastQrWasm, { generate_qr_png, generate_qr_svg } from '../../rust/fas
 
 export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
 
-export interface FastQrGenerateOptions {
+export interface FastQrPngGenerateOptions {
   width?: number
+  margin?: number
+  errorCorrectionLevel?: FastQrErrorCorrectionLevel
+  forceByteMode?: boolean
+}
+
+export interface FastQrSvgGenerateOptions {
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
   forceByteMode?: boolean
@@ -12,7 +18,7 @@ export interface FastQrGenerateOptions {
 let wasmInitialized = false
 let wasmInitPromise: Promise<void> | null = null
 
-function normalizeGenerateOptions(options: FastQrGenerateOptions = {}) {
+function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
   const width = options.width ?? 300
   const margin = options.margin ?? 1
   const normalizedWidth = Number(width)
@@ -27,6 +33,20 @@ function normalizeGenerateOptions(options: FastQrGenerateOptions = {}) {
 
   return {
     normalizedWidth,
+    normalizedMargin,
+    errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
+    forceByteMode: options.forceByteMode ?? false,
+  }
+}
+
+function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
+  const margin = options.margin ?? 1
+  const normalizedMargin = Number(margin)
+  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
+    throw new TypeError('Invalid margin: expected a finite integer >= 0')
+  }
+
+  return {
     normalizedMargin,
     errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
     forceByteMode: options.forceByteMode ?? false,
@@ -51,11 +71,11 @@ export async function ensureFastQrWasmInit(): Promise<void> {
 
 export async function generateFastQrPngBytes(
   payload: Uint8Array,
-  options: FastQrGenerateOptions = {}
+  options: FastQrPngGenerateOptions = {}
 ): Promise<Uint8Array> {
   await ensureFastQrWasmInit()
 
-  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizeGenerateOptions(options)
+  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizePngGenerateOptions(options)
 
   const pngBytes = generate_qr_png(
     payload,
@@ -70,15 +90,14 @@ export async function generateFastQrPngBytes(
 
 export async function generateFastQrSvgString(
   payload: Uint8Array,
-  options: FastQrGenerateOptions = {}
+  options: FastQrSvgGenerateOptions = {}
 ): Promise<string> {
   await ensureFastQrWasmInit()
 
-  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizeGenerateOptions(options)
+  const { normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizeSvgGenerateOptions(options)
 
   return generate_qr_svg(
     payload,
-    normalizedWidth,
     normalizedMargin,
     errorCorrectionLevel,
     forceByteMode

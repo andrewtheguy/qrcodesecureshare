@@ -11,7 +11,6 @@ function svgStringToDataURL(svg: string): string {
 export async function generateQRTextDataURL(
   payload: string,
   options?: {
-    width?: number
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
@@ -20,7 +19,6 @@ export async function generateQRTextDataURL(
     const utf8Bytes = new TextEncoder().encode(payload)
 
     const svg = await generateFastQrSvgString(utf8Bytes, {
-      width: options?.width || 300,
       margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
       forceByteMode: false,
@@ -37,7 +35,6 @@ export async function generateQRTextDataURL(
 export const generateNonDataQR = async (
   payload: object,
   opts?: {
-    width?: number
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
@@ -49,7 +46,6 @@ export const generateNonDataQR = async (
     const options = opts || NON_DATA_QR_OPTIONS
 
     const svg = await generateFastQrSvgString(jsonBytes, {
-      width: options.width || 300,
       margin: options.margin ?? 1,
       errorCorrectionLevel: options.errorCorrectionLevel || 'M',
       forceByteMode: false,

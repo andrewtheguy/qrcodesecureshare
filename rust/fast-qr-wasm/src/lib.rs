@@ -148,15 +148,10 @@ fn generate_qr_png_internal(
 
 fn generate_qr_svg_internal(
     data: &[u8],
-    width: u32,
     margin: u32,
     ecl: &str,
     force_byte_mode: bool,
 ) -> Result<String, String> {
-    if width == 0 {
-        return Err("Width must be greater than 0".to_string());
-    }
-
     let qrcode = build_qrcode(data, ecl, force_byte_mode)?;
     let qr_size = qrcode.size as u32;
     let margin_modules = margin
@@ -168,11 +163,6 @@ fn generate_qr_svg_internal(
 
     if module_count == 0 {
         return Err("Invalid QR module size".to_string());
-    }
-
-    let pixel_size = width / module_count;
-    if pixel_size == 0 {
-        return Err("QR cannot fit in target width. Increase width or reduce margin.".to_string());
     }
 
     let margin_usize = usize::try_from(margin).map_err(|_| "Margin is too large".to_string())?;
@@ -204,19 +194,17 @@ pub fn generate_qr_png(
 /// Generate an SVG QR image from raw bytes.
 ///
 /// - `data`: input payload bytes
-/// - `width`: target image width in pixels
 /// - `margin`: quiet zone in module units
 /// - `ecl`: one of "L", "M", "Q", "H"
 /// - `force_byte_mode`: when true, forces QR Byte mode for binary-safe payload encoding
 #[wasm_bindgen]
 pub fn generate_qr_svg(
     data: &[u8],
-    width: u32,
     margin: u32,
     ecl: &str,
     force_byte_mode: bool,
 ) -> Result<String, JsValue> {
-    generate_qr_svg_internal(data, width, margin, ecl, force_byte_mode)
+    generate_qr_svg_internal(data, margin, ecl, force_byte_mode)
         .map_err(|message| JsValue::from_str(&message))
 }
 
@@ -545,7 +533,7 @@ mod tests {
 
     #[test]
     fn generates_valid_svg_for_text_payload() {
-        let svg = generate_qr_svg_internal(b"https://example.com", 300, 4, "M", false)
+        let svg = generate_qr_svg_internal(b"https://example.com", 4, "M", false)
             .expect("SVG generation should succeed");
         assert_valid_svg(&svg);
     }
@@ -553,16 +541,16 @@ mod tests {
     #[test]
     fn generates_valid_svg_for_binary_payload_in_byte_mode() {
         let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
-        let svg = generate_qr_svg_internal(&binary_payload, 256, 2, "Q", true)
+        let svg = generate_qr_svg_internal(&binary_payload, 2, "Q", true)
             .expect("Binary SVG generation should succeed");
         assert_valid_svg(&svg);
     }
 
     #[test]
     fn svg_margin_changes_viewbox_size() {
-        let no_margin = generate_qr_svg_internal(b"margin-check", 300, 0, "M", false)
+        let no_margin = generate_qr_svg_internal(b"margin-check", 0, "M", false)
             .expect("SVG generation without margin should succeed");
-        let with_margin = generate_qr_svg_internal(b"margin-check", 300, 4, "M", false)
+        let with_margin = generate_qr_svg_internal(b"margin-check", 4, "M", false)
             .expect("SVG generation with margin should succeed");
 
         assert!(
@@ -587,7 +575,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_ecl_value_for_svg() {
-        let err = generate_qr_svg_internal(b"hello", 256, 4, "INVALID", false)
+        let err = generate_qr_svg_internal(b"hello", 4, "INVALID", false)
             .expect_err("invalid ECL should fail");
         assert!(err.contains("Invalid error correction level"));
     }
@@ -601,14 +589,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_when_svg_cannot_fit_target_width() {
-        // Version 1 QR + default quiet zone cannot fit into width 8.
-        let err = generate_qr_svg_internal(b"a", 8, 4, "M", false)
-            .expect_err("width too small should fail");
-        assert!(err.contains("QR cannot fit in target width"));
-    }
-
-    #[test]
     fn rejects_margin_overflow() {
         let err = generate_qr_png_internal(b"a", 300, u32::MAX, "M", false)
             .expect_err("margin overflow should fail");
@@ -617,15 +597,8 @@ mod tests {
 
     #[test]
     fn rejects_margin_overflow_for_svg() {
-        let err = generate_qr_svg_internal(b"a", 300, u32::MAX, "M", false)
+        let err = generate_qr_svg_internal(b"a", u32::MAX, "M", false)
             .expect_err("margin overflow should fail");
         assert!(err.contains("Margin is too large"));
-    }
-
-    #[test]
-    fn rejects_zero_width_for_svg() {
-        let err =
-            generate_qr_svg_internal(b"hello", 0, 4, "M", false).expect_err("width=0 should fail");
-        assert!(err.contains("Width must be greater than 0"));
     }
 }
