@@ -35,6 +35,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
+const ADVANCED_PART_SIZES_ACCORDION_VALUE = 'advanced-part-sizes'
 
 
 interface OfflineQRModeProps {
@@ -80,8 +81,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
   const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('LARGE')
+  const [partSizeAccordionValue, setPartSizeAccordionValue] = useState<string>('')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
+  const isCustomPartSizeSelected = partSizeOption !== 'LARGE'
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
@@ -172,6 +175,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     if (mode === 'fountain-feedback') {
       setFeedbackEnabled(true)
       setPartSizeOption('LARGE')
+      setPartSizeAccordionValue('')
       // Go to part size configuration step instead of metadata
       setStep('partSize')
     } else if (mode === 'fountain-simple') {
@@ -193,6 +197,18 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setSenderRemountKey(id => id + 1)
   }
 
+  const handlePartSizeOptionChange = (value: PartSizeOption) => {
+    setPartSizeOption(value)
+    setPartSizeAccordionValue(value === 'LARGE' ? '' : ADVANCED_PART_SIZES_ACCORDION_VALUE)
+  }
+
+  const handlePartSizeAccordionChange = (value: string) => {
+    if (!value && isCustomPartSizeSelected) {
+      return
+    }
+    setPartSizeAccordionValue(value)
+  }
+
   const handleResetSession = () => {
     setTransferMode(null)
     setStep('mode')
@@ -204,6 +220,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     setCurrentSessionId(0)
     setModeSizeError('')
     setFeedbackEnabled(true)
+    setPartSizeOption('LARGE')
+    setPartSizeAccordionValue('')
     if (onReset) onReset()
   }
 
@@ -443,7 +461,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             
             <RadioGroup 
               value={partSizeOption} 
-              onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} 
+              onValueChange={handlePartSizeOptionChange} 
               className="space-y-3"
             >
               <div className="relative">
@@ -478,8 +496,14 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                 </Label>
               </div>
 
-              <Accordion type="single" collapsible className="w-full">
-                <AccordionItem value="advanced-part-sizes" className="border-none">
+              <Accordion
+                type="single"
+                collapsible
+                value={partSizeAccordionValue}
+                onValueChange={handlePartSizeAccordionChange}
+                className="w-full"
+              >
+                <AccordionItem value={ADVANCED_PART_SIZES_ACCORDION_VALUE} className="border-none">
                   <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline flex justify-center gap-2">
                     <Settings className="w-4 h-4" />
                     Custom Part Sizes
