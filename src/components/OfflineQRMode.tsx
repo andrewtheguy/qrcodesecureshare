@@ -411,13 +411,14 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // STEP 2: PART SIZE CONFIG
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
-    const isLargeFile = file && file.size > 1024 * 1024
+    const isLargeFile = file.size > 1024 * 1024
     const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
+    const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`
 
     return (
       <Card>
-        <CardHeader className="pb-4">
-          <div className="flex items-center gap-3 mb-2">
+        <CardHeader className="pb-0">
+          <div className="flex items-center gap-3">
             <div className="p-2 rounded-full bg-primary/10 text-primary">
               <Settings className="w-5 h-5" />
             </div>
@@ -428,6 +429,13 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+            <FileDigit className="w-4 h-4 shrink-0" />
+            <span className="font-medium break-all">{file.name}</span>
+            <span className="opacity-50">|</span>
+            <span className="shrink-0">{originalFileSizeLabel}</span>
+          </div>
+
           <div className="space-y-3">
             <Label className="text-base font-medium">Part Size</Label>
             <p className="text-sm text-muted-foreground">

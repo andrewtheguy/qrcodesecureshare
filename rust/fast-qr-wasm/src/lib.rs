@@ -3,50 +3,40 @@ use fast_qr::{ECL, Mode, QRBuilder};
 use png::{BitDepth, ColorType, Encoder};
 use wasm_bindgen::prelude::*;
 
-fn parse_ecl(ecl: &str) -> Result<ECL, JsValue> {
+fn parse_ecl(ecl: &str) -> Result<ECL, String> {
     match ecl.trim().to_ascii_uppercase().as_str() {
         "L" => Ok(ECL::L),
         "M" => Ok(ECL::M),
         "Q" => Ok(ECL::Q),
         "H" => Ok(ECL::H),
-        _ => Err(JsValue::from_str(
-            "Invalid error correction level. Expected one of: L, M, Q, H",
-        )),
+        _ => Err("Invalid error correction level. Expected one of: L, M, Q, H".to_string()),
     }
 }
 
-fn map_qr_error(error: QRCodeError) -> JsValue {
+fn map_qr_error(error: QRCodeError) -> String {
     match error {
-        QRCodeError::EncodedData => JsValue::from_str(
+        QRCodeError::EncodedData => String::from(
             "Data too big to be encoded in a single QR code at the selected settings",
         ),
         QRCodeError::SpecifiedVersion => {
-            JsValue::from_str("Specified QR version is too low for the provided data")
+            String::from("Specified QR version is too low for the provided data")
         }
     }
 }
 
-fn map_png_error(error: png::EncodingError) -> JsValue {
-    JsValue::from_str(&format!("Failed to encode QR PNG: {error}"))
+fn map_png_error(error: png::EncodingError) -> String {
+    format!("Failed to encode QR PNG: {error}")
 }
 
-/// Generate a PNG QR image from raw bytes.
-///
-/// - `data`: input payload bytes
-/// - `width`: target image width in pixels
-/// - `margin`: quiet zone in module units
-/// - `ecl`: one of "L", "M", "Q", "H"
-/// - `force_byte_mode`: when true, forces QR Byte mode for binary-safe payload encoding
-#[wasm_bindgen]
-pub fn generate_qr_png(
+fn generate_qr_png_internal(
     data: &[u8],
     width: u32,
     margin: u32,
     ecl: &str,
     force_byte_mode: bool,
-) -> Result<Vec<u8>, JsValue> {
+) -> Result<Vec<u8>, String> {
     if width == 0 {
-        return Err(JsValue::from_str("Width must be greater than 0"));
+        return Err("Width must be greater than 0".to_string());
     }
 
     let parsed_ecl = parse_ecl(ecl)?;
@@ -62,40 +52,34 @@ pub fn generate_qr_png(
     let qr_size = qrcode.size as u32;
     let margin_modules = margin
         .checked_mul(2)
-        .ok_or_else(|| JsValue::from_str("Margin is too large"))?;
+        .ok_or_else(|| "Margin is too large".to_string())?;
     let module_count = qr_size
         .checked_add(margin_modules)
-        .ok_or_else(|| JsValue::from_str("QR module count overflow"))?;
+        .ok_or_else(|| "QR module count overflow".to_string())?;
 
     if module_count == 0 {
-        return Err(JsValue::from_str("Invalid QR module size"));
+        return Err("Invalid QR module size".to_string());
     }
 
     // Fail fast if the full QR (including margins) cannot fit the requested output width.
     let pixel_size = width / module_count;
     if pixel_size == 0 {
-        return Err(JsValue::from_str(
-            "QR cannot fit in target width. Increase width or reduce margin.",
-        ));
+        return Err("QR cannot fit in target width. Increase width or reduce margin.".to_string());
     }
 
     let rendered_size = module_count
         .checked_mul(pixel_size)
-        .ok_or_else(|| JsValue::from_str("Rendered QR size overflow"))?;
+        .ok_or_else(|| "Rendered QR size overflow".to_string())?;
     if rendered_size > width {
-        return Err(JsValue::from_str(
-            "Computed QR render size exceeds target width",
-        ));
+        return Err("Computed QR render size exceeds target width".to_string());
     }
 
     let offset = (width - rendered_size) / 2;
     let render_end = offset
         .checked_add(rendered_size)
-        .ok_or_else(|| JsValue::from_str("Render bounds overflow"))?;
+        .ok_or_else(|| "Render bounds overflow".to_string())?;
     if render_end > width {
-        return Err(JsValue::from_str(
-            "Computed render bounds exceed target canvas",
-        ));
+        return Err("Computed render bounds exceed target canvas".to_string());
     }
 
     let mut pixels = vec![255u8; (width * width) as usize];
@@ -115,9 +99,7 @@ pub fn generate_qr_png(
             let end_y = start_y + pixel_size;
 
             if end_x > width || end_y > width {
-                return Err(JsValue::from_str(
-                    "Computed module bounds exceed target canvas",
-                ));
+                return Err("Computed module bounds exceed target canvas".to_string());
             }
 
             for y in start_y..end_y {
@@ -139,4 +121,92 @@ pub fn generate_qr_png(
 
     drop(writer);
     Ok(png_data)
+}
+
+/// Generate a PNG QR image from raw bytes.
+///
+/// - `data`: input payload bytes
+/// - `width`: target image width in pixels
+/// - `margin`: quiet zone in module units
+/// - `ecl`: one of "L", "M", "Q", "H"
+/// - `force_byte_mode`: when true, forces QR Byte mode for binary-safe payload encoding
+#[wasm_bindgen]
+pub fn generate_qr_png(
+    data: &[u8],
+    width: u32,
+    margin: u32,
+    ecl: &str,
+    force_byte_mode: bool,
+) -> Result<Vec<u8>, JsValue> {
+    generate_qr_png_internal(data, width, margin, ecl, force_byte_mode)
+        .map_err(|message| JsValue::from_str(&message))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
+
+    fn decode_dimensions(png_bytes: &[u8]) -> (u32, u32) {
+        let decoder = png::Decoder::new(Cursor::new(png_bytes));
+        let reader = decoder.read_info().expect("PNG should decode");
+        let info = reader.info();
+        (info.width, info.height)
+    }
+
+    #[test]
+    fn generates_valid_png_for_text_payload() {
+        let png = generate_qr_png_internal(b"https://example.com", 300, 4, "M", false)
+            .expect("QR generation should succeed");
+
+        assert!(png.len() > 8, "PNG should not be empty");
+        assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
+
+        let (width, height) = decode_dimensions(&png);
+        assert_eq!((width, height), (300, 300));
+    }
+
+    #[test]
+    fn generates_valid_png_for_binary_payload_in_byte_mode() {
+        let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
+        let png = generate_qr_png_internal(&binary_payload, 256, 2, "Q", true)
+            .expect("Binary QR generation should succeed");
+
+        assert!(png.len() > 8, "PNG should not be empty");
+        assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
+
+        let (width, height) = decode_dimensions(&png);
+        assert_eq!((width, height), (256, 256));
+    }
+
+    #[test]
+    fn rejects_zero_width() {
+        let err =
+            generate_qr_png_internal(b"hello", 0, 4, "M", false).expect_err("width=0 should fail");
+        assert!(err.contains("Width must be greater than 0"));
+    }
+
+    #[test]
+    fn rejects_invalid_ecl_value() {
+        let err = generate_qr_png_internal(b"hello", 256, 4, "INVALID", false)
+            .expect_err("invalid ECL should fail");
+        assert!(err.contains("Invalid error correction level"));
+    }
+
+    #[test]
+    fn rejects_when_qr_cannot_fit_target_width() {
+        // Version 1 QR + default quiet zone cannot fit into width 8.
+        let err = generate_qr_png_internal(b"a", 8, 4, "M", false)
+            .expect_err("width too small should fail");
+        assert!(err.contains("QR cannot fit in target width"));
+    }
+
+    #[test]
+    fn rejects_margin_overflow() {
+        let err = generate_qr_png_internal(b"a", 300, u32::MAX, "M", false)
+            .expect_err("margin overflow should fail");
+        assert!(err.contains("Margin is too large"));
+    }
 }
