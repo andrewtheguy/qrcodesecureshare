@@ -36,13 +36,23 @@ export async function generateFastQrPngBytes(
 
   const width = options.width ?? 300
   const margin = options.margin ?? 4
+  const normalizedWidth = Number(width)
+  if (!Number.isFinite(normalizedWidth) || !Number.isInteger(normalizedWidth) || normalizedWidth <= 0) {
+    throw new TypeError('Invalid width: expected a finite integer > 0')
+  }
+
+  const normalizedMargin = Number(margin)
+  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
+    throw new TypeError('Invalid margin: expected a finite integer >= 0')
+  }
+
   const errorCorrectionLevel = options.errorCorrectionLevel ?? 'M'
   const forceByteMode = options.forceByteMode ?? false
 
   const pngBytes = generate_qr_png(
     payload,
-    width,
-    margin,
+    normalizedWidth,
+    normalizedMargin,
     errorCorrectionLevel,
     forceByteMode
   )

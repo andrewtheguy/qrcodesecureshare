@@ -16,21 +16,27 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
+  const [qrError, setQrError] = useState<string | null>(null)
   const [isOverLimit, setIsOverLimit] = useState(false)
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
       setTextInput(text)
-      generateTextQR(text)
+      void generateTextQR(text)
     }
   }))
 
   const generateQRCode = useCallback(async (payload: string) => {
+    setQrError(null)
     try {
       const dataUrl = await generateQRTextDataURL(payload, { width: QR_CODE_WIDTH })
       setQrCodeUrl(dataUrl)
+      return true
     } catch (error) {
+      setQrCodeUrl('')
+      setQrError('Failed to generate QR code. Please try again.')
       console.error('QR Code generation failed:', error)
+      return false
     }
   }, [])
 
@@ -38,17 +44,18 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     const trimmed = text.trim()
     if (!trimmed) return
 
-    await generateQRCode(trimmed)
-    setTextQrGenerated(true)
+    const success = await generateQRCode(trimmed)
+    setTextQrGenerated(success)
     setIsOverLimit(false)
   }
 
-  const generateTextQR = useCallback((text: string) => {
+  const generateTextQR = useCallback(async (text: string) => {
     const trimmed = text.trim()
     if (!trimmed) {
       setTextQrGenerated(false)
       setIsOverLimit(false)
       setQrCodeUrl('')
+      setQrError(null)
       return
     }
 
@@ -56,16 +63,17 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       setIsOverLimit(true)
       setTextQrGenerated(false)
       setQrCodeUrl('')
+      setQrError(null)
       return
     }
 
     setIsOverLimit(false)
-    generateQRCode(trimmed)
-    setTextQrGenerated(true)
+    const success = await generateQRCode(trimmed)
+    setTextQrGenerated(success)
   }, [generateQRCode])
 
   useEffect(() => {
-    generateTextQR(textInput)
+    void generateTextQR(textInput)
   }, [textInput, generateTextQR])
 
   return (
@@ -128,6 +136,14 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
               </AlertDescription>
             </Alert>
           )}
+
+          {qrError && (
+            <Alert>
+              <AlertDescription className="text-sm text-red-600">
+                {qrError}
+              </AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
@@ -148,5 +164,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     </div>
   )
 })
+
+GenerateQR.displayName = 'GenerateQR'
 
 export default GenerateQR
