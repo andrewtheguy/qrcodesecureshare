@@ -8,7 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 wasm-bindgen = "0.2"
-fast_qr = "0.13.1"
+fast_qr = { version = "0.13.1", features = ["svg"] }
 png = "0.17"
 
 [profile.release]

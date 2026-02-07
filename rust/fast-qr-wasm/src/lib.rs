@@ -1,5 +1,7 @@
+use fast_qr::convert::svg::SvgBuilder;
+use fast_qr::convert::Builder;
 use fast_qr::qr::QRCodeError;
-use fast_qr::{ECL, Mode, QRBuilder};
+use fast_qr::{ECL, Mode, QRBuilder, QRCode};
 use png::{BitDepth, ColorType, Encoder};
 use wasm_bindgen::prelude::*;
 
@@ -28,6 +30,19 @@ fn map_png_error(error: png::EncodingError) -> String {
     format!("Failed to encode QR PNG: {error}")
 }
 
+fn build_qrcode(data: &[u8], ecl: &str, force_byte_mode: bool) -> Result<QRCode, String> {
+    let parsed_ecl = parse_ecl(ecl)?;
+
+    let mut qr_builder = QRBuilder::new(data.to_vec());
+    qr_builder.ecl(parsed_ecl);
+
+    if force_byte_mode {
+        qr_builder.mode(Mode::Byte);
+    }
+
+    qr_builder.build().map_err(map_qr_error)
+}
+
 fn generate_qr_png_internal(
     data: &[u8],
     width: u32,
@@ -39,16 +54,7 @@ fn generate_qr_png_internal(
         return Err("Width must be greater than 0".to_string());
     }
 
-    let parsed_ecl = parse_ecl(ecl)?;
-
-    let mut qr_builder = QRBuilder::new(data.to_vec());
-    qr_builder.ecl(parsed_ecl);
-
-    if force_byte_mode {
-        qr_builder.mode(Mode::Byte);
-    }
-
-    let qrcode = qr_builder.build().map_err(map_qr_error)?;
+    let qrcode = build_qrcode(data, ecl, force_byte_mode)?;
     let qr_size = qrcode.size as u32;
     let margin_modules = margin
         .checked_mul(2)
@@ -140,6 +146,51 @@ fn generate_qr_png_internal(
     Ok(png_data)
 }
 
+fn generate_qr_svg_internal(
+    data: &[u8],
+    width: u32,
+    margin: u32,
+    ecl: &str,
+    force_byte_mode: bool,
+) -> Result<String, String> {
+    if width == 0 {
+        return Err("Width must be greater than 0".to_string());
+    }
+
+    let qrcode = build_qrcode(data, ecl, force_byte_mode)?;
+    let qr_size = qrcode.size as u32;
+    let margin_modules = margin
+        .checked_mul(2)
+        .ok_or_else(|| "Margin is too large".to_string())?;
+    let module_count = qr_size
+        .checked_add(margin_modules)
+        .ok_or_else(|| "QR module count overflow".to_string())?;
+
+    if module_count == 0 {
+        return Err("Invalid QR module size".to_string());
+    }
+
+    let pixel_size = width / module_count;
+    if pixel_size == 0 {
+        return Err("QR cannot fit in target width. Increase width or reduce margin.".to_string());
+    }
+
+    let actual_size = module_count
+        .checked_mul(pixel_size)
+        .ok_or_else(|| "Rendered QR size overflow".to_string())?;
+    let margin_usize = usize::try_from(margin).map_err(|_| "Margin is too large".to_string())?;
+
+    let mut svg_builder = SvgBuilder::default();
+    svg_builder.margin(margin_usize);
+    let svg = svg_builder.to_str(&qrcode);
+
+    Ok(svg.replacen(
+        "<svg ",
+        format!(r#"<svg width="{actual_size}" height="{actual_size}" "#).as_str(),
+        1,
+    ))
+}
+
 /// Generate a PNG QR image from raw bytes.
 ///
 /// - `data`: input payload bytes
@@ -159,6 +210,25 @@ pub fn generate_qr_png(
         .map_err(|message| JsValue::from_str(&message))
 }
 
+/// Generate an SVG QR image from raw bytes.
+///
+/// - `data`: input payload bytes
+/// - `width`: target image width in pixels
+/// - `margin`: quiet zone in module units
+/// - `ecl`: one of "L", "M", "Q", "H"
+/// - `force_byte_mode`: when true, forces QR Byte mode for binary-safe payload encoding
+#[wasm_bindgen]
+pub fn generate_qr_svg(
+    data: &[u8],
+    width: u32,
+    margin: u32,
+    ecl: &str,
+    force_byte_mode: bool,
+) -> Result<String, JsValue> {
+    generate_qr_svg_internal(data, width, margin, ecl, force_byte_mode)
+        .map_err(|message| JsValue::from_str(&message))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -171,6 +241,21 @@ mod tests {
         let reader = decoder.read_info().expect("PNG should decode");
         let info = reader.info();
         (info.width, info.height)
+    }
+
+    fn svg_dimension(svg: &str, attr: &str) -> u32 {
+        let marker = format!(r#"{attr}=""#);
+        let start = svg
+            .find(&marker)
+            .unwrap_or_else(|| panic!("SVG is missing `{attr}` attribute"))
+            + marker.len();
+        let rest = &svg[start..];
+        let end = rest
+            .find('"')
+            .unwrap_or_else(|| panic!("SVG has malformed `{attr}` attribute"));
+        rest[..end]
+            .parse::<u32>()
+            .unwrap_or_else(|_| panic!("`{attr}` attribute is not an integer"))
     }
 
     #[test]
@@ -204,6 +289,37 @@ mod tests {
     }
 
     #[test]
+    fn generates_valid_svg_for_text_payload() {
+        let svg = generate_qr_svg_internal(b"https://example.com", 300, 4, "M", false)
+            .expect("SVG generation should succeed");
+
+        assert!(svg.starts_with("<svg "), "SVG should begin with <svg");
+        assert!(
+            svg.contains(r#"xmlns="http://www.w3.org/2000/svg""#),
+            "SVG namespace should be present"
+        );
+
+        let width = svg_dimension(&svg, "width");
+        let height = svg_dimension(&svg, "height");
+        assert!(width <= 300, "Output width should not exceed requested width");
+        assert_eq!(width, height, "Output should be square");
+        assert!(width > 0, "Output should have non-zero dimensions");
+    }
+
+    #[test]
+    fn generates_valid_svg_for_binary_payload_in_byte_mode() {
+        let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
+        let svg = generate_qr_svg_internal(&binary_payload, 256, 2, "Q", true)
+            .expect("Binary SVG generation should succeed");
+
+        let width = svg_dimension(&svg, "width");
+        let height = svg_dimension(&svg, "height");
+        assert!(width <= 256, "Output width should not exceed requested width");
+        assert_eq!(width, height, "Output should be square");
+        assert!(width > 0, "Output should have non-zero dimensions");
+    }
+
+    #[test]
     fn rejects_zero_width() {
         let err =
             generate_qr_png_internal(b"hello", 0, 4, "M", false).expect_err("width=0 should fail");
@@ -218,9 +334,24 @@ mod tests {
     }
 
     #[test]
+    fn rejects_invalid_ecl_value_for_svg() {
+        let err = generate_qr_svg_internal(b"hello", 256, 4, "INVALID", false)
+            .expect_err("invalid ECL should fail");
+        assert!(err.contains("Invalid error correction level"));
+    }
+
+    #[test]
     fn rejects_when_qr_cannot_fit_target_width() {
         // Version 1 QR + default quiet zone cannot fit into width 8.
         let err = generate_qr_png_internal(b"a", 8, 4, "M", false)
+            .expect_err("width too small should fail");
+        assert!(err.contains("QR cannot fit in target width"));
+    }
+
+    #[test]
+    fn rejects_when_svg_cannot_fit_target_width() {
+        // Version 1 QR + default quiet zone cannot fit into width 8.
+        let err = generate_qr_svg_internal(b"a", 8, 4, "M", false)
             .expect_err("width too small should fail");
         assert!(err.contains("QR cannot fit in target width"));
     }
@@ -230,5 +361,19 @@ mod tests {
         let err = generate_qr_png_internal(b"a", 300, u32::MAX, "M", false)
             .expect_err("margin overflow should fail");
         assert!(err.contains("Margin is too large"));
+    }
+
+    #[test]
+    fn rejects_margin_overflow_for_svg() {
+        let err = generate_qr_svg_internal(b"a", 300, u32::MAX, "M", false)
+            .expect_err("margin overflow should fail");
+        assert!(err.contains("Margin is too large"));
+    }
+
+    #[test]
+    fn rejects_zero_width_for_svg() {
+        let err =
+            generate_qr_svg_internal(b"hello", 0, 4, "M", false).expect_err("width=0 should fail");
+        assert!(err.contains("Width must be greater than 0"));
     }
 }
