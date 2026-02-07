@@ -28,8 +28,11 @@ import {
   QrCode,
   FileDigit,
   TriangleAlert,
-  Play
+  Play,
+  Zap,
+  CheckCircle2
 } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 
@@ -407,7 +410,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // STEP 2: PART SIZE CONFIG
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
-    const defaultLabel = '1024 KB (1 MB)'
     const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`
 
     return (
@@ -431,31 +433,56 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <span className="shrink-0">{originalFileSizeLabel}</span>
           </div>
 
-          <div className="space-y-3">
-            <Label className="text-base font-medium">Part Size</Label>
-            <p className="text-sm text-muted-foreground">
-              Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel}.</strong>
-            </p>
+          <div className="space-y-4">
+            <div>
+              <Label className="text-base font-medium">Part Size</Label>
+              <p className="text-sm text-muted-foreground mt-1">
+                Optimize how your file is split for transfer. Smaller parts are more reliable for older cameras or slow devices.
+              </p>
+            </div>
             
             <RadioGroup 
               value={partSizeOption} 
               onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} 
-              className="space-y-3 pt-2"
+              className="space-y-3"
             >
-              <div>
+              <div className="relative">
                 <RadioGroupItem value="LARGE" id="opt-LARGE" className="peer sr-only" />
                 <Label
                   htmlFor="opt-LARGE"
-                  className="flex items-center justify-between rounded-md border-2 border-muted bg-popover px-4 py-2.5 text-sm hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                  className="flex items-center justify-between rounded-xl border-2 border-muted bg-popover p-5 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:shadow-md group relative overflow-hidden"
                 >
-                  <span className="font-medium">1 MB</span>
+                  <div className="flex items-center gap-4 relative z-10">
+                    <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors shadow-sm">
+                      <Zap className="w-6 h-6 fill-current" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-bold text-lg">1 MB</p>
+                        <Badge variant="secondary" className="bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold">
+                          Recommended
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground font-medium">Fastest transfer speed</p>
+                    </div>
+                  </div>
+                  
+                  <div className="relative z-10">
+                    <div className="h-6 w-6 rounded-full border-2 border-muted flex items-center justify-center peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary transition-all">
+                       <CheckCircle2 className="h-4 w-4 text-primary-foreground scale-0 peer-data-[state=checked]:scale-100 transition-transform" />
+                    </div>
+                  </div>
+
+                  {/* Decorative background element */}
+                  <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-peer-data-[state=checked]:bg-primary/10 transition-colors" />
                 </Label>
               </div>
 
               <Accordion type="single" collapsible className="w-full">
                 <AccordionItem value="advanced-part-sizes" className="border-none">
-                  <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline">
-                    Advanced
+                  <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline flex justify-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    Custom Part Sizes
                   </AccordionTrigger>
                   <AccordionContent className="pb-0">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
@@ -464,13 +491,13 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                         { val: 'SMALL', label: '256 KB' },
                         { val: 'TINY', label: '32 KB' }
                       ].map((opt) => (
-                        <div key={opt.val}>
+                        <div key={opt.val} className="relative">
                           <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
                           <Label
                             htmlFor={`opt-${opt.val}`}
-                            className="flex items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                            className="flex flex-col items-center justify-center rounded-xl border-2 border-muted bg-popover p-3 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 h-full text-center"
                           >
-                            <span className="font-bold text-base">{opt.label}</span>
+                            <span className="font-bold text-sm">{opt.label}</span>
                           </Label>
                         </div>
                       ))}
