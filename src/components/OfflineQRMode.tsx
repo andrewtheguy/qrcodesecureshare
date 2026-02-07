@@ -8,6 +8,7 @@ import { FountainQRSender } from './fountain_qr/FountainQRSender'
 import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import {
   Dialog,
@@ -75,7 +76,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   const [currentSessionId, setCurrentSessionId] = useState<number>(0)
   const [modeSizeError, setModeSizeError] = useState<string>('')
   const [feedbackEnabled, setFeedbackEnabled] = useState(true)
-  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('MEDIUM')
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('LARGE')
   const [exitDialogOpen, setExitDialogOpen] = useState(false)
   const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
 
@@ -167,12 +168,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
     if (mode === 'fountain-feedback') {
       setFeedbackEnabled(true)
-      // Set adaptive default part size based on file size
-      if (file.size > 1024 * 1024) {
-        setPartSizeOption('LARGE')  // Files > 1MB default to 1MB part size
-      } else {
-        setPartSizeOption('MEDIUM') // Files <= 1MB default to 512KB part size
-      }
+      setPartSizeOption('LARGE')
       // Go to part size configuration step instead of metadata
       setStep('partSize')
     } else if (mode === 'fountain-simple') {
@@ -411,8 +407,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
   // STEP 2: PART SIZE CONFIG
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
-    const isLargeFile = file.size > 1024 * 1024
-    const defaultLabel = isLargeFile ? '1024 KB (1 MB)' : '512 KB'
+    const defaultLabel = '1024 KB (1 MB)'
     const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`
 
     return (
@@ -439,33 +434,50 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           <div className="space-y-3">
             <Label className="text-base font-medium">Part Size</Label>
             <p className="text-sm text-muted-foreground">
-              Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel} based on your file size.</strong>
+              Files are split into parts for efficient transfer with checksum validation. Smaller part sizes work better for devices with slower QR decoding or poor cameras. <strong>Default: {defaultLabel}.</strong>
             </p>
             
             <RadioGroup 
               value={partSizeOption} 
               onValueChange={(value: PartSizeOption) => setPartSizeOption(value)} 
-              className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2"
+              className="space-y-3 pt-2"
             >
-              {[
-                { val: 'TINY', label: '32 KB', desc: 'Debug only' },
-                { val: 'SMALL', label: '256 KB', desc: 'For older/slower devices' },
-                { val: 'MEDIUM', label: '512 KB', desc: 'Standard configuration' },
-                { val: 'LARGE', label: '1 MB', desc: 'For large transfers' }
-              ].map((opt) => (
-                <div key={opt.val}>
-                  <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
-                  <Label
-                    htmlFor={`opt-${opt.val}`}
-                    className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer h-full"
-                  >
-                    <span className="font-bold text-lg">{opt.label}</span>
-                    <span className="text-xs text-muted-foreground">{opt.desc}</span>
-                    {opt.val === 'MEDIUM' && !isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
-                    {opt.val === 'LARGE' && isLargeFile && <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full mt-2">Recommended</span>}
-                  </Label>
-                </div>
-              ))}
+              <div>
+                <RadioGroupItem value="LARGE" id="opt-LARGE" className="peer sr-only" />
+                <Label
+                  htmlFor="opt-LARGE"
+                  className="flex items-center justify-between rounded-md border-2 border-muted bg-popover px-4 py-2.5 text-sm hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                >
+                  <span className="font-medium">1 MB</span>
+                </Label>
+              </div>
+
+              <Accordion type="single" collapsible className="w-full">
+                <AccordionItem value="advanced-part-sizes" className="border-none">
+                  <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline">
+                    Advanced
+                  </AccordionTrigger>
+                  <AccordionContent className="pb-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                      {[
+                        { val: 'MEDIUM', label: '512 KB' },
+                        { val: 'SMALL', label: '256 KB' },
+                        { val: 'TINY', label: '32 KB' }
+                      ].map((opt) => (
+                        <div key={opt.val}>
+                          <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
+                          <Label
+                            htmlFor={`opt-${opt.val}`}
+                            className="flex items-center justify-center rounded-md border-2 border-muted bg-popover p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary cursor-pointer"
+                          >
+                            <span className="font-bold text-base">{opt.label}</span>
+                          </Label>
+                        </div>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
             </RadioGroup>
           </div>
         </CardContent>
