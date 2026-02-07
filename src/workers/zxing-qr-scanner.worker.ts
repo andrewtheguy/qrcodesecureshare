@@ -5,7 +5,7 @@ prepareZXingModule({
   overrides: {
     locateFile: (path: string, prefix: string) => {
       if (path.endsWith('.wasm')) {
-        return `/${path}`
+        return `${import.meta.env.BASE_URL}${path}`
       }
       return prefix + path
     },

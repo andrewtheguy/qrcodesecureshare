@@ -1,5 +1,17 @@
-import { writeBarcode } from 'zxing-wasm/full'
+import { writeBarcode, prepareZXingModule } from 'zxing-wasm/full'
 import { NON_DATA_QR_OPTIONS } from '@/constants'
+
+prepareZXingModule({
+  overrides: {
+    locateFile: (path: string, prefix: string) => {
+      if (path.endsWith('.wasm')) {
+        return `${import.meta.env.BASE_URL}${path}`
+      }
+      return prefix + path
+    },
+  },
+  fireImmediately: true,
+})
 
 /**
  * Scale an image blob to a target width and return as a PNG data URL.
