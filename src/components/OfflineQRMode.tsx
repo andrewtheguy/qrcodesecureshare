@@ -469,7 +469,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                 <RadioGroupItem value="LARGE" id="opt-LARGE" className="peer sr-only" />
                 <Label
                   htmlFor="opt-LARGE"
-                  className="flex items-center justify-between rounded-xl border-2 border-muted bg-popover p-5 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:shadow-md group relative overflow-hidden"
+                  className="group flex items-center justify-between rounded-xl border-2 border-muted bg-popover p-5 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:shadow-md relative overflow-hidden"
                 >
                   <div className="flex items-center gap-4 relative z-10">
                     <div className="p-3 rounded-xl bg-primary/10 text-primary group-hover:bg-primary/20 transition-colors shadow-sm">
@@ -487,11 +487,11 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   </div>
                   
                   <div className="relative z-10">
-                    <CheckCircle2 className="h-4 w-4 text-primary scale-0 peer-data-[state=checked]:scale-100 transition-transform" />
+                    <CheckCircle2 className="h-4 w-4 text-primary scale-0 group-data-[state=checked]:scale-100 transition-transform" />
                   </div>
 
                   {/* Decorative background element */}
-                  <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-peer-data-[state=checked]:bg-primary/10 transition-colors" />
+                  <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-primary/5 rounded-full blur-2xl group-data-[state=checked]:bg-primary/10 transition-colors" />
                 </Label>
               </div>
 
