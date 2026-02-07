@@ -18,7 +18,14 @@ interface WorkerRequest {
 self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
   const { type, id, binaryString, binaryBuffer, options } = e.data
 
-  if (type !== 'generate') return
+  if (type !== 'generate') {
+    self.postMessage({
+      type: 'error',
+      id,
+      error: `Unknown message type: ${String(type)}`,
+    })
+    return
+  }
 
   try {
     let binaryData: Uint8Array

@@ -41,6 +41,12 @@ interface ParsedQRData {
   offlineMetadata?: OfflineMetadata
 }
 
+const isStringArray = (value: unknown[]): value is string[] =>
+  value.every((item) => typeof item === 'string')
+
+const isUint8ArrayArray = (value: unknown[]): value is Uint8Array[] =>
+  value.every((item) => item instanceof Uint8Array)
+
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -208,8 +214,16 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
       console.log('QR codes detected from uploaded image:', results)
 
-      // Use the same handler as camera scan, passing all detected QR codes
-      handleQRScan(results as string[])
+      if (isStringArray(results)) {
+        handleQRScan(results)
+      } else if (isUint8ArrayArray(results)) {
+        const decodedResults = results.map((bytes) => new TextDecoder().decode(bytes))
+        handleQRScan(decodedResults)
+      } else {
+        console.error('Unexpected QR decode result format:', results)
+        alert('Unsupported QR code data format in uploaded image.')
+        return
+      }
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')
