@@ -60,15 +60,43 @@ pub fn generate_qr_png(
 
     let qrcode = qr_builder.build().map_err(map_qr_error)?;
     let qr_size = qrcode.size as u32;
-    let module_count = qr_size + (margin * 2);
+    let margin_modules = margin
+        .checked_mul(2)
+        .ok_or_else(|| JsValue::from_str("Margin is too large"))?;
+    let module_count = qr_size
+        .checked_add(margin_modules)
+        .ok_or_else(|| JsValue::from_str("QR module count overflow"))?;
 
     if module_count == 0 {
         return Err(JsValue::from_str("Invalid QR module size"));
     }
 
-    let pixel_size = (width / module_count).max(1);
-    let rendered_size = module_count * pixel_size;
-    let offset = (width.saturating_sub(rendered_size)) / 2;
+    // Fail fast if the full QR (including margins) cannot fit the requested output width.
+    let pixel_size = width / module_count;
+    if pixel_size == 0 {
+        return Err(JsValue::from_str(
+            "QR cannot fit in target width. Increase width or reduce margin.",
+        ));
+    }
+
+    let rendered_size = module_count
+        .checked_mul(pixel_size)
+        .ok_or_else(|| JsValue::from_str("Rendered QR size overflow"))?;
+    if rendered_size > width {
+        return Err(JsValue::from_str(
+            "Computed QR render size exceeds target width",
+        ));
+    }
+
+    let offset = (width - rendered_size) / 2;
+    let render_end = offset
+        .checked_add(rendered_size)
+        .ok_or_else(|| JsValue::from_str("Render bounds overflow"))?;
+    if render_end > width {
+        return Err(JsValue::from_str(
+            "Computed render bounds exceed target canvas",
+        ));
+    }
 
     let mut pixels = vec![255u8; (width * width) as usize];
 
@@ -83,9 +111,17 @@ pub fn generate_qr_png(
 
             let start_x = offset + (margin + col) * pixel_size;
             let start_y = offset + (margin + row) * pixel_size;
+            let end_x = start_x + pixel_size;
+            let end_y = start_y + pixel_size;
 
-            for y in start_y..(start_y + pixel_size) {
-                for x in start_x..(start_x + pixel_size) {
+            if end_x > width || end_y > width {
+                return Err(JsValue::from_str(
+                    "Computed module bounds exceed target canvas",
+                ));
+            }
+
+            for y in start_y..end_y {
+                for x in start_x..end_x {
                     let pixel_index = (y * width + x) as usize;
                     pixels[pixel_index] = 0;
                 }

@@ -49,10 +49,6 @@ export const generateNonDataQR = async (
     width?: number
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
-    color?: {
-      dark?: string
-      light?: string
-    }
   }
 ): Promise<string> => {
   try {

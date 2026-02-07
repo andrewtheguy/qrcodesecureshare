@@ -6,8 +6,4 @@ export const NON_DATA_QR_OPTIONS = {
   width: 400,
   margin: 2,
   errorCorrectionLevel: 'M' as const,
-  color: {
-    dark: '#000',
-    light: '#FFF'
-  }
 }
