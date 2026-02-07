@@ -21,7 +21,7 @@ export async function generateQRTextDataURL(
 
     const svg = await generateFastQrSvgString(utf8Bytes, {
       width: options?.width || 300,
-      margin: options?.margin,
+      margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
       forceByteMode: false,
     })
