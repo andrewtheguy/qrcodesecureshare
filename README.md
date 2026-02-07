@@ -26,7 +26,7 @@ Offline file transfer and QR code generation. Share files between devices using 
 - **QR Scanning**: ZXing WASM (WebAssembly)
 - **QR Generation**: fast_qr-based Rust/WASM generator
 - **Binary QR Transport**: Fountain transfer worker path only (raw byte mode)
-- **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-wasm-architecture.md))
+- **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-code-architecture.md))
 
 ## Prerequisites
 
