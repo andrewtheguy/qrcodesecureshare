@@ -1,7 +1,6 @@
-use fast_qr::convert::image::{ImageBuilder, ImageError};
-use fast_qr::convert::Builder;
 use fast_qr::qr::QRCodeError;
 use fast_qr::{ECL, Mode, QRBuilder};
+use png::{BitDepth, ColorType, Encoder};
 use wasm_bindgen::prelude::*;
 
 fn parse_ecl(ecl: &str) -> Result<ECL, JsValue> {
@@ -27,8 +26,8 @@ fn map_qr_error(error: QRCodeError) -> JsValue {
     }
 }
 
-fn map_image_error(error: ImageError) -> JsValue {
-    JsValue::from_str(&format!("Failed to render QR PNG: {error}"))
+fn map_png_error(error: png::EncodingError) -> JsValue {
+    JsValue::from_str(&format!("Failed to encode QR PNG: {error}"))
 }
 
 /// Generate a PNG QR image from raw bytes.
@@ -60,10 +59,48 @@ pub fn generate_qr_png(
     }
 
     let qrcode = qr_builder.build().map_err(map_qr_error)?;
+    let qr_size = qrcode.size as u32;
+    let module_count = qr_size + (margin * 2);
 
-    let mut image_builder = ImageBuilder::default();
-    image_builder.margin(margin as usize);
-    image_builder.fit_width(width);
+    if module_count == 0 {
+        return Err(JsValue::from_str("Invalid QR module size"));
+    }
 
-    image_builder.to_bytes(&qrcode).map_err(map_image_error)
+    let pixel_size = (width / module_count).max(1);
+    let rendered_size = module_count * pixel_size;
+    let offset = (width.saturating_sub(rendered_size)) / 2;
+
+    let mut pixels = vec![255u8; (width * width) as usize];
+
+    for row in 0..qr_size {
+        for col in 0..qr_size {
+            let idx = (row * qr_size + col) as usize;
+            let is_dark = qrcode.data[idx].value();
+
+            if !is_dark {
+                continue;
+            }
+
+            let start_x = offset + (margin + col) * pixel_size;
+            let start_y = offset + (margin + row) * pixel_size;
+
+            for y in start_y..(start_y + pixel_size) {
+                for x in start_x..(start_x + pixel_size) {
+                    let pixel_index = (y * width + x) as usize;
+                    pixels[pixel_index] = 0;
+                }
+            }
+        }
+    }
+
+    let mut png_data = Vec::new();
+    let mut encoder = Encoder::new(&mut png_data, width, width);
+    encoder.set_color(ColorType::Grayscale);
+    encoder.set_depth(BitDepth::Eight);
+
+    let mut writer = encoder.write_header().map_err(map_png_error)?;
+    writer.write_image_data(&pixels).map_err(map_png_error)?;
+
+    drop(writer);
+    Ok(png_data)
 }
