@@ -1,11 +1,12 @@
 import { readBarcodes, prepareZXingModule, type ReaderOptions } from 'zxing-wasm/reader'
+import { ZXING_WASM_FILENAME } from '@/utils/zxingWasmAsset'
 
 // Configure zxing-wasm to use local WASM file (cached by service worker for offline support)
 prepareZXingModule({
   overrides: {
     locateFile: (path: string, prefix: string) => {
       if (path.endsWith('.wasm')) {
-        return `${import.meta.env.BASE_URL}${path}`
+        return `${import.meta.env.BASE_URL}${ZXING_WASM_FILENAME}`
       }
       return prefix + path
     },
