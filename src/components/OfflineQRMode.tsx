@@ -567,15 +567,15 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <div className="flex flex-col items-center gap-6">
               {/* QR Code Container */}
               <div className="relative group">
-                <div className="bg-white p-4 rounded-xl shadow-sm border max-w-[300px]">
+                <div className="bg-white p-4 rounded-xl shadow-sm border">
                   {metadataQR ? (
                     <img
                       src={metadataQR}
                       alt="Metadata QR"
-                      className="w-full h-auto block"
+                      className="max-w-[300px] w-full h-auto block"
                     />
                   ) : (
-                    <div className="aspect-square w-full bg-muted/20 animate-pulse rounded" />
+                    <div className="w-[300px] aspect-square bg-muted/20 animate-pulse rounded" />
                   )}
                 </div>
                 {/* Scan indicator */}
