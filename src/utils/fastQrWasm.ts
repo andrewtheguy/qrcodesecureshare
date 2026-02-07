@@ -18,18 +18,23 @@ export interface FastQrSvgGenerateOptions {
 let wasmInitialized = false
 let wasmInitPromise: Promise<void> | null = null
 
+function normalizeMargin(margin?: number): number {
+  const normalizedMargin = Number(margin ?? 1)
+  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
+    throw new TypeError('Invalid margin: expected a finite integer >= 0')
+  }
+
+  return normalizedMargin
+}
+
 function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
   const width = options.width ?? 300
-  const margin = options.margin ?? 1
   const normalizedWidth = Number(width)
   if (!Number.isFinite(normalizedWidth) || !Number.isInteger(normalizedWidth) || normalizedWidth <= 0) {
     throw new TypeError('Invalid width: expected a finite integer > 0')
   }
 
-  const normalizedMargin = Number(margin)
-  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
-    throw new TypeError('Invalid margin: expected a finite integer >= 0')
-  }
+  const normalizedMargin = normalizeMargin(options.margin)
 
   return {
     normalizedWidth,
@@ -40,11 +45,7 @@ function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
 }
 
 function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
-  const margin = options.margin ?? 1
-  const normalizedMargin = Number(margin)
-  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
-    throw new TypeError('Invalid margin: expected a finite integer >= 0')
-  }
+  const normalizedMargin = normalizeMargin(options.margin)
 
   return {
     normalizedMargin,
