@@ -689,12 +689,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             <img
               src={qrCodeUrl}
               alt="Fountain coded chunk"
-              className="h-auto max-w-full drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
-              width={FOUNTAIN_QR_DISPLAY_SIZE}
-              height={FOUNTAIN_QR_DISPLAY_SIZE}
+              className="w-full h-auto drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
             />
           ) : (
-            <div className="flex h-[340px] w-[340px] flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
+            <div className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
               <p className="text-center text-sm font-medium">
                 {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
               </p>

@@ -3,7 +3,7 @@ export const OFFLINE_METADATA_MAGIC = 'OFFMETA_v1:'
 
 // Shared QR options for non-data QR codes (feedback, ACK, etc.)
 export const NON_DATA_QR_OPTIONS = {
-  width: 400,
-  margin: 2,
+  width: 300,
+  margin: 1,
   errorCorrectionLevel: 'M' as const,
 }

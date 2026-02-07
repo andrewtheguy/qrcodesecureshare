@@ -130,7 +130,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           }
           if (cancelled) return
           const qrUrl = await generateQRTextDataURL(OFFLINE_METADATA_MAGIC + JSON.stringify(meta), {
-            width: 400,
+            width: 300,
+            margin: 1,
             errorCorrectionLevel: 'M'
           })
           if (cancelled) return
@@ -566,15 +567,15 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <div className="flex flex-col items-center gap-6">
               {/* QR Code Container */}
               <div className="relative group">
-                <div className="bg-white p-4 rounded-xl shadow-sm border">
+                <div className="bg-white p-4 rounded-xl shadow-sm border max-w-[300px]">
                   {metadataQR ? (
                     <img
                       src={metadataQR}
                       alt="Metadata QR"
-                      className="w-full max-w-[280px] h-auto block"
+                      className="w-full h-auto block"
                     />
                   ) : (
-                    <div className="w-[280px] h-[280px] bg-muted/20 animate-pulse rounded" />
+                    <div className="aspect-square w-full bg-muted/20 animate-pulse rounded" />
                   )}
                 </div>
                 {/* Scan indicator */}
