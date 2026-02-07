@@ -130,7 +130,6 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           }
           if (cancelled) return
           const qrUrl = await generateQRTextDataURL(OFFLINE_METADATA_MAGIC + JSON.stringify(meta), {
-            width: 300,
             margin: 1,
             errorCorrectionLevel: 'M'
           })

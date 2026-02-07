@@ -1,19 +1,8 @@
 import { NON_DATA_QR_OPTIONS } from '@/constants'
-import { generateFastQrPngBytes } from '@/utils/fastQrWasm'
+import { generateFastQrSvgString } from '@/utils/fastQrWasm'
 
-function pngBytesToDataURL(pngBytes: Uint8Array): Promise<string> {
-  const blob = new Blob([pngBytes], { type: 'image/png' })
-
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      resolve(reader.result as string)
-    }
-    reader.onerror = () => {
-      reject(new Error('Failed to convert PNG bytes to data URL'))
-    }
-    reader.readAsDataURL(blob)
-  })
+function svgStringToDataURL(svg: string): string {
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
 /**
@@ -22,7 +11,6 @@ function pngBytesToDataURL(pngBytes: Uint8Array): Promise<string> {
 export async function generateQRTextDataURL(
   payload: string,
   options?: {
-    width?: number
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
@@ -30,14 +18,13 @@ export async function generateQRTextDataURL(
   try {
     const utf8Bytes = new TextEncoder().encode(payload)
 
-    const pngBytes = await generateFastQrPngBytes(utf8Bytes, {
-      width: options?.width || 300,
-      margin: options?.margin,
+    const svg = await generateFastQrSvgString(utf8Bytes, {
+      margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
       forceByteMode: false,
     })
 
-    return await pngBytesToDataURL(pngBytes)
+    return svgStringToDataURL(svg)
   } catch (err) {
     console.error('Failed to generate QR text data URL:', err)
     throw err
@@ -48,7 +35,6 @@ export async function generateQRTextDataURL(
 export const generateNonDataQR = async (
   payload: object,
   opts?: {
-    width?: number
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
   }
@@ -59,14 +45,13 @@ export const generateNonDataQR = async (
 
     const options = opts || NON_DATA_QR_OPTIONS
 
-    const pngBytes = await generateFastQrPngBytes(jsonBytes, {
-      width: options.width || 300,
+    const svg = await generateFastQrSvgString(jsonBytes, {
       margin: options.margin ?? 1,
       errorCorrectionLevel: options.errorCorrectionLevel || 'M',
       forceByteMode: false,
     })
 
-    return await pngBytesToDataURL(pngBytes)
+    return svgStringToDataURL(svg)
   } catch (err) {
     console.error('Failed to generate non-data QR:', err)
     throw err

@@ -10,7 +10,6 @@ export interface GenerateQRRef {
 }
 
 const MAX_QR_TEXT_LENGTH = 700
-const QR_CODE_WIDTH = 300
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
@@ -29,7 +28,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const generateQRCode = useCallback(async (payload: string) => {
     setQrError(null)
     try {
-      const dataUrl = await generateQRTextDataURL(payload, { width: QR_CODE_WIDTH })
+      const dataUrl = await generateQRTextDataURL(payload)
       setQrCodeUrl(dataUrl)
       return true
     } catch (error) {
