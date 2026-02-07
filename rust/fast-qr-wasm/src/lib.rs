@@ -175,20 +175,11 @@ fn generate_qr_svg_internal(
         return Err("QR cannot fit in target width. Increase width or reduce margin.".to_string());
     }
 
-    let actual_size = module_count
-        .checked_mul(pixel_size)
-        .ok_or_else(|| "Rendered QR size overflow".to_string())?;
     let margin_usize = usize::try_from(margin).map_err(|_| "Margin is too large".to_string())?;
 
     let mut svg_builder = SvgBuilder::default();
     svg_builder.margin(margin_usize);
-    let svg = svg_builder.to_str(&qrcode);
-
-    Ok(svg.replacen(
-        "<svg ",
-        format!(r#"<svg width="{actual_size}" height="{actual_size}" "#).as_str(),
-        1,
-    ))
+    Ok(svg_builder.to_str(&qrcode))
 }
 
 /// Generate a PNG QR image from raw bytes.
@@ -236,74 +227,327 @@ mod tests {
 
     const PNG_SIGNATURE: &[u8; 8] = b"\x89PNG\r\n\x1a\n";
 
-    fn decode_dimensions(png_bytes: &[u8]) -> (u32, u32) {
-        let decoder = png::Decoder::new(Cursor::new(png_bytes));
-        let reader = decoder.read_info().expect("PNG should decode");
-        let info = reader.info();
-        (info.width, info.height)
+    struct DecodedPng {
+        width: u32,
+        height: u32,
+        color_type: ColorType,
+        bit_depth: BitDepth,
+        pixels: Vec<u8>,
     }
 
-    fn svg_dimension(svg: &str, attr: &str) -> u32 {
-        let marker = format!(r#"{attr}=""#);
+    struct RenderGeometry {
+        qrcode: QRCode,
+        qr_size: u32,
+        module_count: u32,
+        pixel_size: u32,
+        actual_size: u32,
+        margin: u32,
+    }
+
+    fn decode_png(png_bytes: &[u8]) -> DecodedPng {
+        let decoder = png::Decoder::new(Cursor::new(png_bytes));
+        let mut reader = decoder.read_info().expect("PNG should decode");
+        let mut output_buffer = vec![0; reader.output_buffer_size()];
+        let output = reader
+            .next_frame(&mut output_buffer)
+            .expect("PNG frame should decode");
+
+        DecodedPng {
+            width: output.width,
+            height: output.height,
+            color_type: output.color_type,
+            bit_depth: output.bit_depth,
+            pixels: output_buffer[..output.buffer_size()].to_vec(),
+        }
+    }
+
+    fn build_render_geometry(
+        payload: &[u8],
+        width: u32,
+        margin: u32,
+        ecl: &str,
+        force_byte_mode: bool,
+    ) -> RenderGeometry {
+        let qrcode = build_qrcode(payload, ecl, force_byte_mode).expect("QR build should succeed");
+        let qr_size = qrcode.size as u32;
+        let module_count = qr_size
+            .checked_add(margin.checked_mul(2).expect("margin module overflow"))
+            .expect("module count overflow");
+        let pixel_size = width / module_count;
+        let actual_size = module_count
+            .checked_mul(pixel_size)
+            .expect("rendered size overflow");
+
+        RenderGeometry {
+            qrcode,
+            qr_size,
+            module_count,
+            pixel_size,
+            actual_size,
+            margin,
+        }
+    }
+
+    fn pixel_at(image: &DecodedPng, x: u32, y: u32) -> u8 {
+        let width = usize::try_from(image.width).expect("width should fit usize");
+        let x_usize = usize::try_from(x).expect("x should fit usize");
+        let y_usize = usize::try_from(y).expect("y should fit usize");
+        image.pixels[y_usize * width + x_usize]
+    }
+
+    fn assert_quiet_zone_white(image: &DecodedPng, geometry: &RenderGeometry) {
+        if geometry.margin == 0 {
+            return;
+        }
+
+        let quiet_zone_pixels = geometry
+            .margin
+            .checked_mul(geometry.pixel_size)
+            .expect("quiet zone pixel size overflow");
+
+        for y in 0..image.height {
+            for x in 0..image.width {
+                let in_quiet_zone = x < quiet_zone_pixels
+                    || x >= image.width - quiet_zone_pixels
+                    || y < quiet_zone_pixels
+                    || y >= image.height - quiet_zone_pixels;
+                if in_quiet_zone {
+                    assert_eq!(
+                        pixel_at(image, x, y),
+                        255,
+                        "quiet zone pixel should be white at ({x}, {y})"
+                    );
+                }
+            }
+        }
+    }
+
+    fn assert_module_blocks_uniform(image: &DecodedPng, geometry: &RenderGeometry) {
+        for module_row in 0..geometry.module_count {
+            for module_col in 0..geometry.module_count {
+                let start_x = module_col * geometry.pixel_size;
+                let start_y = module_row * geometry.pixel_size;
+                let expected = pixel_at(image, start_x, start_y);
+
+                for y in start_y..(start_y + geometry.pixel_size) {
+                    for x in start_x..(start_x + geometry.pixel_size) {
+                        assert_eq!(
+                            pixel_at(image, x, y),
+                            expected,
+                            "module block ({module_row}, {module_col}) contains mixed pixels"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    fn assert_qr_region_matches_matrix(image: &DecodedPng, geometry: &RenderGeometry) {
+        let qr_size_usize = usize::try_from(geometry.qr_size).expect("qr_size should fit usize");
+
+        for row in 0..geometry.qr_size {
+            for col in 0..geometry.qr_size {
+                let row_usize = usize::try_from(row).expect("row should fit usize");
+                let col_usize = usize::try_from(col).expect("col should fit usize");
+                let idx = row_usize
+                    .checked_mul(qr_size_usize)
+                    .and_then(|base| base.checked_add(col_usize))
+                    .expect("index should be in range");
+                let expected_dark = geometry.qrcode.data[idx].value();
+
+                let module_x = (col + geometry.margin) * geometry.pixel_size;
+                let module_y = (row + geometry.margin) * geometry.pixel_size;
+                let actual = pixel_at(image, module_x, module_y);
+                let expected_pixel = if expected_dark { 0 } else { 255 };
+
+                assert_eq!(
+                    actual, expected_pixel,
+                    "module mismatch at row {row}, col {col}"
+                );
+            }
+        }
+    }
+
+    fn extract_qr_module_pattern(image: &DecodedPng, geometry: &RenderGeometry) -> Vec<bool> {
+        let mut pattern = Vec::with_capacity(
+            usize::try_from(geometry.qr_size.checked_mul(geometry.qr_size).expect("area overflow"))
+                .expect("pattern size should fit usize"),
+        );
+
+        for row in 0..geometry.qr_size {
+            for col in 0..geometry.qr_size {
+                let module_x = (col + geometry.margin) * geometry.pixel_size;
+                let module_y = (row + geometry.margin) * geometry.pixel_size;
+                pattern.push(pixel_at(image, module_x, module_y) == 0);
+            }
+        }
+
+        pattern
+    }
+
+    fn assert_png_raster_invariants(
+        png_bytes: &[u8],
+        payload: &[u8],
+        width: u32,
+        margin: u32,
+        ecl: &str,
+        force_byte_mode: bool,
+    ) -> (DecodedPng, RenderGeometry) {
+        let image = decode_png(png_bytes);
+        let geometry = build_render_geometry(payload, width, margin, ecl, force_byte_mode);
+
+        assert_eq!(image.width, image.height, "PNG output should be square");
+        assert_eq!(
+            image.width, geometry.actual_size,
+            "PNG dimensions should match computed render geometry"
+        );
+        assert_eq!(
+            image.color_type,
+            ColorType::Grayscale,
+            "PNG should be grayscale for deterministic binary module rendering"
+        );
+        assert_eq!(
+            image.bit_depth,
+            BitDepth::Eight,
+            "PNG should use 8-bit grayscale pixels"
+        );
+
+        let expected_pixels = usize::try_from(image.width)
+            .expect("width should fit usize")
+            .checked_mul(usize::try_from(image.height).expect("height should fit usize"))
+            .expect("pixel count overflow");
+        assert_eq!(
+            image.pixels.len(),
+            expected_pixels,
+            "PNG decoded pixel buffer size should match dimensions"
+        );
+
+        assert!(
+            image.pixels.iter().all(|&value| value == 0 || value == 255),
+            "PNG should only contain binary grayscale values (0 or 255)"
+        );
+
+        assert_quiet_zone_white(&image, &geometry);
+        assert_module_blocks_uniform(&image, &geometry);
+        assert_qr_region_matches_matrix(&image, &geometry);
+
+        (image, geometry)
+    }
+
+    fn svg_viewbox_size(svg: &str) -> u32 {
+        let marker = r#"viewBox=""#;
         let start = svg
-            .find(&marker)
-            .unwrap_or_else(|| panic!("SVG is missing `{attr}` attribute"))
+            .find(marker)
+            .expect("SVG is missing `viewBox` attribute")
             + marker.len();
         let rest = &svg[start..];
-        let end = rest
-            .find('"')
-            .unwrap_or_else(|| panic!("SVG has malformed `{attr}` attribute"));
-        rest[..end]
+        let end = rest.find('"').expect("SVG has malformed `viewBox` attribute");
+        let parts: Vec<&str> = rest[..end].split_whitespace().collect();
+
+        assert_eq!(parts.len(), 4, "viewBox should contain four values");
+        assert_eq!(parts[0], "0", "viewBox min-x should be 0");
+        assert_eq!(parts[1], "0", "viewBox min-y should be 0");
+        assert_eq!(parts[2], parts[3], "viewBox should be square");
+
+        parts[2]
             .parse::<u32>()
-            .unwrap_or_else(|_| panic!("`{attr}` attribute is not an integer"))
+            .expect("viewBox size should be an integer")
+    }
+
+    fn assert_valid_svg(svg: &str) {
+        assert!(svg.starts_with("<svg "), "SVG should begin with <svg");
+        assert!(
+            svg.contains(r#"xmlns="http://www.w3.org/2000/svg""#),
+            "SVG namespace should be present"
+        );
+        assert!(svg.contains(r#"viewBox="0 0 "#), "SVG viewBox should be present");
+        assert!(svg.contains(r#"<path d=""#), "SVG should contain QR path data");
+        assert!(svg.ends_with("</svg>"), "SVG should be closed");
+        assert!(svg_viewbox_size(svg) > 0, "SVG viewBox should be non-zero");
     }
 
     #[test]
     fn generates_valid_png_for_text_payload() {
-        let png = generate_qr_png_internal(b"https://example.com", 300, 4, "M", false)
+        let payload = b"https://example.com";
+        let png = generate_qr_png_internal(payload, 300, 4, "M", false)
             .expect("QR generation should succeed");
 
         assert!(png.len() > 8, "PNG should not be empty");
         assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
-
-        let (width, height) = decode_dimensions(&png);
-        // Output is pixel_size * module_count which is <= requested width
-        assert!(width <= 300, "Output width should not exceed requested width");
-        assert_eq!(width, height, "Output should be square");
-        assert!(width > 0, "Output should have non-zero dimensions");
+        assert_png_raster_invariants(&png, payload, 300, 4, "M", false);
     }
 
     #[test]
     fn generates_valid_png_for_binary_payload_in_byte_mode() {
-        let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
-        let png = generate_qr_png_internal(&binary_payload, 256, 2, "Q", true)
+        let payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
+        let png = generate_qr_png_internal(&payload, 256, 2, "Q", true)
             .expect("Binary QR generation should succeed");
 
         assert!(png.len() > 8, "PNG should not be empty");
         assert_eq!(&png[0..8], PNG_SIGNATURE, "PNG signature mismatch");
+        assert_png_raster_invariants(&png, &payload, 256, 2, "Q", true);
+    }
 
-        let (width, height) = decode_dimensions(&png);
-        assert!(width <= 256, "Output width should not exceed requested width");
-        assert_eq!(width, height, "Output should be square");
-        assert!(width > 0, "Output should have non-zero dimensions");
+    #[test]
+    fn png_margin_changes_border_without_changing_qr_pattern() {
+        let payload = b"png-margin-invariant";
+
+        let png_no_margin =
+            generate_qr_png_internal(payload, 300, 0, "M", false).expect("margin 0 should work");
+        let png_margin_4 =
+            generate_qr_png_internal(payload, 300, 4, "M", false).expect("margin 4 should work");
+
+        let (image_no_margin, geometry_no_margin) =
+            assert_png_raster_invariants(&png_no_margin, payload, 300, 0, "M", false);
+        let (image_margin_4, geometry_margin_4) =
+            assert_png_raster_invariants(&png_margin_4, payload, 300, 4, "M", false);
+
+        let pattern_no_margin = extract_qr_module_pattern(&image_no_margin, &geometry_no_margin);
+        let pattern_margin_4 = extract_qr_module_pattern(&image_margin_4, &geometry_margin_4);
+
+        assert_eq!(
+            pattern_no_margin, pattern_margin_4,
+            "Adding margin should not change the underlying QR module pattern"
+        );
+    }
+
+    #[test]
+    fn png_width_scaling_preserves_module_pattern() {
+        let payload = b"png-width-invariant";
+
+        let png_narrow =
+            generate_qr_png_internal(payload, 300, 4, "Q", false).expect("narrow width should work");
+        let png_wide =
+            generate_qr_png_internal(payload, 500, 4, "Q", false).expect("wide width should work");
+
+        let (image_narrow, geometry_narrow) =
+            assert_png_raster_invariants(&png_narrow, payload, 300, 4, "Q", false);
+        let (image_wide, geometry_wide) =
+            assert_png_raster_invariants(&png_wide, payload, 500, 4, "Q", false);
+
+        assert!(
+            image_wide.width >= image_narrow.width,
+            "Increasing width should not reduce output size"
+        );
+        assert!(
+            geometry_wide.pixel_size >= geometry_narrow.pixel_size,
+            "Increasing width should keep or increase module pixel size"
+        );
+
+        let pattern_narrow = extract_qr_module_pattern(&image_narrow, &geometry_narrow);
+        let pattern_wide = extract_qr_module_pattern(&image_wide, &geometry_wide);
+
+        assert_eq!(
+            pattern_narrow, pattern_wide,
+            "Changing width should not change the underlying QR module pattern"
+        );
     }
 
     #[test]
     fn generates_valid_svg_for_text_payload() {
         let svg = generate_qr_svg_internal(b"https://example.com", 300, 4, "M", false)
             .expect("SVG generation should succeed");
-
-        assert!(svg.starts_with("<svg "), "SVG should begin with <svg");
-        assert!(
-            svg.contains(r#"xmlns="http://www.w3.org/2000/svg""#),
-            "SVG namespace should be present"
-        );
-
-        let width = svg_dimension(&svg, "width");
-        let height = svg_dimension(&svg, "height");
-        assert!(width <= 300, "Output width should not exceed requested width");
-        assert_eq!(width, height, "Output should be square");
-        assert!(width > 0, "Output should have non-zero dimensions");
+        assert_valid_svg(&svg);
     }
 
     #[test]
@@ -311,12 +555,20 @@ mod tests {
         let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
         let svg = generate_qr_svg_internal(&binary_payload, 256, 2, "Q", true)
             .expect("Binary SVG generation should succeed");
+        assert_valid_svg(&svg);
+    }
 
-        let width = svg_dimension(&svg, "width");
-        let height = svg_dimension(&svg, "height");
-        assert!(width <= 256, "Output width should not exceed requested width");
-        assert_eq!(width, height, "Output should be square");
-        assert!(width > 0, "Output should have non-zero dimensions");
+    #[test]
+    fn svg_margin_changes_viewbox_size() {
+        let no_margin = generate_qr_svg_internal(b"margin-check", 300, 0, "M", false)
+            .expect("SVG generation without margin should succeed");
+        let with_margin = generate_qr_svg_internal(b"margin-check", 300, 4, "M", false)
+            .expect("SVG generation with margin should succeed");
+
+        assert!(
+            svg_viewbox_size(&with_margin) > svg_viewbox_size(&no_margin),
+            "SVG viewBox should grow when margin increases"
+        );
     }
 
     #[test]
