@@ -13,7 +13,7 @@
     "lint": "tsc --noEmit && eslint .",
     "test": "cd rust/fountain-wasm && cargo test --all --release",
     "preview": "vite preview",
-    "postinstall": "cp node_modules/zxing-wasm/dist/reader/zxing_reader.wasm public/"
+    "postinstall": "node scripts/prepare-zxing-wasm.js"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
