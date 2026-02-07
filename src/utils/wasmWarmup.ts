@@ -35,9 +35,7 @@ export function startWasmWarmup(): void {
   wasmWarmupStarted = true
 
   const runWarmup = () => {
-    void warmupWasmModules().catch((error) => {
-      console.warn('[WASM Warmup] Warmup failed:', error)
-    })
+    void warmupWasmModules()
   }
 
   if (navigator.onLine) {
