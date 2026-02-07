@@ -486,9 +486,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                   </div>
                   
                   <div className="relative z-10">
-                    <div className="h-6 w-6 rounded-full border-2 border-muted flex items-center justify-center peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary transition-all">
-                       <CheckCircle2 className="h-4 w-4 text-primary-foreground scale-0 peer-data-[state=checked]:scale-100 transition-transform" />
-                    </div>
+                    <CheckCircle2 className="h-4 w-4 text-primary scale-0 peer-data-[state=checked]:scale-100 transition-transform" />
                   </div>
 
                   {/* Decorative background element */}
