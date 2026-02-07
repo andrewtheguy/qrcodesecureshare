@@ -26,8 +26,7 @@ echo "Built project to $OUTPUT_DIR"
 export CLOUDFLARE_LOG="$TMP_PATH/cloudflare.log"
 export TMP_PATH
 
-# Start http-server, cloudflared tunnel, and QR generation concurrently
+# Start http-server and cloudflared tunnel concurrently
 npx concurrently \
   "npx http-server $OUTPUT_DIR -p $PORT -c-1" \
-  "(cloudflared tunnel --url http://localhost:$PORT 2>&1 | tee $CLOUDFLARE_LOG)" \
-  "./scripts/generate-qr.sh"
+  "(cloudflared tunnel --url http://localhost:$PORT 2>&1 | tee $CLOUDFLARE_LOG)"

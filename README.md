@@ -8,7 +8,6 @@ Offline file transfer and QR code generation. Share files between devices using 
 
 ### Text QR Generator
 - Generate QR codes from text or URLs
-- Automatic compression for large text (gzip with binary payload)
 
 ### Offline File Transfer
 - Transfer files using QR codes only - no internet, servers, or third-party services
@@ -19,15 +18,15 @@ Offline file transfer and QR code generation. Share files between devices using 
 ### QR Scanner
 - Camera-based scanning with ZXing WASM
 - Image upload support
-- Auto-decompression of compressed QR payloads
 
 ## Tech Stack
 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Styling**: Tailwind CSS + Radix UI
 - **QR Scanning**: ZXing WASM (WebAssembly)
-- **QR Generation**: qrcode library + ZXing WASM (binary mode)
-- **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-wasm-architecture.md))
+- **QR Generation**: fast_qr-based Rust/WASM generator
+- **Binary QR Transport**: Fountain transfer worker path only (raw byte mode)
+- **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-code-architecture.md))
 
 ## Prerequisites
 

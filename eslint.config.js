@@ -8,7 +8,7 @@ import { globalIgnores } from 'eslint/config'
 export default [
   globalIgnores([
     'dist',
-    'rust/fountain-wasm/pkg',
+    'rust/**/pkg',
     'src/wasm',
     'tmp',
   ]),
