@@ -43,7 +43,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
 
     const pngBytes = await generateFastQrPngBytes(binaryData, {
       width: options?.width ?? 400,
-      margin: options?.margin ?? 4,
+      margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel ?? 'M',
       forceByteMode: true,
     })
