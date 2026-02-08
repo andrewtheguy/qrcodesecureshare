@@ -282,7 +282,6 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
             {!hasFrame && (
               <div
                 className="absolute inset-0 rounded-lg border border-sky-500/30 bg-sky-500/10 flex items-center justify-center text-sm text-sky-100/80"
-                style={{ width: `${DISPLAY_SIZE}px`, maxWidth: '100%' }}
               >
                 {isPreparing ? 'Preparing stream…' : 'Generating frames…'}
               </div>

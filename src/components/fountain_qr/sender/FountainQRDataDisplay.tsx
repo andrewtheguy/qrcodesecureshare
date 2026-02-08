@@ -478,7 +478,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       throw err
     })
-  }, [chunkCountRef, bufferLengthRef, fpsRef])
+  }, [])
 
   // Generate and display fountain-coded chunk in binary format
   useEffect(() => {
@@ -535,7 +535,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
                 errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
               })
 
-              const chunkNum = chunkCount + bufferLength + batch.length + 1
+              const chunkNum = chunkCountRef.current + bufferLengthRef.current + batch.length + 1
               batch.push({ chunk, qrFrame, chunkNum })
               success = true
 
@@ -697,8 +697,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           />
           {!hasRenderedFrame && (
             <div
-              className="flex aspect-square flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm"
-              style={{ width: `${FOUNTAIN_QR_DISPLAY_SIZE}px`, maxWidth: '100%' }}
+              className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm"
             >
               <p className="text-center text-sm font-medium">
                 {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
