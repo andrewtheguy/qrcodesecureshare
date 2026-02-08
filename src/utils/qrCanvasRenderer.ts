@@ -10,6 +10,9 @@ export function renderQrModulesToCanvas(
   modules: Uint8Array,
   options: QrCanvasRenderOptions
 ): void {
+  if (!canvas) {
+    throw new Error('Canvas is required for QR render')
+  }
   if (moduleCount <= 0) {
     throw new Error('Invalid module count for QR render')
   }
