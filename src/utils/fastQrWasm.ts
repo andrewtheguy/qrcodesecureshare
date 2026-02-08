@@ -25,6 +25,12 @@ export interface FastQrMatrixGenerateOptions {
   forceByteMode?: boolean
 }
 
+interface NormalizedCommonGenerateOptions {
+  normalizedMargin: number
+  errorCorrectionLevel: FastQrErrorCorrectionLevel
+  forceByteMode: boolean
+}
+
 export interface FastQrModuleMatrix {
   moduleCount: number
   modules: Uint8Array
@@ -59,7 +65,9 @@ function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
   }
 }
 
-function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
+function normalizeCommonGenerateOptions(
+  options: FastQrSvgGenerateOptions | FastQrMatrixGenerateOptions = {}
+): NormalizedCommonGenerateOptions {
   const normalizedMargin = normalizeMargin(options.margin)
 
   return {
@@ -69,14 +77,12 @@ function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
   }
 }
 
-function normalizeMatrixGenerateOptions(options: FastQrMatrixGenerateOptions = {}) {
-  const normalizedMargin = normalizeMargin(options.margin)
+function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
+  return normalizeCommonGenerateOptions(options)
+}
 
-  return {
-    normalizedMargin,
-    errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
-    forceByteMode: options.forceByteMode ?? false,
-  }
+function normalizeMatrixGenerateOptions(options: FastQrMatrixGenerateOptions = {}) {
+  return normalizeCommonGenerateOptions(options)
 }
 
 export async function ensureFastQrWasmInit(): Promise<void> {
@@ -159,7 +165,14 @@ export async function generateFastQrModuleMatrix(
 
   const expectedLength = 2 + moduleCount * moduleCount
   if (normalizedBytes.length < expectedLength) {
-    throw new Error('Invalid QR matrix payload: truncated module data')
+    throw new Error(
+      `Invalid QR matrix payload: truncated module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`
+    )
+  }
+  if (normalizedBytes.length > expectedLength) {
+    throw new Error(
+      `Invalid QR matrix payload: unexpected trailing module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`
+    )
   }
 
   return {
