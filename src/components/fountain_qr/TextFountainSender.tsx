@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
-  TEXT_FOUNTAIN_AUTO_PAUSE_MS,
+  TEXT_FOUNTAIN_AUTO_PAUSE_MIN_MS,
   TEXT_FOUNTAIN_FPS,
   TEXT_FOUNTAIN_VERSION,
 } from '@/constants'
@@ -15,6 +15,8 @@ import { generateFastQrPngBytes } from '@/utils/fastQrWasm'
 import { serializeTextFountainFrame } from '@/utils/textFountainProtocol'
 
 const DISPLAY_SIZE = 400
+const AUTO_PAUSE_PADDING = 2
+const DECODE_OVERHEAD_RATIO = 1.1
 
 interface TextFountainSenderProps {
   text: string
@@ -45,6 +47,23 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
   }, [])
 
   const fpsLabel = useMemo(() => `${TEXT_FOUNTAIN_FPS} fps`, [])
+
+  const estimatedAutoPauseMs = useMemo(() => {
+    if (!encoder || TEXT_FOUNTAIN_FPS <= 0) {
+      return TEXT_FOUNTAIN_AUTO_PAUSE_MIN_MS
+    }
+
+    const baseChunks = encoder.getMetadata().totalSourceBlocks
+    if (!baseChunks || baseChunks <= 0) {
+      return TEXT_FOUNTAIN_AUTO_PAUSE_MIN_MS
+    }
+
+    const estimatedChunksNeeded = Math.ceil(baseChunks * DECODE_OVERHEAD_RATIO)
+    const paddedChunks = Math.ceil(estimatedChunksNeeded * AUTO_PAUSE_PADDING)
+    const estimatedMs = Math.ceil((paddedChunks / TEXT_FOUNTAIN_FPS) * 1000)
+
+    return Math.max(TEXT_FOUNTAIN_AUTO_PAUSE_MIN_MS, estimatedMs)
+  }, [encoder])
 
   const clearGenerationTimer = useCallback(() => {
     if (generationTimeoutRef.current !== null) {
@@ -208,10 +227,10 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
     autoPauseTimeoutRef.current = window.setTimeout(() => {
       setIsPlaying(false)
       setIsAutoPaused(true)
-    }, TEXT_FOUNTAIN_AUTO_PAUSE_MS)
+    }, estimatedAutoPauseMs)
 
     return clearAutoPauseTimer
-  }, [clearAutoPauseTimer, isPlaying])
+  }, [clearAutoPauseTimer, estimatedAutoPauseMs, isPlaying])
 
   const handlePause = () => {
     setIsPlaying(false)
@@ -244,7 +263,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
         {isAutoPaused && (
           <Alert>
             <AlertDescription>
-              Stream auto-paused after 60 seconds. Resume to continue broadcasting frames.
+              Stream auto-paused after {Math.ceil(estimatedAutoPauseMs / 1000)} seconds. Resume to continue broadcasting frames.
             </AlertDescription>
           </Alert>
         )}

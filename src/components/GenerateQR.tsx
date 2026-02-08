@@ -14,6 +14,8 @@ export interface GenerateQRRef {
   setTextFromScan: (text: string) => void
 }
 
+const STREAM_PREVIEW_MAX_CHARS = 280
+
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
@@ -111,6 +113,9 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
   const textByteLength = getUtf8Bytes(textInput).length
   const canUseFountainMode = textByteLength > 0 && textByteLength <= TEXT_FOUNTAIN_MAX_TEXT_BYTES
+  const streamPreviewText = textInput.length > STREAM_PREVIEW_MAX_CHARS
+    ? `${textInput.slice(0, STREAM_PREVIEW_MAX_CHARS)}...`
+    : textInput
 
   return (
     <div className="space-y-6">
@@ -146,17 +151,26 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                 {textInput.length} characters ({textByteLength} bytes)
               </span>
             </div>
-            <Textarea
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Type your text here..."
-              className="min-h-[100px]"
-              disabled={isFountainModeActive}
-            />
+            {!isFountainModeActive && (
+              <Textarea
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder="Type your text here..."
+                className="min-h-[100px]"
+              />
+            )}
             {isFountainModeActive && (
-              <p className="text-xs text-amber-600">
-                Streamlined fountain mode is active. Reset the session to edit text.
-              </p>
+              <div className="space-y-2">
+                <div className="rounded-md border bg-muted p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Text preview (truncated)</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {streamPreviewText}
+                  </p>
+                </div>
+                <p className="text-xs text-amber-600">
+                  Streamlined fountain mode is active. Reset the session to edit text.
+                </p>
+              </div>
             )}
           </div>
 
