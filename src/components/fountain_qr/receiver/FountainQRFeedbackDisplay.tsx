@@ -372,7 +372,7 @@ export function FountainQRFeedbackDisplay({
               <img
                 src={feedbackQRUrl}
                 alt="Feedback QR Code"
-                className="relative z-10 max-w-[300px] w-full h-auto"
+                className="relative z-10 block w-[300px] max-w-full h-auto"
               />
             </div>
             <div className="space-y-3 text-sm">
