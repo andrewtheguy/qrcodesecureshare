@@ -17,7 +17,14 @@ export function renderQrModulesToCanvas(
     throw new Error('Invalid module payload length for QR render')
   }
 
-  const size = Math.max(1, Math.floor(options.size))
+  const parsedSize = Number(options.size)
+  if (!Number.isFinite(parsedSize)) {
+    throw new Error(
+      `Invalid QR render size: expected a finite number, received ${String(options.size)}`
+    )
+  }
+
+  const size = Math.max(1, Math.floor(parsedSize))
   const pixelSize = Math.floor(size / moduleCount)
   if (pixelSize <= 0) {
     throw new Error('Target canvas size is too small for QR matrix')
