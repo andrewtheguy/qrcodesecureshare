@@ -9,7 +9,7 @@ export interface GenerateQRRef {
   setTextFromScan: (text: string) => void
 }
 
-const MAX_QR_TEXT_LENGTH = 700
+const MAX_QR_TEXT_LENGTH = 1400
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
