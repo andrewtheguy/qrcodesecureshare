@@ -11,7 +11,8 @@ import {
 import { computeChecksum } from '@/utils/checksum'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { DEFAULT_FOUNTAIN_ENCODER_OPTIONS, FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
-import { generateFastQrPngBytes } from '@/utils/fastQrWasm'
+import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
+import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 import { serializeTextFountainFrame } from '@/utils/textFountainProtocol'
 
 const DISPLAY_SIZE = 400
@@ -27,7 +28,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
   const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
   const [sessionId, setSessionId] = useState<number>(0)
   const [finalCrc32, setFinalCrc32] = useState<string>('')
-  const [qrUrl, setQrUrl] = useState<string>('')
+  const [hasFrame, setHasFrame] = useState<boolean>(false)
   const [isPreparing, setIsPreparing] = useState<boolean>(true)
   const [isPlaying, setIsPlaying] = useState<boolean>(false)
   const [isAutoPaused, setIsAutoPaused] = useState<boolean>(false)
@@ -39,13 +40,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
   const autoPauseTimeoutRef = useRef<number | null>(null)
   const isGeneratingRef = useRef<boolean>(false)
   const isPlayingRef = useRef<boolean>(isPlaying)
-  const lastQrUrlRef = useRef<string>('')
-
-  const releaseQrUrl = useCallback((url: string | null) => {
-    if (url && url.startsWith('blob:')) {
-      URL.revokeObjectURL(url)
-    }
-  }, [])
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const fpsLabel = useMemo(() => `${TEXT_FOUNTAIN_FPS} fps`, [])
 
@@ -84,14 +79,6 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
     isPlayingRef.current = isPlaying
   }, [isPlaying])
 
-  const updateQrUrl = useCallback((nextUrl: string) => {
-    if (lastQrUrlRef.current && lastQrUrlRef.current !== nextUrl) {
-      releaseQrUrl(lastQrUrlRef.current)
-    }
-    lastQrUrlRef.current = nextUrl
-    setQrUrl(nextUrl)
-  }, [releaseQrUrl])
-
   useEffect(() => {
     let cancelled = false
 
@@ -101,11 +88,9 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
         setError('')
         setIsPlaying(false)
         setFrameCount(0)
+        setHasFrame(false)
         clearGenerationTimer()
         clearAutoPauseTimer()
-        releaseQrUrl(lastQrUrlRef.current)
-        lastQrUrlRef.current = ''
-        setQrUrl('')
 
         const textBytes = new TextEncoder().encode(text)
         textBytesRef.current = textBytes
@@ -154,10 +139,8 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
       cancelled = true
       clearGenerationTimer()
       clearAutoPauseTimer()
-      releaseQrUrl(lastQrUrlRef.current)
-      lastQrUrlRef.current = ''
     }
-  }, [clearAutoPauseTimer, clearGenerationTimer, releaseQrUrl, text])
+  }, [clearAutoPauseTimer, clearGenerationTimer, text])
 
   const renderChunk = useCallback(async (chunk: FountainChunk) => {
     if (!encoder) return
@@ -177,17 +160,24 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
       chunkData: chunk.data,
     })
 
-    const pngBytes = await generateFastQrPngBytes(frameBytes, {
-      width: DISPLAY_SIZE,
+    const matrix = await generateFastQrModuleMatrix(frameBytes, {
       margin: 1,
       errorCorrectionLevel: 'L',
       forceByteMode: true,
     })
 
-    const blob = new Blob([pngBytes], { type: 'image/png' })
-    const nextUrl = URL.createObjectURL(blob)
-    updateQrUrl(nextUrl)
-  }, [encoder, finalCrc32, sessionId, updateQrUrl])
+    const canvas = qrCanvasRef.current
+    if (!canvas) {
+      throw new Error('Text fountain canvas is unavailable')
+    }
+
+    renderQrModulesToCanvas(canvas, matrix.moduleCount, matrix.modules, {
+      size: DISPLAY_SIZE,
+      darkColor: '#000000',
+      lightColor: '#FFFFFF',
+    })
+    setHasFrame(true)
+  }, [encoder, finalCrc32, sessionId])
 
   const generateNextFrame = useCallback(async () => {
     if (!encoder || !isPlaying || isGeneratingRef.current) return
@@ -280,20 +270,23 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
         )}
 
         <div className="mx-auto w-fit max-w-full rounded-xl border border-sky-300/40 bg-slate-950/95 p-2">
-          {qrUrl ? (
-            <img
-              src={qrUrl}
-              alt="Text fountain frame"
-              className="mx-auto block w-auto max-w-full h-auto"
+          <div className="relative">
+            <canvas
+              ref={qrCanvasRef}
+              width={DISPLAY_SIZE}
+              height={DISPLAY_SIZE}
+              aria-label="Text fountain frame"
+              role="img"
+              className={`mx-auto block w-auto max-w-full h-auto bg-white ${hasFrame ? 'opacity-100' : 'opacity-0'}`}
             />
-          ) : (
-            <div
-              className="aspect-square rounded-lg border border-sky-500/30 bg-sky-500/10 flex items-center justify-center text-sm text-sky-100/80"
-              style={{ width: `${DISPLAY_SIZE}px`, maxWidth: '100%' }}
-            >
-              {isPreparing ? 'Preparing stream…' : 'Generating frames…'}
-            </div>
-          )}
+            {!hasFrame && (
+              <div
+                className="absolute inset-0 rounded-lg border border-sky-500/30 bg-sky-500/10 flex items-center justify-center text-sm text-sky-100/80"
+              >
+                {isPreparing ? 'Preparing stream…' : 'Generating frames…'}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="text-sm text-muted-foreground text-center">

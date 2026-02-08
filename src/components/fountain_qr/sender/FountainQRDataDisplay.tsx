@@ -14,12 +14,25 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Slider } from '@/components/ui/slider'
 import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
 import { computeChecksum } from '@/utils/checksum'
+import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
+import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
 const DEFAULT_PART_CHECKSUM = '00000000'
 const AUTO_PAUSE_PADDING = 2
 const AUTO_PAUSE_MIN_MS = 120000
 const FOUNTAIN_QR_DISPLAY_SIZE = 400
+
+interface QrMatrixFrame {
+  moduleCount: number
+  modules: Uint8Array
+}
+
+interface BufferedChunkFrame {
+  chunk: FountainChunk
+  qrFrame: QrMatrixFrame
+  chunkNum: number
+}
 
 interface FountainQRDataDisplayProps {
   encoder: FountainEncoder | null
@@ -56,7 +69,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     maxQRDataSize,
     autoPauseResetToken = 0
   } = props
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
+  const [hasRenderedFrame, setHasRenderedFrame] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [fps, setFps] = useState<number>(DEFAULT_FPS)
   const [chunkCount, setChunkCount] = useState(0)
@@ -66,31 +79,33 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const [workerFallbackHint, setWorkerFallbackHint] = useState('')
   const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
   const autoPauseTimeoutRef = useRef<number | null>(null)
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
 
   const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
   const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
   const currentChunkRef = useRef<FountainChunk | null>(null)
-  const lastSuccessfulQrRef = useRef<string>('')
   const workerRef = useRef<Worker | null>(null)
-  const pendingRequests = useRef<Map<number, {resolve: (url: string) => void, reject: (err: Error) => void}>>(new Map())
+  const pendingRequests = useRef<Map<number, {resolve: (frame: QrMatrixFrame) => void, reject: (err: Error) => void}>>(new Map())
   const requestIdRef = useRef(0)
-  const chunkBufferRef = useRef<Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>>([])
+  const chunkBufferRef = useRef<BufferedChunkFrame[]>([])
   const chunkCountRef = useRef(chunkCount)
   const bufferLengthRef = useRef(bufferLength)
   const fpsRef = useRef(fps)
   const chunkCounterRef = useRef<number>(0) // Track actual chunk count, synced to state every 500ms
-  const releaseQrUrl = useCallback((url: string | null) => {
-    if (url && url.startsWith('blob:')) {
-      URL.revokeObjectURL(url)
+
+  const renderQrFrame = useCallback((frame: QrMatrixFrame) => {
+    const canvas = qrCanvasRef.current
+    if (!canvas) {
+      throw new Error('Fountain QR canvas is unavailable')
     }
+
+    renderQrModulesToCanvas(canvas, frame.moduleCount, frame.modules, {
+      size: FOUNTAIN_QR_DISPLAY_SIZE,
+      darkColor: '#000000',
+      lightColor: '#FFFFFF',
+    })
+    setHasRenderedFrame(true)
   }, [])
-  const updateQrCodeDisplay = useCallback((nextUrl: string) => {
-    if (lastSuccessfulQrRef.current && lastSuccessfulQrRef.current !== nextUrl) {
-      releaseQrUrl(lastSuccessfulQrRef.current)
-    }
-    lastSuccessfulQrRef.current = nextUrl
-    setQrCodeUrl(nextUrl)
-  }, [releaseQrUrl])
 
   // Update refs when state changes
   useEffect(() => {
@@ -113,14 +128,14 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const originalBufferTargetRef = useRef(5)
 
   // Helper functions for atomic buffer mutations
-  const pushToBuffer = useCallback((items: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}>) => {
+  const pushToBuffer = useCallback((items: BufferedChunkFrame[]) => {
     chunkBufferRef.current.push(...items)
     const newLength = chunkBufferRef.current.length
     setBufferLength(newLength)
     onBufferUpdate(newLength)
   }, [onBufferUpdate])
 
-  const consumeFromBuffer = useCallback((): {chunk: FountainChunk, qrUrl: string, chunkNum: number} | undefined => {
+  const consumeFromBuffer = useCallback((): BufferedChunkFrame | undefined => {
     const item = chunkBufferRef.current.shift()
     const newLength = chunkBufferRef.current.length
     setBufferLength(newLength)
@@ -129,13 +144,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [onBufferUpdate])
 
   const clearBuffer = useCallback(() => {
-    for (const item of chunkBufferRef.current) {
-      releaseQrUrl(item.qrUrl)
-    }
     chunkBufferRef.current = []
     setBufferLength(0)
     onBufferUpdate(0)
-  }, [onBufferUpdate, releaseQrUrl])
+  }, [onBufferUpdate])
 
   // Helper function to calculate expected chunk size
   const calculateExpectedChunkSize = useCallback((
@@ -320,6 +332,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   useEffect(() => {
     setChunkCount(0)
     setOversizedChunkCount(0)
+    setHasRenderedFrame(false)
     clearBuffer()
   }, [sessionId, clearBuffer])
 
@@ -328,20 +341,21 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     try {
       workerRef.current = new QRWorker()
       workerRef.current.onmessage = (e) => {
-        const { type, id, buffer, mimeType, error } = e.data as {
+        const { type, id, moduleBuffer, moduleCount, error } = e.data as {
           type: 'success' | 'error'
           id: number
-          buffer?: ArrayBuffer
-          mimeType?: string
+          moduleBuffer?: ArrayBuffer
+          moduleCount?: number
           error?: string
         }
         const resolver = pendingRequests.current.get(id)
         if (resolver) {
-          if (type === 'success' && buffer instanceof ArrayBuffer) {
+          if (type === 'success' && moduleBuffer instanceof ArrayBuffer && typeof moduleCount === 'number') {
             try {
-              const blob = new Blob([buffer], { type: mimeType || 'image/png' })
-              const url = URL.createObjectURL(blob)
-              resolver.resolve(url)
+              resolver.resolve({
+                moduleCount,
+                modules: new Uint8Array(moduleBuffer),
+              })
             } catch (err) {
               resolver.reject(err as Error)
             }
@@ -361,15 +375,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
   }, [])
 
-  useEffect(() => {
-    return () => {
-      releaseQrUrl(lastSuccessfulQrRef.current)
-      for (const item of chunkBufferRef.current) {
-        releaseQrUrl(item.qrUrl)
-      }
-    }
-  }, [releaseQrUrl])
-
   // Update buffer target size based on FPS
   useEffect(() => {
     // For low FPS (<=5), use smaller buffer to avoid over-generation
@@ -383,8 +388,8 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
   }, [fps])
 
-  // Generate QR in worker (for data chunks only)
-  const generateQRInWorker = useCallback((binaryData: Uint8Array, options: { errorCorrectionLevel?: string; width?: number; margin?: number; color?: { dark: string; light: string } }): Promise<string> => {
+  // Generate QR module matrix (prefer worker, fallback to main thread).
+  const generateQRInWorker = useCallback(async (binaryData: Uint8Array, options: { errorCorrectionLevel?: string; margin?: number }): Promise<QrMatrixFrame> => {
     const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
     const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
 
@@ -394,12 +399,16 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
     const worker = workerRef.current
     if (!worker) {
-      throw new Error('QR worker unavailable')
+      return generateFastQrModuleMatrix(binaryData, {
+        margin: options.margin ?? 1,
+        errorCorrectionLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') ?? 'M',
+        forceByteMode: true,
+      })
     }
 
     const payload = binaryData.slice()
 
-    const workerPromise = new Promise<string>((resolve, reject) => {
+    const workerPromise = new Promise<QrMatrixFrame>((resolve, reject) => {
       const id = requestIdRef.current++
       const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
       const timeout = setTimeout(() => {
@@ -408,12 +417,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       }, adaptiveTimeout)
 
       pendingRequests.current.set(id, {
-        resolve: (qrUrl: string) => {
+        resolve: (frame: QrMatrixFrame) => {
           clearTimeout(timeout)
           consecutiveWorkerFailuresRef.current = 0
           consecutiveWorkerSuccessesRef.current++
           setWorkerFallbackHint('')
-          resolve(qrUrl)
+          resolve(frame)
         },
         reject: (err: Error) => {
           clearTimeout(timeout)
@@ -469,7 +478,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       throw err
     })
-  }, [chunkCountRef, bufferLengthRef, fpsRef])
+  }, [])
 
   // Generate and display fountain-coded chunk in binary format
   useEffect(() => {
@@ -497,7 +506,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       lastBufferGenerationRef.current = Date.now()
 
       try {
-        const batch: Array<{chunk: FountainChunk, qrUrl: string, chunkNum: number}> = []
+        const batch: BufferedChunkFrame[] = []
         const maxRetries = 20
 
         // Generate only one chunk at a time to respect FPS throttling
@@ -521,18 +530,13 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
               // Serialize chunk to binary format
               const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
-              const dataUrl = await generateQRInWorker(binaryData, {
-                  width: FOUNTAIN_QR_DISPLAY_SIZE,
-                  margin: currentQROptions.margin,
-                  errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
-                  color: {
-                    dark: '#000000',
-                    light: '#FFFFFF'
-                  }
-                })
+              const qrFrame = await generateQRInWorker(binaryData, {
+                margin: currentQROptions.margin,
+                errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
+              })
 
-              const chunkNum = chunkCount + bufferLength + batch.length + 1
-              batch.push({ chunk, qrUrl: dataUrl, chunkNum })
+              const chunkNum = chunkCountRef.current + bufferLengthRef.current + batch.length + 1
+              batch.push({ chunk, qrFrame, chunkNum })
               success = true
 
             } catch (err) {
@@ -580,21 +584,16 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         // Serialize chunk to binary format
         const binaryData = await serializeChunkToBinary(chunk, partInfo)
 
-        const dataUrl = await generateQRInWorker(binaryData, {
-          width: FOUNTAIN_QR_DISPLAY_SIZE,
+        const qrFrame = await generateQRInWorker(binaryData, {
           margin: currentQROptions.margin,
           errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
-          color: {
-            dark: '#000000',
-            light: '#FFFFFF'
-          }
         })
 
         // Success! Update state and display
         currentChunkRef.current = chunk
         chunkCounterRef.current++
         onChunkGenerated(chunkCounterRef.current, chunk)
-        updateQrCodeDisplay(dataUrl)
+        renderQrFrame(qrFrame)
         return // Exit successfully
 
       } catch (err) {
@@ -629,7 +628,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     if (bufferedItem) {
       currentChunkRef.current = bufferedItem.chunk
       chunkCounterRef.current = bufferedItem.chunkNum
-      updateQrCodeDisplay(bufferedItem.qrUrl)
+      renderQrFrame(bufferedItem.qrFrame)
       onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
     } else {
       generateAndShowNextChunk()
@@ -640,7 +639,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       if (bufferedItem) {
         currentChunkRef.current = bufferedItem.chunk
         chunkCounterRef.current = bufferedItem.chunkNum
-        updateQrCodeDisplay(bufferedItem.qrUrl)
+        renderQrFrame(bufferedItem.qrFrame)
         onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
       } else {
         generateAndShowNextChunk()
@@ -650,12 +649,13 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     return () => clearInterval(interval)
     // generateAndShowNextChunk is intentionally omitted from deps to prevent re-subscription churn
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, encoder, fps, isActive, onChunkGenerated])
+  }, [isPlaying, encoder, fps, isActive, onChunkGenerated, renderQrFrame])
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
       chunkCounterRef.current = 0
       setChunkCount(0)
+      setHasRenderedFrame(false)
       clearBuffer() // Clear buffer on restart
     }
     setIsPlaying(!isPlaying)
@@ -682,17 +682,23 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   return (
     <div className="space-y-4">
       {/* QR Code Display (styled to match receiver scanning palette) */}
-      <div className="relative mx-auto w-full max-w-[450px] overflow-hidden rounded-2xl border border-sky-500/40 bg-slate-950/90 p-6 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
-        <div className="pointer-events-none absolute inset-4 rounded-2xl border border-sky-400/30" />
+      <div className="relative mx-auto w-fit max-w-full rounded-2xl border border-sky-500/40 bg-slate-950/90 p-2 shadow-[0_35px_65px_-35px_rgba(56,189,248,0.7)]">
+        <div className="pointer-events-none absolute inset-1 rounded-[15px] border border-sky-400/30" />
         <div className="relative flex items-center justify-center">
-          {qrCodeUrl ? (
-            <img
-              src={qrCodeUrl}
-              alt="Fountain coded chunk"
-              className="w-full h-auto drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)]"
-            />
-          ) : (
-            <div className="flex aspect-square w-full flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
+          <canvas
+            ref={qrCanvasRef}
+            width={FOUNTAIN_QR_DISPLAY_SIZE}
+            height={FOUNTAIN_QR_DISPLAY_SIZE}
+            aria-label="Fountain coded chunk"
+            role="img"
+            className={`mx-auto block w-auto max-w-full h-auto bg-white drop-shadow-[0_15px_25px_rgba(14,165,233,0.35)] ${
+              hasRenderedFrame ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+          {!hasRenderedFrame && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm"
+            >
               <p className="text-center text-sm font-medium">
                 {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
               </p>
@@ -700,7 +706,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             </div>
           )}
         </div>
-        <div className="pointer-events-none absolute inset-x-12 bottom-8 h-16 rounded-full bg-sky-500/10 blur-3xl" />
       </div>
 
       {/* Caption / Status outside the QR container */}

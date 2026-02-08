@@ -232,11 +232,11 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       {!isFountainModeActive && textQrGenerated && qrCodeUrl && (
         <Card>
           <CardContent className="text-center">
-            <div className="max-w-[300px] mx-auto">
+            <div className="w-[300px] max-w-full mx-auto">
               <img
                 src={qrCodeUrl}
                 alt="QR Code with text content"
-                className="w-full h-auto rounded-lg shadow-sm mb-4"
+                className="block w-full h-auto rounded-lg shadow-sm mb-4"
               />
             </div>
             <p className="text-sm text-muted-foreground">
