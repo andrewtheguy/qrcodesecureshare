@@ -86,6 +86,9 @@ const emitProgress = (): void => {
 const initializeDecoder = async (frame: TextFountainFrame): Promise<void> => {
   const config = buildSessionConfig(frame)
 
+  // FountainDecoder.create(metadata, partBasedMode, partSize):
+  // - partBasedMode=false: use single-session in-memory decode (no multipart/part-checksum flow)
+  // - partSize=0: no part segmentation; ignored because partBasedMode is disabled
   decoder = await FountainDecoder.create(
     {
       name: 'text-fountain.txt',
