@@ -14,6 +14,72 @@ interface TextFountainReceiverProps {
 
 type ReceiverStatus = 'waiting' | 'decoding' | 'complete' | 'error'
 
+type WorkerInitializedMessage = {
+  type: 'initialized'
+  textByteLength: number
+  totalSourceBlocks: number
+}
+
+type WorkerProgressMessage = {
+  type: 'progress'
+  decodedBlockCount: number
+  totalSourceBlocks: number
+  receivedChunkCount: number
+  progress: number
+}
+
+type WorkerCompleteMessage = {
+  type: 'complete'
+  text: string
+  checksum: string
+  byteLength: number
+}
+
+type WorkerErrorMessage = {
+  type: 'error'
+  error: string
+}
+
+type TextFountainWorkerMessage =
+  | WorkerInitializedMessage
+  | WorkerProgressMessage
+  | WorkerCompleteMessage
+  | WorkerErrorMessage
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null
+
+const isFiniteNumber = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isFinite(value)
+
+function isValidWorkerMessage(value: unknown): value is TextFountainWorkerMessage {
+  if (!isRecord(value) || typeof value.type !== 'string') {
+    return false
+  }
+
+  switch (value.type) {
+    case 'initialized':
+      return isFiniteNumber(value.textByteLength) && isFiniteNumber(value.totalSourceBlocks)
+    case 'progress':
+      return (
+        isFiniteNumber(value.decodedBlockCount) &&
+        isFiniteNumber(value.totalSourceBlocks) &&
+        isFiniteNumber(value.receivedChunkCount) &&
+        isFiniteNumber(value.progress)
+      )
+    case 'complete':
+      return (
+        typeof value.text === 'string' &&
+        typeof value.checksum === 'string' &&
+        isFiniteNumber(value.byteLength)
+      )
+    case 'error':
+      return typeof value.error === 'string'
+    default:
+      return false
+  }
+}
+
 export function TextFountainReceiver({ initialFrame, onReset }: TextFountainReceiverProps) {
   const [status, setStatus] = useState<ReceiverStatus>('waiting')
   const [isScanning, setIsScanning] = useState<boolean>(true)
@@ -35,6 +101,7 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
 
   const workerRef = useRef<Worker | null>(null)
   const initialFrameProcessedRef = useRef<boolean>(false)
+  const copiedTimeoutRef = useRef<number | null>(null)
 
   const sendFrameToWorker = useCallback((frame: Uint8Array) => {
     if (!workerRef.current) return
@@ -47,29 +114,17 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
     workerRef.current = worker
 
     worker.onmessage = (event: MessageEvent) => {
-      const message = event.data as
-        | {
-            type: 'initialized'
-            textByteLength: number
-            totalSourceBlocks: number
-          }
-        | {
-            type: 'progress'
-            decodedBlockCount: number
-            totalSourceBlocks: number
-            receivedChunkCount: number
-            progress: number
-          }
-        | {
-            type: 'complete'
-            text: string
-            checksum: string
-            byteLength: number
-          }
-        | {
-            type: 'error'
-            error: string
-          }
+      const rawMessage: unknown = event.data
+      const rawType = isRecord(rawMessage) && typeof rawMessage.type === 'string'
+        ? rawMessage.type
+        : 'unknown'
+
+      if (!isValidWorkerMessage(rawMessage)) {
+        console.error(`[TextFountainReceiver] Ignoring malformed worker message (type=${rawType})`, rawMessage)
+        return
+      }
+
+      const message = rawMessage
 
       switch (message.type) {
         case 'initialized': {
@@ -122,6 +177,15 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
     initialFrameProcessedRef.current = true
   }, [initialFrame, sendFrameToWorker])
 
+  useEffect(() => {
+    return () => {
+      if (copiedTimeoutRef.current !== null) {
+        clearTimeout(copiedTimeoutRef.current)
+        copiedTimeoutRef.current = null
+      }
+    }
+  }, [])
+
   const handleScan = useCallback((frames: Uint8Array[]) => {
     if (frames.length === 0) return
     const frame = frames[0]
@@ -145,12 +209,6 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
     facingMode,
   })
 
-  useEffect(() => {
-    if (status === 'complete' || status === 'error') {
-      setIsScanning(false)
-    }
-  }, [status])
-
   const handleReset = () => {
     workerRef.current?.postMessage({ type: 'reset' })
     setStatus('waiting')
@@ -170,10 +228,20 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
   }
 
   const handleCopyResult = async () => {
+    const scheduleCopiedReset = () => {
+      if (copiedTimeoutRef.current !== null) {
+        clearTimeout(copiedTimeoutRef.current)
+      }
+      copiedTimeoutRef.current = window.setTimeout(() => {
+        setCopied(false)
+        copiedTimeoutRef.current = null
+      }, 1500)
+    }
+
     try {
       await navigator.clipboard.writeText(textResult)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      scheduleCopiedReset()
     } catch {
       const textArea = document.createElement('textarea')
       textArea.value = textResult
@@ -182,7 +250,7 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
       document.execCommand('copy')
       document.body.removeChild(textArea)
       setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      scheduleCopiedReset()
     }
   }
 
