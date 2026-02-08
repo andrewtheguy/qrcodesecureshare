@@ -27,6 +27,7 @@ type WorkerRequest = ProcessFrameMessage | ResetMessage
 let decoder: FountainDecoder | null = null
 let sessionConfig: DecoderSessionConfig | null = null
 let receivedChunkCount = 0
+let droppedFrameCrcCount = 0
 const receivedChunkKeys = new Set<string>()
 let processingQueue: Promise<void> = Promise.resolve()
 
@@ -38,6 +39,7 @@ const resetState = (): void => {
   decoder = null
   sessionConfig = null
   receivedChunkCount = 0
+  droppedFrameCrcCount = 0
   receivedChunkKeys.clear()
 }
 
@@ -163,6 +165,11 @@ const processFrame = async (frameInput: Uint8Array | ArrayBuffer): Promise<void>
   const checksumPayload = frameBytes.slice(0, frameBytes.length - 4)
   const calculatedFrameCrc = await computeChecksum(checksumPayload, 'crc32')
   if (frame.frameCrc32 !== calculatedFrameCrc) {
+    droppedFrameCrcCount += 1
+    const frameId = `${frame.sessionId}:${frame.seed}:${frame.degree}`
+    console.debug(
+      `[TextFountainDecoderWorker] Dropped frame (CRC mismatch #${droppedFrameCrcCount}) id=${frameId} expected=${frame.frameCrc32} calculated=${calculatedFrameCrc}`
+    )
     return
   }
 
