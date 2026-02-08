@@ -1,15 +1,20 @@
-import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  TEXT_FOUNTAIN_MAX_TEXT_BYTES,
+  TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT,
+} from '@/constants'
+import { TextFountainSender } from '@/components/fountain_qr/TextFountainSender'
 
 export interface GenerateQRRef {
   setTextFromScan: (text: string) => void
 }
 
-const MAX_QR_TEXT_LENGTH = 1400
+const STREAM_PREVIEW_MAX_CHARS = 280
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
@@ -17,13 +22,17 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
   const [qrError, setQrError] = useState<string | null>(null)
   const [isOverLimit, setIsOverLimit] = useState(false)
+  const [isFountainModeActive, setIsFountainModeActive] = useState(false)
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
+      setIsFountainModeActive(false)
       setTextInput(text)
       void generateTextQR(text)
     }
   }))
+
+  const getUtf8Bytes = useCallback((value: string) => new TextEncoder().encode(value.trim()), [])
 
   const generateQRCode = useCallback(async (payload: string) => {
     setQrError(null)
@@ -43,6 +52,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     const trimmed = text.trim()
     if (!trimmed) return
 
+    setIsFountainModeActive(false)
     const success = await generateQRCode(trimmed)
     setTextQrGenerated(success)
     setIsOverLimit(false)
@@ -58,7 +68,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
       return
     }
 
-    if (trimmed.length > MAX_QR_TEXT_LENGTH) {
+    if (trimmed.length > TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT) {
       setIsOverLimit(true)
       setTextQrGenerated(false)
       setQrCodeUrl('')
@@ -71,9 +81,50 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     setTextQrGenerated(success)
   }, [generateQRCode])
 
+  const activateFountainMode = () => {
+    const trimmed = textInput.trim()
+    if (!trimmed) return
+
+    const textBytes = getUtf8Bytes(trimmed)
+    if (textBytes.length > TEXT_FOUNTAIN_MAX_TEXT_BYTES) {
+      setQrError(
+        `Text is too large for streamlined fountain mode (${textBytes.length} bytes). Max is ${TEXT_FOUNTAIN_MAX_TEXT_BYTES} bytes.`
+      )
+      return
+    }
+
+    setQrError(null)
+    setTextQrGenerated(false)
+    setQrCodeUrl('')
+    setIsFountainModeActive(true)
+  }
+
+  const resetFountainMode = () => {
+    setIsFountainModeActive(false)
+    setQrError(null)
+    setTextQrGenerated(false)
+    setQrCodeUrl('')
+  }
+
   useEffect(() => {
+    if (isFountainModeActive) return
     void generateTextQR(textInput)
-  }, [textInput, generateTextQR])
+  }, [textInput, generateTextQR, isFountainModeActive])
+
+  const trimmedTextInput = useMemo(() => textInput.trim(), [textInput])
+  const textByteLength = useMemo(() => getUtf8Bytes(textInput).length, [textInput, getUtf8Bytes])
+  const canUseFountainMode = useMemo(
+    () => textByteLength > 0 && textByteLength <= TEXT_FOUNTAIN_MAX_TEXT_BYTES,
+    [textByteLength]
+  )
+  const streamPreviewText = useMemo(
+    () => (
+      trimmedTextInput.length > STREAM_PREVIEW_MAX_CHARS
+        ? `${trimmedTextInput.slice(0, STREAM_PREVIEW_MAX_CHARS)}...`
+        : trimmedTextInput
+    ),
+    [trimmedTextInput]
+  )
 
   return (
     <div className="space-y-6">
@@ -91,6 +142,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                   size="sm"
                   onClick={() => setTextInput('')}
                   className="h-6 px-2 text-xs"
+                  disabled={isFountainModeActive}
                 >
                   Clear
                 </Button>
@@ -99,37 +151,64 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
                   onClick={() => setTextInput(window.location.origin)}
                   className="h-6 px-2 text-xs"
                   variant="outline"
+                  disabled={isFountainModeActive}
                 >
                   QR for This Site
                 </Button>
               </div>
-              <span className={textInput.length > MAX_QR_TEXT_LENGTH ? 'text-orange-600 font-medium' : ''}>
-                {textInput.length} characters
+              <span className={textInput.length > TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT ? 'text-orange-600 font-medium' : ''}>
+                {textInput.length} characters ({textByteLength} bytes)
               </span>
             </div>
-            <Textarea
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Type your text here..."
-              className="min-h-[100px]"
-            />
+            {!isFountainModeActive && (
+              <Textarea
+                value={textInput}
+                onChange={(e) => setTextInput(e.target.value)}
+                placeholder="Type your text here..."
+                className="min-h-[100px]"
+              />
+            )}
+            {isFountainModeActive && (
+              <div className="space-y-2">
+                <div className="rounded-md border bg-muted p-3">
+                  <p className="text-xs text-muted-foreground mb-1">Text preview (truncated)</p>
+                  <p className="text-sm whitespace-pre-wrap break-words">
+                    {streamPreviewText}
+                  </p>
+                </div>
+                <p className="text-xs text-amber-600">
+                  Streamlined fountain mode is active. Reset the session to edit text.
+                </p>
+              </div>
+            )}
           </div>
 
-          {isOverLimit && (
+          {isOverLimit && !isFountainModeActive && (
             <Alert>
               <AlertDescription className="space-y-3">
                 <div className="font-medium flex items-center gap-2">
                   📏 Text is too long for a single QR code ({textInput.length} characters)
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  You can still try generating it as a single QR code.
+                  You can still try generating one QR code, or switch to streamlined fountain stream mode.
                 </p>
+                {!canUseFountainMode && (
+                  <p className="text-xs text-red-600">
+                    Streamlined fountain mode supports up to {TEXT_FOUNTAIN_MAX_TEXT_BYTES} bytes.
+                  </p>
+                )}
                 <div className="flex gap-3 justify-center flex-wrap pt-2">
                   <Button
                     onClick={() => generatePlainQROverride(textInput)}
                     variant="outline"
                   >
                     Generate QR Anyway
+                  </Button>
+                  <Button
+                    onClick={activateFountainMode}
+                    disabled={!canUseFountainMode}
+                  >
+                    Convert to Fountain Stream
                   </Button>
                 </div>
               </AlertDescription>
@@ -146,7 +225,11 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
         </CardContent>
       </Card>
 
-      {textQrGenerated && qrCodeUrl && (
+      {isFountainModeActive && (
+        <TextFountainSender text={textInput} onReset={resetFountainMode} />
+      )}
+
+      {!isFountainModeActive && textQrGenerated && qrCodeUrl && (
         <Card>
           <CardContent className="text-center">
             <div className="max-w-[300px] mx-auto">
