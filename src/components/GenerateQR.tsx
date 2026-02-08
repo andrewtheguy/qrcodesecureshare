@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, forwardRef, useImperativeHandle } from 'react'
+import { useState, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
 import { generateQRTextDataURL } from '@/utils/qrUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -111,11 +111,20 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     void generateTextQR(textInput)
   }, [textInput, generateTextQR, isFountainModeActive])
 
-  const textByteLength = getUtf8Bytes(textInput).length
-  const canUseFountainMode = textByteLength > 0 && textByteLength <= TEXT_FOUNTAIN_MAX_TEXT_BYTES
-  const streamPreviewText = textInput.length > STREAM_PREVIEW_MAX_CHARS
-    ? `${textInput.slice(0, STREAM_PREVIEW_MAX_CHARS)}...`
-    : textInput
+  const trimmedTextInput = useMemo(() => textInput.trim(), [textInput])
+  const textByteLength = useMemo(() => getUtf8Bytes(textInput).length, [textInput, getUtf8Bytes])
+  const canUseFountainMode = useMemo(
+    () => textByteLength > 0 && textByteLength <= TEXT_FOUNTAIN_MAX_TEXT_BYTES,
+    [textByteLength]
+  )
+  const streamPreviewText = useMemo(
+    () => (
+      trimmedTextInput.length > STREAM_PREVIEW_MAX_CHARS
+        ? `${trimmedTextInput.slice(0, STREAM_PREVIEW_MAX_CHARS)}...`
+        : trimmedTextInput
+    ),
+    [trimmedTextInput]
+  )
 
   return (
     <div className="space-y-6">

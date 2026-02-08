@@ -20,6 +20,13 @@ export interface TextFountainFrame {
   degree: number
   indices: number[]
   chunkData: Uint8Array
+  /**
+   * CRC32 extracted from the trailing 4 bytes of the frame payload.
+   *
+   * Note: parseTextFountainFrame() does not validate this checksum against frame bytes.
+   * Validation is performed downstream in the decoder worker
+   * (src/workers/textFountainDecoder.worker.ts, processFrame()).
+   */
   frameCrc32?: string
 }
 
@@ -151,6 +158,18 @@ export async function serializeTextFountainFrame(frame: TextFountainFrame): Prom
   return bytes
 }
 
+/**
+ * Parse a text fountain frame into structured fields.
+ *
+ * This function validates frame structure and required field constraints,
+ * then extracts the trailing frame CRC32 value as `frameCrc32`.
+ *
+ * Important:
+ * - It does NOT verify `frameCrc32` against the frame payload.
+ * - Integrity verification is performed downstream by callers.
+ * - In the current flow, validation happens in
+ *   `src/workers/textFountainDecoder.worker.ts` inside `processFrame()`.
+ */
 export function parseTextFountainFrame(bytes: Uint8Array): TextFountainFrame {
   if (bytes.length < MIN_FRAME_SIZE) {
     throw new Error('Text fountain frame is too short')

@@ -263,7 +263,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         </div>
       )}
 
-      {textFountainModeActive && (
+      {textFountainModeActive && textFountainInitialFrame != null && (
         <TextFountainReceiver
           initialFrame={textFountainInitialFrame}
           onReset={() => {

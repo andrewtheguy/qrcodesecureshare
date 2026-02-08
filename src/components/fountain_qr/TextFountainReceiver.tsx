@@ -27,6 +27,8 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
   const [error, setError] = useState<string>('')
   const [cameraError, setCameraError] = useState<string>('')
   const [copied, setCopied] = useState<boolean>(false)
+  // NOTE: This reads navigator.userAgent at initialization time and is not SSR-safe.
+  // This app is currently client-only (no SSR/hydration deployment target), so this is acceptable.
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() =>
     /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'
   )
