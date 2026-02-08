@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
 import { OfflineMetadataDetails } from './OfflineMetadataDetails'
+import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver'
+import { isTextFountainFrame } from '@/utils/textFountainProtocol'
 
 interface FountainMetadata {
   type: 'METADATA'
@@ -52,6 +54,8 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const navigate = useNavigate()
   const [scannedText, setScannedText] = useState<string | null>(null)
   const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null)
+  const [textFountainModeActive, setTextFountainModeActive] = useState(false)
+  const [textFountainInitialFrame, setTextFountainInitialFrame] = useState<Uint8Array | null>(null)
   const [scanning, setScanning] = useState(false)
   const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode)
   const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
@@ -70,18 +74,28 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   }, [location.pathname])
 
   // Handle QR scan results (multiple QR codes from a single scan)
-  const handleQRScan = useCallback((qrCodes: string[]) => {
+  const handleQRScan = useCallback((qrCodes: Uint8Array[]) => {
     if (!qrCodes || qrCodes.length === 0) {
       return
     }
 
-    // Process the first QR code for now (can be extended to handle multiple in the future)
-    const data = qrCodes[0]
+    const rawBytes = qrCodes[0]
+    if (isTextFountainFrame(rawBytes)) {
+      setScanning(false)
+      setScannedText(null)
+      setParsedQRData(null)
+      setTextFountainInitialFrame(rawBytes.slice())
+      setTextFountainModeActive(true)
+      return
+    }
+
+    const data = new TextDecoder().decode(rawBytes)
     console.log('QR code detected:', data)
 
     // Always set the scanned text
     setScanning(false)
-
+    setTextFountainModeActive(false)
+    setTextFountainInitialFrame(null)
     setScannedText(data)
 
     if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
@@ -122,7 +136,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
-    binary: false,
+    binary: true,
     // Maximize detection for challenging QR codes (worn, angled, poor lighting, color variations)
     readerOptions: {
       formats: ['QRCode'],
@@ -205,7 +219,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('Processing uploaded image for QR code...')
 
       // Decode the QR codes using zxing-wasm worker
-      const results = await decodeQRFromImage(file, undefined, false)
+      const results = await decodeQRFromImage(file, undefined, true)
 
       if (!results || results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
@@ -215,10 +229,10 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       console.log('QR codes detected from uploaded image:', results)
 
       if (isStringArray(results)) {
-        handleQRScan(results)
+        const encoded = results.map((text) => new TextEncoder().encode(text))
+        handleQRScan(encoded)
       } else if (isUint8ArrayArray(results)) {
-        const decodedResults = results.map((bytes) => new TextDecoder().decode(bytes))
-        handleQRScan(decodedResults)
+        handleQRScan(results)
       } else {
         console.error('Unexpected QR decode result format:', results)
         alert('Unsupported QR code data format in uploaded image.')
@@ -248,7 +262,23 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
           ✓ {copiedFeedback}
         </div>
       )}
-      {!scanning && !scannedText && (
+
+      {textFountainModeActive && (
+        <TextFountainReceiver
+          initialFrame={textFountainInitialFrame}
+          onReset={() => {
+            setTextFountainModeActive(false)
+            setTextFountainInitialFrame(null)
+            setScannedText(null)
+            setParsedQRData(null)
+            setScanning(false)
+            setCameraError(null)
+            setUploadMode('camera')
+          }}
+        />
+      )}
+
+      {!textFountainModeActive && !scanning && !scannedText && (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-6">
@@ -256,7 +286,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold">Scan QR Code</h2>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Scan any QR code to view its content. Supports offline file transfer metadata and plain text.
+                  Scan any QR code to view its content. Supports offline transfer metadata, plain text, and streamlined long-text fountain streams.
                 </p>
               </div>
 
@@ -331,7 +361,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         </Card>
       )}
 
-      {scanning && (
+      {!textFountainModeActive && scanning && (
         <Card>
           <CardContent className="p-8 text-center">
             <div className="space-y-4">
@@ -369,7 +399,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         </Card>
       )}
 
-      {scannedText && (
+      {!textFountainModeActive && scannedText && (
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-green-600 flex items-center justify-center gap-2">
