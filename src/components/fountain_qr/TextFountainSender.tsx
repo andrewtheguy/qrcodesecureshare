@@ -279,15 +279,18 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
           </Alert>
         )}
 
-        <div className="mx-auto max-w-[420px] rounded-xl border border-sky-300/40 bg-slate-950/95 p-4">
+        <div className="mx-auto w-fit max-w-full rounded-xl border border-sky-300/40 bg-slate-950/95 p-2">
           {qrUrl ? (
             <img
               src={qrUrl}
               alt="Text fountain frame"
-              className="w-full h-auto rounded-lg"
+              className="mx-auto block w-auto max-w-full h-auto"
             />
           ) : (
-            <div className="aspect-square w-full rounded-lg border border-sky-500/30 bg-sky-500/10 flex items-center justify-center text-sm text-sky-100/80">
+            <div
+              className="aspect-square rounded-lg border border-sky-500/30 bg-sky-500/10 flex items-center justify-center text-sm text-sky-100/80"
+              style={{ width: `${DISPLAY_SIZE}px`, maxWidth: '100%' }}
+            >
               {isPreparing ? 'Preparing stream…' : 'Generating frames…'}
             </div>
           )}
