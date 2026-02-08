@@ -1,7 +1,7 @@
 use fast_qr::convert::svg::SvgBuilder;
 use fast_qr::convert::Builder;
 use fast_qr::qr::QRCodeError;
-use fast_qr::{ECL, Mode, QRBuilder, QRCode};
+use fast_qr::{Mode, QRBuilder, QRCode, ECL};
 use png::{BitDepth, ColorType, Encoder};
 use wasm_bindgen::prelude::*;
 
@@ -17,9 +17,9 @@ fn parse_ecl(ecl: &str) -> Result<ECL, String> {
 
 fn map_qr_error(error: QRCodeError) -> String {
     match error {
-        QRCodeError::EncodedData => String::from(
-            "Data too big to be encoded in a single QR code at the selected settings",
-        ),
+        QRCodeError::EncodedData => {
+            String::from("Data too big to be encoded in a single QR code at the selected settings")
+        }
         QRCodeError::SpecifiedVersion => {
             String::from("Specified QR version is too low for the provided data")
         }
@@ -441,8 +441,13 @@ mod tests {
 
     fn extract_qr_module_pattern(image: &DecodedPng, geometry: &RenderGeometry) -> Vec<bool> {
         let mut pattern = Vec::with_capacity(
-            usize::try_from(geometry.qr_size.checked_mul(geometry.qr_size).expect("area overflow"))
-                .expect("pattern size should fit usize"),
+            usize::try_from(
+                geometry
+                    .qr_size
+                    .checked_mul(geometry.qr_size)
+                    .expect("area overflow"),
+            )
+            .expect("pattern size should fit usize"),
         );
 
         for row in 0..geometry.qr_size {
@@ -512,7 +517,9 @@ mod tests {
             .expect("SVG is missing `viewBox` attribute")
             + marker.len();
         let rest = &svg[start..];
-        let end = rest.find('"').expect("SVG has malformed `viewBox` attribute");
+        let end = rest
+            .find('"')
+            .expect("SVG has malformed `viewBox` attribute");
         let parts: Vec<&str> = rest[..end].split_whitespace().collect();
 
         assert_eq!(parts.len(), 4, "viewBox should contain four values");
@@ -531,10 +538,127 @@ mod tests {
             svg.contains(r#"xmlns="http://www.w3.org/2000/svg""#),
             "SVG namespace should be present"
         );
-        assert!(svg.contains(r#"viewBox="0 0 "#), "SVG viewBox should be present");
-        assert!(svg.contains(r#"<path d=""#), "SVG should contain QR path data");
+        assert!(
+            svg.contains(r#"viewBox="0 0 "#),
+            "SVG viewBox should be present"
+        );
+        assert!(
+            svg.contains(r#"<path d=""#),
+            "SVG should contain QR path data"
+        );
         assert!(svg.ends_with("</svg>"), "SVG should be closed");
         assert!(svg_viewbox_size(svg) > 0, "SVG viewBox should be non-zero");
+    }
+
+    fn matrix_module_count(matrix: &[u8]) -> u32 {
+        assert!(
+            matrix.len() >= 2,
+            "Matrix output should include a 2-byte module count header"
+        );
+        u16::from_be_bytes([matrix[0], matrix[1]]) as u32
+    }
+
+    fn matrix_module_at(matrix: &[u8], module_count: u32, row: u32, col: u32) -> u8 {
+        let module_count_usize =
+            usize::try_from(module_count).expect("module count should fit usize");
+        let row_usize = usize::try_from(row).expect("row should fit usize");
+        let col_usize = usize::try_from(col).expect("col should fit usize");
+        let index = row_usize
+            .checked_mul(module_count_usize)
+            .and_then(|base| base.checked_add(col_usize))
+            .and_then(|base| base.checked_add(2))
+            .expect("matrix index should be in range");
+        matrix[index]
+    }
+
+    fn assert_matrix_invariants(
+        matrix: &[u8],
+        payload: &[u8],
+        margin: u32,
+        ecl: &str,
+        force_byte_mode: bool,
+    ) -> u32 {
+        let qrcode = build_qrcode(payload, ecl, force_byte_mode).expect("QR build should succeed");
+        let qr_size = qrcode.size as u32;
+        let module_count = qr_size
+            .checked_add(margin.checked_mul(2).expect("margin module overflow"))
+            .expect("module count overflow");
+        let module_count_u16 = u16::try_from(module_count).expect("module count should fit u16");
+        let module_count_usize =
+            usize::try_from(module_count).expect("module count should fit usize");
+        let qr_size_usize = usize::try_from(qr_size).expect("qr_size should fit usize");
+        let qr_limit = margin
+            .checked_add(qr_size)
+            .expect("margin + qr_size should not overflow");
+
+        assert_eq!(
+            matrix[0],
+            ((module_count_u16 >> 8) & 0xFF) as u8,
+            "high byte should encode module count in big-endian format"
+        );
+        assert_eq!(
+            matrix[1],
+            (module_count_u16 & 0xFF) as u8,
+            "low byte should encode module count in big-endian format"
+        );
+        assert_eq!(
+            matrix_module_count(matrix),
+            module_count,
+            "matrix header should encode module count"
+        );
+
+        let expected_len = module_count_usize
+            .checked_mul(module_count_usize)
+            .and_then(|cells| cells.checked_add(2))
+            .expect("matrix length overflow");
+        assert_eq!(
+            matrix.len(),
+            expected_len,
+            "matrix length should equal header + module_count^2"
+        );
+
+        assert!(
+            matrix[2..].iter().all(|&cell| cell == 0 || cell == 1),
+            "matrix should only contain binary module values"
+        );
+
+        for row in 0..module_count {
+            for col in 0..module_count {
+                let row_usize = usize::try_from(row).expect("row should fit usize");
+                let col_usize = usize::try_from(col).expect("col should fit usize");
+                let matrix_idx = row_usize
+                    .checked_mul(module_count_usize)
+                    .and_then(|base| base.checked_add(col_usize))
+                    .and_then(|base| base.checked_add(2))
+                    .expect("matrix index should be in range");
+
+                let expected = if row < margin || row >= qr_limit || col < margin || col >= qr_limit
+                {
+                    0
+                } else {
+                    let qr_row = row - margin;
+                    let qr_col = col - margin;
+                    let qr_row_usize = usize::try_from(qr_row).expect("qr row should fit usize");
+                    let qr_col_usize = usize::try_from(qr_col).expect("qr col should fit usize");
+                    let qr_idx = qr_row_usize
+                        .checked_mul(qr_size_usize)
+                        .and_then(|base| base.checked_add(qr_col_usize))
+                        .expect("QR index should be in range");
+                    if qrcode.data[qr_idx].value() {
+                        1
+                    } else {
+                        0
+                    }
+                };
+
+                assert_eq!(
+                    matrix[matrix_idx], expected,
+                    "module mismatch at row {row}, col {col}"
+                );
+            }
+        }
+
+        module_count
     }
 
     #[test]
@@ -586,8 +710,8 @@ mod tests {
     fn png_width_scaling_preserves_module_pattern() {
         let payload = b"png-width-invariant";
 
-        let png_narrow =
-            generate_qr_png_internal(payload, 300, 4, "Q", false).expect("narrow width should work");
+        let png_narrow = generate_qr_png_internal(payload, 300, 4, "Q", false)
+            .expect("narrow width should work");
         let png_wide =
             generate_qr_png_internal(payload, 500, 4, "Q", false).expect("wide width should work");
 
@@ -643,6 +767,82 @@ mod tests {
     }
 
     #[test]
+    fn generates_valid_matrix_for_text_payload() {
+        let payload = b"https://example.com";
+        let matrix = generate_qr_matrix_internal(payload, 4, "M", false)
+            .expect("Matrix generation should succeed");
+
+        assert_matrix_invariants(&matrix, payload, 4, "M", false);
+    }
+
+    #[test]
+    fn generates_valid_matrix_for_binary_payload_in_byte_mode() {
+        let payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
+        let matrix = generate_qr_matrix_internal(&payload, 2, "Q", true)
+            .expect("Binary matrix generation should succeed");
+
+        assert_matrix_invariants(&matrix, &payload, 2, "Q", true);
+    }
+
+    #[test]
+    fn matrix_margin_changes_module_count_and_offsets_qr_pattern() {
+        let payload = b"matrix-margin-check";
+
+        let matrix_no_margin = generate_qr_matrix_internal(payload, 0, "M", false)
+            .expect("matrix generation with no margin should succeed");
+        let matrix_margin_4 = generate_qr_matrix_internal(payload, 4, "M", false)
+            .expect("matrix generation with margin should succeed");
+
+        let no_margin_count = assert_matrix_invariants(&matrix_no_margin, payload, 0, "M", false);
+        let margin_count = assert_matrix_invariants(&matrix_margin_4, payload, 4, "M", false);
+        let quiet_zone = 4u32;
+
+        assert_eq!(
+            margin_count,
+            no_margin_count + (quiet_zone * 2),
+            "module count should include both margin sides"
+        );
+
+        for row in 0..margin_count {
+            for col in 0..margin_count {
+                let in_quiet_zone = row < quiet_zone
+                    || row >= margin_count - quiet_zone
+                    || col < quiet_zone
+                    || col >= margin_count - quiet_zone;
+                if in_quiet_zone {
+                    assert_eq!(
+                        matrix_module_at(&matrix_margin_4, margin_count, row, col),
+                        0,
+                        "quiet-zone module should be light at ({row}, {col})"
+                    );
+                }
+            }
+        }
+
+        for row in 0..no_margin_count {
+            for col in 0..no_margin_count {
+                let row_with_margin = row
+                    .checked_add(quiet_zone)
+                    .expect("row offset should not overflow");
+                let col_with_margin = col
+                    .checked_add(quiet_zone)
+                    .expect("col offset should not overflow");
+
+                assert_eq!(
+                    matrix_module_at(&matrix_no_margin, no_margin_count, row, col),
+                    matrix_module_at(
+                        &matrix_margin_4,
+                        margin_count,
+                        row_with_margin,
+                        col_with_margin
+                    ),
+                    "margin should shift matrix content without changing QR modules"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn rejects_zero_width() {
         let err =
             generate_qr_png_internal(b"hello", 0, 4, "M", false).expect_err("width=0 should fail");
@@ -659,6 +859,13 @@ mod tests {
     #[test]
     fn rejects_invalid_ecl_value_for_svg() {
         let err = generate_qr_svg_internal(b"hello", 4, "INVALID", false)
+            .expect_err("invalid ECL should fail");
+        assert!(err.contains("Invalid error correction level"));
+    }
+
+    #[test]
+    fn rejects_invalid_ecl_value_for_matrix() {
+        let err = generate_qr_matrix_internal(b"hello", 4, "INVALID", false)
             .expect_err("invalid ECL should fail");
         assert!(err.contains("Invalid error correction level"));
     }
@@ -681,6 +888,13 @@ mod tests {
     #[test]
     fn rejects_margin_overflow_for_svg() {
         let err = generate_qr_svg_internal(b"a", u32::MAX, "M", false)
+            .expect_err("margin overflow should fail");
+        assert!(err.contains("Margin is too large"));
+    }
+
+    #[test]
+    fn rejects_margin_overflow_for_matrix() {
+        let err = generate_qr_matrix_internal(b"a", u32::MAX, "M", false)
             .expect_err("margin overflow should fail");
         assert!(err.contains("Margin is too large"));
     }
