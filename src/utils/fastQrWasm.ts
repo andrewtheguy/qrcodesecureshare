@@ -1,4 +1,8 @@
-import initFastQrWasm, { generate_qr_png, generate_qr_svg } from '../../rust/fast-qr-wasm/pkg/fast_qr_wasm'
+import initFastQrWasm, {
+  generate_qr_matrix,
+  generate_qr_png,
+  generate_qr_svg,
+} from '../../rust/fast-qr-wasm/pkg/fast_qr_wasm'
 
 export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
 
@@ -13,6 +17,17 @@ export interface FastQrSvgGenerateOptions {
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
   forceByteMode?: boolean
+}
+
+export interface FastQrMatrixGenerateOptions {
+  margin?: number
+  errorCorrectionLevel?: FastQrErrorCorrectionLevel
+  forceByteMode?: boolean
+}
+
+export interface FastQrModuleMatrix {
+  moduleCount: number
+  modules: Uint8Array
 }
 
 let wasmInitialized = false
@@ -45,6 +60,16 @@ function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
 }
 
 function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
+  const normalizedMargin = normalizeMargin(options.margin)
+
+  return {
+    normalizedMargin,
+    errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
+    forceByteMode: options.forceByteMode ?? false,
+  }
+}
+
+function normalizeMatrixGenerateOptions(options: FastQrMatrixGenerateOptions = {}) {
   const normalizedMargin = normalizeMargin(options.margin)
 
   return {
@@ -103,4 +128,42 @@ export async function generateFastQrSvgString(
     errorCorrectionLevel,
     forceByteMode
   )
+}
+
+export async function generateFastQrModuleMatrix(
+  payload: Uint8Array,
+  options: FastQrMatrixGenerateOptions = {}
+): Promise<FastQrModuleMatrix> {
+  await ensureFastQrWasmInit()
+
+  const { normalizedMargin, errorCorrectionLevel, forceByteMode } =
+    normalizeMatrixGenerateOptions(options)
+
+  const matrixBytes = generate_qr_matrix(
+    payload,
+    normalizedMargin,
+    errorCorrectionLevel,
+    forceByteMode
+  )
+  const normalizedBytes =
+    matrixBytes instanceof Uint8Array ? matrixBytes : new Uint8Array(matrixBytes)
+
+  if (normalizedBytes.length < 2) {
+    throw new Error('Invalid QR matrix payload: missing module count header')
+  }
+
+  const moduleCount = (normalizedBytes[0] << 8) | normalizedBytes[1]
+  if (moduleCount <= 0) {
+    throw new Error('Invalid QR matrix payload: module count must be > 0')
+  }
+
+  const expectedLength = 2 + moduleCount * moduleCount
+  if (normalizedBytes.length < expectedLength) {
+    throw new Error('Invalid QR matrix payload: truncated module data')
+  }
+
+  return {
+    moduleCount,
+    modules: normalizedBytes.slice(2, expectedLength),
+  }
 }

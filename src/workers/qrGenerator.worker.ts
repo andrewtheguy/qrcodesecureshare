@@ -1,7 +1,7 @@
 // QR Generation Worker
-// Offloads binary QR PNG generation from main thread
+// Offloads binary QR matrix generation from main thread.
 
-import { generateFastQrPngBytes } from '@/utils/fastQrWasm'
+import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
 
 interface WorkerRequest {
   type: 'generate'
@@ -10,7 +10,6 @@ interface WorkerRequest {
   binaryBuffer?: ArrayBuffer
   options?: {
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
-    width?: number
     margin?: number
   }
 }
@@ -41,26 +40,26 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
       throw new Error('Missing QR payload')
     }
 
-    const pngBytes = await generateFastQrPngBytes(binaryData, {
-      width: options?.width ?? 400,
+    const matrix = await generateFastQrModuleMatrix(binaryData, {
       margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel ?? 'M',
       forceByteMode: true,
     })
 
-    const transferableBytes =
-      pngBytes.byteOffset === 0 && pngBytes.byteLength === pngBytes.buffer.byteLength
-        ? pngBytes
-        : pngBytes.slice()
+    const transferableModules =
+      matrix.modules.byteOffset === 0 &&
+      matrix.modules.byteLength === matrix.modules.buffer.byteLength
+        ? matrix.modules
+        : matrix.modules.slice()
 
     self.postMessage(
       {
         type: 'success',
         id,
-        buffer: transferableBytes.buffer,
-        mimeType: 'image/png',
+        moduleBuffer: transferableModules.buffer,
+        moduleCount: matrix.moduleCount,
       },
-      [transferableBytes.buffer]
+      [transferableModules.buffer]
     )
   } catch (error) {
     self.postMessage({

@@ -172,6 +172,73 @@ fn generate_qr_svg_internal(
     Ok(svg_builder.to_str(&qrcode))
 }
 
+fn generate_qr_matrix_internal(
+    data: &[u8],
+    margin: u32,
+    ecl: &str,
+    force_byte_mode: bool,
+) -> Result<Vec<u8>, String> {
+    let qrcode = build_qrcode(data, ecl, force_byte_mode)?;
+    let qr_size = qrcode.size as u32;
+    let margin_modules = margin
+        .checked_mul(2)
+        .ok_or_else(|| "Margin is too large".to_string())?;
+    let module_count = qr_size
+        .checked_add(margin_modules)
+        .ok_or_else(|| "QR module count overflow".to_string())?;
+
+    if module_count == 0 {
+        return Err("Invalid QR module size".to_string());
+    }
+    if module_count > u16::MAX as u32 {
+        return Err("QR module count exceeds supported range".to_string());
+    }
+
+    let module_count_usize =
+        usize::try_from(module_count).map_err(|_| "QR module count overflow".to_string())?;
+    let total_module_cells = module_count_usize
+        .checked_mul(module_count_usize)
+        .ok_or_else(|| "QR module matrix overflow".to_string())?;
+
+    // Format:
+    // [module_count_hi][module_count_lo][module_0][module_1]...
+    // where module bytes are row-major, 0=light, 1=dark, including quiet-zone margin.
+    let mut matrix = vec![0u8; 2 + total_module_cells];
+    matrix[0] = ((module_count >> 8) & 0xFF) as u8;
+    matrix[1] = (module_count & 0xFF) as u8;
+
+    let qr_size_usize =
+        usize::try_from(qr_size).map_err(|_| "QR module count overflow".to_string())?;
+    let margin_usize = usize::try_from(margin).map_err(|_| "Margin is too large".to_string())?;
+
+    for row in 0..qr_size_usize {
+        for col in 0..qr_size_usize {
+            let idx = row
+                .checked_mul(qr_size_usize)
+                .and_then(|base| base.checked_add(col))
+                .ok_or_else(|| "QR module matrix overflow".to_string())?;
+            if !qrcode.data[idx].value() {
+                continue;
+            }
+
+            let matrix_row = row
+                .checked_add(margin_usize)
+                .ok_or_else(|| "QR module matrix overflow".to_string())?;
+            let matrix_col = col
+                .checked_add(margin_usize)
+                .ok_or_else(|| "QR module matrix overflow".to_string())?;
+            let matrix_idx = matrix_row
+                .checked_mul(module_count_usize)
+                .and_then(|base| base.checked_add(matrix_col))
+                .and_then(|cell| cell.checked_add(2))
+                .ok_or_else(|| "QR module matrix overflow".to_string())?;
+            matrix[matrix_idx] = 1;
+        }
+    }
+
+    Ok(matrix)
+}
+
 /// Generate a PNG QR image from raw bytes.
 ///
 /// - `data`: input payload bytes
@@ -205,6 +272,22 @@ pub fn generate_qr_svg(
     force_byte_mode: bool,
 ) -> Result<String, JsValue> {
     generate_qr_svg_internal(data, margin, ecl, force_byte_mode)
+        .map_err(|message| JsValue::from_str(&message))
+}
+
+/// Generate a QR module matrix from raw bytes.
+///
+/// Returned bytes use this format:
+/// - Byte 0-1: module count (u16, big-endian), including quiet-zone margin
+/// - Remaining bytes: row-major module values where 0=light and 1=dark
+#[wasm_bindgen]
+pub fn generate_qr_matrix(
+    data: &[u8],
+    margin: u32,
+    ecl: &str,
+    force_byte_mode: bool,
+) -> Result<Vec<u8>, JsValue> {
+    generate_qr_matrix_internal(data, margin, ecl, force_byte_mode)
         .map_err(|message| JsValue::from_str(&message))
 }
 
