@@ -436,6 +436,9 @@ The system uses carefully tuned parameters to optimize for a specific decoding p
 
 Rather than attempting to decode after every chunk, the decoder waits strategically:
 
+> Scope note: This deferred strategy applies to the **offline file transfer flow**.  
+> The newer streamlined long-text fountain protocol uses **immediate per-frame decoding** (no 110% wait threshold), because payloads are expected to be small copy/paste text.
+
 ```mermaid
 flowchart LR
     subgraph Phase1["Phase 1: Collection"]
@@ -705,6 +708,57 @@ The first QR code contains JSON metadata:
 │                                                                              │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Streamlined Text Fountain Protocol (Long-Text Mode)
+
+For long text payloads (triggered in the Generate QR flow when text exceeds the single-QR threshold), the app uses a separate self-contained fountain frame protocol:
+
+- **Protocol magic**: `0xF7 0xA2`
+- **Single frame type**: every frame carries all metadata needed to decode
+- **No bootstrap frame**
+- **No feedback/ACK round-trip**
+
+#### Frame structure
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│              STREAMLINED TEXT FOUNTAIN FRAME (SELF-CONTAINED)              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Offset  Size     Field                                                     │
+│ ─────────────────────────────────────────────────                          │
+│ 0       2        Magic bytes [0xF7][0xA2]                                  │
+│ 2       1        Version (uint8)                                           │
+│ 3       2        Session ID (uint16, big-endian)                           │
+│ 5       4        Text byte length (uint32, big-endian)                     │
+│ 9       2        Block size (uint16, big-endian)                           │
+│ 11      2        Total source blocks (uint16, big-endian)                  │
+│ 13      4        Final text CRC32 (uint32, big-endian)                     │
+│ 17      4        Seed (uint32, big-endian)                                 │
+│ 21      1        Degree (uint8)                                             │
+│ 22      1        NumIndices (uint8)                                         │
+│ 23      2*N      Indices (uint16 each, big-endian)                         │
+│ ...     var      Chunk data                                                 │
+│ -4      4        Frame CRC32 (uint32, big-endian)                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### Decode behavior for this protocol
+
+Unlike the file-transfer deferred strategy, text frames are decoded immediately:
+
+1. Parse frame structure
+2. Verify per-frame CRC32
+3. Initialize decoder from frame metadata (if first valid frame)
+4. Add chunk to decoder immediately
+5. Update progress immediately
+6. On completion, validate final text CRC32 before showing output
+
+This mode intentionally favors low interaction and fast completion for small copy/paste payloads. There is no delayed decode window (no 110% collection phase).
+
+#### Diagnostics
+
+- Frames failing CRC are dropped.
+- CRC rejects are tracked/logged by the text decoder worker to aid transmission debugging.
 
 ---
 
