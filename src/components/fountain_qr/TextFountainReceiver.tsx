@@ -151,6 +151,19 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
 
   const handleReset = () => {
     workerRef.current?.postMessage({ type: 'reset' })
+    setStatus('waiting')
+    setIsScanning(true)
+    setDecodedBlocks(0)
+    setTotalSourceBlocks(0)
+    setReceivedChunkCount(0)
+    setProgress(0)
+    setTextResult('')
+    setChecksum('')
+    setByteLength(0)
+    setError('')
+    setCameraError('')
+    setCopied(false)
+    initialFrameProcessedRef.current = false
     onReset()
   }
 

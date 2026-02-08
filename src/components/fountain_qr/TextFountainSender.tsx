@@ -38,6 +38,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
   const generationTimeoutRef = useRef<number | null>(null)
   const autoPauseTimeoutRef = useRef<number | null>(null)
   const isGeneratingRef = useRef<boolean>(false)
+  const isPlayingRef = useRef<boolean>(isPlaying)
   const lastQrUrlRef = useRef<string>('')
 
   const releaseQrUrl = useCallback((url: string | null) => {
@@ -78,6 +79,10 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
       autoPauseTimeoutRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    isPlayingRef.current = isPlaying
+  }, [isPlaying])
 
   const updateQrUrl = useCallback((nextUrl: string) => {
     if (lastQrUrlRef.current && lastQrUrlRef.current !== nextUrl) {
@@ -208,7 +213,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
     const schedule = () => {
       generationTimeoutRef.current = window.setTimeout(async () => {
         await generateNextFrame()
-        if (isPlaying) {
+        if (isPlayingRef.current) {
           schedule()
         }
       }, Math.floor(1000 / TEXT_FOUNTAIN_FPS))

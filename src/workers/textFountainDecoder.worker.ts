@@ -206,7 +206,14 @@ self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const message = event.data
 
   if (message.type === 'reset') {
-    resetState()
+    processingQueue = processingQueue
+      .then(() => {
+        resetState()
+      })
+      .catch((error: unknown) => {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        postError(errorMessage)
+      })
     return
   }
 
