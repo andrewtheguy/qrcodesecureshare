@@ -13,6 +13,8 @@ export async function generateQRTextDataURL(
   options?: {
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
+    svgWidth?: number
+    svgHeight?: number
   }
 ): Promise<string> {
   try {
@@ -22,6 +24,8 @@ export async function generateQRTextDataURL(
       margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
       forceByteMode: false,
+      svgWidth: options?.svgWidth,
+      svgHeight: options?.svgHeight,
     })
 
     return svgStringToDataURL(svg)
@@ -37,6 +41,8 @@ export const generateNonDataQR = async (
   opts?: {
     margin?: number
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
+    svgWidth?: number
+    svgHeight?: number
   }
 ): Promise<string> => {
   try {
@@ -49,6 +55,8 @@ export const generateNonDataQR = async (
       margin: options.margin ?? 1,
       errorCorrectionLevel: options.errorCorrectionLevel || 'M',
       forceByteMode: false,
+      svgWidth: options.svgWidth,
+      svgHeight: options.svgHeight,
     })
 
     return svgStringToDataURL(svg)

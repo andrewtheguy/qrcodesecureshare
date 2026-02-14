@@ -9,6 +9,7 @@ export default [
   globalIgnores([
     'dist',
     'rust/**/pkg',
+    'rust/**/target',
     'src/wasm',
     'tmp',
   ]),
