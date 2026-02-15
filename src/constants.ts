@@ -7,6 +7,9 @@ export const NON_DATA_QR_OPTIONS = {
   errorCorrectionLevel: 'M' as const,
 }
 
+// Intrinsic SVG QR code dimensions (matches desktop container w-[300px])
+export const SVG_QR_DISPLAY_SIZE = 300
+
 // Streamlined text fountain mode constants
 export const TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT = 1400
 export const TEXT_FOUNTAIN_MAX_TEXT_BYTES = 64 * 1024

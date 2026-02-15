@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useMemo, forwardRef, useImperativeHandle } from 'react'
-import { generateQRTextDataURL } from '@/utils/qrUtils'
+import { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
+import { generateFastQrModuleMatrix, generateFastQrSvgString } from '@/utils/fastQrWasm'
+import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
@@ -7,6 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
   TEXT_FOUNTAIN_MAX_TEXT_BYTES,
   TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT,
+  SVG_QR_DISPLAY_SIZE,
 } from '@/constants'
 import { TextFountainSender } from '@/components/fountain_qr/TextFountainSender'
 
@@ -19,10 +21,11 @@ const STREAM_PREVIEW_MAX_CHARS = 280
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
   const [textQrGenerated, setTextQrGenerated] = useState(false)
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('')
+  const [hasQrFrame, setHasQrFrame] = useState(false)
   const [qrError, setQrError] = useState<string | null>(null)
   const [isOverLimit, setIsOverLimit] = useState(false)
   const [isFountainModeActive, setIsFountainModeActive] = useState(false)
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
 
   useImperativeHandle(ref, () => ({
     setTextFromScan: (text: string) => {
@@ -37,11 +40,19 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const generateQRCode = useCallback(async (payload: string) => {
     setQrError(null)
     try {
-      const dataUrl = await generateQRTextDataURL(payload)
-      setQrCodeUrl(dataUrl)
+      const canvas = qrCanvasRef.current
+      if (!canvas) {
+        console.error('qrCanvasRef.current is null — QR canvas not mounted')
+        setQrError('QR canvas not mounted. Please try again.')
+        return false
+      }
+      const utf8Bytes = new TextEncoder().encode(payload)
+      const matrix = await generateFastQrModuleMatrix(utf8Bytes, { margin: 1, errorCorrectionLevel: 'M' })
+      renderQrModulesToCanvas(canvas, matrix.moduleCount, matrix.modules, { size: SVG_QR_DISPLAY_SIZE })
+      setHasQrFrame(true)
       return true
     } catch (error) {
-      setQrCodeUrl('')
+      setHasQrFrame(false)
       setQrError('Failed to generate QR code. Please try again.')
       console.error('QR Code generation failed:', error)
       return false
@@ -63,7 +74,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     if (!trimmed) {
       setTextQrGenerated(false)
       setIsOverLimit(false)
-      setQrCodeUrl('')
+      setHasQrFrame(false)
       setQrError(null)
       return
     }
@@ -71,7 +82,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     if (trimmed.length > TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT) {
       setIsOverLimit(true)
       setTextQrGenerated(false)
-      setQrCodeUrl('')
+      setHasQrFrame(false)
       setQrError(null)
       return
     }
@@ -95,7 +106,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
 
     setQrError(null)
     setTextQrGenerated(false)
-    setQrCodeUrl('')
+    setHasQrFrame(false)
     setIsFountainModeActive(true)
   }
 
@@ -103,7 +114,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     setIsFountainModeActive(false)
     setQrError(null)
     setTextQrGenerated(false)
-    setQrCodeUrl('')
+    setHasQrFrame(false)
   }
 
   useEffect(() => {
@@ -125,6 +136,25 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     ),
     [trimmedTextInput]
   )
+
+  const handleDownloadSvg = async () => {
+    const trimmed = textInput.trim()
+    if (!trimmed) return
+    const utf8Bytes = new TextEncoder().encode(trimmed)
+    const svg = await generateFastQrSvgString(utf8Bytes, {
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      svgWidth: SVG_QR_DISPLAY_SIZE,
+      svgHeight: SVG_QR_DISPLAY_SIZE,
+    })
+    const blob = new Blob([svg], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'qr-code.svg'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <div className="space-y-6">
@@ -229,19 +259,25 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
         <TextFountainSender text={textInput} onReset={resetFountainMode} />
       )}
 
-      {!isFountainModeActive && textQrGenerated && qrCodeUrl && (
-        <Card>
+      {!isFountainModeActive && (
+        <Card className={textQrGenerated ? '' : 'hidden'}>
           <CardContent className="text-center">
             <div className="w-[300px] max-w-full mx-auto">
-              <img
-                src={qrCodeUrl}
-                alt="QR Code with text content"
-                className="block w-full h-auto rounded-lg shadow-sm mb-4"
+              <canvas
+                ref={qrCanvasRef}
+                width={SVG_QR_DISPLAY_SIZE}
+                height={SVG_QR_DISPLAY_SIZE}
+                aria-label="QR Code with text content"
+                role="img"
+                className={`block w-full h-auto rounded-lg shadow-sm mb-4 bg-white ${hasQrFrame ? 'opacity-100' : 'opacity-0'}`}
               />
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-sm text-muted-foreground mb-3">
               Scan QR code to read the text
             </p>
+            <Button variant="outline" size="sm" onClick={handleDownloadSvg} disabled={!hasQrFrame}>
+              Download SVG
+            </Button>
           </CardContent>
         </Card>
       )}

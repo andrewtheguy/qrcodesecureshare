@@ -3,6 +3,8 @@ use fast_qr::convert::Builder;
 use fast_qr::qr::QRCodeError;
 use fast_qr::{Mode, QRBuilder, QRCode, ECL};
 use png::{BitDepth, ColorType, Encoder};
+use quick_xml::events::{BytesStart, Event};
+use quick_xml::{Reader, Writer};
 use wasm_bindgen::prelude::*;
 
 fn parse_ecl(ecl: &str) -> Result<ECL, String> {
@@ -146,11 +148,63 @@ fn generate_qr_png_internal(
     Ok(png_data)
 }
 
+fn inject_svg_dimensions(
+    svg: &str,
+    width: Option<u32>,
+    height: Option<u32>,
+) -> Result<String, String> {
+    if width.is_none() && height.is_none() {
+        return Ok(svg.to_string());
+    }
+
+    let mut reader = Reader::from_str(svg);
+    let mut writer = Writer::new(Vec::new());
+
+    let mut svg_tag_found = false;
+    loop {
+        match reader.read_event() {
+            Ok(Event::Start(ref e)) if !svg_tag_found && e.name().as_ref() == b"svg" => {
+                svg_tag_found = true;
+                let mut elem = BytesStart::from(e.name());
+                for attr in e.attributes() {
+                    let attr = attr.map_err(|e| format!("SVG attribute error: {e}"))?;
+                    let key = attr.key.as_ref();
+                    if width.is_some() && key == b"width" {
+                        continue;
+                    }
+                    if height.is_some() && key == b"height" {
+                        continue;
+                    }
+                    elem.push_attribute(attr);
+                }
+                if let Some(w) = width {
+                    elem.push_attribute(("width", w.to_string().as_str()));
+                }
+                if let Some(h) = height {
+                    elem.push_attribute(("height", h.to_string().as_str()));
+                }
+                writer
+                    .write_event(Event::Start(elem))
+                    .map_err(|e| format!("SVG write error: {e}"))?;
+            }
+            Ok(Event::Eof) => break,
+            Ok(e) => writer
+                .write_event(e)
+                .map_err(|e| format!("SVG write error: {e}"))?,
+            Err(e) => return Err(format!("SVG parse error: {e}")),
+        }
+    }
+
+    String::from_utf8(writer.into_inner()).map_err(|e| format!("SVG UTF-8 error: {e}"))
+}
+
 fn generate_qr_svg_internal(
     data: &[u8],
     margin: u32,
     ecl: &str,
     force_byte_mode: bool,
+    svg_width: Option<u32>,
+    svg_height: Option<u32>,
 ) -> Result<String, String> {
     let qrcode = build_qrcode(data, ecl, force_byte_mode)?;
     let qr_size = qrcode.size as u32;
@@ -169,7 +223,8 @@ fn generate_qr_svg_internal(
 
     let mut svg_builder = SvgBuilder::default();
     svg_builder.margin(margin_usize);
-    Ok(svg_builder.to_str(&qrcode))
+    let svg = svg_builder.to_str(&qrcode);
+    inject_svg_dimensions(&svg, svg_width, svg_height)
 }
 
 fn generate_qr_matrix_internal(
@@ -264,14 +319,18 @@ pub fn generate_qr_png(
 /// - `margin`: quiet zone in module units
 /// - `ecl`: one of "L", "M", "Q", "H"
 /// - `force_byte_mode`: when true, forces QR Byte mode for binary-safe payload encoding
+/// - `svg_width`: optional explicit width attribute for the SVG element
+/// - `svg_height`: optional explicit height attribute for the SVG element
 #[wasm_bindgen]
 pub fn generate_qr_svg(
     data: &[u8],
     margin: u32,
     ecl: &str,
     force_byte_mode: bool,
+    svg_width: Option<u32>,
+    svg_height: Option<u32>,
 ) -> Result<String, JsValue> {
-    generate_qr_svg_internal(data, margin, ecl, force_byte_mode)
+    generate_qr_svg_internal(data, margin, ecl, force_byte_mode, svg_width, svg_height)
         .map_err(|message| JsValue::from_str(&message))
 }
 
@@ -740,7 +799,7 @@ mod tests {
 
     #[test]
     fn generates_valid_svg_for_text_payload() {
-        let svg = generate_qr_svg_internal(b"https://example.com", 4, "M", false)
+        let svg = generate_qr_svg_internal(b"https://example.com", 4, "M", false, None, None)
             .expect("SVG generation should succeed");
         assert_valid_svg(&svg);
     }
@@ -748,16 +807,16 @@ mod tests {
     #[test]
     fn generates_valid_svg_for_binary_payload_in_byte_mode() {
         let binary_payload = [0x00, 0xFF, 0x80, 0x41, 0x42, 0x43, 0x7F, 0x10];
-        let svg = generate_qr_svg_internal(&binary_payload, 2, "Q", true)
+        let svg = generate_qr_svg_internal(&binary_payload, 2, "Q", true, None, None)
             .expect("Binary SVG generation should succeed");
         assert_valid_svg(&svg);
     }
 
     #[test]
     fn svg_margin_changes_viewbox_size() {
-        let no_margin = generate_qr_svg_internal(b"margin-check", 0, "M", false)
+        let no_margin = generate_qr_svg_internal(b"margin-check", 0, "M", false, None, None)
             .expect("SVG generation without margin should succeed");
-        let with_margin = generate_qr_svg_internal(b"margin-check", 4, "M", false)
+        let with_margin = generate_qr_svg_internal(b"margin-check", 4, "M", false, None, None)
             .expect("SVG generation with margin should succeed");
 
         assert!(
@@ -858,7 +917,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_ecl_value_for_svg() {
-        let err = generate_qr_svg_internal(b"hello", 4, "INVALID", false)
+        let err = generate_qr_svg_internal(b"hello", 4, "INVALID", false, None, None)
             .expect_err("invalid ECL should fail");
         assert!(err.contains("Invalid error correction level"));
     }
@@ -887,7 +946,7 @@ mod tests {
 
     #[test]
     fn rejects_margin_overflow_for_svg() {
-        let err = generate_qr_svg_internal(b"a", u32::MAX, "M", false)
+        let err = generate_qr_svg_internal(b"a", u32::MAX, "M", false, None, None)
             .expect_err("margin overflow should fail");
         assert!(err.contains("Margin is too large"));
     }
@@ -897,5 +956,100 @@ mod tests {
         let err = generate_qr_matrix_internal(b"a", u32::MAX, "M", false)
             .expect_err("margin overflow should fail");
         assert!(err.contains("Margin is too large"));
+    }
+
+    fn extract_svg_tag(svg: &str) -> &str {
+        let start = svg.find("<svg ").expect("SVG should start with <svg");
+        let end = svg[start..].find('>').expect("SVG tag should close") + start + 1;
+        &svg[start..end]
+    }
+
+    #[test]
+    fn svg_with_both_width_and_height() {
+        let svg =
+            generate_qr_svg_internal(b"dimension-test", 4, "M", false, Some(200), Some(300))
+                .expect("SVG with dimensions should succeed");
+        assert_valid_svg(&svg);
+        let tag = extract_svg_tag(&svg);
+        assert!(
+            tag.contains(r#"width="200""#),
+            "SVG tag should contain width attribute"
+        );
+        assert!(
+            tag.contains(r#"height="300""#),
+            "SVG tag should contain height attribute"
+        );
+    }
+
+    #[test]
+    fn svg_with_only_width() {
+        let svg = generate_qr_svg_internal(b"width-only", 4, "M", false, Some(150), None)
+            .expect("SVG with width only should succeed");
+        assert_valid_svg(&svg);
+        let tag = extract_svg_tag(&svg);
+        assert!(
+            tag.contains(r#"width="150""#),
+            "SVG tag should contain width attribute"
+        );
+        assert!(
+            !tag.contains(r#"height=""#),
+            "SVG tag should not contain height attribute"
+        );
+    }
+
+    #[test]
+    fn svg_with_only_height() {
+        let svg = generate_qr_svg_internal(b"height-only", 4, "M", false, None, Some(250))
+            .expect("SVG with height only should succeed");
+        assert_valid_svg(&svg);
+        let tag = extract_svg_tag(&svg);
+        assert!(
+            !tag.contains(r#"width=""#),
+            "SVG tag should not contain width attribute"
+        );
+        assert!(
+            tag.contains(r#"height="250""#),
+            "SVG tag should contain height attribute"
+        );
+    }
+
+    #[test]
+    fn svg_without_dimensions() {
+        let svg = generate_qr_svg_internal(b"no-dimensions", 4, "M", false, None, None)
+            .expect("SVG without dimensions should succeed");
+        assert_valid_svg(&svg);
+        let tag = extract_svg_tag(&svg);
+        assert!(
+            !tag.contains(r#"width=""#),
+            "SVG tag should not contain width attribute"
+        );
+        assert!(
+            !tag.contains(r#"height=""#),
+            "SVG tag should not contain height attribute"
+        );
+    }
+
+    #[test]
+    fn inject_svg_dimensions_replaces_existing_width_and_height() {
+        let input = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 50 50"><path d="M0,0"/></svg>"#;
+        let result = inject_svg_dimensions(input, Some(300), Some(300))
+            .expect("inject_svg_dimensions should succeed");
+        let tag = extract_svg_tag(&result);
+        assert!(
+            tag.contains(r#"width="300""#),
+            "SVG tag should contain the new width: {tag}"
+        );
+        assert!(
+            tag.contains(r#"height="300""#),
+            "SVG tag should contain the new height: {tag}"
+        );
+        assert!(
+            !tag.contains(r#"width="100""#),
+            "SVG tag should not contain the old width: {tag}"
+        );
+        assert!(
+            !tag.contains(r#"height="100""#),
+            "SVG tag should not contain the old height: {tag}"
+        );
     }
 }

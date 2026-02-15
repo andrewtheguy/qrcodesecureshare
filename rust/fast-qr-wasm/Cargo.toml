@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 wasm-bindgen = "0.2"
 fast_qr = { version = "0.13.1", features = ["svg"] }
 png = "0.17"
+quick-xml = "0.37"
 
 [profile.release]
 opt-level = "z"

@@ -17,6 +17,8 @@ export interface FastQrSvgGenerateOptions {
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
   forceByteMode?: boolean
+  svgWidth?: number
+  svgHeight?: number
 }
 
 export interface FastQrMatrixGenerateOptions {
@@ -77,8 +79,20 @@ function normalizeCommonGenerateOptions(
   }
 }
 
+function normalizeOptionalDimension(value: number | undefined, name: string): number | undefined {
+  if (value === undefined) return undefined
+  const n = Number(value)
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+    throw new TypeError(`Invalid ${name}: expected a finite integer > 0`)
+  }
+  return n
+}
+
 function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
-  return normalizeCommonGenerateOptions(options)
+  const common = normalizeCommonGenerateOptions(options)
+  const svgWidth = normalizeOptionalDimension(options.svgWidth, 'svgWidth')
+  const svgHeight = normalizeOptionalDimension(options.svgHeight, 'svgHeight')
+  return { ...common, svgWidth, svgHeight }
 }
 
 function normalizeMatrixGenerateOptions(options: FastQrMatrixGenerateOptions = {}) {
@@ -126,13 +140,15 @@ export async function generateFastQrSvgString(
 ): Promise<string> {
   await ensureFastQrWasmInit()
 
-  const { normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizeSvgGenerateOptions(options)
+  const { normalizedMargin, errorCorrectionLevel, forceByteMode, svgWidth, svgHeight } = normalizeSvgGenerateOptions(options)
 
   return generate_qr_svg(
     payload,
     normalizedMargin,
     errorCorrectionLevel,
-    forceByteMode
+    forceByteMode,
+    svgWidth,
+    svgHeight
   )
 }
 
