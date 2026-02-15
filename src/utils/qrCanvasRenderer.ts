@@ -43,8 +43,8 @@ export function renderQrModulesToCanvas(
   if (canvas.height !== bufferSize) {
     canvas.height = bufferSize
   }
-  canvas.style.width = `${renderedSize}px`
-  canvas.style.height = `${renderedSize}px`
+  canvas.style.maxWidth = `${renderedSize}px`
+  canvas.style.maxHeight = `${renderedSize}px`
 
   const context = canvas.getContext('2d', { alpha: false })
   if (!context) {
