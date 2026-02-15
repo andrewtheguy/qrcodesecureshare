@@ -275,7 +275,7 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
             <p className="text-sm text-muted-foreground mb-3">
               Scan QR code to read the text
             </p>
-            <Button variant="outline" size="sm" onClick={handleDownloadSvg}>
+            <Button variant="outline" size="sm" onClick={handleDownloadSvg} disabled={!hasQrFrame}>
               Download SVG
             </Button>
           </CardContent>
