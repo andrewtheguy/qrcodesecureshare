@@ -17,7 +17,6 @@ export interface GenerateQRRef {
 }
 
 const STREAM_PREVIEW_MAX_CHARS = 280
-const DISPLAY_SIZE = SVG_QR_DISPLAY_SIZE
 
 const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
   const [textInput, setTextInput] = useState('')
@@ -42,10 +41,14 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
     setQrError(null)
     try {
       const canvas = qrCanvasRef.current
-      if (!canvas) return false
+      if (!canvas) {
+        console.error('qrCanvasRef.current is null — QR canvas not mounted')
+        setQrError('QR canvas not mounted. Please try again.')
+        return false
+      }
       const utf8Bytes = new TextEncoder().encode(payload)
       const matrix = await generateFastQrModuleMatrix(utf8Bytes, { margin: 1, errorCorrectionLevel: 'M' })
-      renderQrModulesToCanvas(canvas, matrix.moduleCount, matrix.modules, { size: DISPLAY_SIZE })
+      renderQrModulesToCanvas(canvas, matrix.moduleCount, matrix.modules, { size: SVG_QR_DISPLAY_SIZE })
       setHasQrFrame(true)
       return true
     } catch (error) {
@@ -262,8 +265,8 @@ const GenerateQR = forwardRef<GenerateQRRef>((_props, ref) => {
             <div className="w-[300px] max-w-full mx-auto">
               <canvas
                 ref={qrCanvasRef}
-                width={DISPLAY_SIZE}
-                height={DISPLAY_SIZE}
+                width={SVG_QR_DISPLAY_SIZE}
+                height={SVG_QR_DISPLAY_SIZE}
                 aria-label="QR Code with text content"
                 role="img"
                 className={`block w-full h-auto rounded-lg shadow-sm mb-4 bg-white ${hasQrFrame ? 'opacity-100' : 'opacity-0'}`}

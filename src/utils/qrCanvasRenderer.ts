@@ -35,7 +35,7 @@ export function renderQrModulesToCanvas(
 
   const renderedSize = pixelSize * moduleCount
   const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
-  const bufferSize = renderedSize * dpr
+  const bufferSize = Math.round(renderedSize * dpr)
 
   if (canvas.width !== bufferSize) {
     canvas.width = bufferSize
