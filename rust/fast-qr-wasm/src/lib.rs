@@ -168,6 +168,13 @@ fn inject_svg_dimensions(
                 let mut elem = BytesStart::from(e.name());
                 for attr in e.attributes() {
                     let attr = attr.map_err(|e| format!("SVG attribute error: {e}"))?;
+                    let key = attr.key.as_ref();
+                    if width.is_some() && key == b"width" {
+                        continue;
+                    }
+                    if height.is_some() && key == b"height" {
+                        continue;
+                    }
                     elem.push_attribute(attr);
                 }
                 if let Some(w) = width {
@@ -991,6 +998,22 @@ mod tests {
     }
 
     #[test]
+    fn svg_with_only_height() {
+        let svg = generate_qr_svg_internal(b"height-only", 4, "M", false, None, Some(250))
+            .expect("SVG with height only should succeed");
+        assert_valid_svg(&svg);
+        let tag = extract_svg_tag(&svg);
+        assert!(
+            !tag.contains(r#"width=""#),
+            "SVG tag should not contain width attribute"
+        );
+        assert!(
+            tag.contains(r#"height="250""#),
+            "SVG tag should contain height attribute"
+        );
+    }
+
+    #[test]
     fn svg_without_dimensions() {
         let svg = generate_qr_svg_internal(b"no-dimensions", 4, "M", false, None, None)
             .expect("SVG without dimensions should succeed");
@@ -1003,6 +1026,30 @@ mod tests {
         assert!(
             !tag.contains(r#"height=""#),
             "SVG tag should not contain height attribute"
+        );
+    }
+
+    #[test]
+    fn inject_svg_dimensions_replaces_existing_width_and_height() {
+        let input = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 50 50"><path d="M0,0"/></svg>"#;
+        let result = inject_svg_dimensions(input, Some(300), Some(300))
+            .expect("inject_svg_dimensions should succeed");
+        let tag = extract_svg_tag(&result);
+        assert!(
+            tag.contains(r#"width="300""#),
+            "SVG tag should contain the new width: {tag}"
+        );
+        assert!(
+            tag.contains(r#"height="300""#),
+            "SVG tag should contain the new height: {tag}"
+        );
+        assert!(
+            !tag.contains(r#"width="100""#),
+            "SVG tag should not contain the old width: {tag}"
+        );
+        assert!(
+            !tag.contains(r#"height="100""#),
+            "SVG tag should not contain the old height: {tag}"
         );
     }
 }

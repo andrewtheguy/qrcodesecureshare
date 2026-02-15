@@ -34,18 +34,24 @@ export function renderQrModulesToCanvas(
   }
 
   const renderedSize = pixelSize * moduleCount
-  if (canvas.width !== renderedSize) {
-    canvas.width = renderedSize
+  const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1
+  const bufferSize = Math.round(renderedSize * dpr)
+
+  if (canvas.width !== bufferSize) {
+    canvas.width = bufferSize
   }
-  if (canvas.height !== renderedSize) {
-    canvas.height = renderedSize
+  if (canvas.height !== bufferSize) {
+    canvas.height = bufferSize
   }
+  canvas.style.width = `${renderedSize}px`
+  canvas.style.height = `${renderedSize}px`
 
   const context = canvas.getContext('2d', { alpha: false })
   if (!context) {
     throw new Error('Unable to acquire canvas context for QR render')
   }
 
+  context.setTransform(dpr, 0, 0, dpr, 0, 0)
   context.imageSmoothingEnabled = false
   const darkColor = options.darkColor ?? '#000000'
   const lightColor = options.lightColor ?? '#FFFFFF'
