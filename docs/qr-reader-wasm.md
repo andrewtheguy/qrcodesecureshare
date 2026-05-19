@@ -67,7 +67,7 @@ must decode the bytes themselves (e.g. `new TextDecoder().decode(bytes)`).
 | --- | --- |
 | `try_harder` | Densifies the finder-pattern scan (rxing's `TryHarder` hint, consumed by `FindFinderPatterns`). With `false`, the row-skip is sized for QR codes up to version 20; with `true`, every third row is scanned. Independent of `max_number_of_symbols`. |
 | `try_invert` | If the first pass finds nothing, flips the binarized `BitMatrix` in place and retries. Covers white-on-dark / inverted-reflectance codes. Implemented manually in the wasm wrapper because `QrReader::decode_set_number_with_hints` (the multi-decode entry point) does not consume the `AlsoInverted` hint — that path lives in `MultiFormatReader`, which we deliberately bypass. |
-| `try_rotate` | If earlier passes find nothing, rotates the `Luma8LuminanceSource` counter-clockwise 90°, 180°, 270° in turn and retries. **In practice usually a no-op for QR codes**: rxing's QR finder reorders the three concentric finder patterns into a canonical (TL, TR, BL) tri-corner before sampling, so a clean QR decodes at every 90° orientation even with `try_rotate = false`. Kept for parameter parity with zxing-wasm and as a safety net for marginal images where the finder fails at one orientation but succeeds at another. |
+| `try_rotate` | If earlier passes find nothing, rotates the `Luma8LuminanceSource` counter-clockwise 90°, 180°, 270° in turn and retries. **Usually a no-op for clean QR codes** — rxing's QR finder reorders the three concentric finder patterns into a canonical (TL, TR, BL) tri-corner before sampling (see [`detector.rs:139-263`](../rust/rxing-vendored/src/qrcode/cpp_port/detector.rs)) — but worth keeping as a safety net for marginal images where the horizontal finder-pattern scan misses at one orientation but catches it at another. **Zero allocation overhead when no rotation is needed**: `read_inner` only allocates the rotated luma buffer when a previous pass produced no results, and constructs the next rotated source via `rotate_counter_clockwise(&self)` (which borrows, not consumes) before passing the current source into the binarizer, so the fast path with `try_rotate = true` and a hit on the first orientation is identical in cost to `try_rotate = false`. |
 | `use_hybrid_binarizer` | When `true`, uses rxing's adaptive `HybridBinarizer` (closest to zxing-wasm's `"LocalAverage"`). When `false`, the faster but less robust `GlobalHistogramBinarizer`. zxing-wasm's `"FixedThreshold"` and `"BoolCast"` variants are not available — rxing doesn't ship them. |
 | `max_number_of_symbols` | Cap on results per pass (passed as `count` to `QrReader::decode_set_number_with_hints`). `0` = no cap. `1` lets the multi-decode loop short-circuit on the first valid result and skips the Micro QR / rMQR fallbacks once a QR is found. With `1`, `try_invert` / `try_rotate` retries stop after the first successful pass. |
 
@@ -107,16 +107,20 @@ const results = await readQrCodesFromImageData(imageData, {
 // results is Uint8Array[], possibly empty
 ```
 
-`RxingReaderOptions` defaults (chosen to match what `main`'s zxing-wasm worker
-passed):
+`RxingReaderOptions` defaults at the TS-wrapper level:
 
 | Option | Default | Notes |
 | --- | --- | --- |
 | `tryHarder` | `false` | Fountain QR codes are well-formed |
 | `tryInvert` | `false` | Sender never inverts |
-| `tryRotate` | `false` | Camera frames are aligned |
+| `tryRotate` | `true` | Safety net for general-purpose scans; **zero cost when the first orientation hits** (`read_inner` only allocates rotated buffers on miss). The highest-fps consumer (`FountainQRDataScanner`) overrides `false` for an extra speed margin since the sender never produces rotated frames. |
 | `useHybridBinarizer` | `true` | Adaptive binarizer for noisy camera output |
 | `maxNumberOfSymbols` | `255` | Matches zxing-wasm's default. The worker overrides to `1`. |
+
+The worker's own defaults (in `rxing-qr-scanner.worker.ts`) mirror the
+TS-wrapper defaults with `maxNumberOfSymbols: 1`. The
+`FountainQRDataScanner` opts out of `tryRotate` via per-consumer
+`readerOptions`.
 
 Three consumers wrap the helper:
 
@@ -140,18 +144,18 @@ and the fountain sender (`FountainQRFeedbackScanner`).
 
 ### When to flip `try_harder` / `try_invert` / `try_rotate`
 
-- **All defaults (`false`)** for fountain data/feedback scanners — they run
-  at 30 fps on generated QR codes from the partner device and exit on the
-  first valid result. Extra passes are wasted budget.
-- **`try_harder: true`** for `Scan.tsx` (uploaded images, general-purpose
+- **Worker defaults** (`tryHarder: false, tryInvert: false, tryRotate: true, useHybridBinarizer: true, maxNumberOfSymbols: 1`)
+  cover the common camera-scan case. `tryRotate` is on as a no-cost safety
+  net (allocates nothing on first-orientation hits).
+- **`tryRotate: false`** on the fountain *data* scanner
+  (`FountainQRDataScanner`) — 30 fps continuous scan, sender produces
+  upright frames, so saving the rotated-luma allocation on the miss path
+  matters. Already wired.
+- **`tryHarder: true`** for `Scan.tsx` (uploaded images, general-purpose
   live scan) — has to handle worn, tilted, low-contrast codes. Densifies
   the finder-pattern scan.
-- **`try_invert: true`** when the source might be white-on-dark (e.g. a
+- **`tryInvert: true`** when the source might be white-on-dark (e.g. a
   photo of a printed inverted code, or a screenshot from a dark-themed app).
-- **`try_rotate: true`** rarely useful on its own — rxing's QR detector is
-  already rotation-invariant. Mostly worth enabling alongside `try_harder`
-  for marginal photos where the finder reorder fails at the captured
-  orientation.
 
 ## Architectural note: why we bypass `MultiFormatReader`
 

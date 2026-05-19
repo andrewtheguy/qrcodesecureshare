@@ -71,7 +71,7 @@ export async function readQrCodesFromRgba(
   const {
     tryHarder = false,
     tryInvert = false,
-    tryRotate = false,
+    tryRotate = true,
     useHybridBinarizer = true,
     maxNumberOfSymbols = 255,
   } = options

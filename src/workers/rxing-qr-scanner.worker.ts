@@ -29,15 +29,18 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
       const { imageData, options } = e.data
 
       const readerOptions: RxingReaderOptions = {
-        // Defaults tuned for fountain QR receivers (mirror main's zxing
-        // worker exactly): camera frames are aligned and never inverted, so
-        // skip rotation + invert passes; single symbol per frame so the
-        // multi-decode loop short-circuits on the first valid result;
-        // adaptive binarizer for noisy camera output. Callers may override
-        // any of these.
+        // Defaults tuned for general-purpose QR scanning: try rotated
+        // orientations as a safety net (zero allocations when not needed —
+        // `read_inner` only allocates rotated buffers when a previous pass
+        // failed), skip the heavier `tryHarder` + `tryInvert` passes, single
+        // symbol per frame so the multi-decode loop short-circuits on the
+        // first valid result, adaptive binarizer for noisy camera output.
+        // The hottest-fps consumer (fountain data scanner) overrides
+        // `tryRotate: false` for an extra speed margin since the sender
+        // never produces rotated frames.
         tryHarder: false,
         tryInvert: false,
-        tryRotate: false,
+        tryRotate: true,
         useHybridBinarizer: true,
         maxNumberOfSymbols: 1,
         ...options,

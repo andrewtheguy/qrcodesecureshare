@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 
 use rxing::{
-    common::{GlobalHistogramBinarizer, HybridBinarizer},
+    common::{GlobalHistogramBinarizer, HybridBinarizer, Result as RxingResult},
     qrcode::cpp_port::QrReader,
-    BarcodeFormat, BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource,
+    BarcodeFormat, Binarizer, BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource,
+    RXingResult,
 };
 use wasm_bindgen::prelude::*;
 
@@ -31,43 +32,44 @@ fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
         .collect())
 }
 
-/// Run a single decode pass at a given orientation / inversion combination.
-///
-/// `QrReader::decode_set_number_with_hints` does not honor `AlsoInverted`
-/// (that path is in `MultiFormatReader`, which we deliberately bypass), so
-/// inversion is implemented here by flipping the BitMatrix before decoding.
-fn decode_one_pass(
-    source: Luma8LuminanceSource,
-    hints: &DecodeHints,
-    use_hybrid_binarizer: bool,
-    max_number_of_symbols: u32,
-    invert: bool,
-) -> Vec<Vec<u8>> {
-    let results = if use_hybrid_binarizer {
-        let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-        if invert {
-            let Ok(matrix) = bitmap.get_black_matrix_mut() else {
-                return Vec::new();
-            };
-            matrix.flip_self();
-        }
-        QrReader.decode_set_number_with_hints(&mut bitmap, hints, max_number_of_symbols)
-    } else {
-        let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
-        if invert {
-            let Ok(matrix) = bitmap.get_black_matrix_mut() else {
-                return Vec::new();
-            };
-            matrix.flip_self();
-        }
-        QrReader.decode_set_number_with_hints(&mut bitmap, hints, max_number_of_symbols)
-    };
-
+fn collect_bytes(results: RxingResult<Vec<RXingResult>>) -> Vec<Vec<u8>> {
     results
         .unwrap_or_default()
         .into_iter()
         .map(|r| r.getRawBytes().to_vec())
         .collect()
+}
+
+/// Decode on `bitmap` once, then (when `try_invert`) flip the BitMatrix in
+/// place and decode again. No clones — the bitmap is consumed once per
+/// `read_inner` orientation. `QrReader::decode_set_number_with_hints` does not
+/// honor `AlsoInverted` (that path is in `MultiFormatReader`, which we
+/// deliberately bypass), so the inverted retry has to be driven externally.
+fn decode_with_optional_invert<B: Binarizer>(
+    bitmap: &mut BinaryBitmap<B>,
+    hints: &DecodeHints,
+    max_number_of_symbols: u32,
+    try_invert: bool,
+) -> Vec<Vec<u8>> {
+    let results = collect_bytes(QrReader.decode_set_number_with_hints(
+        bitmap,
+        hints,
+        max_number_of_symbols,
+    ));
+    if !results.is_empty() {
+        return results;
+    }
+    if try_invert {
+        if let Ok(matrix) = bitmap.get_black_matrix_mut() {
+            matrix.flip_self();
+            return collect_bytes(QrReader.decode_set_number_with_hints(
+                bitmap,
+                hints,
+                max_number_of_symbols,
+            ));
+        }
+    }
+    Vec::new()
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -81,9 +83,10 @@ fn read_inner(
     use_hybrid_binarizer: bool,
     max_number_of_symbols: u32,
 ) -> Vec<Vec<u8>> {
-    // `AlsoInverted` is intentionally omitted from `hints` because the
-    // QrReader multi-decode entry point doesn't consume it — inversion is
-    // handled externally via `decode_one_pass(..., invert: true)`.
+    // `AlsoInverted` is intentionally omitted from `hints` — the QrReader
+    // multi-decode entry point doesn't consume it (that wiring lives in
+    // `MultiFormatReader`, which we bypass). Inversion is handled via the
+    // in-place `flip_self` retry inside `decode_with_optional_invert`.
     let hints = DecodeHints {
         PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
         TryHarder: Some(try_harder),
@@ -94,35 +97,32 @@ fn read_inner(
     let rotations = if try_rotate { 4 } else { 1 };
 
     for rot in 0..rotations {
-        let results = decode_one_pass(
-            source.clone(),
-            &hints,
-            use_hybrid_binarizer,
-            max_number_of_symbols,
-            false,
-        );
+        // Construct the next rotated source BEFORE consuming the current
+        // one into a binarizer. `rotate_counter_clockwise` takes `&self`, so
+        // no clone of `source` is needed for the rotation; the rotated
+        // buffer is the only extra allocation. With `try_rotate == false`,
+        // `rotations == 1`, so this branch is never taken and the
+        // fast-path call to `read_inner` makes zero auxiliary allocations.
+        let next_source = if rot + 1 < rotations {
+            source.rotate_counter_clockwise().ok()
+        } else {
+            None
+        };
+
+        let results = if use_hybrid_binarizer {
+            let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
+            decode_with_optional_invert(&mut bitmap, &hints, max_number_of_symbols, try_invert)
+        } else {
+            let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
+            decode_with_optional_invert(&mut bitmap, &hints, max_number_of_symbols, try_invert)
+        };
         if !results.is_empty() {
             return results;
         }
 
-        if try_invert {
-            let results = decode_one_pass(
-                source.clone(),
-                &hints,
-                use_hybrid_binarizer,
-                max_number_of_symbols,
-                true,
-            );
-            if !results.is_empty() {
-                return results;
-            }
-        }
-
-        if rot + 1 < rotations {
-            match source.rotate_counter_clockwise() {
-                Ok(rotated) => source = rotated,
-                Err(_) => break,
-            }
+        match next_source {
+            Some(s) => source = s,
+            None => break,
         }
     }
 
