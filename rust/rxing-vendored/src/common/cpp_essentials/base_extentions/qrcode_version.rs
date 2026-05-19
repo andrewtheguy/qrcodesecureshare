@@ -192,7 +192,7 @@ impl Version {
                     && size.x <= 139
                     && size.y >= 7
                     && size.y <= 17
-                    && Self::IndexOf(&RMQR_SIZES, size) != -1
+                    && Self::IndexOf(&RMQR_SIZES, size).is_some()
             }
         }
     }
@@ -210,17 +210,15 @@ impl Version {
             || Self::HasValidSizeType(matrix, Type::RectMicro)
     }
 
-    fn IndexOf(points: &[PointI], search: PointI) -> i32 {
-        points
-            .iter()
-            .position(|p| *p == search)
-            .map(|x| x as i32)
-            .unwrap_or(-1)
+    fn IndexOf(points: &[PointI], search: PointI) -> Option<usize> {
+        points.iter().position(|p| *p == search)
     }
 
     pub fn NumberPoint(size: PointI) -> u32 {
         if size.x != size.y {
-            (Self::IndexOf(&RMQR_SIZES, size) + 1) as u32
+            Self::IndexOf(&RMQR_SIZES, size)
+                .map(|idx| (idx + 1) as u32)
+                .unwrap_or(0)
         } else if Self::IsValidSize(size, Type::Model2) {
             ((size.x - 17) / 4) as u32
         } else if Self::IsValidSize(size, Type::Micro) {

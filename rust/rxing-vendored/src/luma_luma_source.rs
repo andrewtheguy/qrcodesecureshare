@@ -194,6 +194,11 @@ pub fn downscale_luma_buffer(
     factor: u32,
 ) -> (Vec<u8>, u32, u32) {
     assert!(factor >= 1, "downscale factor must be at least 1");
+    assert_eq!(
+        src.len(),
+        (width as usize) * (height as usize),
+        "downscale_luma_buffer: src.len() must equal width * height",
+    );
     let new_w = width / factor;
     let new_h = height / factor;
     if factor == 1 {

@@ -1,6 +1,13 @@
 use crate::common::Result;
 use crate::{Point, point};
 
+/// Minimum determinant magnitude for `RegressionLineTrait::intersect` to treat
+/// two lines as non-parallel. Line coefficients are normalized by
+/// `RegressionLine::evaluate` so the determinant is unitless, but f32 round-off
+/// at pixel scale makes `f32::EPSILON` too tight in practice — `1e-6` rejects
+/// near-parallel pairs without false negatives on well-conditioned lines.
+pub const LINE_INTERSECTION_EPS: f32 = 1e-6;
+
 pub trait RegressionLineTrait {
     fn intersect<T: RegressionLineTrait, T2: RegressionLineTrait>(
         l1: &T,
@@ -11,7 +18,7 @@ pub trait RegressionLineTrait {
         }
 
         let d = l1.a() * l2.b() - l1.b() * l2.a();
-        if d.abs() < f32::EPSILON {
+        if d.abs() < LINE_INTERSECTION_EPS {
             return None;
         }
         let x = (l1.c() * l2.b() - l1.b() * l2.c()) / d;

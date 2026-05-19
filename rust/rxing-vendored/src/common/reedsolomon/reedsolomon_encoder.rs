@@ -39,30 +39,45 @@ impl ReedSolomonEncoder {
         })
     }
 
-    fn buildGenerator(&mut self, degree: usize) -> Option<&GenericGFPoly> {
+    fn buildGenerator(&mut self, degree: usize) -> Result<&GenericGFPoly> {
         if degree >= self.cachedGenerators.len() {
-            let mut lastGenerator = self.cachedGenerators.last()?;
-            let cg_len = self.cachedGenerators.len();
-            let mut nextGenerator;
-            for d in cg_len..=degree {
-                nextGenerator = lastGenerator
-                    .multiply(
-                        &GenericGFPoly::new(
-                            self.field,
-                            &[
-                                1,
-                                self.field.exp(d as i32 - 1 + self.field.getGeneratorBase()),
-                            ],
-                        )
-                        .ok()?,
+            let mut lastGenerator = self
+                .cachedGenerators
+                .last()
+                .ok_or_else(|| {
+                    Exceptions::illegal_state_with(
+                        "buildGenerator: cachedGenerators is empty",
                     )
-                    .ok()?;
-                self.cachedGenerators.push(nextGenerator);
-                lastGenerator = self.cachedGenerators.get(d)?;
+                })?
+                .clone();
+            let cg_len = self.cachedGenerators.len();
+            for d in cg_len..=degree {
+                let factor = GenericGFPoly::new(
+                    self.field,
+                    &[
+                        1,
+                        self.field.exp(d as i32 - 1 + self.field.getGeneratorBase()),
+                    ],
+                )
+                .map_err(|e| {
+                    Exceptions::illegal_state_with(format!(
+                        "buildGenerator: GenericGFPoly::new failed at degree {d}: {e:?}"
+                    ))
+                })?;
+                let nextGenerator = lastGenerator.multiply(&factor).map_err(|e| {
+                    Exceptions::illegal_state_with(format!(
+                        "buildGenerator: multiply failed at degree {d}: {e:?}"
+                    ))
+                })?;
+                self.cachedGenerators.push(nextGenerator.clone());
+                lastGenerator = nextGenerator;
             }
         }
-        let rv = self.cachedGenerators.get(degree)?;
-        Some(rv)
+        self.cachedGenerators.get(degree).ok_or_else(|| {
+            Exceptions::illegal_state_with(format!(
+                "buildGenerator: missing cached generator for degree {degree}"
+            ))
+        })
     }
 
     pub fn encode(&mut self, to_encode: &mut [i32], ec_bytes: usize) -> Result<()> {
@@ -81,12 +96,12 @@ impl ReedSolomonEncoder {
             return Err(Exceptions::illegal_argument_with("No data bytes provided"));
         }
         let fld = self.field;
-        let generator = self.buildGenerator(ec_bytes);
+        let generator = self.buildGenerator(ec_bytes)?;
         let mut info_coefficients: Vec<i32> = vec![0; data_bytes];
         info_coefficients[0..data_bytes].clone_from_slice(&to_encode[0..data_bytes]);
         let mut info = GenericGFPoly::new(fld, &info_coefficients)?;
         info = info.multiply_by_monomial(ec_bytes, 1)?;
-        let remainder = &info.divide(generator.ok_or(Exceptions::REED_SOLOMON)?)?.1;
+        let remainder = &info.divide(generator)?.1;
         let coefficients = remainder.getCoefficients();
         let num_zero_coefficients = ec_bytes - coefficients.len();
         for i in 0..num_zero_coefficients {

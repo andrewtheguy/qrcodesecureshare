@@ -244,16 +244,6 @@ impl<'a> FinderPatternFinder<'_> {
             && (moduleSize - stateCount[4] as f64).abs() < maxVariance
     }
 
-    #[deprecated]
-    pub fn clearCounts(&self, counts: &mut [u32; 5]) {
-        Self::doClearCounts(counts);
-    }
-
-    #[deprecated]
-    pub fn shiftCounts2(&self, stateCount: &mut [u32; 5]) {
-        Self::doShiftCounts2(stateCount);
-    }
-
     pub fn doClearCounts(counts: &mut [u32; 5]) {
         counts.fill(0)
     }
@@ -706,34 +696,15 @@ impl<'a> FinderPatternFinder<'_> {
                         continue;
                     }
 
-                    let mut a = squares0;
-                    let mut b = Self::squaredDistance(fpj, fpk);
-                    let mut c = Self::squaredDistance(fpi, fpk);
-
-                    // sorts ascending - inlined
-                    if a < b {
-                        if b > c {
-                            if a < c {
-                                std::mem::swap(&mut b, &mut c)
-                            } else {
-                                let temp = a;
-                                a = c;
-                                c = b;
-                                b = temp;
-                            }
-                        }
-                    } else if b < c {
-                        if a < c {
-                            std::mem::swap(&mut a, &mut b)
-                        } else {
-                            let temp = a;
-                            a = b;
-                            b = c;
-                            c = temp;
-                        }
-                    } else {
-                        std::mem::swap(&mut a, &mut c);
-                    }
+                    let mut sides = [
+                        squares0,
+                        Self::squaredDistance(fpj, fpk),
+                        Self::squaredDistance(fpi, fpk),
+                    ];
+                    sides.sort_unstable_by(|x, y| {
+                        x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Less)
+                    });
+                    let [a, b, c] = sides;
 
                     // a^2 + b^2 = c^2 (Pythagorean theorem), and a = b (isosceles triangle).
                     // Since any right triangle satisfies the formula c^2 - b^2 - a^2 = 0,
