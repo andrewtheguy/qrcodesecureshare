@@ -156,14 +156,14 @@ pub fn guessCharset(bytes: &[u8], hints: &DecodeHints) -> Option<CharacterSet> {
         // Shift_JIS stuff
         if can_be_shift_jis {
             if sjis_bytes_left > 0 {
-                if matches!(byte, 0x40 | 0x7F | 0xFC) {
+                if byte < 0x40 || byte == 0x7F || byte > 0xFC {
                     can_be_shift_jis = false;
                 } else {
                     sjis_bytes_left -= 1;
                 }
-            } else if matches!(byte, 0x80 | 0xA0 | 0xEF) {
+            } else if byte == 0x80 || byte == 0xA0 || byte > 0xEF {
                 can_be_shift_jis = false;
-            } else if matches!(byte, 0xA0 | 0xE0) {
+            } else if byte > 0xA0 && byte < 0xE0 {
                 sjis_katakana_chars += 1;
                 sjis_cur_double_bytes_word_length = 0;
                 sjis_cur_katakana_word_length += 1;

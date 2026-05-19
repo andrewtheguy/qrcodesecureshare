@@ -278,6 +278,11 @@ impl CharacterSet {
                 Ok(String::borrow_from_cp437(input, &CP437_CONTROL))
             }
             CharacterSet::UTF32BE => {
+                if !input.len().is_multiple_of(4) {
+                    return Err(Exceptions::format_with(
+                        "Invalid UTF-32BE: trailing bytes",
+                    ));
+                }
                 let u32s: Result<Vec<u32>, _> = input
                     .chunks_exact(4)
                     .map(|c| {
@@ -296,6 +301,11 @@ impl CharacterSet {
                     .collect())
             }
             CharacterSet::UTF32LE => {
+                if !input.len().is_multiple_of(4) {
+                    return Err(Exceptions::format_with(
+                        "Invalid UTF-32LE: trailing bytes",
+                    ));
+                }
                 let u32s: Result<Vec<u32>, _> = input
                     .chunks_exact(4)
                     .map(|c| {

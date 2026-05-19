@@ -147,25 +147,28 @@ impl<B: Binarizer> BinaryBitmap<B> {
         if let Some(matrix) = self.matrix.get_mut() {
             let mut tmp = BitMatrix::new(matrix.width(), matrix.height())?;
             // dilate
-            SumFilter(matrix, &mut tmp, |sum| sum > 0);
+            sum_filter(matrix, &mut tmp, |sum| sum > 0);
             // erode
-            SumFilter(&tmp, matrix, |sum| sum == 9);
+            sum_filter(&tmp, matrix, |sum| sum == 9);
         }
         Ok(())
     }
 }
 
-fn SumFilter<F>(input: &BitMatrix, output: &mut BitMatrix, func: F)
+fn sum_filter<F>(input: &BitMatrix, output: &mut BitMatrix, func: F)
 where
     F: Fn(u8) -> bool,
 {
+    if output.height() < 2 || output.width() < 2 {
+        return;
+    }
     for row in 1..output.height() - 1 {
-        for col in 0..output.width() - 1 {
+        for col in 1..output.width() - 1 {
             let mut sum = 0;
             for j in 0..3 {
-                sum += input.try_get(col + j, row - 1).unwrap_or_default() as u8
-                    + input.try_get(col + j, row).unwrap_or_default() as u8
-                    + input.try_get(col + j, row + 1).unwrap_or_default() as u8;
+                sum += input.try_get(col + j - 1, row - 1).unwrap_or_default() as u8
+                    + input.try_get(col + j - 1, row).unwrap_or_default() as u8
+                    + input.try_get(col + j - 1, row + 1).unwrap_or_default() as u8;
             }
             output.set_bool(col, row, func(sum));
         }

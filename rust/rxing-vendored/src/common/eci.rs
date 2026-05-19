@@ -99,7 +99,7 @@ impl From<i32> for Eci {
             33 => Eci::UTF16LE,
             34 => Eci::UTF32BE,
             35 => Eci::UTF32LE,
-            170 => Eci::ASCII,
+            170 => Eci::ISO646_Inv,
             899 => Eci::Binary,
             _ => Eci::Unknown,
         }

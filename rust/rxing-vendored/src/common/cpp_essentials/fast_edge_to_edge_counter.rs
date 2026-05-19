@@ -71,7 +71,13 @@ impl FastEdgeToEdgeCounter<'_> {
             }
         } // while (p[steps * stride] == p[0]);
 
-        self.p = (self.p as isize + (steps as isize * self.stride)).unsigned_abs() as u32;
+        // Saturate at 0 instead of wrapping via unsigned_abs. The loop above can
+        // exit one step past the border (the `maxSteps == stepsToBorder` break path
+        // increments `steps` to `maxSteps + 1`), which can yield a negative index
+        // for negative stride. Caller never re-reads `self.p` in that terminal case,
+        // but clamping keeps `self.p` in a defined state.
+        let new_pos = self.p as isize + (steps as isize * self.stride);
+        self.p = new_pos.max(0) as u32;
         self.stepsToBorder -= steps;
 
         steps as u32

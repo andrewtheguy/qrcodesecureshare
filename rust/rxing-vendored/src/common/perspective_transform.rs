@@ -98,10 +98,10 @@ impl PerspectiveTransform {
         }
     }
 
-    pub fn transform_points_double(&self, x_values: &mut [f32], y_valuess: &mut [f32]) {
+    pub fn transform_points_double(&self, x_values: &mut [f32], y_values: &mut [f32]) {
         let n = x_values.len();
         // for i in 0..n {
-        for (x, y) in x_values.iter_mut().zip(y_valuess.iter_mut()).take(n) {
+        for (x, y) in x_values.iter_mut().zip(y_values.iter_mut()).take(n) {
             // for (int i = 0; i < n; i++) {
             let ox = *x;
             let oy = *y;

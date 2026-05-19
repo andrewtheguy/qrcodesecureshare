@@ -99,7 +99,7 @@ pub fn ToIntPos(
     // assert(0 <= count && count <= 8 * (int)sizeof(T));
     // assert(0 <= pos && pos + count <= bits.size());
 
-    let count = std::cmp::min(count, bits.len());
+    let count = std::cmp::min(count, bits.len().saturating_sub(pos));
     let mut res = 0;
     for bit in bits.iter().skip(pos).take(count) {
         AppendBit(&mut res, *bit != 0);

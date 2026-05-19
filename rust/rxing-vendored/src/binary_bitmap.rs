@@ -118,23 +118,24 @@ impl<B: Binarizer> BinaryBitmap<B> {
      * Returns a new object with cropped image data. Implementations may keep a reference to the
      * original data rather than a copy. Only callable if isCropSupported() is true.
      *
-     * Panics if the binarizer cannot be created.
-     *
      * @param left The left coordinate, which must be in [0,getWidth())
      * @param top The top coordinate, which must be in [0,getHeight())
      * @param width The width of the rectangle to crop.
      * @param height The height of the rectangle to crop.
-     * @return A cropped version of this object.
+     * @return A cropped version of this object, or an error if the luminance source cannot be cropped.
      */
-    pub fn crop(&mut self, left: usize, top: usize, width: usize, height: usize) -> Self {
+    pub fn crop(
+        &mut self,
+        left: usize,
+        top: usize,
+        width: usize,
+        height: usize,
+    ) -> Result<Self> {
         let newSource = self
             .binarizer
             .get_luminance_source()
-            .crop(left, top, width, height);
-        BinaryBitmap::new(
-            self.binarizer
-                .create_binarizer(newSource.expect("new lum source expected")),
-        )
+            .crop(left, top, width, height)?;
+        Ok(BinaryBitmap::new(self.binarizer.create_binarizer(newSource)))
     }
 
     /**
@@ -148,38 +149,28 @@ impl<B: Binarizer> BinaryBitmap<B> {
      * Returns a new object with rotated image data by 90 degrees counterclockwise.
      * Only callable if {@link #isRotateSupported()} is true.
      *
-     * Panics if the binarizer cannot be created.
-     *
-     * @return A rotated version of this object.
+     * @return A rotated version of this object, or an error if the luminance source cannot be rotated.
      */
-    pub fn rotate_counter_clockwise(&mut self) -> Self {
+    pub fn rotate_counter_clockwise(&mut self) -> Result<Self> {
         let newSource = self
             .binarizer
             .get_luminance_source()
-            .rotate_counter_clockwise();
-        BinaryBitmap::new(
-            self.binarizer
-                .create_binarizer(newSource.expect("new lum source expected")),
-        )
+            .rotate_counter_clockwise()?;
+        Ok(BinaryBitmap::new(self.binarizer.create_binarizer(newSource)))
     }
 
     /**
      * Returns a new object with rotated image data by 45 degrees counterclockwise.
      * Only callable if {@link #isRotateSupported()} is true.
      *
-     * Panics if the binarizer cannot be created.
-     *
-     * @return A rotated version of this object.
+     * @return A rotated version of this object, or an error if the luminance source cannot be rotated.
      */
-    pub fn rotate_counter_clockwise_45(&self) -> Self {
+    pub fn rotate_counter_clockwise_45(&self) -> Result<Self> {
         let newSource = self
             .binarizer
             .get_luminance_source()
-            .rotate_counter_clockwise_45();
-        BinaryBitmap::new(
-            self.binarizer
-                .create_binarizer(newSource.expect("new lum source expected")),
-        )
+            .rotate_counter_clockwise_45()?;
+        Ok(BinaryBitmap::new(self.binarizer.create_binarizer(newSource)))
     }
 
     pub fn get_source(&self) -> &B::Source {

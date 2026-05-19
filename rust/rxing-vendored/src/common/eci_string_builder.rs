@@ -253,9 +253,10 @@ impl ECIStringBuilder {
     }
 
     /**
-     * Short for {@code toString().length()} (if possible, use {@link #isEmpty()} instead)
+     * Length of the underlying byte buffer (not the decoded character count).
+     * If possible, use {@link #isEmpty()} instead.
      *
-     * @return length of string representation in characters
+     * @return length of byte buffer in bytes
      */
     pub fn len(&self) -> usize {
         self.bytes.len()

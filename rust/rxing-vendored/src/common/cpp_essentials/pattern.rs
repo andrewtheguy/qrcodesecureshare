@@ -226,15 +226,27 @@ impl<'a> PatternView<'a> {
     }
 
     pub fn has_quiet_zone_before(&self, scale: f32, acceptIfAtFirstBar: Option<bool>) -> bool {
-        (acceptIfAtFirstBar.unwrap_or(false) && self.isAtFirstBar())
-            || Into::<f32>::into(self.data.0[self.count])
-                >= Into::<f32>::into(self.sum(None)) * scale
+        if acceptIfAtFirstBar.unwrap_or(false) && self.isAtFirstBar() {
+            return true;
+        }
+        match self.data.0.get(self.count) {
+            Some(v) => {
+                Into::<f32>::into(*v) >= Into::<f32>::into(self.sum(None)) * scale
+            }
+            None => false,
+        }
     }
 
     pub fn hasQuietZoneAfter(&self, scale: f32, acceptIfAtLastBar: Option<bool>) -> bool {
-        (acceptIfAtLastBar.unwrap_or(true) && self.isAtLastBar())
-            || Into::<f32>::into(self.data.0[self.count])
-                >= Into::<f32>::into(self.sum(None)) * scale
+        if acceptIfAtLastBar.unwrap_or(true) && self.isAtLastBar() {
+            return true;
+        }
+        match self.data.0.get(self.count) {
+            Some(v) => {
+                Into::<f32>::into(*v) >= Into::<f32>::into(self.sum(None)) * scale
+            }
+            None => false,
+        }
     }
 
     pub fn subView(&self, offset: usize, size: Option<usize>) -> PatternView<'a> {
@@ -302,7 +314,7 @@ impl std::ops::Index<isize> for PatternView<'_> {
             return &self.data[index.unsigned_abs()];
         }
 
-        if index > self.data.0.len() as isize {
+        if index >= self.data.0.len() as isize {
             panic!("array index out of bounds")
         }
         if index >= 0 {
@@ -325,7 +337,7 @@ impl std::ops::Index<usize> for PatternView<'_> {
             return &self.data[index];
         }
 
-        if index > self.data.0.len() {
+        if index >= self.data.0.len() {
             panic!("array index out of bounds")
         }
         self.data.0.get(self.start + self.current + index).unwrap()
@@ -365,7 +377,9 @@ impl<'a> From<&PatternView<'a>> for &'a [PatternType] {
         if value.data.0.len() == value.count {
             &value.data.0
         } else {
-            &value.data.0[value.current + value.start..=value.current + value.start + value.count]
+            let start_idx = value.current + value.start;
+            let end_idx = (start_idx + value.count).min(value.data.0.len());
+            &value.data.0[start_idx..end_idx]
         }
     }
 }
