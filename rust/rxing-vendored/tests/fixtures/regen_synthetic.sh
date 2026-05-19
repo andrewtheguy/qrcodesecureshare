@@ -59,6 +59,21 @@ magick /tmp/qr_sample_rotated.png \
   qr_sample_rotated_speckled.png
 rm -f /tmp/qr_sample_rotated.png
 
+# qr_sample_vignetted.png — exercises the HybridBinarizer branch in isolation.
+# qr_sample.png multiplied by a radial gradient from white (centre) to gray50
+# (corners), producing a strong dark vignette that drops the corner luminance
+# to ~50% of centre while preserving local black/white contrast within each
+# small neighbourhood. GlobalHistogramBinarizer's single image-wide threshold
+# cannot separate the dim-corner whites from the bright-centre blacks (the
+# histogram peaks overlap), so it misses on every combo; HybridBinarizer's
+# per-8×8-block thresholds adapt to the local luminance and decode cleanly.
+# Mirror of qr-complex-2.png (which fails on Hybrid and decodes on Global) —
+# together they pin both binarizer branches as load-bearing.
+magick qr_sample.png \
+  \( -size 297x297 radial-gradient:white-gray50 \) \
+  -compose multiply -composite -alpha off \
+  qr_sample_vignetted.png
+
 # qr_two_codes.png — exercises the multi-symbol decode loop with two
 # distinct payloads. qr_sample.png (297x297, payload "jfghjghjghfkghjkghj")
 # and qr_code_complex.png (300x300, payload "https://qr-code-styling.com")
@@ -83,4 +98,4 @@ magick -size 1014x300 xc:white \
   qr_three_codes.png
 
 echo "Regenerated:"
-ls -l qr_sample_inverted.png qr_sample_small_in_canvas.png qr_two_codes.png qr_three_codes.png qr_sample_rotated_speckled.png
+ls -l qr_sample_inverted.png qr_sample_small_in_canvas.png qr_two_codes.png qr_three_codes.png qr_sample_rotated_speckled.png qr_sample_vignetted.png

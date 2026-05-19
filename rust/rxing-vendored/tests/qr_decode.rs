@@ -370,6 +370,88 @@ fn assert_requires_try_harder(rgba: &[u8], w: u32, h: u32, expected: &[u8], labe
 }
 
 #[test]
+fn qr_complex_2_png_requires_global_histogram_binarizer() {
+    // 431×431 stylized QR (45°-rotated "diamond" framing, orange finder
+    // patterns, orange center logo overlaying the data modules, blue speckled
+    // dark modules on white). Decodes iff `use_hybrid_binarizer = false`;
+    // `try_harder` and `try_invert` are both irrelevant. The HybridBinarizer's
+    // 8×8 local-threshold blocks mis-classify the colored finders and center
+    // logo (foreground is medium-bright orange, not black), while the
+    // GlobalHistogramBinarizer's single image-wide threshold separates the
+    // overall dark/light populations cleanly. Pins the GlobalHistogramBinarizer
+    // branch of `decode_one_layer`; the mirror test
+    // `qr_sample_vignetted_png_requires_hybrid_binarizer` pins the Hybrid
+    // branch, so deleting either binarizer breaks one of the two.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr-complex-2.png");
+    let expected = b"http://scnv.io/MsSv?qr=1";
+    for combo in ALL_COMBOS {
+        let (_, _, use_hybrid_binarizer) = combo;
+        let result = decode_combo(&rgba, w, h, combo);
+        if !use_hybrid_binarizer {
+            let bytes = result.unwrap_or_else(|| {
+                panic!("qr-complex-2.png expected to decode for combo={:?}", combo)
+            });
+            assert_eq!(
+                bytes.as_slice(),
+                expected.as_slice(),
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        } else {
+            assert!(
+                result.is_none(),
+                "qr-complex-2.png expected to NOT decode with HybridBinarizer for combo={:?}, got Some({} bytes)",
+                combo,
+                result.as_ref().map(|b| b.len()).unwrap_or(0)
+            );
+        }
+    }
+}
+
+#[test]
+fn qr_sample_vignetted_png_requires_hybrid_binarizer() {
+    // qr_sample.png multiplied by a radial gradient from white (centre) to
+    // gray50 (corners) — see `fixtures/regen_synthetic.sh`. Strong dark
+    // vignette that drops corner luminance to ~50% of centre while preserving
+    // local black/white contrast inside each small neighbourhood. The mirror
+    // case of `qr_complex_2_png_requires_global_histogram_binarizer`: decodes
+    // iff `use_hybrid_binarizer = true`, regardless of `try_harder` /
+    // `try_invert`. GlobalHistogramBinarizer's single image-wide threshold
+    // can't separate dim-corner whites from bright-centre blacks (overlapping
+    // luminance populations); HybridBinarizer's per-8×8-block thresholds
+    // adapt to local luminance and decode cleanly. Together with the
+    // `qr-complex-2.png` test, this pins both binarizer branches in
+    // `decode_one_layer` as load-bearing — neither can be deleted without
+    // losing a real-world failure mode.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample_vignetted.png");
+    for combo in ALL_COMBOS {
+        let (_, _, use_hybrid_binarizer) = combo;
+        let result = decode_combo(&rgba, w, h, combo);
+        if use_hybrid_binarizer {
+            let bytes = result.unwrap_or_else(|| {
+                panic!(
+                    "qr_sample_vignetted.png expected to decode for combo={:?}",
+                    combo
+                )
+            });
+            assert_eq!(
+                bytes.as_slice(),
+                QR_SAMPLE_TEXT,
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        } else {
+            assert!(
+                result.is_none(),
+                "qr_sample_vignetted.png expected to NOT decode with GlobalHistogramBinarizer for combo={:?}, got Some({} bytes)",
+                combo,
+                result.as_ref().map(|b| b.len()).unwrap_or(0)
+            );
+        }
+    }
+}
+
+#[test]
 fn qr_code_complex_rotated_jpg_requires_try_harder() {
     // 183×210 phone photo of a rotated QR encoding a longer URL payload (named
     // `qr_code_complex_rotated.jpg` to flag the long-URL payload, distinct
@@ -504,6 +586,8 @@ fn probe_fixture_requirements() {
             b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True",
         ),
         ("qr_sample_rotated_speckled.png", b"jfghjghjghfkghjkghj"),
+        ("qr-complex-2.png", b"http://scnv.io/MsSv?qr=1"),
+        ("qr_sample_vignetted.png", b"jfghjghjghfkghjkghj"),
     ];
     for (name, expected) in fixtures {
         let path = format!("tests/fixtures/{name}");
