@@ -88,46 +88,119 @@ mod tests {
         (img.into_raw(), w, h)
     }
 
+    // The full Cartesian product of (try_harder, try_invert, use_hybrid_binarizer).
+    // Note: when `try_harder = true`, `FilteredImageReader` overrides the binarizer
+    // choice (always HybridBinarizer + pyramid). The hybrid-flag combos are still
+    // included so a future regression that re-introduces the flag's effect there
+    // would be caught.
+    const ALL_COMBOS: [(bool, bool, bool); 8] = [
+        (false, false, false),
+        (false, false, true),
+        (false, true, false),
+        (false, true, true),
+        (true, false, false),
+        (true, false, true),
+        (true, true, false),
+        (true, true, true),
+    ];
+
+    fn decode_combo(
+        rgba: &[u8],
+        w: u32,
+        h: u32,
+        (try_harder, try_invert, use_hybrid_binarizer): (bool, bool, bool),
+    ) -> Option<Vec<u8>> {
+        let luma = rgba_to_luma(rgba, w, h).expect("luma");
+        decode_inner(luma, w, h, try_harder, try_invert, use_hybrid_binarizer)
+    }
+
     #[test]
-    fn decodes_qr_sample_png() {
+    fn decodes_qr_sample_png_in_every_combination() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
-        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let bytes = decode_inner(luma, w, h, true, true, true)
-            .expect("expected a QR decode result from tests/fixtures/qr_sample.png");
-        assert_eq!(bytes.as_slice(), b"jfghjghjghfkghjkghj");
+        for combo in ALL_COMBOS {
+            let bytes = decode_combo(&rgba, w, h, combo)
+                .unwrap_or_else(|| panic!("qr_sample.png failed to decode for combo={:?}", combo));
+            assert_eq!(
+                bytes.as_slice(),
+                b"jfghjghjghfkghjkghj",
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        }
     }
 
     #[test]
-    fn decodes_qr_code_complex_png() {
+    fn decodes_qr_code_complex_png_in_every_combination() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_code_complex.png");
-        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let bytes = decode_inner(luma, w, h, true, true, true)
-            .expect("expected a QR decode result from tests/fixtures/qr_code_complex.png");
-        assert_eq!(bytes.as_slice(), b"https://qr-code-styling.com");
+        for combo in ALL_COMBOS {
+            let bytes = decode_combo(&rgba, w, h, combo).unwrap_or_else(|| {
+                panic!("qr_code_complex.png failed to decode for combo={:?}", combo)
+            });
+            assert_eq!(
+                bytes.as_slice(),
+                b"https://qr-code-styling.com",
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        }
     }
 
     #[test]
-    fn decodes_qr_zoo_jpg() {
-        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_zoo.jpg");
-        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let bytes = decode_inner(luma, w, h, true, true, true)
-            .expect("expected a QR decode result from tests/fixtures/qr_zoo.jpg");
-        assert_eq!(bytes.as_slice(), b"https://zoo.sandiegozoo.org/2024-sdmag-pandas");
-    }
-
-    #[test]
-    fn decodes_real_fountain_byte_mode_fixture_losslessly() {
+    fn decodes_real_fountain_byte_mode_fixture_in_every_combination() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/fountain_binary_real.png");
-
-        for try_harder in [false, true] {
-            let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-            let bytes = decode_inner(luma, w, h, try_harder, false, true)
-                .expect("expected a QR decode result from real fountain byte-mode fixture");
-
+        for combo in ALL_COMBOS {
+            let bytes = decode_combo(&rgba, w, h, combo).unwrap_or_else(|| {
+                panic!(
+                    "fountain_binary_real.png failed to decode for combo={:?}",
+                    combo
+                )
+            });
             // Binary fountain payload starts with magic bytes 0xff 0xfd; the bytes-only
             // path returns the raw QR BYTE-mode payload without any UTF-8/Latin-1 mangling.
-            assert_eq!(&bytes[..2], [0xff, 0xfd]);
+            assert_eq!(
+                &bytes[..2],
+                [0xff, 0xfd],
+                "wrong magic prefix for combo={:?}",
+                combo
+            );
         }
+    }
+
+    #[test]
+    fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
+        // White-on-dark-green phone photo: needs the FilteredImageReader pyramid
+        // (try_harder) AND inverted retry (try_invert). The binarizer flag has
+        // no effect when try_harder=true.
+        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_zoo.jpg");
+        for combo in ALL_COMBOS {
+            let (try_harder, try_invert, _) = combo;
+            let result = decode_combo(&rgba, w, h, combo);
+            if try_harder && try_invert {
+                let bytes = result.unwrap_or_else(|| {
+                    panic!("qr_zoo.jpg expected to decode for combo={:?}", combo)
+                });
+                assert_eq!(
+                    bytes.as_slice(),
+                    b"https://zoo.sandiegozoo.org/2024-sdmag-pandas",
+                    "unexpected bytes for combo={:?}",
+                    combo
+                );
+            } else {
+                assert!(
+                    result.is_none(),
+                    "qr_zoo.jpg expected to NOT decode for combo={:?}, got Some({} bytes)",
+                    combo,
+                    result.as_ref().map(|b| b.len()).unwrap_or(0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn rgba_length_mismatch_is_rejected() {
+        // Public entrypoint surfaces a JsValue error; the internal helper returns Err.
+        let err = rgba_to_luma(&[0u8; 15], 2, 2).expect_err("expected length-mismatch error");
+        assert!(err.contains("rgba length"), "unexpected error: {}", err);
     }
 }
 
