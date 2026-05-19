@@ -131,12 +131,11 @@ impl RegressionLineTrait for RegressionLine {
     }
 
     fn isHighRes(&self) -> bool {
-        let Some(mut min) = self.points.first().copied() else {
+        let Some(first) = self.points.first().copied() else {
             return false;
         };
-        let Some(mut max) = self.points.first().copied() else {
-            return false;
-        };
+        let mut min = first;
+        let mut max = first;
         for p in &self.points {
             min.x = f32::min(min.x, p.x);
             min.y = f32::min(min.y, p.y);

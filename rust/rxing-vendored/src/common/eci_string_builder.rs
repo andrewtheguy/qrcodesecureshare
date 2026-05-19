@@ -258,7 +258,7 @@ impl ECIStringBuilder {
      *
      * @return length of string representation in characters
      */
-    pub fn len(&mut self) -> usize {
+    pub fn len(&self) -> usize {
         self.bytes.len()
     }
 
@@ -270,7 +270,7 @@ impl ECIStringBuilder {
     /**
      * @return true iff nothing has been appended
      */
-    pub fn is_empty(&mut self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.bytes.is_empty()
     }
 
