@@ -183,35 +183,10 @@ impl RegressionLineTrait for RegressionLine {
     }
 
     fn evaluateSelf(&mut self) -> bool {
-        let mean = self.points.iter().sum::<Point>() / self.points.len() as f32;
-
-        let mut sumXX = 0.0;
-        let mut sumYY = 0.0;
-        let mut sumXY = 0.0;
-        for p in &self.points {
-            // for (auto p = begin; p != end; ++p) {
-            let d = *p - mean;
-            sumXX += d.x * d.x;
-            sumYY += d.y * d.y;
-            sumXY += d.x * d.y;
-        }
-        if sumYY >= sumXX {
-            let l = (sumYY * sumYY + sumXY * sumXY).sqrt();
-            self.a = sumYY / l;
-            self.b = -sumXY / l;
-        } else {
-            let l = (sumXX * sumXX + sumXY * sumXY).sqrt();
-            self.a = sumXY / l;
-            self.b = -sumXX / l;
-        }
-        if Point::dot(self.direction_inward, self.normal()) < 0.0 {
-            // if (dot(_directionInward, normal()) < 0) {
-            self.a = -self.a;
-            self.b = -self.b;
-        }
-        self.c = Point::dot(self.normal(), mean); // (a*mean.x + b*mean.y);
-        Point::dot(self.direction_inward, self.normal()) > 0.5
-        // angle between original and new direction is at most 60 degree
+        let points = std::mem::take(&mut self.points);
+        let result = self.evaluate(&points);
+        self.points = points;
+        result
     }
 
     fn a(&self) -> f32 {

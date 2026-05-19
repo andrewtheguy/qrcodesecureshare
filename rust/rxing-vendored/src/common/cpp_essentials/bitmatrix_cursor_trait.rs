@@ -77,7 +77,7 @@ pub trait BitMatrixCursorTrait {
     // 	return isIn(p);
     // }
 
-    fn movedBy<T: BitMatrixCursorTrait>(self, d: Point) -> Self;
+    fn movedBy(self, d: Point) -> Self;
     fn turnedBack(&self) -> Self; // { return {*img, p, back()}; }
     // {
     // 	auto res = *this;

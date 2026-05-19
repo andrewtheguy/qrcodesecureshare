@@ -120,7 +120,7 @@ impl BitMatrixCursorTrait for EdgeTracer<'_> {
         self.isIn(self.p)
     }
 
-    fn movedBy<T: BitMatrixCursorTrait>(self, d: Point) -> Self {
+    fn movedBy(self, d: Point) -> Self {
         let mut res = self;
         res.p += d;
 

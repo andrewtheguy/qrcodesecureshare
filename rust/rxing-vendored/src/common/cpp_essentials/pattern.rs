@@ -395,20 +395,20 @@ impl<T: Default + std::cmp::PartialEq> std::ops::Index<usize> for BarAndSpace<T>
     type Output = T;
 
     fn index(&self, index: usize) -> &Self::Output {
-        match index & 1 {
-            0 => &self.bar,
-            1 => &self.space,
-            _ => panic!("Index out of range for BarAndSpace"),
+        if index & 1 == 0 {
+            &self.bar
+        } else {
+            &self.space
         }
     }
 }
 
 impl<T: Default + std::cmp::PartialEq> std::ops::IndexMut<usize> for BarAndSpace<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        match index & 1 {
-            0 => &mut self.bar,
-            1 => &mut self.space,
-            _ => panic!("Index out of range for BarAndSpace"),
+        if index & 1 == 0 {
+            &mut self.bar
+        } else {
+            &mut self.space
         }
     }
 }
