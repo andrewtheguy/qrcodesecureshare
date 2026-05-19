@@ -139,6 +139,9 @@ impl RegressionLineTrait for DMRegressionLine {
     }
 
     fn evaluate(&mut self, points: &[Point]) -> bool {
+        if points.is_empty() {
+            return false;
+        }
         let mean = points.iter().sum::<Point>() / points.len() as f32;
 
         let mut sumXX = 0.0;

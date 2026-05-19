@@ -134,7 +134,7 @@ pub fn FindFinderPatterns(image: &BitMatrix, tryHarder: bool) -> FinderPatterns 
 pub fn GenerateFinderPatternSets(patterns: &mut FinderPatterns) -> FinderPatternSets {
     patterns.sort_by_key(|p| p.size);
 
-    let mut sets: MultiMap<String, FinderPatternSet> = MultiMap::new();
+    let mut sets: MultiMap<u64, FinderPatternSet> = MultiMap::new();
     let squaredDistance = |a: ConcentricPattern, b: ConcentricPattern| {
         // The scaling of the distance by the b/a size ratio is a very coarse compensation for the shortening effect of
         // the camera projection on slanted symbols. The fact that the size of the finder pattern is proportional to the
@@ -222,7 +222,7 @@ pub fn GenerateFinderPatternSets(patterns: &mut FinderPatterns) -> FinderPattern
                 // arbitrarily limit the number of potential sets
                 // (this has performance implications while limiting the maximal number of detected symbols)
                 sets.insert(
-                    d.to_string(),
+                    d.to_bits(),
                     FinderPatternSet {
                         bl: *a,
                         tl: *b,

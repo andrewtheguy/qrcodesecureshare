@@ -43,18 +43,12 @@ pub fn UpdateMinMaxFloat(min: &mut f64, max: &mut f64, val: f64) {
 }
 
 pub fn ToString<T: Into<usize>>(val: T, len: usize) -> Result<String> {
-    let mut len = len as isize;
-    let val = val.into();
-    let mut val = val as isize;
-
-    let mut result = vec!['0'; len as usize];
-    len -= 1;
-    if val < 0 {
-        return Err(Exceptions::format_with("Invalid value"));
-    }
-    while len >= 0 && val != 0 {
-        result[len as usize] = char::from(b'0' + (val % 10) as u8);
-        len -= 1;
+    let mut val: usize = val.into();
+    let mut result = vec!['0'; len];
+    let mut idx = len;
+    while idx > 0 && val != 0 {
+        idx -= 1;
+        result[idx] = char::from(b'0' + (val % 10) as u8);
         val /= 10;
     }
     if val != 0 {

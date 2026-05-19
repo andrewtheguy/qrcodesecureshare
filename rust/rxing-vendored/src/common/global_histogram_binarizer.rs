@@ -110,19 +110,19 @@ impl<LS: LuminanceSource> Binarizer for GlobalHistogramBinarizer<LS> {
         } else {
             let col = self.black_column_cache[l].get_or_try_init(|| {
                 let source = self.get_luminance_source();
-                let width = source.get_height();
-                let mut col = BitArray::with_size(width);
+                let height = source.get_height();
+                let mut col = BitArray::with_size(height);
 
                 let localLuminances = source.get_column(l);
                 let mut localBuckets = [0; LUMINANCE_BUCKETS];
-                for x in 0..width {
+                for x in 0..height {
                     localBuckets[((localLuminances[x]) >> LUMINANCE_SHIFT) as usize] += 1;
                 }
                 let blackPoint = Self::estimateBlackPoint(&localBuckets)?;
 
-                if width < 3 {
+                if height < 3 {
                     // Special case for very small images
-                    for (x, lum) in localLuminances.iter().enumerate().take(width) {
+                    for (x, lum) in localLuminances.iter().enumerate().take(height) {
                         if (*lum as u32) < blackPoint {
                             col.set(x);
                         }
@@ -130,7 +130,7 @@ impl<LS: LuminanceSource> Binarizer for GlobalHistogramBinarizer<LS> {
                 } else {
                     let mut left = localLuminances[0];
                     let mut center = localLuminances[1];
-                    for x in 1..width - 1 {
+                    for x in 1..height - 1 {
                         let right = localLuminances[x + 1];
                         // A simple -1 4 -1 box filter with a weight of 2.
                         if ((center as i64 * 4) - left as i64 - right as i64) / 2

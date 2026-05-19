@@ -35,7 +35,9 @@ pub enum PredefinedGenericGF {
     MaxicodeField64,
 }
 
-/// Replacement for old const options, has the downside of generating new versions whenever one is requested.
+/// Replacement for old const options. Each predefined `GenericGF` is initialized
+/// once via `once_cell::sync::Lazy` and the same `'static` reference is returned
+/// on every call — instances are singletons, not recreated per request.
 pub fn get_predefined_genericgf(request: PredefinedGenericGF) -> GenericGFRef {
     match request {
         PredefinedGenericGF::AztecData12 => &AZTEC_DATA_12, // x^12 + x^6 + x^5 + x^3 + 1,

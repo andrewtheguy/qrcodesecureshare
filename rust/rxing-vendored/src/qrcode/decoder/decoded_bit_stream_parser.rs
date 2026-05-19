@@ -332,19 +332,21 @@ fn decodeAlphanumericSegment(
     }
     // See section 6.4.8.1, 6.4.8.2
     if fc1InEffect {
-        // We need to massage the result a bit if in an FNC1 mode:
-        for i in start..r_hld.len() {
-            if r_hld.get(i).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%' {
-                if i < r_hld.len() - 1
-                    && r_hld.get(i + 1).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%'
-                {
+        // We need to massage the result a bit if in an FNC1 mode.
+        // Walk forward with explicit index management because remove(i+1)
+        // shrinks the buffer underneath us.
+        let mut i = start;
+        while i < r_hld.len() {
+            if r_hld[i] == '%' {
+                if i + 1 < r_hld.len() && r_hld[i + 1] == '%' {
                     // %% is rendered as %
                     r_hld.remove(i + 1);
                 } else {
                     // In alpha mode, % should be converted to FNC1 separator 0x1D
-                    r_hld[i..i + 1].copy_from_slice(&[0x1D as char]);
+                    r_hld[i] = 0x1D as char;
                 }
             }
+            i += 1;
         }
     }
 

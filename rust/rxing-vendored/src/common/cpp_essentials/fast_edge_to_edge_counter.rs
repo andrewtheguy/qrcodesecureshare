@@ -7,7 +7,7 @@ pub struct FastEdgeToEdgeCounter<'a> {
     stride: isize,
     stepsToBorder: i32,
     _arr: isize,
-    under_arry: &'a BitMatrix,
+    under_array: &'a BitMatrix,
 }
 
 impl FastEdgeToEdgeCounter<'_> {
@@ -42,7 +42,7 @@ impl FastEdgeToEdgeCounter<'_> {
             stride,
             stepsToBorder,
             _arr: cur.p().y as isize * stride,
-            under_arry: cur.img(),
+            under_array: cur.img(),
         }
     }
 
@@ -61,7 +61,7 @@ impl FastEdgeToEdgeCounter<'_> {
 
             let idx_pt = self.get_array_check_index(steps);
 
-            if self.under_arry.get_index(idx_pt) != self.under_arry.get_index(self.p as usize) {
+            if self.under_array.get_index(idx_pt) != self.under_array.get_index(self.p as usize) {
                 break;
             }
         }

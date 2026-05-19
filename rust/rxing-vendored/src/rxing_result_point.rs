@@ -323,7 +323,8 @@ where
     }
 
     pub fn bresenhamDirection(self) -> Self {
-        self / Self::maxAbsComponent(self)
+        let m = Self::maxAbsComponent(self);
+        if m == T::zero() { self } else { self / m }
     }
 
     pub fn mainDirection(self) -> Self

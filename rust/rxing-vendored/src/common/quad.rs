@@ -124,8 +124,8 @@ impl Quadrilateral {
             let d2 = self.0[i] - self.0[(i + 1) % N];
             let cp = d1.cross(d2);
 
-            m = f32::min((m).abs(), cp);
-            M = f32::max((M).abs(), cp);
+            m = f32::min(m, cp.abs());
+            M = f32::max(M, cp.abs());
 
             if i == 0 {
                 sign = cp > 0.0;
