@@ -61,7 +61,7 @@ impl DataBlock {
 
         // Figure out the number and size of data blocks used by this version and
         // error correction level
-        let ecBlocks = version.getECBlocksForLevel(ecLevel);
+        let ecBlocks = version.getECBlocksForLevel(ecLevel)?;
 
         // First count the total number of data blocks
         let mut _totalBlocks = 0;

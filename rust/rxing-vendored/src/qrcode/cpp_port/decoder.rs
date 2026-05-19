@@ -46,13 +46,12 @@ pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<
 
     // Copy back into array of bytes -- only need to worry about the bytes that were data
     // We don't care about errors in the error-correction codewords
-    codewordBytes[..numDataCodewords as usize].copy_from_slice(
-        &codewordsInts[..numDataCodewords as usize]
-            .iter()
-            .copied()
-            .map(|i| i as u8)
-            .collect::<Vec<u8>>(),
-    );
+    for (dst, src) in codewordBytes[..numDataCodewords as usize]
+        .iter_mut()
+        .zip(codewordsInts[..numDataCodewords as usize].iter())
+    {
+        *dst = *src as u8;
+    }
     // std::copy_n(codewordsInts.begin(), numDataCodewords, codewordBytes.begin());
 
     Ok(true)

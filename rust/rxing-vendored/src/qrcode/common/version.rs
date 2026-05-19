@@ -134,11 +134,16 @@ impl Version {
         // 17 + 4 * self.versionNumber
     }
 
-    pub const fn getECBlocksForLevel(&self, ecLevel: ErrorCorrectionLevel) -> &ECBlocks {
-        if ecLevel.get_ordinal() as usize >= self.ecBlocks.len() {
-            return &self.ecBlocks[ecLevel.get_ordinal() as usize % self.ecBlocks.len()];
-        }
-        &self.ecBlocks[ecLevel.get_ordinal() as usize]
+    pub fn getECBlocksForLevel(&self, ecLevel: ErrorCorrectionLevel) -> Result<&ECBlocks> {
+        self.ecBlocks
+            .get(ecLevel.get_ordinal() as usize)
+            .ok_or_else(|| {
+                Exceptions::illegal_argument_with(format!(
+                    "ErrorCorrectionLevel ordinal {} out of range for {} EC blocks",
+                    ecLevel.get_ordinal(),
+                    self.ecBlocks.len()
+                ))
+            })
     }
 
     /**

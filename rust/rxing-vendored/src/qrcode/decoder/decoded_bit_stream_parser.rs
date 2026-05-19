@@ -129,13 +129,7 @@ pub fn decode(
                         &mut byteSegments,
                         hints,
                     )?,
-                    Mode::KANJI => decodeKanjiSegment(
-                        &mut bits,
-                        &mut result,
-                        count,
-                        currentCharacterSetECI,
-                        hints,
-                    )?,
+                    Mode::KANJI => decodeKanjiSegment(&mut bits, &mut result, count)?,
                     _ => return Err(Exceptions::FORMAT),
                 }
             }
@@ -229,8 +223,6 @@ fn decodeKanjiSegment(
     bits: &mut BitSource,
     result: &mut ECIStringBuilder,
     count: usize,
-    currentCharacterSetECI: Option<CharacterSet>,
-    hints: &DecodeHints,
 ) -> Result<()> {
     // Don't crash trying to read more bits than we have available.
     if count * 13 > bits.available() {
@@ -259,8 +251,6 @@ fn decodeKanjiSegment(
         count -= 1;
     }
 
-    let _ = currentCharacterSetECI;
-    let _ = hints;
     let encoder = CharacterSet::Shift_JIS;
 
     result.append_eci(Eci::from(encoder));
