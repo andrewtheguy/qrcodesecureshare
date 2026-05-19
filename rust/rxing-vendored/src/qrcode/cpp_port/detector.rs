@@ -262,20 +262,18 @@ pub fn GenerateFinderPatternSets(patterns: &mut FinderPatterns) -> FinderPattern
     res
 }
 
-pub fn EstimateModuleSize(image: &BitMatrix, a: ConcentricPattern, b: ConcentricPattern) -> f64 {
+pub fn EstimateModuleSize(
+    image: &BitMatrix,
+    a: ConcentricPattern,
+    b: ConcentricPattern,
+) -> Result<f64> {
     let mut cur = EdgeTracer::new(image, a.p, b.p - a.p);
     if !cur.isBlack() {
-        return -1.0;
-    }
-    assert!(cur.isBlack());
-
-    let pattern = ReadSymmetricPattern::<5, _>(&mut cur, a.size * 2);
-
-    if pattern.is_none() {
-        return -1.0;
+        return Err(Exceptions::NOT_FOUND);
     }
 
-    let pattern = pattern.unwrap();
+    let pattern = ReadSymmetricPattern::<5, _>(&mut cur, a.size * 2)
+        .ok_or(Exceptions::NOT_FOUND)?;
 
     if !(IsPattern::<E2E, 5, 7, false>(
         &PatternView::new(&PatternRow::new(pattern.to_vec())),
@@ -285,12 +283,13 @@ pub fn EstimateModuleSize(image: &BitMatrix, a: ConcentricPattern, b: Concentric
         0.0,
     ) != 0.0)
     {
-        return -1.0;
+        return Err(Exceptions::NOT_FOUND);
     }
 
-    (2 * pattern.iter().sum::<PatternType>() - pattern[0] - pattern[4]) as f64 / 12.0
-        * cur.d().length() as f64
-    //  (2 * Reduce(*pattern) - (*pattern)[0] - (*pattern)[4]) / 12.0 * length(cur.d)
+    Ok(
+        (2 * pattern.iter().sum::<PatternType>() - pattern[0] - pattern[4]) as f64 / 12.0
+            * cur.d().length() as f64,
+    )
 }
 
 pub struct DimensionEstimate {
@@ -313,28 +312,28 @@ pub fn EstimateDimension(
     image: &BitMatrix,
     a: ConcentricPattern,
     b: ConcentricPattern,
-) -> DimensionEstimate {
-    let ms_a = EstimateModuleSize(image, a, b);
-    let ms_b = EstimateModuleSize(image, b, a);
-
-    if ms_a < 0.0 || ms_b < 0.0 {
-        return DimensionEstimate::default();
-    }
+) -> Result<DimensionEstimate> {
+    let ms_a = EstimateModuleSize(image, a, b)?;
+    let ms_b = EstimateModuleSize(image, b, a)?;
 
     let moduleSize = (ms_a + ms_b) / 2.0;
 
     let dimension = (ConcentricPattern::distance(a, b) as f64 / moduleSize).round() as i32 + 7;
     let error = 1 - (dimension % 4);
 
-    DimensionEstimate {
+    Ok(DimensionEstimate {
         dim: dimension + error,
         ms: moduleSize,
         err: (error).abs(),
-    }
+    })
 }
 
-/// This function can panic
-pub fn TraceLine(image: &BitMatrix, p: Point, d: Point, edge: i32) -> impl RegressionLineTrait {
+pub fn TraceLine(
+    image: &BitMatrix,
+    p: Point,
+    d: Point,
+    edge: i32,
+) -> Result<impl RegressionLineTrait> {
     let mut cur = EdgeTracer::new(image, p, d - p);
     let mut line = RegressionLine::default();
     line.setDirectionInward(cur.back());
@@ -363,8 +362,7 @@ pub fn TraceLine(image: &BitMatrix, p: Point, d: Point, edge: i32) -> impl Regre
         let mut c = EdgeTracer::new(image, curI.p, curI.direction(dir));
         let mut stepCount = (Point::maxAbsComponent(cur.p - p)) as i32;
         loop {
-            line.add(Point::centered(c.p))
-                .expect("could not add point on line");
+            line.add(Point::centered(c.p))?;
 
             stepCount -= 1;
             if !(stepCount > 0 && c.stepAlongEdge(dir, Some(true))) {
@@ -375,7 +373,7 @@ pub fn TraceLine(image: &BitMatrix, p: Point, d: Point, edge: i32) -> impl Regre
 
     line.evaluate_max_distance(Some(1.0), Some(true));
 
-    line
+    Ok(line)
 }
 
 // estimate how tilted the symbol is (return value between 1 and 2, see also above)
@@ -489,8 +487,12 @@ pub fn ReadVersion(
 }
 
 pub fn SampleQR(image: &BitMatrix, fp: &FinderPatternSet) -> Result<QRCodeDetectorResult> {
-    let top = EstimateDimension(image, fp.tl, fp.tr);
-    let left = EstimateDimension(image, fp.tl, fp.bl);
+    // Tolerate one estimator failing — pick the surviving estimate via the
+    // existing err-based comparison below. Failure (Err) maps to the
+    // `DimensionEstimate::default()` (dim=0, err=4), preserving the prior
+    // sentinel-based control flow.
+    let top = EstimateDimension(image, fp.tl, fp.tr).unwrap_or_default();
+    let left = EstimateDimension(image, fp.tl, fp.bl).unwrap_or_default();
 
     if top.dim == 0 && left.dim == 0 {
         return Err(Exceptions::NOT_FOUND);
@@ -534,10 +536,10 @@ pub fn SampleQR(image: &BitMatrix, fp: &FinderPatternSet) -> Result<QRCodeDetect
 
     // generate 4 lines: outer and inner edge of the 1 module wide black line between the two outer and the inner
     // (tl) finder pattern
-    let bl2 = TraceLine(image, fp.bl.p, fp.tl.p, 2);
-    let bl3 = TraceLine(image, fp.bl.p, fp.tl.p, 3);
-    let tr2 = TraceLine(image, fp.tr.p, fp.tl.p, 2);
-    let tr3 = TraceLine(image, fp.tr.p, fp.tl.p, 3);
+    let bl2 = TraceLine(image, fp.bl.p, fp.tl.p, 2)?;
+    let bl3 = TraceLine(image, fp.bl.p, fp.tl.p, 3)?;
+    let tr2 = TraceLine(image, fp.tr.p, fp.tl.p, 2)?;
+    let tr3 = TraceLine(image, fp.tr.p, fp.tl.p, 3)?;
 
     if bl2.isValid() && tr2.isValid() && bl3.isValid() && tr3.isValid() {
         // intersect both outer and inner line pairs and take the center point between the two intersection points
@@ -846,7 +848,7 @@ pub fn DetectPureQR(image: &BitMatrix) -> Result<QRCodeDetectorResult> {
             p: tr + fpWidth as f32 / 2.0 * point(-1.0, 1.0),
             size: fpWidth,
         },
-    )
+    )?
     .dim;
 
     let moduleSize: f32 = ((width) as f32) / dimension as f32;
