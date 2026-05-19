@@ -1,9 +1,16 @@
-import initRxingWasm, { decode_qr_rgba } from '../../rust/rxing-wasm/pkg/rxing_wasm'
+import initRxingWasm, { read_qr_codes_rgba } from '../../rust/rxing-wasm/pkg/rxing_wasm'
 
 export interface RxingReaderOptions {
   tryHarder?: boolean
   tryInvert?: boolean
   useHybridBinarizer?: boolean
+  /**
+   * Cap on the number of symbols returned per frame. Pass `0` to remove the cap.
+   * Pass `1` when only one detection is needed (lets the multi-decode loop
+   * short-circuit on the first valid result). Mirrors zxing-wasm's option of
+   * the same name; default matches zxing-wasm (`255`).
+   */
+  maxNumberOfSymbols?: number
 }
 
 let wasmInitialized = false
@@ -30,31 +37,39 @@ function toUint8Array(data: Uint8Array | Uint8ClampedArray): Uint8Array {
   return new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
 }
 
-export async function decodeQrFromRgba(
+export async function readQrCodesFromRgba(
   rgba: Uint8Array | Uint8ClampedArray,
   width: number,
   height: number,
   options: RxingReaderOptions = {}
-): Promise<Uint8Array | null> {
+): Promise<Uint8Array[]> {
   await ensureRxingWasmInit()
 
-  const { tryHarder = false, tryInvert = false, useHybridBinarizer = true } = options
+  const {
+    tryHarder = false,
+    tryInvert = false,
+    useHybridBinarizer = true,
+    maxNumberOfSymbols = 255,
+  } = options
 
-  const result = decode_qr_rgba(
+  // `read_qr_codes_rgba` returns a JS Array of Uint8Array (one entry per
+  // detected symbol). wasm-bindgen types it as `Array<any>`; narrow it here.
+  const results = read_qr_codes_rgba(
     toUint8Array(rgba),
     width,
     height,
     tryHarder,
     tryInvert,
-    useHybridBinarizer
-  )
+    useHybridBinarizer,
+    maxNumberOfSymbols
+  ) as Uint8Array[]
 
-  return result ?? null
+  return results
 }
 
-export async function decodeQrFromImageData(
+export async function readQrCodesFromImageData(
   imageData: ImageData,
   options: RxingReaderOptions = {}
-): Promise<Uint8Array | null> {
-  return decodeQrFromRgba(imageData.data, imageData.width, imageData.height, options)
+): Promise<Uint8Array[]> {
+  return readQrCodesFromRgba(imageData.data, imageData.width, imageData.height, options)
 }

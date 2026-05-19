@@ -1,4 +1,4 @@
-import { decodeQrFromImageData, type RxingReaderOptions } from '@/utils/rxingWasm'
+import { readQrCodesFromImageData, type RxingReaderOptions } from '@/utils/rxingWasm'
 
 interface ScanMessage {
   type: 'scan'
@@ -30,16 +30,19 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
 
       const readerOptions: RxingReaderOptions = {
         // Defaults tuned for fountain QR receivers: fast, no extra passes,
-        // adaptive binarizer. Callers may override any of these.
+        // adaptive binarizer, single symbol per frame so the multi-decode
+        // loop short-circuits on the first valid result. Callers may override
+        // any of these.
         tryHarder: false,
         tryInvert: false,
         useHybridBinarizer: true,
+        maxNumberOfSymbols: 1,
         ...options,
       }
 
-      const result = await decodeQrFromImageData(imageData, readerOptions)
+      const results = await readQrCodesFromImageData(imageData, readerOptions)
 
-      const data: Uint8Array[] | null = result ? [result] : null
+      const data: Uint8Array[] | null = results.length > 0 ? results : null
 
       const message: ScanResult = { type: 'result', data }
       self.postMessage(message)

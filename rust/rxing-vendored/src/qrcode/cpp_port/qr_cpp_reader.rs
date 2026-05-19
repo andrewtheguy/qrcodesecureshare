@@ -161,7 +161,10 @@ impl ImmutableReader for QrReader {
 }
 
 impl QrReader {
-    fn decode_set_number_with_hints<B: crate::Binarizer>(
+    /// Decode every QR / Micro QR / rMQR symbol found in `image`.
+    ///
+    /// `count` caps the number of results; pass `0` for unlimited.
+    pub fn decode_set_number_with_hints<B: crate::Binarizer>(
         &self,
         image: &mut crate::BinaryBitmap<B>,
         hints: &DecodeHints,
