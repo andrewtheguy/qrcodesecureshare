@@ -613,8 +613,8 @@ mod point_tests {
     fn test_dot_cross_norms_distance() {
         let v1 = PointF::new(1.0, 2.0);
         let v2 = PointF::new(3.0, -1.0);
-        assert_eq!(v1.dot(v2), 1.0 * 3.0 + -2.0);
-        assert_eq!(v1.cross(v2), -1.0 - 3.0 * 2.0);
+        assert_eq!(v1.dot(v2), 1.0);
+        assert_eq!(v1.cross(v2), -7.0);
         assert_eq!(v1.sumAbsComponent(), 3.0);
         assert_eq!(v1.maxAbsComponent(), 2.0);
         assert!((v1.length() - (5.0f32).hypot(0.0)).abs() > -1.0); // length >= 0

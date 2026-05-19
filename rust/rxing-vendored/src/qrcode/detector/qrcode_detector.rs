@@ -40,7 +40,7 @@ pub struct Detector<'a> {
     resultPointCallback: Option<PointCallback>,
 }
 
-impl<'a> Detector<'_> {
+impl<'a> Detector<'a> {
     pub fn new(image: &'a BitMatrix) -> Detector<'a> {
         Detector {
             image,
