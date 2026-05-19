@@ -4,8 +4,9 @@ use std::path::PathBuf;
 use image::ImageReader;
 use rxing::{
     BarcodeFormat, BinaryBitmap, DecodeHints, FilteredImageReader, Luma8LuminanceSource,
-    MultiFormatReader, Reader,
+    LuminanceSource, MultiFormatReader, Reader,
     common::{GlobalHistogramBinarizer, HybridBinarizer},
+    qrcode::cpp_port::QrReader,
 };
 
 fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
@@ -192,4 +193,152 @@ fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
 fn rgba_length_mismatch_is_rejected() {
     let err = rgba_to_luma(&[0u8; 15], 2, 2).expect_err("expected length-mismatch error");
     assert!(err.contains("rgba length"), "unexpected error: {}", err);
+}
+
+// ---------------------------------------------------------------------------
+// rxing-wasm equivalence tests. These exercise the QR-only multi-decode path
+// (`QrReader::decode_set_number_with_hints`) plus the manual BitMatrix flip
+// (try_invert) and manual `Luma8LuminanceSource::rotate_counter_clockwise()`
+// (try_rotate) that the wasm wrapper layers on top.
+// ---------------------------------------------------------------------------
+
+fn invert_rgba(rgba: &[u8]) -> Vec<u8> {
+    rgba.chunks_exact(4)
+        .flat_map(|p| [255 - p[0], 255 - p[1], 255 - p[2], p[3]])
+        .collect()
+}
+
+/// Rotate an RGBA buffer 90° clockwise. Source (x, y) maps to dst (h - 1 - y, x).
+fn rotate_rgba_90_cw(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
+    let (w_us, h_us) = (w as usize, h as usize);
+    let mut out = vec![0u8; rgba.len()];
+    for y in 0..h_us {
+        for x in 0..w_us {
+            let src = (y * w_us + x) * 4;
+            let dx = h_us - 1 - y;
+            let dy = x;
+            let dst = (dy * h_us + dx) * 4;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (out, h, w)
+}
+
+fn decode_one_pass(source: Luma8LuminanceSource, hints: &DecodeHints, invert: bool) -> Vec<Vec<u8>> {
+    let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
+    if invert {
+        let Ok(matrix) = bitmap.get_black_matrix_mut() else {
+            return Vec::new();
+        };
+        matrix.flip_self();
+    }
+    QrReader
+        .decode_set_number_with_hints(&mut bitmap, hints, 1)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|r| r.getRawBytes().to_vec())
+        .collect()
+}
+
+/// Mirror of the wasm wrapper's `read_inner`. Tests against this path catch
+/// regressions to the QR-only multi-decode plus retry loop.
+fn decode_with_retry(
+    rgba: &[u8],
+    w: u32,
+    h: u32,
+    try_invert: bool,
+    try_rotate: bool,
+) -> Vec<Vec<u8>> {
+    let luma = rgba_to_luma(rgba, w, h).expect("luma");
+    let hints = DecodeHints {
+        PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
+        ..DecodeHints::default()
+    };
+
+    let mut source = Luma8LuminanceSource::new(luma, w, h);
+    let rotations = if try_rotate { 4 } else { 1 };
+
+    for rot in 0..rotations {
+        let results = decode_one_pass(source.clone(), &hints, false);
+        if !results.is_empty() {
+            return results;
+        }
+        if try_invert {
+            let results = decode_one_pass(source.clone(), &hints, true);
+            if !results.is_empty() {
+                return results;
+            }
+        }
+        if rot + 1 < rotations {
+            match source.rotate_counter_clockwise() {
+                Ok(rotated) => source = rotated,
+                Err(_) => break,
+            }
+        }
+    }
+
+    Vec::new()
+}
+
+const QR_SAMPLE_TEXT: &[u8] = b"jfghjghjghfkghjkghj";
+
+#[test]
+fn inverted_qr_sample_requires_try_invert() {
+    // Pixel-invert the baseline fixture (255 - rgb per channel). The QrReader
+    // multi-decode entry point does NOT consume the `AlsoInverted` hint (that
+    // wiring lives in `MultiFormatReader`, which the wasm wrapper bypasses),
+    // so the inverted bitmap is only readable when the caller flips the
+    // BitMatrix manually — i.e. when `try_invert = true` in the retry loop.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
+    let inverted = invert_rgba(&rgba);
+
+    let without = decode_with_retry(&inverted, w, h, false, false);
+    assert!(
+        without.is_empty(),
+        "inverted fixture unexpectedly decoded without try_invert ({} result(s))",
+        without.len()
+    );
+
+    let with = decode_with_retry(&inverted, w, h, true, false);
+    assert_eq!(with.len(), 1, "try_invert should rescue the inverted fixture");
+    assert_eq!(with[0].as_slice(), QR_SAMPLE_TEXT);
+}
+
+#[test]
+fn rotated_qr_sample_decodes_without_try_rotate() {
+    // rxing's QR finder reorders the three concentric finder patterns into a
+    // canonical (TL, TR, BL) tri-corner before sampling, so a clean QR decodes
+    // at every 90° orientation even with `try_rotate = false`. This pins that
+    // behavior — a future regression (e.g. losing the canonical reordering)
+    // would surface here as a "without_rotate" failure.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
+    let (rotated, rw, rh) = rotate_rgba_90_cw(&rgba, w, h);
+
+    let without = decode_with_retry(&rotated, rw, rh, false, false);
+    assert_eq!(
+        without.len(),
+        1,
+        "rxing's QR detector should be rotation-invariant for clean fixtures"
+    );
+    assert_eq!(without[0].as_slice(), QR_SAMPLE_TEXT);
+}
+
+#[test]
+fn rotated_and_inverted_qr_sample_requires_try_invert() {
+    // Compose both transforms. Rotation alone is handled natively (see test
+    // above) but the inversion still requires `try_invert`. This verifies the
+    // retry loop reaches the matching (rotation × inversion) combination.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
+    let (rotated, rw, rh) = rotate_rgba_90_cw(&rgba, w, h);
+    let rotated_inverted = invert_rgba(&rotated);
+
+    let without = decode_with_retry(&rotated_inverted, rw, rh, false, false);
+    assert!(
+        without.is_empty(),
+        "rotated-inverted fixture unexpectedly decoded without try_invert"
+    );
+
+    let with = decode_with_retry(&rotated_inverted, rw, rh, true, false);
+    assert_eq!(with.len(), 1);
+    assert_eq!(with[0].as_slice(), QR_SAMPLE_TEXT);
 }
