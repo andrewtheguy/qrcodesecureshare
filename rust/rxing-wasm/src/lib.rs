@@ -105,6 +105,35 @@ fn decode_inner(
     })
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use image::ImageReader;
+    use std::path::PathBuf;
+
+    fn load_png_as_rgba(path: &str) -> (Vec<u8>, u32, u32) {
+        let mut full = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        full.push("../..");
+        full.push(path);
+        let img = ImageReader::open(&full)
+            .expect("open png")
+            .decode()
+            .expect("decode png")
+            .into_rgba8();
+        let (w, h) = (img.width(), img.height());
+        (img.into_raw(), w, h)
+    }
+
+    #[test]
+    fn decodes_tmp_download_png() {
+        let (rgba, w, h) = load_png_as_rgba("tmp/download.png");
+        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
+        let result = decode_inner(luma, w, h, true, true, true);
+        let result = result.expect("expected a QR decode result from tmp/download.png");
+        assert!(!result.text.is_empty(), "text should be non-empty");
+    }
+}
+
 /// Decode a single QR code from raw RGBA pixels.
 ///
 /// - `rgba`: row-major RGBA pixels, length must equal `width * height * 4`
