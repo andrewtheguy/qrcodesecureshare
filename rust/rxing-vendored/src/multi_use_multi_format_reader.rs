@@ -62,7 +62,7 @@ impl MultiUseMultiFormatReader {
             return res;
         }
         if matches!(self.hints.AlsoInverted, Some(true)) {
-            image.get_black_matrix_mut().flip_self();
+            image.get_black_matrix_mut()?.flip_self();
             let res = self.decode_formats(image);
             if let Ok(mut r) = res {
                 r.putMetadata(

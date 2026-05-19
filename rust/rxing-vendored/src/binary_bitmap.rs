@@ -84,30 +84,13 @@ impl<B: Binarizer> BinaryBitmap<B> {
      * may not apply sharpening. Therefore, a row from this matrix may not be identical to one
      * fetched using getBlackRow(), so don't mix and match between them.
      *
-     * Panics if the binarizer cannot be created.
-     *
      * @return The 2D array of bits for the image (true means black).
      * @throws NotFoundException if image can't be binarized to make a matrix
      */
-    pub fn get_black_matrix_mut(&mut self) -> &mut BitMatrix {
-        // The matrix is created on demand the first time it is requested, then cached. There are two
-        // reasons for this:
-        // 1. This work will never be done if the caller only installs 1D Reader objects, or if a
-        //    1D Reader finds a barcode before the 2D Readers run.
-        // 2. This work will only be done once even if the caller installs multiple 2D Readers.
-        // if self.matrix.borrow().is_none() {
-        // _=self.matrix.replace(Some(self.binarizer.get_black_matrix().unwrap().clone()));
-        //     // self.matrix.get_mut() = ;
-        // }
-        // &mut self.matrix.get_mut().unwrap()
+    pub fn get_black_matrix_mut(&mut self) -> Result<&mut BitMatrix> {
         self.matrix
-            .get_or_init(|| match self.binarizer.get_black_matrix() {
-                Ok(a) => a.clone(),
-                Err(_) => {
-                    BitMatrix::new(self.get_width() as u32, self.get_height() as u32).unwrap()
-                }
-            });
-        self.matrix.get_mut().unwrap()
+            .get_or_try_init(|| self.binarizer.get_black_matrix().cloned())?;
+        Ok(self.matrix.get_mut().unwrap())
     }
 
     /**
@@ -116,34 +99,12 @@ impl<B: Binarizer> BinaryBitmap<B> {
      * may not apply sharpening. Therefore, a row from this matrix may not be identical to one
      * fetched using getBlackRow(), so don't mix and match between them.
      *
-     * Panics if the binarizer cannot be created.
-     *
      * @return The 2D array of bits for the image (true means black).
      * @throws NotFoundException if image can't be binarized to make a matrix
      */
-    pub fn get_black_matrix(&self) -> &BitMatrix {
-        // The matrix is created on demand the first time it is requested, then cached. There are two
-        // reasons for this:
-        // 1. This work will never be done if the caller only installs 1D Reader objects, or if a
-        //    1D Reader finds a barcode before the 2D Readers run.
-        // 2. This work will only be done once even if the caller installs multiple 2D Readers.
-        // if self.matrix.borrow().is_none() {
-        // _= self.matrix.replace(Some(match self.binarizer.get_black_matrix() {
-        //         Ok(a) => a.clone(),
-        //         Err(_) => {
-        //             BitMatrix::new(self.get_width() as u32, self.get_height() as u32).unwrap()
-        //         }
-        //     }));
-        //     // self.binarizer.get_black_matrix().unwrap_or_else( |_| BitMatrix::new(self.get_width() as u32, self.get_height() as u32).unwrap()).clone())
-        // }
-        // &self.matrix.borrow().as_ref().unwrap()
+    pub fn get_black_matrix(&self) -> Result<&BitMatrix> {
         self.matrix
-            .get_or_init(|| match self.binarizer.get_black_matrix() {
-                Ok(a) => a.clone(),
-                Err(_) => {
-                    BitMatrix::new(self.get_width() as u32, self.get_height() as u32).unwrap()
-                }
-            })
+            .get_or_try_init(|| self.binarizer.get_black_matrix().cloned())
     }
 
     /**

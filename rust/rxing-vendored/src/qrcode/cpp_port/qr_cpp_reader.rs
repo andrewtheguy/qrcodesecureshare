@@ -167,7 +167,7 @@ impl QrReader {
         hints: &DecodeHints,
         count: u32,
     ) -> crate::common::Result<Vec<RXingResult>> {
-        let binImg = image.get_black_matrix(); //image.getBitMatrix();
+        let binImg = image.get_black_matrix()?; //image.getBitMatrix();
         let maxSymbols = count;
         // if (binImg == nullptr)
         // 	{return {};}
@@ -317,7 +317,7 @@ impl QrReader {
         }
         // #endif
 
-        let binImg = image.get_black_matrix(); //image.getBitMatrix();
+        let binImg = image.get_black_matrix()?; //image.getBitMatrix();
         // if (binImg == nullptr)
         // 	{return {};}
 
