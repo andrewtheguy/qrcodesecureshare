@@ -118,47 +118,17 @@
 // } // namespace ZXing::QRCode
 
 use crate::{
-    BarcodeFormat, DecodeHints, Exceptions, ImmutableReader, RXingResult, Reader,
+    BarcodeFormat, DecodeHints, RXingResult,
     common::{DetectorRXingResult, cpp_essentials::ConcentricPattern},
 };
 
 use super::{
     decoder::Decode,
-    detector::{
-        DetectPureMQR, DetectPureQR, DetectPureRMQR, FindFinderPatterns, GenerateFinderPatternSets,
-        SampleMQR, SampleQR, SampleRMQR,
-    },
+    detector::{FindFinderPatterns, GenerateFinderPatternSets, SampleMQR, SampleQR, SampleRMQR},
 };
 
 #[derive(Default)]
 pub struct QrReader;
-
-impl Reader for QrReader {
-    fn decode<B: crate::Binarizer>(
-        &mut self,
-        image: &mut crate::BinaryBitmap<B>,
-    ) -> crate::common::Result<crate::RXingResult> {
-        self.decode_with_hints(image, &DecodeHints::default())
-    }
-
-    fn decode_with_hints<B: crate::Binarizer>(
-        &mut self,
-        image: &mut crate::BinaryBitmap<B>,
-        hints: &DecodeHints,
-    ) -> crate::common::Result<RXingResult> {
-        self.internal_decode_with_hints(image, hints)
-    }
-}
-
-impl ImmutableReader for QrReader {
-    fn immutable_decode_with_hints<B: crate::Binarizer>(
-        &self,
-        image: &mut crate::BinaryBitmap<B>,
-        hints: &DecodeHints,
-    ) -> crate::common::Result<RXingResult> {
-        self.internal_decode_with_hints(image, hints)
-    }
-}
 
 impl QrReader {
     /// Decode every QR / Micro QR / rMQR symbol found in `image`.
@@ -299,80 +269,5 @@ impl QrReader {
         }
 
         Ok(results)
-    }
-
-    fn internal_decode_with_hints<B: crate::Binarizer>(
-        &self,
-        image: &mut crate::BinaryBitmap<B>,
-        hints: &DecodeHints,
-    ) -> crate::common::Result<RXingResult> {
-        // #if 1
-        if !matches!(hints.PureBarcode, Some(true))
-        // if !matches!(Some(hints.get(&DecodeHintType::PURE_BARCODE)))
-        // if (!_hints.isPure())
-        {
-            return Ok(self
-                .decode_set_number_with_hints(image, hints, 1)?
-                .first()
-                .ok_or(Exceptions::NOT_FOUND)?
-                .clone());
-            // return FirstOrDefault(decode(image, 1));
-        }
-        // #endif
-
-        let binImg = image.get_black_matrix()?; //image.getBitMatrix();
-        // if (binImg == nullptr)
-        // 	{return {};}
-
-        let mut detectorResult = Err(Exceptions::NOT_FOUND);
-        if let Some(formats) = &hints.PossibleFormats {
-            if formats.contains(&BarcodeFormat::QR_CODE) {
-                detectorResult = DetectPureQR(binImg);
-            }
-            if formats.contains(&BarcodeFormat::MICRO_QR_CODE) && detectorResult.is_err() {
-                detectorResult = DetectPureMQR(binImg);
-            }
-            if formats.contains(&BarcodeFormat::RECTANGULAR_MICRO_QR_CODE)
-                && detectorResult.is_err()
-            {
-                detectorResult = DetectPureRMQR(binImg);
-            }
-        }
-
-        if detectorResult.is_err() {
-            for decode_function in [DetectPureQR, DetectPureMQR, DetectPureRMQR] {
-                detectorResult = decode_function(binImg);
-                if detectorResult.is_ok() {
-                    break;
-                }
-            }
-        }
-
-        let detectorResult = detectorResult?;
-
-        // let detectorResult: DetectorResult;
-        // if (_hints.hasFormat(BarcodeFormat::QR_CODE))
-        // 	{detectorResult = DetectPureQR(binImg);}
-
-        // if (_hints.hasFormat(BarcodeFormat::MICRO_QR_CODE) && !detectorResult.isValid())
-        // 	{detectorResult = DetectPureMQR(binImg);}
-
-        // if (!detectorResult.isValid())
-        // 	{return {};}
-
-        let decoderResult = Decode(detectorResult.getBits())?;
-        let position = detectorResult.getPoints();
-
-        Ok(RXingResult::with_decoder_result_bytes_only(
-            decoderResult,
-            position,
-            if detectorResult.getBits().width() != detectorResult.getBits().height() {
-                BarcodeFormat::RECTANGULAR_MICRO_QR_CODE
-            } else if detectorResult.getBits().width() < 21 {
-                BarcodeFormat::MICRO_QR_CODE
-            } else {
-                BarcodeFormat::QR_CODE
-            },
-        ))
     }
 }

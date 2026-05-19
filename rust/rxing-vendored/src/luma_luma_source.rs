@@ -195,6 +195,43 @@ impl Luma8LuminanceSource {
     }
 }
 
+/// Box-average downscale a row-major luma buffer by an integer `factor`.
+/// New dimensions are `(width / factor, height / factor)`. Trailing edge
+/// pixels that don't fit a full `factor × factor` block are dropped (truncating
+/// division). `factor` must be ≥ 1; `factor == 1` returns a copy. Useful as a
+/// pyramid-layer step for `try_harder`-style multi-resolution decoding
+/// (mirrors zxing-cpp's `tryDownscale`).
+pub fn downscale_luma_buffer(
+    src: &[u8],
+    width: u32,
+    height: u32,
+    factor: u32,
+) -> (Vec<u8>, u32, u32) {
+    assert!(factor >= 1, "downscale factor must be at least 1");
+    let new_w = width / factor;
+    let new_h = height / factor;
+    if factor == 1 {
+        return (src.to_vec(), new_w, new_h);
+    }
+    let factor_us = factor as usize;
+    let w_us = width as usize;
+    let new_w_us = new_w as usize;
+    let mut out = vec![0u8; new_w_us * new_h as usize];
+    let half_area = (factor_us * factor_us) / 2;
+    for dy in 0..new_h as usize {
+        for dx in 0..new_w_us {
+            let mut sum = half_area;
+            for ty in 0..factor_us {
+                for tx in 0..factor_us {
+                    sum += src[(dy * factor_us + ty) * w_us + (dx * factor_us + tx)] as usize;
+                }
+            }
+            out[dy * new_w_us + dx] = (sum / (factor_us * factor_us)) as u8;
+        }
+    }
+    (out, new_w, new_h)
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{Luma8LuminanceSource, LuminanceSource};

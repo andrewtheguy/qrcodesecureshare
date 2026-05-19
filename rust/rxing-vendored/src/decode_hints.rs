@@ -37,12 +37,6 @@ pub enum DecodeHintType {
     OTHER,
 
     /**
-     * Image is a pure monochrome image of a barcode. Doesn't matter what it maps to;
-     * use {@link Boolean#TRUE}.
-     */
-    PURE_BARCODE,
-
-    /**
      * Image is known to be of one of a few possible formats.
      * Maps to a {@link List} of {@link BarcodeFormat}s.
      */
@@ -99,12 +93,6 @@ pub enum DecodeHintType {
      */
     ALLOWED_EAN_EXTENSIONS,
 
-    /**
-     * If true, also tries to decode as inverted image. All configured decoders are simply called a
-     * second time with an inverted image. Doesn't matter what it maps to; use {@link Boolean#TRUE}.
-     */
-    ALSO_INVERTED,
-
     /*
      * Will translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form.
      */
@@ -135,12 +123,6 @@ pub enum DecodeHintValue {
      * Unspecified, application-specific hint. Maps to an unspecified {@link Object}.
      */
     Other(String),
-
-    /**
-     * Image is a pure monochrome image of a barcode. Doesn't matter what it maps to;
-     * use {@link Boolean#TRUE}.
-     */
-    PureBarcode(bool),
 
     /**
      * Image is known to be of one of a few possible formats.
@@ -200,12 +182,6 @@ pub enum DecodeHintValue {
     AllowedEanExtensions(Vec<u32>),
 
     /**
-     * If true, also tries to decode as inverted image. All configured decoders are simply called a
-     * second time with an inverted image. Doesn't matter what it maps to; use {@link Boolean#TRUE}.
-     */
-    AlsoInverted(bool),
-
-    /**
      * Translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form; use {@link Boolean#TRUE}.
      */
     TelepenAsNumeric(bool),
@@ -217,12 +193,6 @@ pub struct DecodeHints {
      * Unspecified, application-specific hint. Maps to an unspecified {@link Object}.
      */
     pub Other: Option<String>,
-
-    /**
-     * Image is a pure monochrome image of a barcode. Doesn't matter what it maps to;
-     * use {@link Boolean#TRUE}.
-     */
-    pub PureBarcode: Option<bool>,
 
     /**
      * Image is known to be of one of a few possible formats.
@@ -282,12 +252,6 @@ pub struct DecodeHints {
     pub AllowedEanExtensions: Option<Vec<u32>>,
 
     /**
-     * If true, also tries to decode as inverted image. All configured decoders are simply called a
-     * second time with an inverted image. Doesn't matter what it maps to; use {@link Boolean#TRUE}.
-     */
-    pub AlsoInverted: Option<bool>,
-
-    /**
      * Translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form; use {@link Boolean#TRUE}.
      */
     pub TelepenAsNumeric: Option<bool>,
@@ -299,7 +263,6 @@ impl From<super::DecodingHintDictionary> for DecodeHints {
         for (_, v) in value.into_iter() {
             match v {
                 DecodeHintValue::Other(v) => new_self.Other = Some(v),
-                DecodeHintValue::PureBarcode(v) => new_self.PureBarcode = Some(v),
                 DecodeHintValue::PossibleFormats(v) => new_self.PossibleFormats = Some(v),
                 DecodeHintValue::TryHarder(v) => new_self.TryHarder = Some(v),
                 DecodeHintValue::CharacterSet(v) => new_self.CharacterSet = Some(v),
@@ -315,7 +278,6 @@ impl From<super::DecodingHintDictionary> for DecodeHints {
                     new_self.NeedResultPointCallback = Some(v)
                 }
                 DecodeHintValue::AllowedEanExtensions(v) => new_self.AllowedEanExtensions = Some(v),
-                DecodeHintValue::AlsoInverted(v) => new_self.AlsoInverted = Some(v),
                 DecodeHintValue::TelepenAsNumeric(v) => new_self.TelepenAsNumeric = Some(v),
             }
         }
@@ -329,13 +291,6 @@ impl From<DecodeHints> for super::DecodingHintDictionary {
 
         if let Some(v) = value.Other {
             new_self.insert(DecodeHintType::OTHER, DecodeHintValue::Other(v));
-        }
-
-        if let Some(v) = value.PureBarcode {
-            new_self.insert(
-                DecodeHintType::PURE_BARCODE,
-                DecodeHintValue::PureBarcode(v),
-            );
         }
 
         if let Some(v) = value.PossibleFormats {
@@ -395,13 +350,6 @@ impl From<DecodeHints> for super::DecodingHintDictionary {
             );
         }
 
-        if let Some(v) = value.AlsoInverted {
-            new_self.insert(
-                DecodeHintType::ALSO_INVERTED,
-                DecodeHintValue::AlsoInverted(v),
-            );
-        }
-
         if let Some(v) = value.TelepenAsNumeric {
             new_self.insert(
                 DecodeHintType::TELEPEN_AS_NUMERIC,
@@ -417,7 +365,6 @@ impl DecodeHints {
     pub fn with(mut self, value: DecodeHintValue) -> Self {
         match value {
             DecodeHintValue::Other(v) => self.Other = Some(v),
-            DecodeHintValue::PureBarcode(v) => self.PureBarcode = Some(v),
             DecodeHintValue::PossibleFormats(v) => self.PossibleFormats = Some(v),
             DecodeHintValue::TryHarder(v) => self.TryHarder = Some(v),
             DecodeHintValue::CharacterSet(v) => self.CharacterSet = Some(v),
@@ -427,7 +374,6 @@ impl DecodeHints {
             DecodeHintValue::ReturnCodabarStartEnd(v) => self.ReturnCodabarStartEnd = Some(v),
             DecodeHintValue::NeedResultPointCallback(v) => self.NeedResultPointCallback = Some(v),
             DecodeHintValue::AllowedEanExtensions(v) => self.AllowedEanExtensions = Some(v),
-            DecodeHintValue::AlsoInverted(v) => self.AlsoInverted = Some(v),
             DecodeHintValue::TelepenAsNumeric(v) => self.TelepenAsNumeric = Some(v),
         }
         self

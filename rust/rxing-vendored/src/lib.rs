@@ -29,15 +29,6 @@ pub mod qrcode;
 mod decode_hints;
 pub use decode_hints::*;
 
-mod multi_use_multi_format_reader;
-pub use multi_use_multi_format_reader::*;
-
-mod multi_format_reader;
-pub use multi_format_reader::*;
-
-mod reader;
-pub use reader::*;
-
 mod rxing_result_metadata;
 pub use rxing_result_metadata::*;
 
@@ -66,6 +57,3 @@ pub use luminance_source::*;
 
 mod luma_luma_source;
 pub use luma_luma_source::*;
-
-mod filtered_image_reader;
-pub use filtered_image_reader::*;

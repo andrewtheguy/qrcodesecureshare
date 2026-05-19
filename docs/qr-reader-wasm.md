@@ -65,7 +65,7 @@ must decode the bytes themselves (e.g. `new TextDecoder().decode(bytes)`).
 
 | Param | Effect |
 | --- | --- |
-| `try_harder` | Densifies the finder-pattern scan (rxing's `TryHarder` hint, consumed by `FindFinderPatterns`). With `false`, the row-skip is sized for QR codes up to version 20; with `true`, every third row is scanned. Independent of `max_number_of_symbols`. |
+| `try_harder` | Three things bundled together: (1) densifies the finder-pattern scan via rxing's `TryHarder` hint (row-skip drops from `(3·height)/(4·97)` to `3`); (2) on miss, applies a 3×3 morphological close (`BinaryBitmap::close()` — dilate then erode) to the binarized matrix and retries; (3) on further miss, walks a downscale pyramid (`downscale_luma_buffer`, factor 3, threshold 500 px) trying each layer with and without the close pass. Equivalent to zxing-wasm's `tryHarder + tryDownscale + tryDenoise`. Independent of `max_number_of_symbols`. |
 | `try_invert` | If the first pass finds nothing, flips the binarized `BitMatrix` in place and retries. Covers white-on-dark / inverted-reflectance codes. Implemented manually in the wasm wrapper because `QrReader::decode_set_number_with_hints` (the multi-decode entry point) does not consume the `AlsoInverted` hint — that path lives in `MultiFormatReader`, which we deliberately bypass. |
 | `try_rotate` | If earlier passes find nothing, rotates the `Luma8LuminanceSource` counter-clockwise 90°, 180°, 270° in turn and retries. **Usually a no-op for clean QR codes** — rxing's QR finder reorders the three concentric finder patterns into a canonical (TL, TR, BL) tri-corner before sampling (see [`detector.rs:139-263`](../rust/rxing-vendored/src/qrcode/cpp_port/detector.rs)) — but worth keeping as a safety net for marginal images where the horizontal finder-pattern scan misses at one orientation but catches it at another. **Zero allocation overhead when no rotation is needed**: `read_inner` only allocates the rotated luma buffer when a previous pass produced no results, and constructs the next rotated source via `rotate_counter_clockwise(&self)` (which borrows, not consumes) before passing the current source into the binarizer, so the fast path with `try_rotate = true` and a hit on the first orientation is identical in cost to `try_rotate = false`. |
 | `use_hybrid_binarizer` | When `true`, uses rxing's adaptive `HybridBinarizer` (closest to zxing-wasm's `"LocalAverage"`). When `false`, the faster but less robust `GlobalHistogramBinarizer`. zxing-wasm's `"FixedThreshold"` and `"BoolCast"` variants are not available — rxing doesn't ship them. |
@@ -157,27 +157,43 @@ and the fountain sender (`FountainQRFeedbackScanner`).
 - **`tryInvert: true`** when the source might be white-on-dark (e.g. a
   photo of a printed inverted code, or a screenshot from a dark-themed app).
 
-## Architectural note: why we bypass `MultiFormatReader`
+## Architectural note: the only decode path
 
-The wasm wrapper calls `QrReader::decode_set_number_with_hints` directly
-instead of going through `MultiFormatReader` (and previously,
-`FilteredImageReader`). Two consequences worth knowing:
+`QrReader::decode_set_number_with_hints` is the single decode entry point.
+The legacy `Reader` / `ImmutableReader` traits, `MultiFormatReader`,
+`MultiUseMultiFormatReader`, and `FilteredImageReader` have all been
+removed from `rxing-vendored`, along with the `AlsoInverted` and
+`PureBarcode` `DecodeHints` (no consumer left) and the `DetectPureQR` /
+`DetectPureMQR` / `DetectPureRMQR` shortcuts (only used by the removed
+`internal_decode_with_hints` pure-barcode dispatch).
 
-1. **The `AlsoInverted` hint is a no-op on this path.** `MultiFormatReader`
-   was the consumer of that hint. We replicate its behavior manually via the
-   `try_invert` retry loop in `read_inner`.
-2. **The `FilteredImageReader` pyramid + morphological-close path is gone.**
-   That path was always single-result by construction (it returned on the
-   first successful decode) and incompatible with the multi-symbol API. If
-   you need the pyramid back for a specific use case, the cleanest way is to
-   make `LumImagePyramid` public in `rxing-vendored::filtered_image_reader`
-   and inline the layer loop in `read_inner`.
+The decode strategies the legacy wrappers used to bundle (`tryInvert`,
+`tryDownscale`, `tryDenoise`/morphological close) are now implemented in
+`read_inner` (the wasm wrapper's strategy orchestrator). The underlying
+algorithms live in `rxing-vendored` as flat utilities — no `Reader`-trait
+coupling, no OOP wrapper:
 
-The `PureBarcode` hint is similarly bypassed — `QrReader::internal_decode_with_hints`
-routes pure-mode through `DetectPureQR` / `DetectPureMQR` / `DetectPureRMQR`,
-which the multi-decode entry point does not call. We do not expose a
-`pure_barcode` option today; if it becomes needed, see the "Extending the
-crate" section below.
+- **`BinaryBitmap::close()`** — 3×3 morphological close (dilate → erode) on
+  the cached BitMatrix.
+- **`downscale_luma_buffer(src, w, h, factor)`** — box-average pyramid
+  layer step.
+
+Practical consequences:
+
+1. **`try_invert` is implemented in `read_inner`.** The legacy
+   `MultiFormatReader::decode_internal` `AlsoInverted` handler is gone;
+   the retry loop's in-place `BitMatrix::flip_self()` is the only
+   inversion path.
+2. **`try_harder` bundles three retry strategies in `read_inner`:**
+   `TryHarder` hint → finder-pattern densification; then morphological
+   close; then a downscale pyramid. This is what restores the
+   real-world-photo capability the removed `FilteredImageReader` used to
+   provide (regression-tested via `qr_zoo_jpg_requires_try_harder_and_try_invert`
+   and `qr_rotated_jpg_requires_try_harder`).
+3. **No `pure_barcode` option.** If a caller has a clean axis-aligned QR
+   and wants the fast `DetectPureQR` path, see "Extending the crate" below
+   — restoring that path means reintroducing `DetectPureQR` in
+   `detector.rs` and a `pure_barcode` flag in `read_inner`.
 
 ## Build & warmup
 
@@ -215,24 +231,23 @@ directory:
 cd rust/rxing-vendored && cargo test
 ```
 
-The test file covers two paths:
+The test harness mirrors the wasm wrapper's only decode path
+(`QrReader::decode_set_number_with_hints` + the manual BitMatrix flip for
+`try_invert`). `decode_inner` is the equivalent of `rxing_wasm::read_inner`
+specialized to a single symbol; `decode_combo` runs it over an
+`ALL_COMBOS` triple. Per-fixture tests assert which `(try_harder,
+try_invert, use_hybrid_binarizer)` combos succeed — see the fixture table
+below for the discriminating option per fixture.
 
-1. **Legacy `MultiFormatReader` path** (`decode_inner`) — exercises
-   `try_harder` × `try_invert` × `use_hybrid_binarizer` over every fixture.
-   These tests document upstream rxing behavior.
-2. **wasm-wrapper-equivalent path** (`decode_with_retry`) — mirrors
-   `read_inner` from `rxing-wasm/src/lib.rs`: `QrReader::decode_set_number_with_hints`
-   plus the manual BitMatrix flip (`try_invert`) and `Luma8LuminanceSource::rotate_counter_clockwise()`
-   (`try_rotate`) retries. Tests:
-   - `inverted_qr_sample_requires_try_invert` — pixel-invert `qr_sample.png`,
-     verify it does *not* decode without `try_invert` and *does* with it.
-     This is the regression test for the manual-flip code path.
-   - `rotated_qr_sample_decodes_without_try_rotate` — rotate 90° CW, verify
-     it decodes natively. Pins the "rxing detector is rotation-invariant"
-     guarantee that makes `try_rotate` rarely useful in practice.
-   - `rotated_and_inverted_qr_sample_requires_try_invert` — compose both;
-     verifies the (rotation × inversion) outer product in the retry loop
-     finds the right combination.
+Two additional in-memory transform tests cover rotation, which no on-disk
+fixture exercises:
+
+- `rotated_qr_sample_decodes_natively` — rotates `qr_sample.png` 90° CW
+  in-memory and decodes via `decode_combo`. Pins rxing's QR-detector
+  rotation invariance.
+- `rotated_and_inverted_qr_sample_requires_try_invert` — composes rotation
+  + inversion, verifies the manual-flip path still works on a rotated
+  source.
 
 Current fixtures:
 
@@ -242,8 +257,8 @@ Current fixtures:
 | `qr_code_complex.png` | `https://qr-code-styling.com` | Stylized QR (rounded modules, gradient eyes). | none — decodes in all 8 combos |
 | `qr_sample_inverted.png` | `jfghjghjghfkghjkghj` | Pixel-inverted (`magick … -negate`) copy of `qr_sample.png`. The `AlsoInverted` hint isn't consumed by `QrReader`'s multi-decode path, so the only way to decode is to flip the BitMatrix in the retry loop. | **`try_invert` only** — independent of `try_harder` |
 | `qr_sample_small_in_canvas.png` | `jfghjghjghfkghjkghj` | `qr_sample.png` resized to 80×80 and pasted into a 1600×1600 white canvas. `FindFinderPatterns` picks `skip ≈ 12` by default; the shrunken finder modules (~3 px tall) are walked past unless `try_harder = true` densifies the scan to `skip = 3`. | **`try_harder` only** — independent of `try_invert` |
-| `qr_rotated.jpg` | `https://nc.cesdk12.org/ncsd/…` | Real phone photo of a rotated QR code. Decodes only when `try_harder = true`. **Legacy-path quirk**: when `try_invert = true` *and* `try_harder = true`, `MultiFormatReader`'s `AlsoInverted` flip leaves the BitMatrix mirrored before `BinaryBitmap::close()` runs on the close=true fallback, so the morphological close is applied to the inverted image and the decode misses. Doesn't affect the wasm wrapper (which uses `QrReader` + manual flip). | `try_harder` (without `try_invert`) |
-| `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real phone photo of a white-on-dark-green QR. | **`try_harder` AND `try_invert`** together |
+| `qr_rotated.jpg` | `https://nc.cesdk12.org/ncsd/…` | Real 183×210 phone photo of a rotated QR. Below the pyramid downscale threshold, so the **close-pass** branch of `try_harder` (`bitmap.close()`) is what surfaces the finders. | **`try_harder` only** |
+| `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real 2258×1344 phone photo of a white-on-dark-green QR. Needs the pyramid **downscale** branch of `try_harder` to surface finders + `try_invert` to read the inverted reflectance. | **`try_harder` AND `try_invert`** |
 | `fountain_binary_real.png` | binary fountain chunk | Real fountain byte-mode QR; asserts binary output starts with `ff fd`. | none — decodes in all 8 combos |
 
 Add a new fixture by dropping the file in `tests/fixtures/` and adding a

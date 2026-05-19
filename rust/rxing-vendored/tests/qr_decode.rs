@@ -3,11 +3,15 @@ use std::path::PathBuf;
 
 use image::ImageReader;
 use rxing::{
-    BarcodeFormat, BinaryBitmap, DecodeHints, FilteredImageReader, Luma8LuminanceSource,
-    LuminanceSource, MultiFormatReader, Reader,
+    BarcodeFormat, Binarizer, BinaryBitmap, DecodeHints, Luma8LuminanceSource,
     common::{GlobalHistogramBinarizer, HybridBinarizer},
+    downscale_luma_buffer,
     qrcode::cpp_port::QrReader,
 };
+
+// Mirror rxing-wasm's pyramid + close thresholds (`tryHarder` capability).
+const PYRAMID_DOWNSCALE_THRESHOLD: u32 = 500;
+const PYRAMID_DOWNSCALE_FACTOR: u32 = 3;
 
 fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     let expected = (width as usize)
@@ -33,6 +37,61 @@ fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
         .collect())
 }
 
+/// Decode once on `bitmap`; on miss, when `try_invert`, flip the BitMatrix
+/// in place and decode again. Mirrors `rxing_wasm::read_inner`'s inversion
+/// path.
+fn decode_with_optional_invert<B: Binarizer>(
+    bitmap: &mut BinaryBitmap<B>,
+    hints: &DecodeHints,
+    try_invert: bool,
+) -> Option<Vec<u8>> {
+    if let Ok(mut r) = QrReader.decode_set_number_with_hints(bitmap, hints, 1)
+        && let Some(first) = r.pop()
+    {
+        return Some(first.getRawBytes().to_vec());
+    }
+    if try_invert
+        && let Ok(matrix) = bitmap.get_black_matrix_mut()
+    {
+        matrix.flip_self();
+        if let Ok(mut r) = QrReader.decode_set_number_with_hints(bitmap, hints, 1)
+            && let Some(first) = r.pop()
+        {
+            return Some(first.getRawBytes().to_vec());
+        }
+    }
+    None
+}
+
+/// One resolution × close pass: build a fresh BinaryBitmap from `source`
+/// (consumed), apply optional morphological close, then decode with optional
+/// invert retry. Returns the decoded payload or `None`.
+fn decode_one_layer(
+    source: Luma8LuminanceSource,
+    hints: &DecodeHints,
+    use_hybrid_binarizer: bool,
+    try_invert: bool,
+    close: bool,
+) -> Option<Vec<u8>> {
+    if use_hybrid_binarizer {
+        let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
+        if close && bitmap.close().is_err() {
+            return None;
+        }
+        decode_with_optional_invert(&mut bitmap, hints, try_invert)
+    } else {
+        let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
+        if close && bitmap.close().is_err() {
+            return None;
+        }
+        decode_with_optional_invert(&mut bitmap, hints, try_invert)
+    }
+}
+
+/// Single-symbol decode that mirrors `rxing_wasm::read_inner` exactly:
+/// `QrReader::decode_set_number_with_hints` plus the manual BitMatrix flip
+/// for `try_invert` and the pyramid + morphological-close pre-pass for
+/// `try_harder`.
 fn decode_inner(
     luma: Vec<u8>,
     width: u32,
@@ -44,28 +103,40 @@ fn decode_inner(
     let hints = DecodeHints {
         PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
         TryHarder: Some(try_harder),
-        AlsoInverted: Some(try_invert),
         ..DecodeHints::default()
     };
 
-    let source = Luma8LuminanceSource::new(luma, width, height);
+    // Fast path (no try_harder): original resolution only, no close pass.
+    if !try_harder {
+        let source = Luma8LuminanceSource::new(luma, width, height);
+        return decode_one_layer(source, &hints, use_hybrid_binarizer, try_invert, false);
+    }
 
-    let result = if try_harder {
-        let mut reader = FilteredImageReader::new(MultiFormatReader::default());
-        let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-        reader.decode_with_hints(&mut bitmap, &hints)
-    } else {
-        let mut reader = MultiFormatReader::default();
-        if use_hybrid_binarizer {
-            let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-            reader.decode_with_hints(&mut bitmap, &hints)
-        } else {
-            let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
-            reader.decode_with_hints(&mut bitmap, &hints)
+    // try_harder path: original resolution, then close, then downscale +
+    // repeat. Matches the rxing-wasm wrapper.
+    let mut cur_luma = luma;
+    let mut cur_w = width;
+    let mut cur_h = height;
+    loop {
+        for &close in &[false, true] {
+            let source = Luma8LuminanceSource::new(cur_luma.clone(), cur_w, cur_h);
+            if let Some(bytes) =
+                decode_one_layer(source, &hints, use_hybrid_binarizer, try_invert, close)
+            {
+                return Some(bytes);
+            }
         }
-    };
-
-    Some(result.ok()?.getRawBytes().to_vec())
+        if cur_w.max(cur_h) <= PYRAMID_DOWNSCALE_THRESHOLD
+            || cur_w.min(cur_h) < PYRAMID_DOWNSCALE_FACTOR
+        {
+            return None;
+        }
+        let (next_luma, next_w, next_h) =
+            downscale_luma_buffer(&cur_luma, cur_w, cur_h, PYRAMID_DOWNSCALE_FACTOR);
+        cur_luma = next_luma;
+        cur_w = next_w;
+        cur_h = next_h;
+    }
 }
 
 fn load_image_as_rgba(relative_path: &str) -> (Vec<u8>, u32, u32) {
@@ -83,10 +154,9 @@ fn load_image_as_rgba(relative_path: &str) -> (Vec<u8>, u32, u32) {
 }
 
 // The full Cartesian product of (try_harder, try_invert, use_hybrid_binarizer).
-// Note: when `try_harder = true`, `FilteredImageReader` overrides the binarizer
-// choice (always HybridBinarizer + pyramid). The hybrid-flag combos are still
-// included so a future regression that re-introduces the flag's effect there
-// would be caught.
+// All three flags compose freely on the only remaining decode path
+// (`QrReader::decode_set_number_with_hints` + the manual BitMatrix flip for
+// inversion); each affects an orthogonal stage of the pipeline.
 const ALL_COMBOS: [(bool, bool, bool); 8] = [
     (false, false, false),
     (false, false, true),
@@ -231,55 +301,27 @@ fn qr_sample_small_in_canvas_png_requires_try_harder() {
 }
 
 #[test]
-fn qr_rotated_jpg_requires_try_harder() {
-    // Real phone photo of a rotated QR code (added to test rotation-handling
-    // in a non-synthetic image). Decodes only with try_harder = true, and
-    // independently of the HybridBinarizer / GlobalHistogramBinarizer choice.
-    //
-    // Quirk: under the legacy `MultiFormatReader` + `FilteredImageReader`
-    // path tested here, setting `try_invert = true` *breaks* the close-pass
-    // fallback — when `AlsoInverted = true` and the first close=false
-    // decode fails, the matrix is left flipped before `BinaryBitmap::close`
-    // runs on the close=true iteration, so the morphological close is
-    // applied to the inverted image instead of the original. This affects
-    // only the legacy path (the wasm wrapper uses `QrReader` directly +
-    // manual flip and doesn't have this interaction). Asserted only for
-    // try_invert = false.
-    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_rotated.jpg");
-    let expected = b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True";
-    for combo in ALL_COMBOS {
-        let (try_harder, try_invert, _) = combo;
-        let result = decode_combo(&rgba, w, h, combo);
-        if try_harder && !try_invert {
-            let bytes = result.unwrap_or_else(|| {
-                panic!(
-                    "qr_rotated.jpg expected to decode for combo={:?}",
-                    combo
-                )
-            });
-            assert_eq!(
-                bytes.as_slice(),
-                expected.as_slice(),
-                "unexpected bytes for combo={:?}",
-                combo
-            );
-        } else if !try_harder {
-            assert!(
-                result.is_none(),
-                "qr_rotated.jpg expected to NOT decode without try_harder for combo={:?}",
-                combo
-            );
-        }
-        // try_harder && try_invert: legacy path quirk above — don't assert.
-    }
+fn rgba_length_mismatch_is_rejected() {
+    let err = rgba_to_luma(&[0u8; 15], 2, 2).expect_err("expected length-mismatch error");
+    assert!(err.contains("rgba length"), "unexpected error: {}", err);
 }
+
+// ---------------------------------------------------------------------------
+// Real-world fixtures that exercise the `try_harder` pyramid + morphological
+// close pre-pass. Neither decodes at the original resolution; both surface
+// only after the buffer is downscaled and/or `BinaryBitmap::close()` is
+// applied. These pin the capability we lost when `FilteredImageReader` was
+// removed and re-added via `read_inner`'s try_harder branch + the
+// `BinaryBitmap::close()` / `downscale_luma_buffer` utilities.
+// ---------------------------------------------------------------------------
 
 #[test]
 fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
-    // White-on-dark-green phone photo: needs the FilteredImageReader pyramid
-    // (try_harder) AND inverted retry (try_invert). The binarizer flag has
-    // no effect when try_harder=true.
+    // 2258×1344 phone photo of a white-on-dark-green QR. Needs the pyramid
+    // (try_harder) to surface the finders and the in-place flip
+    // (try_invert) to read the inverted reflectance.
     let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_zoo.jpg");
+    let expected = b"https://zoo.sandiegozoo.org/2024-sdmag-pandas";
     for combo in ALL_COMBOS {
         let (try_harder, try_invert, _) = combo;
         let result = decode_combo(&rgba, w, h, combo);
@@ -288,7 +330,7 @@ fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
                 .unwrap_or_else(|| panic!("qr_zoo.jpg expected to decode for combo={:?}", combo));
             assert_eq!(
                 bytes.as_slice(),
-                b"https://zoo.sandiegozoo.org/2024-sdmag-pandas",
+                expected.as_slice(),
                 "unexpected bytes for combo={:?}",
                 combo
             );
@@ -304,17 +346,43 @@ fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
 }
 
 #[test]
-fn rgba_length_mismatch_is_rejected() {
-    let err = rgba_to_luma(&[0u8; 15], 2, 2).expect_err("expected length-mismatch error");
-    assert!(err.contains("rgba length"), "unexpected error: {}", err);
+fn qr_rotated_jpg_requires_try_harder() {
+    // 183×210 phone photo of a rotated QR. The original resolution is below
+    // the pyramid threshold so no downscale layer fires; the close-pass
+    // (try_harder = true → bitmap.close()) is what surfaces the finders.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_rotated.jpg");
+    let expected = b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True";
+    for combo in ALL_COMBOS {
+        let (try_harder, _, _) = combo;
+        let result = decode_combo(&rgba, w, h, combo);
+        if try_harder {
+            let bytes = result.unwrap_or_else(|| {
+                panic!("qr_rotated.jpg expected to decode for combo={:?}", combo)
+            });
+            assert_eq!(
+                bytes.as_slice(),
+                expected.as_slice(),
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        } else {
+            assert!(
+                result.is_none(),
+                "qr_rotated.jpg expected to NOT decode without try_harder for combo={:?}",
+                combo
+            );
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
-// rxing-wasm equivalence tests. These exercise the QR-only multi-decode path
-// (`QrReader::decode_set_number_with_hints`) plus the manual BitMatrix flip
-// (try_invert) and manual `Luma8LuminanceSource::rotate_counter_clockwise()`
-// (try_rotate) that the wasm wrapper layers on top.
+// Rotation tests. The fixture-based option-isolation tests above don't cover
+// rotation (none of the fixtures are pre-rotated). These exercise the
+// rotation invariance built into rxing's QR detector by rotating the
+// baseline fixture in-memory before decoding.
 // ---------------------------------------------------------------------------
+
+const QR_SAMPLE_TEXT: &[u8] = b"jfghjghjghfkghjkghj";
 
 fn invert_rgba(rgba: &[u8]) -> Vec<u8> {
     rgba.chunks_exact(4)
@@ -338,103 +406,18 @@ fn rotate_rgba_90_cw(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
     (out, h, w)
 }
 
-fn decode_one_pass(source: Luma8LuminanceSource, hints: &DecodeHints, invert: bool) -> Vec<Vec<u8>> {
-    let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-    if invert {
-        let Ok(matrix) = bitmap.get_black_matrix_mut() else {
-            return Vec::new();
-        };
-        matrix.flip_self();
-    }
-    QrReader
-        .decode_set_number_with_hints(&mut bitmap, hints, 1)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|r| r.getRawBytes().to_vec())
-        .collect()
-}
-
-/// Mirror of the wasm wrapper's `read_inner`. Tests against this path catch
-/// regressions to the QR-only multi-decode plus retry loop.
-fn decode_with_retry(
-    rgba: &[u8],
-    w: u32,
-    h: u32,
-    try_invert: bool,
-    try_rotate: bool,
-) -> Vec<Vec<u8>> {
-    let luma = rgba_to_luma(rgba, w, h).expect("luma");
-    let hints = DecodeHints {
-        PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
-        ..DecodeHints::default()
-    };
-
-    let mut source = Luma8LuminanceSource::new(luma, w, h);
-    let rotations = if try_rotate { 4 } else { 1 };
-
-    for rot in 0..rotations {
-        let results = decode_one_pass(source.clone(), &hints, false);
-        if !results.is_empty() {
-            return results;
-        }
-        if try_invert {
-            let results = decode_one_pass(source.clone(), &hints, true);
-            if !results.is_empty() {
-                return results;
-            }
-        }
-        if rot + 1 < rotations {
-            match source.rotate_counter_clockwise() {
-                Ok(rotated) => source = rotated,
-                Err(_) => break,
-            }
-        }
-    }
-
-    Vec::new()
-}
-
-const QR_SAMPLE_TEXT: &[u8] = b"jfghjghjghfkghjkghj";
-
 #[test]
-fn inverted_qr_sample_requires_try_invert() {
-    // Pixel-invert the baseline fixture (255 - rgb per channel). The QrReader
-    // multi-decode entry point does NOT consume the `AlsoInverted` hint (that
-    // wiring lives in `MultiFormatReader`, which the wasm wrapper bypasses),
-    // so the inverted bitmap is only readable when the caller flips the
-    // BitMatrix manually — i.e. when `try_invert = true` in the retry loop.
-    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
-    let inverted = invert_rgba(&rgba);
-
-    let without = decode_with_retry(&inverted, w, h, false, false);
-    assert!(
-        without.is_empty(),
-        "inverted fixture unexpectedly decoded without try_invert ({} result(s))",
-        without.len()
-    );
-
-    let with = decode_with_retry(&inverted, w, h, true, false);
-    assert_eq!(with.len(), 1, "try_invert should rescue the inverted fixture");
-    assert_eq!(with[0].as_slice(), QR_SAMPLE_TEXT);
-}
-
-#[test]
-fn rotated_qr_sample_decodes_without_try_rotate() {
+fn rotated_qr_sample_decodes_natively() {
     // rxing's QR finder reorders the three concentric finder patterns into a
     // canonical (TL, TR, BL) tri-corner before sampling, so a clean QR decodes
-    // at every 90° orientation even with `try_rotate = false`. This pins that
-    // behavior — a future regression (e.g. losing the canonical reordering)
-    // would surface here as a "without_rotate" failure.
+    // at every 90° orientation. A future regression (e.g. losing the
+    // canonical reordering) would surface here as a decode miss.
     let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
     let (rotated, rw, rh) = rotate_rgba_90_cw(&rgba, w, h);
 
-    let without = decode_with_retry(&rotated, rw, rh, false, false);
-    assert_eq!(
-        without.len(),
-        1,
-        "rxing's QR detector should be rotation-invariant for clean fixtures"
-    );
-    assert_eq!(without[0].as_slice(), QR_SAMPLE_TEXT);
+    let bytes = decode_combo(&rotated, rw, rh, (false, false, true))
+        .expect("rxing's QR detector should be rotation-invariant for clean fixtures");
+    assert_eq!(bytes.as_slice(), QR_SAMPLE_TEXT);
 }
 
 /// Diagnostic: prints which `(try_harder, try_invert, use_hybrid_binarizer)`
@@ -446,9 +429,11 @@ fn probe_fixture_requirements() {
     let fixtures: &[(&str, &[u8])] = &[
         ("qr_sample.png", b"jfghjghjghfkghjkghj"),
         ("qr_code_complex.png", b"https://qr-code-styling.com"),
-        ("qr_zoo.jpg", b"https://zoo.sandiegozoo.org/2024-sdmag-pandas"),
         ("qr_sample_inverted.png", b"jfghjghjghfkghjkghj"),
         ("qr_sample_small_in_canvas.png", b"jfghjghjghfkghjkghj"),
+        // Real-life fixtures currently undecodable by the QR-only path —
+        // print decode label as well so regressions / improvements show.
+        ("qr_zoo.jpg", b""),
         ("qr_rotated.jpg", b""),
     ];
     for (name, expected) in fixtures {
@@ -472,20 +457,20 @@ fn probe_fixture_requirements() {
 
 #[test]
 fn rotated_and_inverted_qr_sample_requires_try_invert() {
-    // Compose both transforms. Rotation alone is handled natively (see test
-    // above) but the inversion still requires `try_invert`. This verifies the
-    // retry loop reaches the matching (rotation × inversion) combination.
+    // Compose both transforms. Rotation alone is handled natively (see
+    // `rotated_qr_sample_decodes_natively`) but the inversion still requires
+    // `try_invert`. Pins that the manual BitMatrix flip in `decode_inner`
+    // composes correctly with a rotated source.
     let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
     let (rotated, rw, rh) = rotate_rgba_90_cw(&rgba, w, h);
     let rotated_inverted = invert_rgba(&rotated);
 
-    let without = decode_with_retry(&rotated_inverted, rw, rh, false, false);
     assert!(
-        without.is_empty(),
+        decode_combo(&rotated_inverted, rw, rh, (false, false, true)).is_none(),
         "rotated-inverted fixture unexpectedly decoded without try_invert"
     );
 
-    let with = decode_with_retry(&rotated_inverted, rw, rh, true, false);
-    assert_eq!(with.len(), 1);
-    assert_eq!(with[0].as_slice(), QR_SAMPLE_TEXT);
+    let bytes = decode_combo(&rotated_inverted, rw, rh, (false, true, true))
+        .expect("try_invert should rescue the rotated-inverted fixture");
+    assert_eq!(bytes.as_slice(), QR_SAMPLE_TEXT);
 }
