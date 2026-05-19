@@ -17,6 +17,8 @@ import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from
 import { generateNonDataQR } from '@/utils/qrUtils';
 import { useRxingQRScanner } from '@/hooks/useRxingQRScanner';
 
+const textDecoder = new TextDecoder();
+
 interface ProcessedFeedbackData {
   sequence: number;
   message: string;
@@ -69,7 +71,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   const handleFeedbackScan = useCallback(async (qrCodeData: Uint8Array) => {
     if (isProcessing) return;
 
-    const qrCode = new TextDecoder().decode(qrCodeData)
+    const qrCode = textDecoder.decode(qrCodeData)
 
     // guard against non-JSON data triggering false ack received breaking the whole flow
     if (qrCode[0] !== '{') {
