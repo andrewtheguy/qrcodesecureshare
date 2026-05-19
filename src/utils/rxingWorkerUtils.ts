@@ -7,11 +7,19 @@ interface ScanResult {
   error?: string
 }
 
-// Default maximized detection options for general QR code scanning
+// Default maximized detection options for one-shot image-upload decoding:
+// every robustness knob on, including the binarizer fallback so that an
+// initial miss on the primary HybridBinarizer triggers a retry on
+// GlobalHistogramBinarizer. The two binarizers fail on disjoint inputs
+// (Hybrid loses on stylized clean-bg QRs with colored finders; Global loses
+// on uneven illumination), so the fallback covers both at the cost of one
+// extra full pipeline pass — acceptable for a one-shot upload, not for the
+// 30fps live scanner (see `FountainQRDataScanner.tsx`).
 const MAXIMIZED_DETECTION_OPTIONS: RxingReaderOptions = {
   tryHarder: true,
   tryInvert: true,
-  useHybridBinarizer: true,
+  binarizer: 'hybrid',
+  binarizerFallback: true,
 }
 
 /**

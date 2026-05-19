@@ -300,6 +300,53 @@ fn qr_sample_small_in_canvas_png_requires_try_harder() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Binarizer fallback. The wasm wrapper exposes a `binarizer_fallback` option
+// that retries the full pipeline once with the opposite binarizer when the
+// primary produces no results. Mirrors the `read_inner` policy in
+// `rxing-wasm/src/lib.rs`. Validated here against the two binarizer-isolation
+// fixtures (each decodes on only one binarizer) — proves fallback rescues
+// both failure modes regardless of which binarizer the caller picks first.
+// ---------------------------------------------------------------------------
+
+/// Mirror of `read_inner`'s `binarizer_fallback` policy: run the single-symbol
+/// pipeline with `primary_use_hybrid`; on miss, run again with the other.
+fn decode_with_binarizer_fallback(
+    rgba: &[u8],
+    w: u32,
+    h: u32,
+    try_harder: bool,
+    try_invert: bool,
+    primary_use_hybrid: bool,
+) -> Option<Vec<u8>> {
+    if let Some(bytes) = decode_combo(rgba, w, h, (try_harder, try_invert, primary_use_hybrid)) {
+        return Some(bytes);
+    }
+    decode_combo(rgba, w, h, (try_harder, try_invert, !primary_use_hybrid))
+}
+
+#[test]
+fn binarizer_fallback_rescues_qr_complex_2_with_hybrid_primary() {
+    // qr-complex-2.png decodes only on GlobalHistogramBinarizer (see
+    // `qr_complex_2_png_requires_global_histogram_binarizer`). Caller picks
+    // Hybrid as primary; binarizer fallback should retry on Global and decode.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr-complex-2.png");
+    let bytes = decode_with_binarizer_fallback(&rgba, w, h, false, false, true)
+        .expect("binarizer fallback should rescue via Global");
+    assert_eq!(bytes.as_slice(), b"http://scnv.io/MsSv?qr=1");
+}
+
+#[test]
+fn binarizer_fallback_rescues_vignetted_with_global_primary() {
+    // Mirror: qr_sample_vignetted.png decodes only on HybridBinarizer (see
+    // `qr_sample_vignetted_png_requires_hybrid_binarizer`). Caller picks
+    // Global as primary; binarizer fallback should retry on Hybrid and decode.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample_vignetted.png");
+    let bytes = decode_with_binarizer_fallback(&rgba, w, h, false, false, false)
+        .expect("binarizer fallback should rescue via Hybrid");
+    assert_eq!(bytes.as_slice(), QR_SAMPLE_TEXT);
+}
+
 #[test]
 fn rgba_length_mismatch_is_rejected() {
     let err = rgba_to_luma(&[0u8; 15], 2, 2).expect_err("expected length-mismatch error");

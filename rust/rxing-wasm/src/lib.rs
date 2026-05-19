@@ -104,8 +104,8 @@ fn decode_one_layer(
     }
 }
 
-fn read_inner(
-    luma: Vec<u8>,
+fn read_inner_one_binarizer(
+    luma: &[u8],
     width: u32,
     height: u32,
     try_harder: bool,
@@ -127,7 +127,7 @@ fn read_inner(
     // no pyramid. The source is moved straight into the binarizer with
     // zero clones — matches zxing-wasm's tryHarder=false cost.
     if !try_harder {
-        let source = Luma8LuminanceSource::new(luma, width, height);
+        let source = Luma8LuminanceSource::new(luma.to_vec(), width, height);
         return decode_one_layer(
             source,
             &hints,
@@ -143,7 +143,7 @@ fn read_inner(
     // side falls below `PYRAMID_DOWNSCALE_THRESHOLD`. Each layer tries
     // both close=false and close=true. Mirrors zxing-cpp's `tryDownscale`
     // + `tryDenoise` pipeline (and the removed `FilteredImageReader`).
-    let mut cur_luma = luma;
+    let mut cur_luma = luma.to_vec();
     let mut cur_w = width;
     let mut cur_h = height;
     loop {
@@ -177,6 +177,48 @@ fn read_inner(
     Vec::new()
 }
 
+/// Run the decode pipeline once with `use_hybrid_binarizer`, then — when
+/// `binarizer_fallback` is set and the first pass produced nothing — once
+/// more with the opposite binarizer. The two rxing binarizers fail on
+/// disjoint inputs (Hybrid loses on stylized clean-bg QRs with colored
+/// finders; Global loses on uneven illumination), so retrying the other
+/// rescues both failure modes at the cost of an extra full pipeline pass.
+/// Default for the wasm export is `binarizer_fallback = false`, matching
+/// upstream zxing-wasm which picks a single binarizer per call.
+#[allow(clippy::too_many_arguments)] // mirrors the wasm export signature 1:1
+fn read_inner(
+    luma: Vec<u8>,
+    width: u32,
+    height: u32,
+    try_harder: bool,
+    try_invert: bool,
+    use_hybrid_binarizer: bool,
+    binarizer_fallback: bool,
+    max_number_of_symbols: u32,
+) -> Vec<Vec<u8>> {
+    let primary = read_inner_one_binarizer(
+        &luma,
+        width,
+        height,
+        try_harder,
+        try_invert,
+        use_hybrid_binarizer,
+        max_number_of_symbols,
+    );
+    if !primary.is_empty() || !binarizer_fallback {
+        return primary;
+    }
+    read_inner_one_binarizer(
+        &luma,
+        width,
+        height,
+        try_harder,
+        try_invert,
+        !use_hybrid_binarizer,
+        max_number_of_symbols,
+    )
+}
+
 /// Read every QR code in raw RGBA pixels, returning each payload's raw bytes.
 ///
 /// - `rgba`: row-major RGBA pixels, length must equal `width * height * 4`
@@ -190,6 +232,12 @@ fn read_inner(
 /// - `use_hybrid_binarizer`: when `true`, use rxing's adaptive
 ///   `HybridBinarizer`; when `false`, the faster but less robust
 ///   `GlobalHistogramBinarizer`.
+/// - `binarizer_fallback`: when `true` and the primary binarizer produces no
+///   results, retry the full pipeline once more with the opposite binarizer.
+///   The two binarizers fail on disjoint inputs (Hybrid on stylized clean-bg
+///   QRs with colored finders, Global on uneven illumination), so fallback
+///   rescues both at the cost of an extra full pipeline pass. Set `false` for
+///   battery-critical live scanning, `true` for one-shot image-upload paths.
 /// - `max_number_of_symbols`: cap the number of symbols returned per pass.
 ///   Pass `0` to remove the cap. Pass `1` when only one detection is needed —
 ///   lets the multi-decode loop short-circuit on the first valid result and
@@ -212,6 +260,7 @@ fn read_inner(
 /// buffer length). Callers that need a string must decode the bytes
 /// themselves (e.g. `new TextDecoder().decode(bytes)`).
 #[wasm_bindgen]
+#[allow(clippy::too_many_arguments)] // wasm-bindgen call shape; packing into a struct hurts the JS side
 pub fn read_qr_codes_rgba(
     rgba: &[u8],
     width: u32,
@@ -219,6 +268,7 @@ pub fn read_qr_codes_rgba(
     try_harder: bool,
     try_invert: bool,
     use_hybrid_binarizer: bool,
+    binarizer_fallback: bool,
     max_number_of_symbols: u32,
 ) -> Result<js_sys::Array, JsValue> {
     let luma = rgba_to_luma(rgba, width, height).map_err(|m| JsValue::from_str(&m))?;
@@ -229,6 +279,7 @@ pub fn read_qr_codes_rgba(
         try_harder,
         try_invert,
         use_hybrid_binarizer,
+        binarizer_fallback,
         max_number_of_symbols,
     );
 

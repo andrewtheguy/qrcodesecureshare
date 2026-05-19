@@ -31,13 +31,16 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
       const readerOptions: RxingReaderOptions = {
         // Defaults tuned for general-purpose QR scanning: skip the heavier
         // `tryHarder` + `tryInvert` passes, adaptive binarizer for noisy
-        // camera output. Rotation is handled natively by rxing's
-        // finder-pattern canonical reordering, so no rotation-retry flag
-        // is needed. Single-symbol output is enforced at the wasm boundary
-        // in `readQrCodesFromRgba`.
+        // camera output, no binarizer fallback (the extra pipeline pass is
+        // not worth it on the fast scanner default — callers that want
+        // robustness opt in via `MAXIMIZED_DETECTION_OPTIONS`). Rotation is
+        // handled natively by rxing's finder-pattern canonical reordering,
+        // so no rotation-retry flag is needed. Single-symbol output is
+        // enforced at the wasm boundary in `readQrCodesFromRgba`.
         tryHarder: false,
         tryInvert: false,
-        useHybridBinarizer: true,
+        binarizer: 'hybrid',
+        binarizerFallback: false,
         ...options,
       }
 

@@ -132,7 +132,8 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     readerOptions: {
       tryHarder: true,
       tryInvert: true,
-      useHybridBinarizer: true,
+      binarizer: 'hybrid',
+      binarizerFallback: true,
     },
   })
 

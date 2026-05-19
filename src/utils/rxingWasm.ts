@@ -1,5 +1,23 @@
 import initRxingWasm, { read_qr_codes_rgba } from '../../rust/rxing-wasm/pkg/rxing_wasm'
 
+/**
+ * Which binarizer to apply when thresholding the luminance buffer.
+ * - `'hybrid'` (default) — rxing's adaptive `HybridBinarizer`, equivalent to
+ *   zxing-wasm's `"LocalAverage"`. Per-8×8-block thresholds; robust to
+ *   uneven illumination (vignetting, glare, gradients) but slower.
+ * - `'global'` — rxing's `GlobalHistogramBinarizer`, equivalent to
+ *   zxing-wasm's `"GlobalHistogram"`. Single image-wide threshold; faster
+ *   but defeated by uneven lighting. Decodes stylized clean-bg QRs that
+ *   confuse Hybrid's local thresholds (e.g. colored finder patterns).
+ *
+ * The two binarizers fail on disjoint inputs — use `binarizerFallback` to
+ * cover both failure modes at the cost of an extra pipeline pass.
+ *
+ * `'fixed'` and `'boolcast'` from zxing-wasm are intentionally omitted —
+ * rxing-vendored doesn't ship them.
+ */
+export type Binarizer = 'hybrid' | 'global'
+
 export interface RxingReaderOptions {
   /**
    * Spend more time looking for finder patterns by densifying the scan
@@ -13,13 +31,18 @@ export interface RxingReaderOptions {
    */
   tryInvert?: boolean
   /**
-   * When `true`, use rxing's adaptive `HybridBinarizer` (more accurate);
-   * when `false`, the faster but less robust `GlobalHistogramBinarizer`.
-   * Closest equivalent to zxing-wasm's `binarizer: "LocalAverage"` vs
-   * `"GlobalHistogram"`. (zxing-wasm's `FixedThreshold` and `BoolCast`
-   * variants are not available — rxing doesn't ship them.)
+   * Primary binarizer. Default `'hybrid'`, matching upstream zxing-wasm's
+   * `LocalAverage` default.
    */
-  useHybridBinarizer?: boolean
+  binarizer?: Binarizer
+  /**
+   * When `true` and the primary binarizer produces no results, retry the
+   * full pipeline once with the opposite binarizer. Default `false`,
+   * matching upstream which picks one binarizer per call. Enable on
+   * one-shot image-upload paths where robustness matters more than cost;
+   * leave disabled on battery-critical live scanning loops.
+   */
+  binarizerFallback?: boolean
 }
 
 // Hardcoded to 1: every consumer in this app reads only `results[0]`, so the
@@ -61,7 +84,8 @@ export async function readQrCodesFromRgba(
   const {
     tryHarder = false,
     tryInvert = false,
-    useHybridBinarizer = true,
+    binarizer = 'hybrid',
+    binarizerFallback = false,
   } = options
 
   // `read_qr_codes_rgba` returns a JS Array of Uint8Array (one entry per
@@ -72,7 +96,8 @@ export async function readQrCodesFromRgba(
     height,
     tryHarder,
     tryInvert,
-    useHybridBinarizer,
+    binarizer === 'hybrid',
+    binarizerFallback,
     MAX_NUMBER_OF_SYMBOLS
   ) as Uint8Array[]
 
