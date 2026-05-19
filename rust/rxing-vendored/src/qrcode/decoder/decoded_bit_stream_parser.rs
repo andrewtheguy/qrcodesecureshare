@@ -350,7 +350,7 @@ fn decodeAlphanumericSegment(
         // We need to massage the result a bit if in an FNC1 mode:
         for i in start..r_hld.len() {
             if r_hld.get(i).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%' {
-                if i < result.len() - 1
+                if i < r_hld.len() - 1
                     && r_hld.get(i + 1).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%'
                 {
                     // %% is rendered as %

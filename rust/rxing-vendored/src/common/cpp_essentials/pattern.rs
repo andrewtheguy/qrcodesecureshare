@@ -226,7 +226,7 @@ impl<'a> PatternView<'a> {
     }
 
     pub fn has_quiet_zone_before(&self, scale: f32, acceptIfAtFirstBar: Option<bool>) -> bool {
-        (acceptIfAtFirstBar.unwrap_or(false) && self.isAtLastBar())
+        (acceptIfAtFirstBar.unwrap_or(false) && self.isAtFirstBar())
             || Into::<f32>::into(self.data.0[self.count])
                 >= Into::<f32>::into(self.sum(None)) * scale
     }
@@ -664,7 +664,10 @@ pub fn NormalizedE2EPattern<const LEN: usize, const LEN_MINUS_2: usize, const SU
 pub fn NormalizedPattern<const LEN: usize, const SUM: usize>(
     view: &PatternView,
 ) -> Result<[PatternType; LEN]> {
-    let moduleSize: f32 = (Into::<usize>::into(view.sum(Some(LEN))) / SUM) as f32;
+    let moduleSize: f32 = Into::<usize>::into(view.sum(Some(LEN))) as f32 / SUM as f32;
+    if !moduleSize.is_finite() || moduleSize <= f32::EPSILON {
+        return Err(Exceptions::NOT_FOUND);
+    }
     let mut err = SUM as isize;
     let mut is = [PatternType::default(); LEN];
     let mut rs = [0.0; LEN];

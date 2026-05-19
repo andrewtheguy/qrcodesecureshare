@@ -230,11 +230,17 @@ impl RegressionLineTrait for RegressionLine {
 impl RegressionLine {
     pub fn with_two_points(point1: Point, point2: Point) -> Self {
         let mut new_rl = RegressionLine::default();
+        new_rl.setDirectionInward(point2 - point1);
         new_rl.evaluate(&[point1, point2]);
         new_rl
     }
     pub fn with_point_slice(points: &[Point]) -> Self {
         let mut new_rl = RegressionLine::default();
+        if let (Some(first), Some(last)) = (points.first(), points.last()) {
+            if first != last {
+                new_rl.setDirectionInward(*last - *first);
+            }
+        }
         new_rl.evaluate(points);
         new_rl
     }

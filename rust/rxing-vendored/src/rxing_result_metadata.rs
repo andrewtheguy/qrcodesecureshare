@@ -133,7 +133,7 @@ impl From<String> for RXingResultMetadataType {
             }
             "IS_MIRRORED" | "ISMIRRORED" => RXingResultMetadataType::IS_MIRRORED,
             "CONTENT_TYPE" | "CONTENTTYPE" => RXingResultMetadataType::CONTENT_TYPE,
-            "ISINVERTED" => RXingResultMetadataType::IS_INVERTED,
+            "IS_INVERTED" | "ISINVERTED" => RXingResultMetadataType::IS_INVERTED,
             "FILTERED_CLOSED" => RXingResultMetadataType::FILTERED_CLOSED,
             "FILTERED_RESOLUTION" => RXingResultMetadataType::FILTERED_RESOLUTION,
             _ => RXingResultMetadataType::OTHER,

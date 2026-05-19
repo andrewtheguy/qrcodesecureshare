@@ -501,9 +501,9 @@ impl From<&BitArray> for Vec<bool> {
 
 impl From<Vec<u8>> for BitArray {
     fn from(val: Vec<u8>) -> Self {
-        let mut new_array = BitArray::with_capacity(val.len());
+        let mut new_array = BitArray::with_size(val.len());
         for (pos, byte) in val.into_iter().enumerate() {
-            if byte == 0 {
+            if byte != 0 {
                 new_array.set(pos)
             }
         }
@@ -553,11 +553,25 @@ impl std::io::Write for BitArray {
 
 impl std::io::Seek for BitArray {
     fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        self.read_offset = match pos {
-            std::io::SeekFrom::Start(s) => s as usize,
-            std::io::SeekFrom::End(e) => self.size - e as usize,
-            std::io::SeekFrom::Current(c) => self.read_offset + c as usize,
+        let size = self.size as i64;
+        let target: i64 = match pos {
+            std::io::SeekFrom::Start(s) => i64::try_from(s).map_err(|_| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "seek offset overflow")
+            })?,
+            std::io::SeekFrom::End(e) => size.checked_add(e).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidInput, "seek offset overflow")
+            })?,
+            std::io::SeekFrom::Current(c) => (self.read_offset as i64).checked_add(c).ok_or_else(
+                || std::io::Error::new(std::io::ErrorKind::InvalidInput, "seek offset overflow"),
+            )?,
         };
-        Ok(self.read_offset as u64)
+        if target < 0 || target > size {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "seek position out of bounds",
+            ));
+        }
+        self.read_offset = target as usize;
+        Ok(target as u64)
     }
 }

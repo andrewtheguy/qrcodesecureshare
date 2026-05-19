@@ -171,44 +171,43 @@ impl<'a> MonochromeRectangleDetector<'_> {
                 // vertical slices, left and right
                 self.blackWhiteRange(x, maxWhiteRun, top, bottom, false)
             };
-            if range.is_none() {
-                if let Some(lastRange) = lastRange_z {
-                    // lastRange was found
-                    if deltaX == 0 {
-                        let lastY = y - deltaY;
-                        if lastRange[0] < centerX {
-                            if lastRange[1] > centerX {
-                                // straddle, choose one or the other based on direction
-                                return Ok(point(
-                                    lastRange[usize::from(deltaY <= 0)] as f32,
-                                    lastY as f32,
-                                ));
-                            }
-                            return Ok(point(lastRange[0] as f32, lastY as f32));
-                        } else {
-                            return Ok(point(lastRange[1] as f32, lastY as f32));
+            if let Some(r) = range {
+                lastRange_z = Some(r);
+                y += deltaY;
+                x += deltaX;
+            } else if let Some(lastRange) = lastRange_z {
+                // lastRange was found
+                if deltaX == 0 {
+                    let lastY = y - deltaY;
+                    if lastRange[0] < centerX {
+                        if lastRange[1] > centerX {
+                            // straddle, choose one or the other based on direction
+                            return Ok(point(
+                                lastRange[usize::from(deltaY <= 0)] as f32,
+                                lastY as f32,
+                            ));
                         }
+                        return Ok(point(lastRange[0] as f32, lastY as f32));
                     } else {
-                        let lastX = x - deltaX;
-                        if lastRange[0] < centerY {
-                            if lastRange[1] > centerY {
-                                return Ok(point(
-                                    lastX as f32,
-                                    lastRange[usize::from(deltaX >= 0)] as f32,
-                                ));
-                            }
-                            return Ok(point(lastX as f32, lastRange[0] as f32));
-                        } else {
-                            return Ok(point(lastX as f32, lastRange[1] as f32));
+                        return Ok(point(lastRange[1] as f32, lastY as f32));
+                    }
+                } else {
+                    let lastX = x - deltaX;
+                    if lastRange[0] < centerY {
+                        if lastRange[1] > centerY {
+                            return Ok(point(
+                                lastX as f32,
+                                lastRange[usize::from(deltaX >= 0)] as f32,
+                            ));
                         }
+                        return Ok(point(lastX as f32, lastRange[0] as f32));
+                    } else {
+                        return Ok(point(lastX as f32, lastRange[1] as f32));
                     }
                 }
             } else {
                 return Err(Exceptions::NOT_FOUND);
             }
-            lastRange_z = range;
-            y += deltaY;
-            x += deltaX
         }
         Err(Exceptions::NOT_FOUND)
     }

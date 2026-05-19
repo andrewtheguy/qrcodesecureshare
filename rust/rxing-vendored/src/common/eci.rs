@@ -93,14 +93,14 @@ impl From<i32> for Eci {
             26 => Eci::UTF8,
             27 => Eci::ASCII,
             28 => Eci::Big5,
-            29 => Eci::GB18030,
+            29 => Eci::GB2312,
             30 => Eci::EUC_KR,
             32 => Eci::GB18030,
             33 => Eci::UTF16LE,
             34 => Eci::UTF32BE,
             35 => Eci::UTF32LE,
             170 => Eci::ASCII,
-            898 => Eci::Binary,
+            899 => Eci::Binary,
             _ => Eci::Unknown,
         }
     }

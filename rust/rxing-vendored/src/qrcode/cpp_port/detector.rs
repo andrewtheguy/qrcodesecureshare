@@ -49,7 +49,7 @@ fn FindPattern(view: PatternView<'_>) -> Result<PatternView<'_>> {
         view,
         LEN,
         |view: &PatternView, spaceInPixel: Option<f32>| {
-            // perform a fast plausability test for 1:1:3:1:1 pattern
+            // perform a fast plausibility test for 1:1:3:1:1 pattern
             if view[2] < 2 as PatternType * std::cmp::max(view[0], view[4])
                 || view[2] < std::cmp::max(view[1], view[3])
             {
@@ -1144,7 +1144,7 @@ pub fn SampleMQR(image: &BitMatrix, fp: ConcentricPattern) -> Result<QRCodeDetec
         // for (int i = 0; i < dim; ++i) {
         let px = bestPT.transform_point(Point::centered(point_i(i, dim)));
         let py = bestPT.transform_point(Point::centered(point_i(dim, i)));
-        blackPixels += u32::from(cur.blackAt(px) && cur.blackAt(px))
+        blackPixels += u32::from(cur.blackAt(px) && cur.blackAt(py))
             + u32::from(image.is_in(py) && image.get_point(py));
     }
     if blackPixels > 2 * dim / 3 {

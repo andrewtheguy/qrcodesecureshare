@@ -119,7 +119,7 @@ impl DecoderRXingResult {
         let nb = rawBytes.len();
         Self {
             rawBytes,
-            numBits: nb,
+            numBits: nb * 8,
             text,
             byteSegments,
             ecLevel,

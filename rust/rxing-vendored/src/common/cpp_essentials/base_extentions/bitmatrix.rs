@@ -79,7 +79,7 @@ impl BitMatrix {
                     break;
                 }
             }
-            for x in (right..(self.width() - 1)).rev() {
+            for x in ((right + 1)..self.width()).rev() {
                 // for (int x = _width-1; x > right; x--){
                 if self.get(x, y) {
                     right = x;

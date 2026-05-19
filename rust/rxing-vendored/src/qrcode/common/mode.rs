@@ -184,14 +184,21 @@ impl Mode {
     pub fn CharacterCountBits(&self, version: &Version) -> u32 {
         let number = version.getVersionNumber() as usize;
         if version.isMicro() {
-            match self {
-		 Mode::NUMERIC=>      return [3, 4, 5, 6][number - 1],
-		 Mode::ALPHANUMERIC=> return [3, 4, 5][number - 2],
-		 Mode::BYTE=>         return [4, 5][number - 3],
-		 Mode::KANJI | //=>        [[fallthrough]],
-		 Mode::HANZI=>        return [3, 4][number - 3],
-		_=> return 0,
-		}
+            return match self {
+                Mode::NUMERIC => [3, 4, 5, 6]
+                    .get(number.wrapping_sub(1))
+                    .copied()
+                    .unwrap_or(0),
+                Mode::ALPHANUMERIC => [3, 4, 5]
+                    .get(number.wrapping_sub(2))
+                    .copied()
+                    .unwrap_or(0),
+                Mode::BYTE => [4, 5].get(number.wrapping_sub(3)).copied().unwrap_or(0),
+                Mode::KANJI | Mode::HANZI => {
+                    [3, 4].get(number.wrapping_sub(3)).copied().unwrap_or(0)
+                }
+                _ => 0,
+            };
         }
 
         if version.isRMQR() {

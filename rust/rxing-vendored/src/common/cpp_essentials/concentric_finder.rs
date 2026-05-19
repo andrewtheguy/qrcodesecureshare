@@ -69,7 +69,7 @@ pub fn ReadSymmetricPattern<const N: usize, Cursor: BitMatrixCursorTrait>(
 
     for i in 0..=s_2 {
         // for (int i = 0; i <= s_2; ++i) {
-        if !next(cur, i) == 0 || !next(&mut cuo, -i) == 0 {
+        if next(cur, i) == 0 || next(&mut cuo, -i) == 0 {
             return None;
         }
     }

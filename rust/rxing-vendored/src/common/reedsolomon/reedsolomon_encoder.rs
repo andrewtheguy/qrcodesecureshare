@@ -78,6 +78,11 @@ impl ReedSolomonEncoder {
                 "No error correction bytes",
             ));
         }
+        if ec_bytes > to_encode.len() {
+            return Err(Exceptions::illegal_argument_with(
+                "ec_bytes exceeds to_encode length",
+            ));
+        }
         let data_bytes = to_encode.len() - ec_bytes;
         if data_bytes == 0 {
             return Err(Exceptions::illegal_argument_with("No data bytes provided"));

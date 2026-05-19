@@ -124,6 +124,7 @@ impl CharacterSet {
             "windows-1252" => Some(CharacterSet::Cp1252),
             "windows-1256" => Some(CharacterSet::Cp1256),
             "utf-16be" => Some(CharacterSet::UTF16BE),
+            "utf-16le" | "utf16le" => Some(CharacterSet::UTF16LE),
             "utf-8" | "utf8" => Some(CharacterSet::UTF8),
             "us-ascii" => Some(CharacterSet::ASCII),
             "big5" => Some(CharacterSet::Big5),

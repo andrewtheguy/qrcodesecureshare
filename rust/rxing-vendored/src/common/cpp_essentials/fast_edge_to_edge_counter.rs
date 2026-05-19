@@ -79,6 +79,14 @@ impl FastEdgeToEdgeCounter<'_> {
 
     #[inline(always)]
     fn get_array_check_index(&self, steps: i32) -> usize {
-        (self.p as isize + (steps as isize * self.stride)) as usize
+        let idx = self.p as isize + (steps as isize * self.stride);
+        assert!(
+            idx >= 0,
+            "get_array_check_index: computed negative index (p={}, stride={}, steps={})",
+            self.p,
+            self.stride,
+            steps
+        );
+        idx as usize
     }
 }

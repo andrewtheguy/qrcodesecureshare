@@ -257,9 +257,12 @@ impl<'a> AlignmentPatternFinder<'a> {
 
         let stateCountTotal =
             crossCheckStateCount[0] + crossCheckStateCount[1] + crossCheckStateCount[2];
-        if 5 * (stateCountTotal as i64 - originalStateCountTotal as i64).unsigned_abs() as u32
-            >= 2 * originalStateCountTotal
-        {
+        let diff: u64 = if stateCountTotal >= originalStateCountTotal {
+            (stateCountTotal - originalStateCountTotal) as u64
+        } else {
+            (originalStateCountTotal - stateCountTotal) as u64
+        };
+        if 5 * diff >= 2 * originalStateCountTotal as u64 {
             return f32::NAN;
         }
 

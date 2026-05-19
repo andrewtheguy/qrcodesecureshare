@@ -293,6 +293,9 @@ impl<'a> WhiteRectangleDetector<'_> {
         let b = point(b_x, b_y);
 
         let dist = a.distance(b).round() as i32;
+        if dist == 0 {
+            return None;
+        }
         let x_step: f32 = (b_x - a_x) / dist as f32;
         let y_step: f32 = (b_y - a_y) / dist as f32;
 

@@ -16,10 +16,7 @@
 
 //package com.google.zxing;
 
-use std::{
-    borrow::{Borrow, Cow},
-    fmt,
-};
+use std::{borrow::Cow, fmt};
 
 use once_cell::sync::OnceCell;
 
@@ -235,6 +232,9 @@ impl<B: Binarizer> BinaryBitmap<B> {
 
 impl<B: Binarizer> fmt::Display for BinaryBitmap<B> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self.matrix.borrow())
+        match self.matrix.get() {
+            Some(m) => write!(f, "{m:?}"),
+            None => write!(f, "<uninitialized>"),
+        }
     }
 }

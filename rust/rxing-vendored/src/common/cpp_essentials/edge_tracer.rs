@@ -478,7 +478,9 @@ impl<'a> EdgeTracer<'_> {
     }
 
     pub fn traceCorner(&mut self, dir: &mut Point, corner: &mut Point) -> Result<bool> {
-        self.step(None);
+        if !self.step(None) {
+            return Ok(false);
+        }
         // log(p);
         *corner = self.p;
         std::mem::swap(&mut self.d, dir);

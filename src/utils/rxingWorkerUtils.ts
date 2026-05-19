@@ -3,7 +3,7 @@ import type { RxingReaderOptions } from '@/utils/rxingWasm'
 
 interface ScanResult {
   type: 'result'
-  data: (string | Uint8Array)[] | null
+  data: Uint8Array[] | null
   error?: string
 }
 
@@ -19,9 +19,8 @@ const MAXIMIZED_DETECTION_OPTIONS: RxingReaderOptions = {
  */
 export function decodeQRFromImage(
   file: File,
-  readerOptions?: RxingReaderOptions,
-  binary = false
-): Promise<(string | Uint8Array)[] | null> {
+  readerOptions?: RxingReaderOptions
+): Promise<Uint8Array[] | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
@@ -72,7 +71,6 @@ export function decodeQRFromImage(
             {
               type: 'scan',
               imageData,
-              binary,
               options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
             },
             [imageData.data.buffer]
@@ -102,9 +100,8 @@ export function decodeQRFromImage(
  */
 export function decodeQRFromImageData(
   imageData: ImageData,
-  readerOptions?: RxingReaderOptions,
-  binary = false
-): Promise<(string | Uint8Array)[] | null> {
+  readerOptions?: RxingReaderOptions
+): Promise<Uint8Array[] | null> {
   return new Promise((resolve, reject) => {
     const worker = new RxingWorker()
 
@@ -134,7 +131,6 @@ export function decodeQRFromImageData(
       {
         type: 'scan',
         imageData,
-        binary,
         options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
       },
       [imageData.data.buffer]

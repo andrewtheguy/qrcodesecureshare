@@ -235,7 +235,7 @@ impl DMRegressionLine {
     }
 
     // template <typename Container, typename Filter>
-    fn average<T>(c: &[f64], f: T) -> f64
+    fn average<T>(c: &[f64], f: T) -> Option<f64>
     where
         T: Fn(f64) -> bool,
     {
@@ -248,7 +248,11 @@ impl DMRegressionLine {
                 num += 1;
             }
         }
-        sum / num as f64
+        if num == 0 {
+            None
+        } else {
+            Some(sum / num as f64)
+        }
     }
 
     pub fn reverse(&mut self) {
@@ -321,7 +325,8 @@ impl DMRegressionLine {
         );
         modSizes[0] = 0.0; // the first element is an invalid sumBack value, would be pop_front() if vector supported this
         let lineLength = Point::distance(beg, end) as f64 - unitPixelDist;
-        let mut meanModSize = Self::average(&modSizes, |_: f64| true);
+        let mut meanModSize =
+            Self::average(&modSizes, |_: f64| true).ok_or(Exceptions::ILLEGAL_STATE)?;
         // let meanModSize = average(modSizes, [](double){ return true; });
         // #ifdef PRINT_DEBUG
         // 		printf("unit pixel dist: %.1f\n", unitPixelDist);
@@ -329,9 +334,11 @@ impl DMRegressionLine {
         // #endif
         for i in 0..2 {
             // for (int i = 0; i < 2; ++i)
-            meanModSize = Self::average(&modSizes, |dist: f64| {
+            if let Some(next) = Self::average(&modSizes, |dist: f64| {
                 (dist - meanModSize).abs() < meanModSize / (2 + i) as f64
-            });
+            }) {
+                meanModSize = next;
+            }
             // meanModSize = average(modSizes, [=](double dist) { return std::abs(dist - meanModSize) < meanModSize / (2 + i); });
         }
         // #ifdef PRINT_DEBUG

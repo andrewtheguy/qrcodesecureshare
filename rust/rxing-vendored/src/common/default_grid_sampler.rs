@@ -94,9 +94,9 @@ impl GridSampler for DefaultGridSampler {
         };
 
         let tl = projectCorner(Point::default());
-        let tr = projectCorner(Point::from((dimensionX, 0)));
-        let bl = projectCorner(Point::from((dimensionX, dimensionY)));
-        let br = projectCorner(Point::from((0, dimensionX)));
+        let tr = projectCorner(Point::from((dimensionX - 1, 0)));
+        let br = projectCorner(Point::from((dimensionX - 1, dimensionY - 1)));
+        let bl = projectCorner(Point::from((0, dimensionY - 1)));
 
         Ok((bits, [tl, tr, bl, br]))
     }

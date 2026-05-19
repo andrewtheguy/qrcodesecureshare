@@ -69,7 +69,7 @@ impl ECIInput for MinimalECIInput {
         if index >= self.length() {
             return Err(Exceptions::index_out_of_bounds_with(index.to_string()));
         }
-        if self.isECI(index as u32)? {
+        if self.isECI(index)? {
             return Err(Exceptions::illegal_argument_with(format!(
                 "value at {index} is not a character but an ECI"
             )));
@@ -108,7 +108,7 @@ impl ECIInput for MinimalECIInput {
         let mut result = Vec::with_capacity(end - start);
         for i in start..end {
             //   for (int i = start; i < end; i++) {
-            if self.isECI(i as u32)? {
+            if self.isECI(i)? {
                 return Err(Exceptions::illegal_argument_with(format!(
                     "value at {i} is not a character but an ECI"
                 )));
@@ -129,11 +129,11 @@ impl ECIInput for MinimalECIInput {
      *          if the {@code index} argument is negative or not less than
      *          {@code length()}
      */
-    fn isECI(&self, index: u32) -> Result<bool> {
-        if index >= self.length() as u32 {
+    fn isECI(&self, index: usize) -> Result<bool> {
+        if index >= self.length() {
             return Err(Exceptions::INDEX_OUT_OF_BOUNDS);
         }
-        Ok(self.bytes[index as usize] > 255) // && self.bytes[index as usize] <= u16::MAX)
+        Ok(self.bytes[index] > 255) // && self.bytes[index] <= u16::MAX)
     }
 
     /**
@@ -158,7 +158,7 @@ impl ECIInput for MinimalECIInput {
         if index >= self.length() {
             return Err(Exceptions::INDEX_OUT_OF_BOUNDS);
         }
-        if !self.isECI(index as u32)? {
+        if !self.isECI(index)? {
             return Err(Exceptions::illegal_argument_with(format!(
                 "value at {index} is not an ECI but a character"
             )));
@@ -172,7 +172,7 @@ impl ECIInput for MinimalECIInput {
         }
         for i in 0..n {
             //   for (int i = 0; i < n; i++) {
-            if self.isECI(index as u32 + i as u32)? {
+            if self.isECI(index + i)? {
                 return Ok(false);
             }
         }
@@ -473,7 +473,7 @@ impl fmt::Display for MinimalECIInput {
             if i > 0 {
                 result.push_str(", ");
             }
-            if self.isECI(i as u32).unwrap() {
+            if self.isECI(i).unwrap() {
                 result.push_str("ECI(");
                 result.push_str(&self.getECIValue(i).unwrap().to_string());
                 result.push(')');

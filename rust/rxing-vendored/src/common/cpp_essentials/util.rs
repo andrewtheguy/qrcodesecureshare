@@ -12,6 +12,9 @@ pub fn intersect<T: RegressionLineTrait, T2: RegressionLineTrait>(
         return Err(Exceptions::ILLEGAL_STATE);
     }
     let d = l1.a() * l2.b() - l1.b() * l2.a();
+    if d.abs() < f32::EPSILON {
+        return Err(Exceptions::ILLEGAL_STATE);
+    }
     let x = (l1.c() * l2.b() - l1.b() * l2.c()) / d;
     let y = (l1.a() * l2.c() - l1.c() * l2.a()) / d;
     Ok(Point { x, y })

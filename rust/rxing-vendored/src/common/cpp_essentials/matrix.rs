@@ -10,9 +10,12 @@ pub struct Matrix<T: Default + Clone + Copy> {
 
 impl<T: Default + Clone + Copy> Matrix<T> {
     pub fn with_data(width: usize, height: usize, data: Vec<Option<T>>) -> Result<Matrix<T>> {
-        if width != 0 && data.len() / width != height {
+        let expected = width.checked_mul(height).ok_or_else(|| {
+            Exceptions::illegal_argument_with("invalid size: width * height overflow")
+        })?;
+        if data.len() != expected {
             return Err(Exceptions::illegal_argument_with(
-                "invalid size: width * height is too big",
+                "invalid size: data length does not match width * height",
             ));
         }
         Ok(Self {
@@ -83,6 +86,18 @@ impl<T: Default + Clone + Copy> Matrix<T> {
     }
 
     pub fn set_point(&mut self, p: Point, value: T) -> T {
+        assert!(
+            p.x.is_finite() && p.y.is_finite(),
+            "set_point: non-finite coordinates ({}, {})",
+            p.x,
+            p.y
+        );
+        assert!(
+            p.x >= 0.0 && p.y >= 0.0,
+            "set_point: negative coordinates ({}, {})",
+            p.x,
+            p.y
+        );
         self.set(p.x as usize, p.y as usize, value)
     }
 

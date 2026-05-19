@@ -86,7 +86,7 @@ pub enum BarcodeFormat {
     DXFilmEdge,
 
     /// format not supported
-    UNSUPORTED_FORMAT,
+    UNSUPPORTED_FORMAT,
 }
 
 impl Display for BarcodeFormat {
@@ -116,7 +116,7 @@ impl Display for BarcodeFormat {
                 BarcodeFormat::UPC_E => "upc e",
                 BarcodeFormat::UPC_EAN_EXTENSION => "upc/ean extension",
                 BarcodeFormat::DXFilmEdge => "DXFilmEdge",
-                _ => "unsuported",
+                _ => "Unsupported",
             }
         )
     }
@@ -164,7 +164,7 @@ impl From<&str> for BarcodeFormat {
             "upc ean extension" | "upc extension" | "ean extension" | "upc/ean extension"
             | "upc_ean_extension" => BarcodeFormat::UPC_EAN_EXTENSION,
             "DXFilmEdge" | "dxfilmedge" | "dx film edge" => BarcodeFormat::DXFilmEdge,
-            _ => BarcodeFormat::UNSUPORTED_FORMAT,
+            _ => BarcodeFormat::UNSUPPORTED_FORMAT,
         }
     }
 }
@@ -174,7 +174,7 @@ impl FromStr for BarcodeFormat {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let format = BarcodeFormat::from(s);
-        if format == BarcodeFormat::UNSUPORTED_FORMAT {
+        if format == BarcodeFormat::UNSUPPORTED_FORMAT {
             Err(crate::exceptions::Exceptions::FormatException(format!(
                 "Unsupported barcode format: {s}"
             )))

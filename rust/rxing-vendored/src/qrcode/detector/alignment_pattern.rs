@@ -63,8 +63,8 @@ impl AlignmentPattern {
     }
 
     /**
-     * Combines this object's current estimate of a finder pattern position and module size
-     * with a new estimate. It returns a new {@code FinderPattern} containing an average of the two.
+     * Combines this object's current estimate of an alignment pattern position and module size
+     * with a new estimate. It returns a new {@code AlignmentPattern} containing an average of the two.
      */
     pub fn combineEstimate(&self, i: f32, j: f32, newModuleSize: f32) -> AlignmentPattern {
         let combinedX = (self.point.x + j) / 2.0;

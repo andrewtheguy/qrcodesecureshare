@@ -152,7 +152,7 @@ impl Version {
 
         match qr_type {
             Type::Model1 => {
-                if valid(version, 32) {
+                if valid(version, 14) {
                     square(17 + 4 * version)
                 } else {
                     PointI::default()

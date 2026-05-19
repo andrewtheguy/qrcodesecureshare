@@ -711,10 +711,11 @@ impl BitMatrix {
     pub fn crop(&self, top: usize, left: usize, height: usize, width: usize) -> BitMatrix {
         let mut new_bm = BitMatrix::new(width as u32, height as u32).expect("create empty");
         for y in top..top + height {
-            // let row = self.getRow(y as u32);
             for x in left..left + width {
                 if self.get(x as u32, y as u32) {
-                    new_bm.set(x as u32, y as u32)
+                    let nx = (x - left) as u32;
+                    let ny = (y - top) as u32;
+                    new_bm.set(nx, ny)
                 }
             }
         }

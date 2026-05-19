@@ -176,6 +176,6 @@ impl GenericGF {
 
 impl fmt::Display for GenericGF {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "GF({:#06x},{}", self.primitive, self.size)
+        write!(f, "GF({:#06x},{})", self.primitive, self.size)
     }
 }

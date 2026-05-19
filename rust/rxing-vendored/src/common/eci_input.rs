@@ -87,7 +87,7 @@ pub trait ECIInput: Display {
      *          if the {@code index} argument is negative or not less than
      *          {@code length()}
      */
-    fn isECI(&self, index: u32) -> Result<bool>;
+    fn isECI(&self, index: usize) -> Result<bool>;
 
     /**
      * Returns the {@code int} ECI value at the specified index.  An index ranges from zero

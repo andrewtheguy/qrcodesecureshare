@@ -178,12 +178,12 @@ impl<'a> BitSource<'a> {
 impl Read for BitSource<'_> {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         let requested_bytes = buf.len();
-        let available = self.available();
+        let available_bytes = self.available() / 8;
 
-        let to_read = if requested_bytes <= available {
+        let to_read = if requested_bytes <= available_bytes {
             requested_bytes
         } else {
-            available
+            available_bytes
         };
 
         for byte in buf.iter_mut().take(to_read) {
