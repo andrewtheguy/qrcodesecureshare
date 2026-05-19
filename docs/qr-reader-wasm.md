@@ -78,8 +78,11 @@ collapse into `try_harder = true`. `maxNumberOfSymbols` is always 1.
 - `text`: rxing's `RXingResult::getText()`. Lossless UTF-8 for text-mode QRs;
   Latin-1-style passthrough for byte-mode QRs.
 - `bytes`: the concatenation of `BYTE_SEGMENTS` metadata if present (the
-  load-bearing path for byte-mode payloads — fountain frames go through here),
-  otherwise `text.as_bytes()`.
+  load-bearing path for byte-mode payloads — fountain frames go through here).
+  When rxing's C++-ported QR reader succeeds without exposing byte-segment
+  metadata, the wrapper returns raw decoded content bytes if they match the
+  decoded text as UTF-8 or Latin-1. It falls back to `text.as_bytes()` only when
+  raw bytes look like QR codewords rather than content bytes.
 
 `DecodedQr` is a wasm-bindgen handle; consumers should call `free()` after
 copying fields out. The JS wrapper already does this — see below.
@@ -169,6 +172,7 @@ Current fixtures:
 | `qr_sample.png` | `jfghjghjghfkghjkghj` | Baseline byte-mode QR; also asserts `bytes` matches. |
 | `qr_code_complex.png` | `https://qr-code-styling.com` | Stylized QR (rounded modules, gradient eyes). |
 | `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real phone photo of a white-on-dark-green QR — only decodes with `try_harder = true` (the `FilteredImageReader` pyramid). |
+| `fountain_binary_real.png` | binary fountain chunk | Real fountain byte-mode QR; asserts binary output starts with `ff fd` rather than UTF-8-expanded text bytes. |
 
 Add a new fixture by dropping the file in `tests/fixtures/` and adding a `#[test]`
 that asserts the exact decoded text — the harness is one helper

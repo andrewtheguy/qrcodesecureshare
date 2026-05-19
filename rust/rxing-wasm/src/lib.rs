@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
 use rxing::{
+    common::{GlobalHistogramBinarizer, HybridBinarizer},
     BarcodeFormat, BinaryBitmap, DecodeHints, FilteredImageReader, Luma8LuminanceSource,
     MultiFormatReader, RXingResultMetadataType, RXingResultMetadataValue, Reader,
-    common::{GlobalHistogramBinarizer, HybridBinarizer},
 };
 use wasm_bindgen::prelude::*;
 
@@ -50,7 +50,15 @@ fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
         .collect())
 }
 
-fn extract_bytes(text: &str, segments: Option<&Vec<Vec<u8>>>) -> Vec<u8> {
+fn text_matches_latin1_bytes(text: &str, bytes: &[u8]) -> bool {
+    text.chars().count() == bytes.len()
+        && text
+            .chars()
+            .zip(bytes)
+            .all(|(ch, byte)| ch as u32 == *byte as u32)
+}
+
+fn extract_bytes(text: &str, raw_bytes: &[u8], segments: Option<&Vec<Vec<u8>>>) -> Vec<u8> {
     if let Some(segments) = segments {
         let total: usize = segments.iter().map(|s| s.len()).sum();
         if total > 0 {
@@ -61,6 +69,13 @@ fn extract_bytes(text: &str, segments: Option<&Vec<Vec<u8>>>) -> Vec<u8> {
             return combined;
         }
     }
+
+    if !raw_bytes.is_empty()
+        && (raw_bytes == text.as_bytes() || text_matches_latin1_bytes(text, raw_bytes))
+    {
+        return raw_bytes.to_vec();
+    }
+
     text.as_bytes().to_vec()
 }
 
@@ -106,7 +121,7 @@ fn decode_inner(
             RXingResultMetadataValue::ByteSegments(segments) => Some(segments),
             _ => None,
         });
-    let bytes = extract_bytes(result.getText(), byte_segments);
+    let bytes = extract_bytes(result.getText(), result.getRawBytes(), byte_segments);
     Some(DecodedQr {
         text: result.getText().to_string(),
         bytes,
@@ -159,6 +174,24 @@ mod tests {
         let result = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_zoo.jpg");
         assert_eq!(result.text, "https://zoo.sandiegozoo.org/2024-sdmag-pandas");
+    }
+
+    #[test]
+    fn decodes_real_fountain_byte_mode_fixture_losslessly() {
+        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/fountain_binary_real.png");
+
+        for try_harder in [false, true] {
+            let luma = rgba_to_luma(&rgba, w, h).expect("luma");
+            let result = decode_inner(luma, w, h, try_harder, false, true)
+                .expect("expected a QR decode result from real fountain byte-mode fixture");
+
+            assert_eq!(&result.bytes[..2], [0xff, 0xfd]);
+            assert_ne!(result.bytes.as_slice(), result.text.as_bytes());
+            assert!(result
+                .text
+                .as_bytes()
+                .starts_with(&[0xc3, 0xbf, 0xc3, 0xbd]));
+        }
     }
 }
 
