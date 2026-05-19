@@ -236,16 +236,26 @@ The test file covers two paths:
 
 Current fixtures:
 
-| File | Expected `text` | Exercises |
-| --- | --- | --- |
-| `qr_sample.png` | `jfghjghjghfkghjkghj` | Baseline byte-mode QR. Also the source for the synthetic invert/rotate variants. |
-| `qr_code_complex.png` | `https://qr-code-styling.com` | Stylized QR (rounded modules, gradient eyes). |
-| `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real phone photo of white-on-dark-green QR — only decodes with `try_harder = true` (the legacy `FilteredImageReader` pyramid path). |
-| `fountain_binary_real.png` | binary fountain chunk | Real fountain byte-mode QR; asserts binary output starts with `ff fd`. |
+| File | Expected `text` | Exercises | Discriminating option |
+| --- | --- | --- | --- |
+| `qr_sample.png` | `jfghjghjghfkghjkghj` | Baseline byte-mode QR. Also the source for the two synthetic `qr_sample_*` variants. | none — decodes in all 8 combos |
+| `qr_code_complex.png` | `https://qr-code-styling.com` | Stylized QR (rounded modules, gradient eyes). | none — decodes in all 8 combos |
+| `qr_sample_inverted.png` | `jfghjghjghfkghjkghj` | Pixel-inverted (`magick … -negate`) copy of `qr_sample.png`. The `AlsoInverted` hint isn't consumed by `QrReader`'s multi-decode path, so the only way to decode is to flip the BitMatrix in the retry loop. | **`try_invert` only** — independent of `try_harder` |
+| `qr_sample_small_in_canvas.png` | `jfghjghjghfkghjkghj` | `qr_sample.png` resized to 80×80 and pasted into a 1600×1600 white canvas. `FindFinderPatterns` picks `skip ≈ 12` by default; the shrunken finder modules (~3 px tall) are walked past unless `try_harder = true` densifies the scan to `skip = 3`. | **`try_harder` only** — independent of `try_invert` |
+| `qr_rotated.jpg` | `https://nc.cesdk12.org/ncsd/…` | Real phone photo of a rotated QR code. Decodes only when `try_harder = true`. **Legacy-path quirk**: when `try_invert = true` *and* `try_harder = true`, `MultiFormatReader`'s `AlsoInverted` flip leaves the BitMatrix mirrored before `BinaryBitmap::close()` runs on the close=true fallback, so the morphological close is applied to the inverted image and the decode misses. Doesn't affect the wasm wrapper (which uses `QrReader` + manual flip). | `try_harder` (without `try_invert`) |
+| `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real phone photo of a white-on-dark-green QR. | **`try_harder` AND `try_invert`** together |
+| `fountain_binary_real.png` | binary fountain chunk | Real fountain byte-mode QR; asserts binary output starts with `ff fd`. | none — decodes in all 8 combos |
 
 Add a new fixture by dropping the file in `tests/fixtures/` and adding a
-`#[test]` that asserts the exact decoded text — the harness is one helper
-(`load_image_as_rgba`) wide.
+`#[test]` that asserts the exact decoded text and the combos required —
+the harness is two helpers (`load_image_as_rgba`, `decode_combo`) wide, and
+`ALL_COMBOS` provides the (try_harder, try_invert, use_hybrid_binarizer)
+Cartesian product. Two `#[ignore]`d helper tests live in the same file:
+`probe_fixture_requirements` (prints which combos decode each fixture, for
+when adding a new fixture) and the regeneration of the synthetic
+`qr_sample_*` variants is in
+[`tests/fixtures/regen_synthetic.sh`](../rust/rxing-vendored/tests/fixtures/regen_synthetic.sh)
+(requires ImageMagick v7).
 
 ## Extending the crate
 
