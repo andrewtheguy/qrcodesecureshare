@@ -26,6 +26,16 @@ interface UseRxingQRScannerTextOptions extends UseRxingQRScannerOptionsBase {
 
 type UseRxingQRScannerOptions = UseRxingQRScannerBinaryOptions | UseRxingQRScannerTextOptions
 
+function isSameScan(a: string | Uint8Array, b: string | Uint8Array): boolean {
+  if (a === b) return true
+  if (typeof a === 'string' || typeof b === 'string') return false
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
 export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   const {
     onScan,
@@ -48,7 +58,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   const startTokenRef = useRef<number>(0)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const workerRef = useRef<Worker | null>(null)
-  const lastScannedRef = useRef<string>('')
+  const lastScannedRef = useRef<string | Uint8Array>('')
   const lastScanTimeRef = useRef<number>(0)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
@@ -69,9 +79,13 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
         if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
-          const scannedData = e.data.data[0]
+          const scannedData = e.data.data[0] as string | Uint8Array
           const now = Date.now()
-          if (debounceMs > 0 && scannedData === lastScannedRef.current && now - lastScanTimeRef.current < debounceMs) {
+          if (
+            debounceMs > 0 &&
+            isSameScan(scannedData, lastScannedRef.current) &&
+            now - lastScanTimeRef.current < debounceMs
+          ) {
             return
           }
           lastScannedRef.current = scannedData
