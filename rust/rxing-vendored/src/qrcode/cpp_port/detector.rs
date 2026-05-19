@@ -444,15 +444,14 @@ pub fn LocateAlignmentPattern(
             continue;
         }
 
-        if let Some(cor1) = CenterOfRing(image, cor.unwrap().floor(), moduleSize, 1, true) {
-            if let Some(cor2) = CenterOfRing(image, cor.unwrap().floor(), moduleSize * 3, -2, true)
-            {
-                if Point::distance(cor1, cor2) < moduleSize as f32 / 2.0 {
-                    let res = (cor1 + cor2) / 2.0;
-                    // log(res, 3);
-                    return Some(res);
-                }
-            }
+        if let Some(cor1) = CenterOfRing(image, cor.unwrap().floor(), moduleSize, 1, true)
+            && let Some(cor2) =
+                CenterOfRing(image, cor.unwrap().floor(), moduleSize * 3, -2, true)
+            && Point::distance(cor1, cor2) < moduleSize as f32 / 2.0
+        {
+            let res = (cor1 + cor2) / 2.0;
+            // log(res, 3);
+            return Some(res);
         }
     }
 
@@ -547,10 +546,10 @@ pub fn SampleQR(image: &BitMatrix, fp: &FinderPatternSet) -> Result<QRCodeDetect
             / 2.0;
         // log(brInter, 3);
 
-        if dimension > 21 {
-            if let Some(brCP) = LocateAlignmentPattern(image, moduleSize, brInter) {
-                br = brCP.into();
-            }
+        if dimension > 21
+            && let Some(brCP) = LocateAlignmentPattern(image, moduleSize, brInter)
+        {
+            br = brCP.into();
         }
 
         // if the symbol is tilted or the resolution of the RegressionLines is sufficient, use their intersection

@@ -250,17 +250,17 @@ impl QrReader {
                     // if (detectorResult.is_ok()) {
                     let decoderResult = Decode(detectorResult.getBits());
                     let position = detectorResult.getPoints();
-                    if let Ok(decoderResult) = decoderResult {
-                        if decoderResult.isValid() {
-                            results.push(RXingResult::with_decoder_result_bytes_only(
-                                decoderResult,
-                                position,
-                                BarcodeFormat::MICRO_QR_CODE,
-                            ));
+                    if let Ok(decoderResult) = decoderResult
+                        && decoderResult.isValid()
+                    {
+                        results.push(RXingResult::with_decoder_result_bytes_only(
+                            decoderResult,
+                            position,
+                            BarcodeFormat::MICRO_QR_CODE,
+                        ));
 
-                            if maxSymbols != 0 && (results.len() as u32) == maxSymbols {
-                                break;
-                            }
+                        if maxSymbols != 0 && (results.len() as u32) == maxSymbols {
+                            break;
                         }
                     }
                 }
@@ -278,17 +278,17 @@ impl QrReader {
                     // if (detectorResult.is_ok()) {
                     let decoderResult = Decode(detectorResult.getBits());
                     let position = detectorResult.getPoints();
-                    if let Ok(decoderResult) = decoderResult {
-                        if decoderResult.isValid() {
-                            results.push(RXingResult::with_decoder_result_bytes_only(
-                                decoderResult,
-                                position,
-                                BarcodeFormat::RECTANGULAR_MICRO_QR_CODE,
-                            ));
+                    if let Ok(decoderResult) = decoderResult
+                        && decoderResult.isValid()
+                    {
+                        results.push(RXingResult::with_decoder_result_bytes_only(
+                            decoderResult,
+                            position,
+                            BarcodeFormat::RECTANGULAR_MICRO_QR_CODE,
+                        ));
 
-                            if maxSymbols != 0 && (results.len() as u32) == maxSymbols {
-                                break;
-                            }
+                        if maxSymbols != 0 && (results.len() as u32) == maxSymbols {
+                            break;
                         }
                     }
                 }

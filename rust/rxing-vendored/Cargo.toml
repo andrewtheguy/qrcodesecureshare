@@ -4,7 +4,6 @@ version = "0.9.0"
 description = "Trimmed QR-only fork of rxing, vendored for rust/rxing-wasm."
 license = "Apache-2.0"
 edition = "2024"
-rust-version = "1.85"
 
 [dependencies]
 regex = "1.12"

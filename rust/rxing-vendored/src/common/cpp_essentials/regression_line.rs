@@ -210,10 +210,10 @@ impl RegressionLine {
     }
     pub fn with_point_slice(points: &[Point]) -> Self {
         let mut new_rl = RegressionLine::default();
-        if let (Some(first), Some(last)) = (points.first(), points.last()) {
-            if first != last {
-                new_rl.setDirectionInward(*last - *first);
-            }
+        if let (Some(first), Some(last)) = (points.first(), points.last())
+            && first != last
+        {
+            new_rl.setDirectionInward(*last - *first);
         }
         new_rl.evaluate(points);
         new_rl

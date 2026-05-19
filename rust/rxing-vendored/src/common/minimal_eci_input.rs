@@ -272,14 +272,13 @@ impl MinimalECIInput {
         let mut start = 0;
         let mut end = encoderSet.len();
         //if let Some(fnc1) = fnc1 {
-        if let Some(pei) = encoderSet.getPriorityEncoderIndex() {
-            if (fnc1.is_some()
+        if let Some(pei) = encoderSet.getPriorityEncoderIndex()
+            && ((fnc1.is_some()
                 && ch.chars().next().unwrap() == fnc1.as_ref().unwrap().chars().next().unwrap())
-                || encoderSet.canEncode(ch, pei).unwrap()
-            {
-                start = pei;
-                end = start + 1;
-            }
+                || encoderSet.canEncode(ch, pei).unwrap())
+        {
+            start = pei;
+            end = start + 1;
         }
         //}
 
@@ -328,11 +327,11 @@ impl MinimalECIInput {
         let mut minimalJ: i32 = -1;
         let mut minimalSize: i32 = i32::MAX;
         for (j, slot) in edges[inputLength].iter().enumerate().take(encoderSet.len()) {
-            if let Some(edge) = slot {
-                if (edge.cachedTotalSize as i32) < minimalSize {
-                    minimalSize = edge.cachedTotalSize as i32;
-                    minimalJ = j as i32;
-                }
+            if let Some(edge) = slot
+                && (edge.cachedTotalSize as i32) < minimalSize
+            {
+                minimalSize = edge.cachedTotalSize as i32;
+                minimalJ = j as i32;
             }
         }
         if minimalJ < 0 {
