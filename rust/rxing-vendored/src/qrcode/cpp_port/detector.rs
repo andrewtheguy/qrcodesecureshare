@@ -61,7 +61,6 @@ fn FindPattern(view: PatternView<'_>) -> Result<PatternView<'_>> {
 }
 
 /// Locate the finder patterns for the symbol.
-/// This function can panic
 pub fn FindFinderPatterns(image: &BitMatrix, tryHarder: bool) -> FinderPatterns {
     const MIN_SKIP: u32 = 3; // 1 pixel/module times 3 modules/center
     const MAX_MODULES_FAST: u32 = 20 * 4 + 17; // support up to version 20 for mobile clients
