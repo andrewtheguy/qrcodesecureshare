@@ -18,8 +18,7 @@ use crate::{Binarizer, BinaryBitmap, DecodeHints, RXingResult, common::Result};
 
 /**
  * Implementations of this interface can decode an image of a barcode in some format into
- * the String it encodes. For example, {@link com.google.zxing.qrcode.QRCodeReader} can
- * decode a QR code. The decoder may optionally receive hints from the caller which may help
+ * the String it encodes. The decoder may optionally receive hints from the caller which may help
  * it decode more quickly or accurately.
  *
  * See {@link MultiFormatReader}, which attempts to determine what barcode
