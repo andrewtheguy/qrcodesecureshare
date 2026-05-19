@@ -345,34 +345,43 @@ fn qr_zoo_jpg_requires_try_harder_and_try_invert() {
     }
 }
 
+/// Loop over `ALL_COMBOS` asserting that `rgba` decodes to `expected` iff
+/// `try_harder = true`. `label` is interpolated into panic messages so test
+/// failures point at the specific fixture/transform under test.
+fn assert_requires_try_harder(rgba: &[u8], w: u32, h: u32, expected: &[u8], label: &str) {
+    for combo in ALL_COMBOS {
+        let (try_harder, _, _) = combo;
+        let result = decode_combo(rgba, w, h, combo);
+        if try_harder {
+            let bytes = result
+                .unwrap_or_else(|| panic!("{label} expected to decode for combo={combo:?}"));
+            assert_eq!(
+                bytes.as_slice(),
+                expected,
+                "{label}: unexpected bytes for combo={combo:?}",
+            );
+        } else {
+            assert!(
+                result.is_none(),
+                "{label} expected to NOT decode without try_harder for combo={combo:?}",
+            );
+        }
+    }
+}
+
 #[test]
 fn qr_rotated_jpg_requires_try_harder() {
     // 183×210 phone photo of a rotated QR. The original resolution is below
     // the pyramid threshold so no downscale layer fires; the close-pass
     // (try_harder = true → bitmap.close()) is what surfaces the finders.
     let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_rotated.jpg");
-    let expected = b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True";
-    for combo in ALL_COMBOS {
-        let (try_harder, _, _) = combo;
-        let result = decode_combo(&rgba, w, h, combo);
-        if try_harder {
-            let bytes = result.unwrap_or_else(|| {
-                panic!("qr_rotated.jpg expected to decode for combo={:?}", combo)
-            });
-            assert_eq!(
-                bytes.as_slice(),
-                expected.as_slice(),
-                "unexpected bytes for combo={:?}",
-                combo
-            );
-        } else {
-            assert!(
-                result.is_none(),
-                "qr_rotated.jpg expected to NOT decode without try_harder for combo={:?}",
-                combo
-            );
-        }
-    }
+    assert_requires_try_harder(
+        &rgba,
+        w,
+        h,
+        b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True",
+        "qr_rotated.jpg",
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -406,6 +415,65 @@ fn rotate_rgba_90_cw(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
     (out, h, w)
 }
 
+/// Rotate an RGBA buffer around its center by `angle_deg`, expanding the
+/// canvas to the bounding box of the rotated source and filling unmapped
+/// pixels with opaque white (the QR quiet-zone color). Uses nearest-neighbor
+/// sampling — the resulting staircase aliasing along finder-pattern edges
+/// is intentional: it degrades the original-resolution detector enough that
+/// the `try_harder` morphological close-pass is needed to recover.
+fn rotate_rgba_nearest(rgba: &[u8], w: u32, h: u32, angle_deg: f32) -> (Vec<u8>, u32, u32) {
+    let (w_us, h_us) = (w as usize, h as usize);
+    let theta = angle_deg.to_radians();
+    let (sin_t, cos_t) = (theta.sin(), theta.cos());
+    let cx = (w as f32) / 2.0;
+    let cy = (h as f32) / 2.0;
+
+    // Bounding box of the rotated source corners (relative to center).
+    let corners = [
+        (0.0 - cx, 0.0 - cy),
+        (w as f32 - cx, 0.0 - cy),
+        (0.0 - cx, h as f32 - cy),
+        (w as f32 - cx, h as f32 - cy),
+    ];
+    let (mut min_x, mut max_x, mut min_y, mut max_y) =
+        (f32::INFINITY, f32::NEG_INFINITY, f32::INFINITY, f32::NEG_INFINITY);
+    for (x, y) in corners {
+        let rx = x * cos_t - y * sin_t;
+        let ry = x * sin_t + y * cos_t;
+        min_x = min_x.min(rx);
+        max_x = max_x.max(rx);
+        min_y = min_y.min(ry);
+        max_y = max_y.max(ry);
+    }
+    let out_w = (max_x - min_x).ceil() as u32;
+    let out_h = (max_y - min_y).ceil() as u32;
+    let out_w_us = out_w as usize;
+    let out_h_us = out_h as usize;
+
+    let mut out = vec![255u8; out_w_us * out_h_us * 4];
+    for dy in 0..out_h_us {
+        for dx in 0..out_w_us {
+            // Inverse rotate (dst pixel center) back into source coords.
+            let xc = dx as f32 + 0.5 + min_x;
+            let yc = dy as f32 + 0.5 + min_y;
+            let sx = xc * cos_t + yc * sin_t + cx;
+            let sy = -xc * sin_t + yc * cos_t + cy;
+            if sx < 0.0 || sy < 0.0 {
+                continue;
+            }
+            let sxi = sx as usize;
+            let syi = sy as usize;
+            if sxi >= w_us || syi >= h_us {
+                continue;
+            }
+            let src = (syi * w_us + sxi) * 4;
+            let dst = (dy * out_w_us + dx) * 4;
+            out[dst..dst + 4].copy_from_slice(&rgba[src..src + 4]);
+        }
+    }
+    (out, out_w, out_h)
+}
+
 #[test]
 fn inverted_qr_sample_in_memory_requires_try_invert() {
     // In-memory parallel of `qr_sample_inverted_png_requires_try_invert`:
@@ -434,6 +502,56 @@ fn inverted_qr_sample_in_memory_requires_try_invert() {
                 combo
             );
         }
+    }
+}
+
+#[test]
+fn rotated_speckled_qr_sample_requires_try_harder() {
+    // In-memory analog of `qr_rotated_jpg_requires_try_harder` built from the
+    // clean 297×297 `qr_sample.png`: rotate 17° (nearest-neighbor staircase
+    // along finder edges) and sprinkle salt noise (white pixels inside dark
+    // regions). rxing's detector is rotation-invariant for clean fixtures
+    // (see `rotated_qr_sample_decodes_natively`), so rotation alone isn't
+    // enough — the salt is what defeats the original-resolution scan, and
+    // the `try_harder = true` morphological close-pass is what fills the
+    // 1-pixel holes and rescues detection.
+    //
+    // Pins the close-pass branch of `decode_inner` without depending on the
+    // JPG fixture (which conflates rotation, motion blur, JPEG noise, and
+    // low resolution into a single failure mode).
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
+    let (mut degraded, rw, rh) = rotate_rgba_nearest(&rgba, w, h, 17.0);
+    sprinkle_noise(&mut degraded, 0xC0FFEE, 20, 255);
+    assert_requires_try_harder(
+        &degraded,
+        rw,
+        rh,
+        QR_SAMPLE_TEXT,
+        "qr_sample.png rotated 17° + salt noise",
+    );
+}
+
+/// Sprinkle deterministic salt-and-pepper noise across an RGBA buffer using a
+/// tiny LCG so the test is reproducible without depending on `rand`. Every
+/// `stride`-th pixel is set to `value` (white = 255 punches holes in black
+/// regions; black = 0 punches dots in white quiet zones). Combined with a
+/// non-cardinal rotation this is enough to defeat the original-resolution
+/// finder-pattern scan, which is exactly what the `try_harder` close-pass is
+/// designed to recover.
+fn sprinkle_noise(rgba: &mut [u8], seed: u64, stride: usize, value: u8) {
+    let mut state = seed;
+    let mut i = 0;
+    while i < rgba.len() / 4 {
+        state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        let step = ((state >> 33) as usize % stride).max(1);
+        i += step;
+        if i >= rgba.len() / 4 {
+            break;
+        }
+        let p = i * 4;
+        rgba[p] = value;
+        rgba[p + 1] = value;
+        rgba[p + 2] = value;
     }
 }
 
