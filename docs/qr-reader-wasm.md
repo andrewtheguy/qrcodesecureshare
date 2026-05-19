@@ -77,12 +77,8 @@ collapse into `try_harder = true`. `maxNumberOfSymbols` is always 1.
 
 - `text`: rxing's `RXingResult::getText()`. Lossless UTF-8 for text-mode QRs;
   Latin-1-style passthrough for byte-mode QRs.
-- `bytes`: the concatenation of `BYTE_SEGMENTS` metadata if present (the
-  load-bearing path for byte-mode payloads — fountain frames go through here).
-  When rxing's C++-ported QR reader succeeds without exposing byte-segment
-  metadata, the wrapper returns raw decoded content bytes if they match the
-  decoded text as UTF-8 or Latin-1. It falls back to `text.as_bytes()` only when
-  raw bytes look like QR codewords rather than content bytes.
+- `bytes`: rxing's raw decoded content bytes, matching ZXing-C++'s
+  `Barcode::bytes()` contract. Fountain frames use this path.
 
 `DecodedQr` is a wasm-bindgen handle; consumers should call `free()` after
 copying fields out. The JS wrapper already does this — see below.

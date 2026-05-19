@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 
 use crate::common::Result;
-use crate::qrcode::QRCodeReader;
 use crate::qrcode::cpp_port::QrReader;
 use crate::{BarcodeFormat, Binarizer, BinaryBitmap, Exceptions, RXingResult, Reader};
 use crate::DecodeHints;
@@ -80,12 +79,7 @@ impl MultiFormatReader {
             for possible_format in self.possible_formats.iter() {
                 let res = match possible_format {
                     BarcodeFormat::QR_CODE => {
-                        let cpp = QrReader.decode_with_hints(image, &self.hints);
-                        if cpp.is_ok() {
-                            cpp
-                        } else {
-                            QRCodeReader.decode_with_hints(image, &self.hints)
-                        }
+                        QrReader.decode_with_hints(image, &self.hints)
                     }
                     BarcodeFormat::MICRO_QR_CODE
                     | BarcodeFormat::RECTANGULAR_MICRO_QR_CODE => {
@@ -99,9 +93,6 @@ impl MultiFormatReader {
             }
         } else {
             if let Ok(res) = QrReader.decode_with_hints(image, &self.hints) {
-                return Ok(res);
-            }
-            if let Ok(res) = QRCodeReader.decode_with_hints(image, &self.hints) {
                 return Ok(res);
             }
         }

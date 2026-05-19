@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use rxing::{
     common::{GlobalHistogramBinarizer, HybridBinarizer},
     BarcodeFormat, BinaryBitmap, DecodeHints, FilteredImageReader, Luma8LuminanceSource,
-    MultiFormatReader, RXingResultMetadataType, RXingResultMetadataValue, Reader,
+    MultiFormatReader, Reader,
 };
 use wasm_bindgen::prelude::*;
 
@@ -50,35 +50,6 @@ fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String>
         .collect())
 }
 
-fn text_matches_latin1_bytes(text: &str, bytes: &[u8]) -> bool {
-    text.chars().count() == bytes.len()
-        && text
-            .chars()
-            .zip(bytes)
-            .all(|(ch, byte)| ch as u32 == *byte as u32)
-}
-
-fn extract_bytes(text: &str, raw_bytes: &[u8], segments: Option<&Vec<Vec<u8>>>) -> Vec<u8> {
-    if let Some(segments) = segments {
-        let total: usize = segments.iter().map(|s| s.len()).sum();
-        if total > 0 {
-            let mut combined = Vec::with_capacity(total);
-            for seg in segments {
-                combined.extend_from_slice(seg);
-            }
-            return combined;
-        }
-    }
-
-    if !raw_bytes.is_empty()
-        && (raw_bytes == text.as_bytes() || text_matches_latin1_bytes(text, raw_bytes))
-    {
-        return raw_bytes.to_vec();
-    }
-
-    text.as_bytes().to_vec()
-}
-
 fn decode_inner(
     luma: Vec<u8>,
     width: u32,
@@ -114,17 +85,9 @@ fn decode_inner(
     };
 
     let result = result.ok()?;
-    let byte_segments = result
-        .getRXingResultMetadata()
-        .get(&RXingResultMetadataType::BYTE_SEGMENTS)
-        .and_then(|value| match value {
-            RXingResultMetadataValue::ByteSegments(segments) => Some(segments),
-            _ => None,
-        });
-    let bytes = extract_bytes(result.getText(), result.getRawBytes(), byte_segments);
     Some(DecodedQr {
         text: result.getText().to_string(),
-        bytes,
+        bytes: result.getRawBytes().to_vec(),
     })
 }
 
