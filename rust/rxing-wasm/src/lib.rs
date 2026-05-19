@@ -111,10 +111,9 @@ mod tests {
     use image::ImageReader;
     use std::path::PathBuf;
 
-    fn load_png_as_rgba(path: &str) -> (Vec<u8>, u32, u32) {
+    fn load_png_as_rgba(relative_path: &str) -> (Vec<u8>, u32, u32) {
         let mut full = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        full.push("../..");
-        full.push(path);
+        full.push(relative_path);
         let img = ImageReader::open(&full)
             .expect("open png")
             .decode()
@@ -125,12 +124,13 @@ mod tests {
     }
 
     #[test]
-    fn decodes_tmp_download_png() {
-        let (rgba, w, h) = load_png_as_rgba("tmp/download.png");
+    fn decodes_qr_sample_png() {
+        let (rgba, w, h) = load_png_as_rgba("tests/fixtures/qr_sample.png");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let result = decode_inner(luma, w, h, true, true, true);
-        let result = result.expect("expected a QR decode result from tmp/download.png");
-        assert!(!result.text.is_empty(), "text should be non-empty");
+        let result = decode_inner(luma, w, h, true, true, true)
+            .expect("expected a QR decode result from tests/fixtures/qr_sample.png");
+        assert_eq!(result.text, "jfghjghjghfkghjkghj");
+        assert_eq!(result.bytes.as_slice(), b"jfghjghjghfkghjkghj");
     }
 }
 
