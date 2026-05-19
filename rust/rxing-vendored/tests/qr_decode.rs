@@ -407,6 +407,37 @@ fn rotate_rgba_90_cw(rgba: &[u8], w: u32, h: u32) -> (Vec<u8>, u32, u32) {
 }
 
 #[test]
+fn inverted_qr_sample_in_memory_requires_try_invert() {
+    // In-memory parallel of `qr_sample_inverted_png_requires_try_invert`:
+    // pixel-inverts the baseline RGBA at test time instead of loading the
+    // pre-inverted PNG from disk. Catches regressions to the
+    // `decode_with_optional_invert` flip path that wouldn't surface if the
+    // fixture file is out of date / corrupted / missing.
+    let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
+    let inverted = invert_rgba(&rgba);
+
+    for combo in ALL_COMBOS {
+        let (_, try_invert, _) = combo;
+        let result = decode_combo(&inverted, w, h, combo);
+        if try_invert {
+            let bytes = result.unwrap_or_else(|| {
+                panic!(
+                    "in-memory inverted qr_sample expected to decode for combo={:?}",
+                    combo
+                )
+            });
+            assert_eq!(bytes.as_slice(), QR_SAMPLE_TEXT);
+        } else {
+            assert!(
+                result.is_none(),
+                "in-memory inverted qr_sample expected to NOT decode without try_invert for combo={:?}",
+                combo
+            );
+        }
+    }
+}
+
+#[test]
 fn rotated_qr_sample_decodes_natively() {
     // rxing's QR finder reorders the three concentric finder patterns into a
     // canonical (TL, TR, BL) tri-corner before sampling, so a clean QR decodes
@@ -431,10 +462,11 @@ fn probe_fixture_requirements() {
         ("qr_code_complex.png", b"https://qr-code-styling.com"),
         ("qr_sample_inverted.png", b"jfghjghjghfkghjkghj"),
         ("qr_sample_small_in_canvas.png", b"jfghjghjghfkghjkghj"),
-        // Real-life fixtures currently undecodable by the QR-only path —
-        // print decode label as well so regressions / improvements show.
-        ("qr_zoo.jpg", b""),
-        ("qr_rotated.jpg", b""),
+        ("qr_zoo.jpg", b"https://zoo.sandiegozoo.org/2024-sdmag-pandas"),
+        (
+            "qr_rotated.jpg",
+            b"https://nc.cesdk12.org/ncsd/PXP2_Login_Parent.aspx?regenerateSessionId=True",
+        ),
     ];
     for (name, expected) in fixtures {
         let path = format!("tests/fixtures/{name}");
