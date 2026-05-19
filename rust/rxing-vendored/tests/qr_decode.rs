@@ -492,17 +492,35 @@ fn rotated_and_inverted_qr_sample_requires_try_invert() {
     // Compose both transforms. Rotation alone is handled natively (see
     // `rotated_qr_sample_decodes_natively`) but the inversion still requires
     // `try_invert`. Pins that the manual BitMatrix flip in `decode_inner`
-    // composes correctly with a rotated source.
+    // composes correctly with a rotated source: every try_invert=true combo
+    // decodes, every try_invert=false combo (including try_harder=true, which
+    // could plausibly rescue via the close-pass / pyramid) misses.
     let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
     let (rotated, rw, rh) = rotate_rgba_90_cw(&rgba, w, h);
     let rotated_inverted = invert_rgba(&rotated);
 
-    assert!(
-        decode_combo(&rotated_inverted, rw, rh, (false, false, true)).is_none(),
-        "rotated-inverted fixture unexpectedly decoded without try_invert"
-    );
-
-    let bytes = decode_combo(&rotated_inverted, rw, rh, (false, true, true))
-        .expect("try_invert should rescue the rotated-inverted fixture");
-    assert_eq!(bytes.as_slice(), QR_SAMPLE_TEXT);
+    for combo in ALL_COMBOS {
+        let (_, try_invert, _) = combo;
+        let result = decode_combo(&rotated_inverted, rw, rh, combo);
+        if try_invert {
+            let bytes = result.unwrap_or_else(|| {
+                panic!(
+                    "rotated-inverted qr_sample expected to decode for combo={:?}",
+                    combo
+                )
+            });
+            assert_eq!(
+                bytes.as_slice(),
+                QR_SAMPLE_TEXT,
+                "unexpected bytes for combo={:?}",
+                combo
+            );
+        } else {
+            assert!(
+                result.is_none(),
+                "rotated-inverted qr_sample expected to NOT decode without try_invert for combo={:?}",
+                combo
+            );
+        }
+    }
 }
