@@ -13,13 +13,6 @@ export interface RxingReaderOptions {
    */
   tryInvert?: boolean
   /**
-   * Retry at 90°, 180°, 270° rotations if earlier passes yield no result.
-   * Mirrors zxing-wasm's option of the same name. The QR finder is itself
-   * rotation-invariant for upright codes; this covers cameras held
-   * sideways / upside-down.
-   */
-  tryRotate?: boolean
-  /**
    * When `true`, use rxing's adaptive `HybridBinarizer` (more accurate);
    * when `false`, the faster but less robust `GlobalHistogramBinarizer`.
    * Closest equivalent to zxing-wasm's `binarizer: "LocalAverage"` vs
@@ -68,7 +61,6 @@ export async function readQrCodesFromRgba(
   const {
     tryHarder = false,
     tryInvert = false,
-    tryRotate = true,
     useHybridBinarizer = true,
   } = options
 
@@ -80,7 +72,6 @@ export async function readQrCodesFromRgba(
     height,
     tryHarder,
     tryInvert,
-    tryRotate,
     useHybridBinarizer,
     MAX_NUMBER_OF_SYMBOLS
   ) as Uint8Array[]

@@ -167,11 +167,7 @@ export function FountainQRDataScanner({
     },
     scanInterval: 33, // ~30 fps
     preferLowRes: true, // Use lower resolution on mobile for better performance and battery life
-    // tryRotate disabled: this is the highest-fps consumer (30fps continuous
-    // data stream) and the sender produces upright QR frames, so the rotated
-    // retry would only ever execute the first orientation and add wasted
-    // luma-rotation allocations on the (already rare) miss path.
-    readerOptions: { tryHarder: false, useHybridBinarizer: false, tryRotate: false },
+    readerOptions: { tryHarder: false, useHybridBinarizer: false },
   })
 
   // Stop scanning when receiverMode changes away from 'data-scanning' or when success becomes true

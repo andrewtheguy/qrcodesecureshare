@@ -1,8 +1,7 @@
 use std::collections::HashSet;
 
 use rxing::{
-    BarcodeFormat, Binarizer, BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource,
-    RXingResult,
+    BarcodeFormat, Binarizer, BinaryBitmap, DecodeHints, Luma8LuminanceSource, RXingResult,
     common::{GlobalHistogramBinarizer, HybridBinarizer, Result as RxingResult},
     downscale_luma_buffer,
     qrcode::cpp_port::QrReader,
@@ -105,57 +104,12 @@ fn decode_one_layer(
     }
 }
 
-/// Run the (rotation × invert × close) inner loop for a single luma buffer.
-/// The buffer is taken by reference and cloned per pass (rotation needs a
-/// fresh `Luma8LuminanceSource`); cloning here is unavoidable since the
-/// caller may reuse `luma` for the next pyramid layer's downscale input.
-#[allow(clippy::too_many_arguments)]
-fn try_at_resolution(
-    luma: &[u8],
-    width: u32,
-    height: u32,
-    hints: &DecodeHints,
-    try_invert: bool,
-    try_rotate: bool,
-    use_hybrid_binarizer: bool,
-    max_number_of_symbols: u32,
-    close: bool,
-) -> Vec<Vec<u8>> {
-    let mut source = Luma8LuminanceSource::new(luma.to_vec(), width, height);
-    let rotations = if try_rotate { 4 } else { 1 };
-    for rot in 0..rotations {
-        let next_source = if rot + 1 < rotations {
-            source.rotate_counter_clockwise().ok()
-        } else {
-            None
-        };
-        let results = decode_one_layer(
-            source,
-            hints,
-            use_hybrid_binarizer,
-            max_number_of_symbols,
-            try_invert,
-            close,
-        );
-        if !results.is_empty() {
-            return results;
-        }
-        match next_source {
-            Some(s) => source = s,
-            None => break,
-        }
-    }
-    Vec::new()
-}
-
-#[allow(clippy::too_many_arguments)]
 fn read_inner(
     luma: Vec<u8>,
     width: u32,
     height: u32,
     try_harder: bool,
     try_invert: bool,
-    try_rotate: bool,
     use_hybrid_binarizer: bool,
     max_number_of_symbols: u32,
 ) -> Vec<Vec<u8>> {
@@ -173,31 +127,15 @@ fn read_inner(
     // no pyramid. The source is moved straight into the binarizer with
     // zero clones — matches zxing-wasm's tryHarder=false cost.
     if !try_harder {
-        let mut source = Luma8LuminanceSource::new(luma, width, height);
-        let rotations = if try_rotate { 4 } else { 1 };
-        for rot in 0..rotations {
-            let next_source = if rot + 1 < rotations {
-                source.rotate_counter_clockwise().ok()
-            } else {
-                None
-            };
-            let results = decode_one_layer(
-                source,
-                &hints,
-                use_hybrid_binarizer,
-                max_number_of_symbols,
-                try_invert,
-                false,
-            );
-            if !results.is_empty() {
-                return results;
-            }
-            match next_source {
-                Some(s) => source = s,
-                None => break,
-            }
-        }
-        return Vec::new();
+        let source = Luma8LuminanceSource::new(luma, width, height);
+        return decode_one_layer(
+            source,
+            &hints,
+            use_hybrid_binarizer,
+            max_number_of_symbols,
+            try_invert,
+            false,
+        );
     }
 
     // try_harder path: original resolution, then morphological close, then
@@ -210,15 +148,13 @@ fn read_inner(
     let mut cur_h = height;
     loop {
         for &close in &[false, true] {
-            let results = try_at_resolution(
-                &cur_luma,
-                cur_w,
-                cur_h,
+            let source = Luma8LuminanceSource::new(cur_luma.clone(), cur_w, cur_h);
+            let results = decode_one_layer(
+                source,
                 &hints,
-                try_invert,
-                try_rotate,
                 use_hybrid_binarizer,
                 max_number_of_symbols,
+                try_invert,
                 close,
             );
             if !results.is_empty() {
@@ -251,8 +187,6 @@ fn read_inner(
 ///   `tryHarder + tryDownscale + tryDenoise`.
 /// - `try_invert`: retry with the BitMatrix flipped if the first pass yields
 ///   no results (covers white-on-dark / inverted-reflectance codes).
-/// - `try_rotate`: retry at 90°, 180°, 270° rotations if earlier passes yield
-///   no results (covers cameras held sideways / upside-down).
 /// - `use_hybrid_binarizer`: when `true`, use rxing's adaptive
 ///   `HybridBinarizer`; when `false`, the faster but less robust
 ///   `GlobalHistogramBinarizer`.
@@ -261,24 +195,29 @@ fn read_inner(
 ///   lets the multi-decode loop short-circuit on the first valid result and
 ///   skips Micro QR / rMQR fallbacks once a QR is found.
 ///
-/// Retry order when no results: original (× rotations × invert) →
-/// (try_harder: original-closed × rotations × invert → downscale 1× → 1×
-/// closed → downscale 2× → 2× closed → …). The first pass that produces
-/// results wins; remaining passes are skipped.
+/// Retry order when no results: original × invert →
+/// (try_harder: original-closed × invert → downscale 1× → 1× closed →
+/// downscale 2× → 2× closed → …). The first pass that produces results
+/// wins; remaining passes are skipped.
+///
+/// Rotation is handled natively by rxing's finder-pattern canonical
+/// reordering (`detector.rs:139-263`), so no explicit rotation-retry flag
+/// is exposed — empirical testing showed the (now-removed) `try_rotate`
+/// loop produced zero additional decodes on every fixture in the test
+/// suite. Cameras held sideways / upside-down decode identically to
+/// upright captures.
 ///
 /// Returns a JS `Array` of `Uint8Array`, one per detected symbol (empty when
 /// none are found). Returns `Err` only for invalid input (e.g. mismatched
 /// buffer length). Callers that need a string must decode the bytes
 /// themselves (e.g. `new TextDecoder().decode(bytes)`).
 #[wasm_bindgen]
-#[allow(clippy::too_many_arguments)]
 pub fn read_qr_codes_rgba(
     rgba: &[u8],
     width: u32,
     height: u32,
     try_harder: bool,
     try_invert: bool,
-    try_rotate: bool,
     use_hybrid_binarizer: bool,
     max_number_of_symbols: u32,
 ) -> Result<js_sys::Array, JsValue> {
@@ -289,7 +228,6 @@ pub fn read_qr_codes_rgba(
         height,
         try_harder,
         try_invert,
-        try_rotate,
         use_hybrid_binarizer,
         max_number_of_symbols,
     );
