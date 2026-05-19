@@ -65,7 +65,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
 
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
-        if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
+        if (e.data.data.length > 0) {
           const scannedData = e.data.data[0] as Uint8Array
           const now = Date.now()
           if (

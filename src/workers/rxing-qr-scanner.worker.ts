@@ -8,7 +8,7 @@ interface ScanMessage {
 
 interface ScanResult {
   type: 'result'
-  data: Uint8Array[] | null
+  data: Uint8Array[]
   error?: string
 }
 
@@ -45,16 +45,14 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
         ...options,
       }
 
-      const results = await readQrCodesFromImageData(imageData, readerOptions)
-
-      const data: Uint8Array[] | null = results.length > 0 ? results : null
+      const data = await readQrCodesFromImageData(imageData, readerOptions)
 
       const message: ScanResult = { type: 'result', data }
       self.postMessage(message)
     } catch (error) {
       const message: ScanResult = {
         type: 'result',
-        data: null,
+        data: [],
         error: error instanceof Error ? error.message : 'Unknown error',
       }
       self.postMessage(message)

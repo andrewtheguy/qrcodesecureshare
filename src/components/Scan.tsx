@@ -206,7 +206,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
       const results = await decodeQRFromImage(file)
 
-      if (!results || results.length === 0) {
+      if (results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
         return
       }
