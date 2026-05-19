@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
 use rxing::{
-    BarcodeFormat, BinaryBitmap, DecodeHints, Luma8LuminanceSource, MultiFormatReader, Reader,
-    RXingResultMetadataType, RXingResultMetadataValue,
+    BarcodeFormat, BinaryBitmap, DecodeHints, FilteredImageReader, Luma8LuminanceSource,
+    MultiFormatReader, RXingResultMetadataType, RXingResultMetadataValue, Reader,
     common::{GlobalHistogramBinarizer, HybridBinarizer},
 };
 use wasm_bindgen::prelude::*;
@@ -80,14 +80,22 @@ fn decode_inner(
     };
 
     let source = Luma8LuminanceSource::new(luma, width, height);
-    let mut reader = MultiFormatReader::default();
 
-    let result = if use_hybrid_binarizer {
+    let result = if try_harder {
+        // FilteredImageReader walks a downscale pyramid + morphological-close pass; this is
+        // rxing's tough-photo path and the closest match to zxing-wasm's `tryDownscale`.
+        let mut reader = FilteredImageReader::new(MultiFormatReader::default());
         let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
         reader.decode_with_hints(&mut bitmap, &mut hints)
     } else {
-        let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
-        reader.decode_with_hints(&mut bitmap, &mut hints)
+        let mut reader = MultiFormatReader::default();
+        if use_hybrid_binarizer {
+            let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
+            reader.decode_with_hints(&mut bitmap, &mut hints)
+        } else {
+            let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
+            reader.decode_with_hints(&mut bitmap, &mut hints)
+        }
     };
 
     let result = result.ok()?;
@@ -111,13 +119,15 @@ mod tests {
     use image::ImageReader;
     use std::path::PathBuf;
 
-    fn load_png_as_rgba(relative_path: &str) -> (Vec<u8>, u32, u32) {
+    fn load_image_as_rgba(relative_path: &str) -> (Vec<u8>, u32, u32) {
         let mut full = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         full.push(relative_path);
         let img = ImageReader::open(&full)
-            .expect("open png")
+            .expect("open image")
+            .with_guessed_format()
+            .expect("guess image format")
             .decode()
-            .expect("decode png")
+            .expect("decode image")
             .into_rgba8();
         let (w, h) = (img.width(), img.height());
         (img.into_raw(), w, h)
@@ -125,7 +135,7 @@ mod tests {
 
     #[test]
     fn decodes_qr_sample_png() {
-        let (rgba, w, h) = load_png_as_rgba("tests/fixtures/qr_sample.png");
+        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
         let result = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_sample.png");
@@ -135,11 +145,20 @@ mod tests {
 
     #[test]
     fn decodes_qr_code_complex_png() {
-        let (rgba, w, h) = load_png_as_rgba("tests/fixtures/qr_code_complex.png");
+        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_code_complex.png");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
         let result = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_code_complex.png");
         assert_eq!(result.text, "https://qr-code-styling.com");
+    }
+
+    #[test]
+    fn decodes_qr_zoo_jpg() {
+        let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_zoo.jpg");
+        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
+        let result = decode_inner(luma, w, h, true, true, true)
+            .expect("expected a QR decode result from tests/fixtures/qr_zoo.jpg");
+        assert_eq!(result.text, "https://zoo.sandiegozoo.org/2024-sdmag-pandas");
     }
 }
 
