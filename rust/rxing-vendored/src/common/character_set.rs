@@ -17,7 +17,6 @@
 use crate::Exceptions;
 use crate::common::Result;
 
-
 /**
  * Encapsulates a Character Set ECI, according to "Extended Channel Interpretations" 5.3.1.1
  * of ISO 18004.
@@ -380,4 +379,3 @@ impl CharacterSet {
         }
     }
 }
-

@@ -1,8 +1,3 @@
-#[cfg(test)]
-mod GenericGFPolyTestCase;
-#[cfg(test)]
-pub(crate) mod ReedSolomonTestCase;
-
 /*
  * Copyright 2007 ZXing authors
  *

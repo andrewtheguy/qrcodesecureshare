@@ -82,8 +82,7 @@ impl MultiUseMultiFormatReader {
                     BarcodeFormat::QR_CODE => {
                         self.cpp_qrcode_reader.decode_with_hints(image, &self.hints)
                     }
-                    BarcodeFormat::MICRO_QR_CODE
-                    | BarcodeFormat::RECTANGULAR_MICRO_QR_CODE => {
+                    BarcodeFormat::MICRO_QR_CODE | BarcodeFormat::RECTANGULAR_MICRO_QR_CODE => {
                         self.cpp_qrcode_reader.decode_with_hints(image, &self.hints)
                     }
                     _ => Err(Exceptions::UNSUPPORTED_OPERATION),
