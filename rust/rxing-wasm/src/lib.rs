@@ -39,7 +39,7 @@ fn decode_inner(
     try_invert: bool,
     use_hybrid_binarizer: bool,
 ) -> Option<Vec<u8>> {
-    let mut hints = DecodeHints {
+    let hints = DecodeHints {
         PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
         TryHarder: Some(try_harder),
         AlsoInverted: Some(try_invert),
@@ -53,15 +53,15 @@ fn decode_inner(
         // rxing's tough-photo path and the closest match to zxing-wasm's `tryDownscale`.
         let mut reader = FilteredImageReader::new(MultiFormatReader::default());
         let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-        reader.decode_with_hints(&mut bitmap, &mut hints)
+        reader.decode_with_hints(&mut bitmap, &hints)
     } else {
         let mut reader = MultiFormatReader::default();
         if use_hybrid_binarizer {
             let mut bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
-            reader.decode_with_hints(&mut bitmap, &mut hints)
+            reader.decode_with_hints(&mut bitmap, &hints)
         } else {
             let mut bitmap = BinaryBitmap::new(GlobalHistogramBinarizer::new(source));
-            reader.decode_with_hints(&mut bitmap, &mut hints)
+            reader.decode_with_hints(&mut bitmap, &hints)
         }
     };
 

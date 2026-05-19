@@ -1,4 +1,4 @@
 - no backward compatibility at all for any changes
 - run npm run lint and npx tsc -b after making changes to ensure code quality
-- after rust codes changes on rust/, run cargo clippy and cargo test to ensure code quality and correctness
+- after rust codes changes on rust/**, run cargo clippy and cargo test to ensure code quality and correctness
 - no cargo fmt
