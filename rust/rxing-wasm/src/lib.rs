@@ -132,6 +132,15 @@ mod tests {
         assert_eq!(result.text, "jfghjghjghfkghjkghj");
         assert_eq!(result.bytes.as_slice(), b"jfghjghjghfkghjkghj");
     }
+
+    #[test]
+    fn decodes_qr_code_complex_png() {
+        let (rgba, w, h) = load_png_as_rgba("tests/fixtures/qr_code_complex.png");
+        let luma = rgba_to_luma(&rgba, w, h).expect("luma");
+        let result = decode_inner(luma, w, h, true, true, true)
+            .expect("expected a QR decode result from tests/fixtures/qr_code_complex.png");
+        assert_eq!(result.text, "https://qr-code-styling.com");
+    }
 }
 
 /// Decode a single QR code from raw RGBA pixels.
