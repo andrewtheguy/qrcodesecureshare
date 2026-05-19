@@ -1,0 +1,23 @@
+[package]
+name = "rxing"
+version = "0.9.0"
+description = "Trimmed QR-only fork of rxing, vendored for rust/rxing-wasm."
+license = "Apache-2.0"
+edition = "2024"
+rust-version = "1.85"
+
+[dependencies]
+regex = "1.12"
+once_cell = "1.21"
+encoding_rs = "0.8"
+codepage-437 = "0.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+multimap = "0.10"
+num = "0.4"
+thiserror = "2.0"
+unicode-segmentation = "1.12"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
