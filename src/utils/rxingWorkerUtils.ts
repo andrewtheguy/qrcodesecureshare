@@ -1,5 +1,5 @@
-import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
-import type { ReaderOptions } from 'zxing-wasm/reader'
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
+import type { RxingReaderOptions } from '@/utils/rxingWasm'
 
 interface ScanResult {
   type: 'result'
@@ -8,32 +8,24 @@ interface ScanResult {
 }
 
 // Default maximized detection options for general QR code scanning
-const MAXIMIZED_DETECTION_OPTIONS: Partial<ReaderOptions> = {
-  formats: ['QRCode'],
-  tryHarder: true, // Spend more time finding barcodes
-  tryRotate: true, // Check rotated versions
-  tryInvert: true, // Check inverted versions (important for color/contrast variations)
-  tryDownscale: true, // Try downscaled versions for distant QR codes
-  tryDenoise: true, // Experimental: try denoising for noisy images
-  binarizer: 'LocalAverage', // Use adaptive thresholding for color variations
-  maxNumberOfSymbols: 1, // Only return first QR code found
+const MAXIMIZED_DETECTION_OPTIONS: RxingReaderOptions = {
+  tryHarder: true,
+  tryInvert: true,
+  useHybridBinarizer: true,
 }
 
 /**
- * Decode QR codes from an image file using web worker
- * @param file The image file to decode
- * @param readerOptions Optional custom reader options for detection tuning
- * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
+ * Decode QR codes from an image file using a web worker.
  */
 export function decodeQRFromImage(
   file: File,
-  readerOptions?: Partial<ReaderOptions>,
+  readerOptions?: RxingReaderOptions,
   binary = false
 ): Promise<(string | Uint8Array)[] | null> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
-    reader.onload = async (e) => {
+    reader.onload = (e) => {
       try {
         const imageUrl = e.target?.result as string
         const img = new Image()
@@ -52,8 +44,7 @@ export function decodeQRFromImage(
           ctx.drawImage(img, 0, 0)
           const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-          // Create worker for this decode operation
-          const worker = new ZXingWorker()
+          const worker = new RxingWorker()
 
           worker.onmessage = (event: MessageEvent<ScanResult>) => {
             if (event.data.type === 'result') {
@@ -77,8 +68,6 @@ export function decodeQRFromImage(
             reject(err)
           }
 
-          // Send to worker for decoding using transferable object for performance
-          // The ArrayBuffer will be transferred (not copied) to the worker
           worker.postMessage(
             {
               type: 'scan',
@@ -109,18 +98,15 @@ export function decodeQRFromImage(
 }
 
 /**
- * Decode QR codes from ImageData using web worker
- * @param imageData The ImageData to decode
- * @param readerOptions Optional custom reader options for detection tuning
- * @returns Promise<string[] | null> Array of decoded QR code data or null if no QR codes found
+ * Decode QR codes from ImageData using a web worker.
  */
 export function decodeQRFromImageData(
   imageData: ImageData,
-  readerOptions?: Partial<ReaderOptions>,
+  readerOptions?: RxingReaderOptions,
   binary = false
 ): Promise<(string | Uint8Array)[] | null> {
   return new Promise((resolve, reject) => {
-    const worker = new ZXingWorker()
+    const worker = new RxingWorker()
 
     worker.onmessage = (event: MessageEvent<ScanResult>) => {
       if (event.data.type === 'result') {
@@ -144,8 +130,6 @@ export function decodeQRFromImageData(
       reject(err)
     }
 
-    // Send to worker for decoding using transferable object for performance
-    // The ArrayBuffer will be transferred (not copied) to the worker
     worker.postMessage(
       {
         type: 'scan',

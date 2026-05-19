@@ -15,7 +15,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 
 interface FountainQRFeedbackDisplayProps {
@@ -281,7 +281,7 @@ export function FountainQRFeedbackDisplay({
   }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
-  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useZXingQRScanner({
+  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useRxingQRScanner({
     onScan: (data) => handleSenderFeedbackScan(data[0]),
     isScanning: ackScannerIsScanning,
     onError: (errorMessage) => {

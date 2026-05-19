@@ -3,7 +3,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Progress } from '@/components/ui/progress'
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
 import { isTextFountainFrame } from '@/utils/textFountainProtocol'
 import TextFountainDecoderWorker from '@/workers/textFountainDecoder.worker?worker'
 
@@ -193,7 +193,7 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
     sendFrameToWorker(frame)
   }, [sendFrameToWorker])
 
-  const { videoRef, canvasRef, availableCameras } = useZXingQRScanner({
+  const { videoRef, canvasRef, availableCameras } = useRxingQRScanner({
     onScan: handleScan,
     onError: (message) => {
       setCameraError(message)

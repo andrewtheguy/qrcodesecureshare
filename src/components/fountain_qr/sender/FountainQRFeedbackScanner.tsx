@@ -15,7 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { FountainEncoder } from '@/utils/fountainCodeWasm';
 import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
 import { generateNonDataQR } from '@/utils/qrUtils';
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner';
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner';
 
 interface ProcessedFeedbackData {
   sequence: number;
@@ -173,7 +173,7 @@ export const FountainQRFeedbackScanner: React.FC<FountainQRFeedbackScannerProps>
   }, [sessionId, lastProcessedSequence, senderFeedbackSequence, encoder, onFeedbackProcessed, onModeChange, onError, generateSenderFeedbackQR, isProcessing]);
 
   // Initialize scanner hook after handleFeedbackScan is defined
-  const { videoRef, canvasRef } = useZXingQRScanner({
+  const { videoRef, canvasRef } = useRxingQRScanner({
     onScan: (data) => {
       if (Array.isArray(data) && data.length > 0) {
         handleFeedbackScan(data[0]);

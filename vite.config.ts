@@ -99,7 +99,7 @@ export default defineConfig({
       workbox: {
         // Cache all static assets including workers and WASM
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,wasm}'],
-        // Increase max file size for WASM files (zxing-wasm can be large)
+        // Increase max file size cap for cached WASM modules
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB
       },
       manifest: {

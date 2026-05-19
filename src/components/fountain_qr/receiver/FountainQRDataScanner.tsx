@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
 
 // Grid layout constants
 const GRID_COLUMNS = 20
@@ -155,10 +155,9 @@ export function FountainQRDataScanner({
     onScanError(errorMessage)
   }, [onScanError])
 
-  // Continuous data scanning is the most battery-critical operation
-  // Use 30 fps (33ms interval) for faster QR code decoding with zxing-wasm binary mode
-  // Use low-res mode on mobile for better performance
-  const { videoRef, canvasRef } = useZXingQRScanner({
+  // Continuous data scanning is the most battery-critical operation.
+  // Use 30 fps (33ms interval) and low-res mode on mobile for better performance.
+  const { videoRef, canvasRef } = useRxingQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback && !success,
     onError: handleScanError,
