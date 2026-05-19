@@ -22,76 +22,69 @@ export function decodeQRFromImage(
   readerOptions?: RxingReaderOptions
 ): Promise<Uint8Array[]> {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader()
+    const imageUrl = URL.createObjectURL(file)
+    const img = new Image()
 
-    reader.onload = (e) => {
+    img.onload = () => {
       try {
-        const imageUrl = e.target?.result as string
-        const img = new Image()
+        const canvas = document.createElement('canvas')
+        canvas.width = img.width
+        canvas.height = img.height
 
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          canvas.width = img.width
-          canvas.height = img.height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Failed to get canvas context'))
+          return
+        }
 
-          const ctx = canvas.getContext('2d')
-          if (!ctx) {
-            reject(new Error('Failed to get canvas context'))
-            return
-          }
+        ctx.drawImage(img, 0, 0)
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-          ctx.drawImage(img, 0, 0)
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const worker = new RxingWorker()
 
-          const worker = new RxingWorker()
-
-          worker.onmessage = (event: MessageEvent<ScanResult>) => {
-            if (event.data.type === 'result') {
-              worker.terminate()
-              worker.onmessage = null
-
-              if (event.data.error) {
-                reject(new Error(event.data.error))
-              } else {
-                resolve(event.data.data)
-              }
-            } else {
-              worker.terminate()
-              worker.onmessage = null
-              reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
-            }
-          }
-
-          worker.onerror = (err) => {
+        worker.onmessage = (event: MessageEvent<ScanResult>) => {
+          if (event.data.type === 'result') {
             worker.terminate()
-            reject(err)
+            worker.onmessage = null
+
+            if (event.data.error) {
+              reject(new Error(event.data.error))
+            } else {
+              resolve(event.data.data)
+            }
+          } else {
+            worker.terminate()
+            worker.onmessage = null
+            reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
           }
-
-          worker.postMessage(
-            {
-              type: 'scan',
-              imageData,
-              options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
-            },
-            [imageData.data.buffer]
-          )
         }
 
-        img.onerror = () => {
-          reject(new Error('Failed to load image'))
+        worker.onerror = (err) => {
+          worker.terminate()
+          reject(err)
         }
 
-        img.src = imageUrl
+        worker.postMessage(
+          {
+            type: 'scan',
+            imageData,
+            options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
+          },
+          [imageData.data.buffer]
+        )
       } catch (err) {
         reject(err)
+      } finally {
+        URL.revokeObjectURL(imageUrl)
       }
     }
 
-    reader.onerror = () => {
-      reject(new Error('Failed to read file'))
+    img.onerror = () => {
+      URL.revokeObjectURL(imageUrl)
+      reject(new Error('Failed to load image'))
     }
 
-    reader.readAsDataURL(file)
+    img.src = imageUrl
   })
 }
 

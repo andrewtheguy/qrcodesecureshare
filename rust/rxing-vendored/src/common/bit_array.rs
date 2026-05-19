@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import java.util.Arrays;
-
 use std::{cmp, fmt};
 
 use num::traits::ops::overflowing::OverflowingSub;
@@ -29,7 +25,6 @@ type BaseType = super::BitFieldBaseType;
 const BASE_BITS: usize = super::BIT_FIELD_BASE_BITS;
 const SHIFT_BITS: usize = super::BIT_FIELD_SHIFT_BITS;
 
-// replace your f32 LOAD_FACTOR with two integers:
 const LF_NUM: usize = 3; // numerator of load‐factor
 const LF_DEN: usize = 4; // denominator
 
@@ -104,9 +99,6 @@ impl BitArray {
 
         // 3) grow if necessary
         if self.bits.len() < array_desired_length {
-            // either of these work; `resize` is a bit more direct:
-            // let additional = array_desired_length - self.bits.len();
-            // self.bits.extend(std::iter::repeat(0).take(additional));
             self.bits.resize(array_desired_length, 0);
         }
     }
@@ -144,7 +136,6 @@ impl BitArray {
      */
     pub fn unset(&mut self, i: usize) {
         self.reversed = None;
-        // self.bits[i / BASE_BITS] |= 0 << (i & SHIFT_BITS);
         self.bits[i / BASE_BITS] &= !(1 << (i & SHIFT_BITS));
     }
 
@@ -243,7 +234,6 @@ impl BitArray {
         let firstInt = start / BASE_BITS;
         let lastInt = end / BASE_BITS;
         for i in firstInt..=lastInt {
-            //for (int i = firstInt; i <= lastInt; i++) {
             let firstBit = if i > firstInt { 0 } else { start & SHIFT_BITS };
             let lastBit = if i < lastInt {
                 SHIFT_BITS
@@ -292,7 +282,6 @@ impl BitArray {
         let firstInt = start / BASE_BITS;
         let lastInt = end / BASE_BITS;
         for i in firstInt..=lastInt {
-            //for (int i = firstInt; i <= lastInt; i++) {
             let firstBit = if i > firstInt { 0 } else { start & SHIFT_BITS };
             let lastBit = if i < lastInt {
                 SHIFT_BITS
@@ -301,7 +290,6 @@ impl BitArray {
             };
             // Ones from firstBit to lastBit, inclusive
             let (mask, _): (BaseType, _) = (2 << lastBit).overflowing_sub(&(1 << firstBit));
-            // let mask: u128 = (2 << lastBit) - (1 << firstBit);
 
             // Return false if we're looking for 1s and the masked bits[i] isn't all 1s (that is,
             // equals the mask, or we're looking for 0s and the masked portion is not all 0s
@@ -373,7 +361,6 @@ impl BitArray {
             return Err(Exceptions::illegal_argument_with("Sizes don't match"));
         }
         for (lhs, rhs) in self.bits.iter_mut().zip(other.bits.iter()) {
-            //for (int i = 0; i < bits.length; i++) {
             // The last int could be incomplete (i.e. not have 32 bits in
             // it) but there is no problem since 0 XOR 0 == 0.
             *lhs ^= rhs;
@@ -392,10 +379,8 @@ impl BitArray {
     pub fn toBytes(&self, bitOffset: usize, array: &mut [u8], offset: usize, numBytes: usize) {
         let mut bitOffset = bitOffset;
         for i in 0..numBytes {
-            //for (int i = 0; i < numBytes; i++) {
             let mut the_byte = 0;
             for j in 0..8 {
-                //for (int j = 0; j < 8; j++) {
                 if self.get(bitOffset) {
                     the_byte |= 1 << (7 - j);
                 }
