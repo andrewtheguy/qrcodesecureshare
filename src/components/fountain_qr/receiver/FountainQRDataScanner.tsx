@@ -157,6 +157,8 @@ export function FountainQRDataScanner({
 
   // Continuous data scanning is the most battery-critical operation.
   // Use 30 fps (33ms interval) and low-res mode on mobile for better performance.
+  // GlobalHistogramBinarizer is faster than HybridBinarizer and works well on clean,
+  // sender-rendered fountain QR codes — the fountain protocol absorbs the occasional miss.
   const { videoRef, canvasRef } = useRxingQRScanner({
     onScan: handleScan,
     isScanning: receiverMode === 'data-scanning' && isScanning && !isAwaitingFeedback && !success,
@@ -167,7 +169,8 @@ export function FountainQRDataScanner({
     },
     scanInterval: 33, // ~30 fps
     binary: true, // Return Uint8Array for fountain binary data
-    preferLowRes: true // Use lower resolution on mobile for better performance and battery life
+    preferLowRes: true, // Use lower resolution on mobile for better performance and battery life
+    readerOptions: { tryHarder: false, useHybridBinarizer: false },
   })
 
   // Stop scanning when receiverMode changes away from 'data-scanning' or when success becomes true
