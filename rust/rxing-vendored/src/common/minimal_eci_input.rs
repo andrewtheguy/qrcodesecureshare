@@ -327,8 +327,8 @@ impl MinimalECIInput {
         }
         let mut minimalJ: i32 = -1;
         let mut minimalSize: i32 = i32::MAX;
-        for j in 0..encoderSet.len() {
-            if let Some(edge) = &edges[inputLength][j] {
+        for (j, slot) in edges[inputLength].iter().enumerate().take(encoderSet.len()) {
+            if let Some(edge) = slot {
                 if (edge.cachedTotalSize as i32) < minimalSize {
                     minimalSize = edge.cachedTotalSize as i32;
                     minimalJ = j as i32;

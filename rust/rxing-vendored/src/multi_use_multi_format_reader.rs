@@ -91,10 +91,8 @@ impl MultiUseMultiFormatReader {
                     return res;
                 }
             }
-        } else {
-            if let Ok(res) = self.cpp_qrcode_reader.decode_with_hints(image, &self.hints) {
-                return Ok(res);
-            }
+        } else if let Ok(res) = self.cpp_qrcode_reader.decode_with_hints(image, &self.hints) {
+            return Ok(res);
         }
 
         Err(Exceptions::NOT_FOUND)

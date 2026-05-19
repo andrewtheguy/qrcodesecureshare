@@ -88,10 +88,8 @@ impl MultiFormatReader {
                     return res;
                 }
             }
-        } else {
-            if let Ok(res) = QrReader.decode_with_hints(image, &self.hints) {
-                return Ok(res);
-            }
+        } else if let Ok(res) = QrReader.decode_with_hints(image, &self.hints) {
+            return Ok(res);
         }
 
         Err(Exceptions::NOT_FOUND)
