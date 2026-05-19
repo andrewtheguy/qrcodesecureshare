@@ -12,7 +12,7 @@ impl<const PATTERN_SIZE: usize> Pattern<PATTERN_SIZE> {
     ) -> Option<f32> {
         let total: f32 = reference.0.iter().sum::<usize>() as f32;
         let pattern_length: usize = self.0.iter().sum::<usize>();
-        if total < pattern_length as f32 {
+        if pattern_length == 0 || total < pattern_length as f32 {
             // If we don't even have one pixel per unit of bar width, assume this is too small
             // to reliably match, so fail:
             return None;

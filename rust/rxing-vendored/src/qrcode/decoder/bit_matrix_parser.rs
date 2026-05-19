@@ -41,7 +41,7 @@ impl BitMatrixParser {
         let dimension = bit_matrix.getHeight();
         if dimension < 21 || (dimension & 0x03) != 1 {
             Err(Exceptions::format_with(format!(
-                "{dimension} < 21 || ({dimension} % 0x03) != 1"
+                "{dimension} < 21 || ({dimension} & 0x03) != 1"
             )))
         } else {
             Ok(Self {
@@ -134,7 +134,7 @@ impl BitMatrixParser {
         // Hmm, failed. Try bottom left: 6 wide by 3 tall
         versionBits = 0;
         for i in (0..=5).rev() {
-            for j in (ijMin..(dimension - 5)).rev() {
+            for j in (ijMin..(dimension - 8)).rev() {
                 versionBits = self.copyBit(i, j, versionBits);
             }
         }

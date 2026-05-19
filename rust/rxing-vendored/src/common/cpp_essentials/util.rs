@@ -71,7 +71,7 @@ pub fn ToString<T: Into<usize>>(val: T, len: usize) -> Result<String> {
 }
 
 pub fn ToInt(a: &[u32]) -> Option<u32> {
-    if a.iter().sum::<u32>() <= 32 {
+    if a.iter().sum::<u32>() > 32 {
         return None;
     }
     // assert(Reduce(a) <= 32);

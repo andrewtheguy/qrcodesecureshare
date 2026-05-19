@@ -251,7 +251,12 @@ impl BitArray {
                 end & SHIFT_BITS
             };
             // Ones from firstBit to lastBit, inclusive
-            let mask: u64 = (2 << lastBit) - (1 << firstBit);
+            let high = 1_u128
+                .checked_shl(lastBit as u32 + 1)
+                .map(|v| v - 1)
+                .unwrap_or(u128::MAX);
+            let low = (1_u128 << firstBit) - 1;
+            let mask = high - low;
             self.bits[i] |= mask as BaseType;
         }
         Ok(())

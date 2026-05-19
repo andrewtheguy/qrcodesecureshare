@@ -4,6 +4,8 @@ use crate::{Exceptions, common::ECIStringBuilder};
 
 use super::StructuredAppendInfo;
 
+const SYMBOLOGY_MODIFIER_MODEL_1: u8 = b'0';
+
 #[derive(PartialEq, Eq, Debug, Clone)]
 pub struct DecoderResult<T>
 where
@@ -159,7 +161,7 @@ where
 
     pub fn withIsModel1(mut self, is_model_1: bool) -> DecoderResult<T> {
         if is_model_1 {
-            self.content.symbology.modifier = 48
+            self.content.symbology.modifier = SYMBOLOGY_MODIFIER_MODEL_1
         }
         self
     }

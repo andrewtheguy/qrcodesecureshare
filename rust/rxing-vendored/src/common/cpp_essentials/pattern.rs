@@ -229,7 +229,8 @@ impl<'a> PatternView<'a> {
         if acceptIfAtFirstBar.unwrap_or(false) && self.isAtFirstBar() {
             return true;
         }
-        match self.data.0.get(self.count) {
+        let prev_idx = (self.start + self.current).checked_sub(1);
+        match prev_idx.and_then(|i| self.data.0.get(i)) {
             Some(v) => {
                 Into::<f32>::into(*v) >= Into::<f32>::into(self.sum(None)) * scale
             }
@@ -241,7 +242,7 @@ impl<'a> PatternView<'a> {
         if acceptIfAtLastBar.unwrap_or(true) && self.isAtLastBar() {
             return true;
         }
-        match self.data.0.get(self.count) {
+        match self.data.0.get(self.start + self.current + self.count) {
             Some(v) => {
                 Into::<f32>::into(*v) >= Into::<f32>::into(self.sum(None)) * scale
             }
@@ -314,14 +315,7 @@ impl std::ops::Index<isize> for PatternView<'_> {
             return &self.data[index.unsigned_abs()];
         }
 
-        if index >= self.data.0.len() as isize {
-            panic!("array index out of bounds")
-        }
-        if index >= 0 {
-            let fetch_spot = ((self.start + self.current) as isize + index) as usize;
-            return &self.data.0[fetch_spot];
-        }
-        if index.abs() > self.start as isize {
+        if self.try_get_index(index).is_none() {
             panic!("array index out of bounds")
         }
         let fetch_spot = ((self.start + self.current) as isize + index) as usize;

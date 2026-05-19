@@ -345,7 +345,7 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
     let max_by_pred = |a: &&Point, b: &&Point| {
         let da = Point::distance(**a, center);
         let db = Point::distance(**b, center);
-        da.partial_cmp(&db).unwrap()
+        da.total_cmp(&db)
     };
 
     let max = points.iter().max_by(max_by_pred)?;
@@ -367,7 +367,7 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
     let diagonal_max_by_pred = |p1: &Point, p2: &Point| {
         let d1 = l.distance_single(*p1);
         let d2 = l.distance_single(*p2);
-        d1.partial_cmp(&d2).unwrap()
+        d1.total_cmp(&d2)
     };
     corners[1] = points[(points.len() / 8)..=(points.len() * 3 / 8)]
         .iter()

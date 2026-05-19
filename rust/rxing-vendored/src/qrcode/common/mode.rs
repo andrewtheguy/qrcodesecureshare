@@ -219,11 +219,12 @@ impl Mode {
                 2, 3, 4, 5, 5, 3, 4, 5, 5, 6, 2, 4, 5, 5, 6, 6, 3, 5, 5, 6, 6, 7, 5, 5, 6, 6, 7, 5,
                 6, 6, 6, 7,
             ];
+            let idx = number.saturating_sub(1);
             match self {
-                Mode::NUMERIC => return NUMERIC[number - 1],
-                Mode::ALPHANUMERIC => return ALPHANUM[number - 1],
-                Mode::BYTE => return BYTE[number - 1],
-                Mode::KANJI => return KANJI[number - 1],
+                Mode::NUMERIC => return NUMERIC.get(idx).copied().unwrap_or(0),
+                Mode::ALPHANUMERIC => return ALPHANUM.get(idx).copied().unwrap_or(0),
+                Mode::BYTE => return BYTE.get(idx).copied().unwrap_or(0),
+                Mode::KANJI => return KANJI.get(idx).copied().unwrap_or(0),
                 _ => return 0,
             }
         }

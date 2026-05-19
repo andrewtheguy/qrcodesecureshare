@@ -117,7 +117,7 @@ impl<'a> BitSource<'a> {
         Ok(result)
     }
 
-    pub fn peak_bits(&self, numBits: usize) -> Result<u32> {
+    pub fn peek_bits(&self, numBits: usize) -> Result<u32> {
         if !(1..=32).contains(&numBits) || numBits > self.available() {
             return Err(Exceptions::illegal_argument_with(numBits.to_string()));
         }

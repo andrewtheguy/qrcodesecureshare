@@ -177,22 +177,20 @@ pub fn DecodeAlphanumericSegment(
     // See section 6.4.8.1, 6.4.8.2
     if result.symbology.aiFlag != AIFlag::None {
         // We need to massage the result a bit if in an FNC1 mode:
-        for i in 0..buffer.len() {
-            // for (size_t i = 0; i < buffer.length(); i++) {
+        let mut i = 0;
+        while i < buffer.len() {
             if buffer.get(i).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%' {
-                if i < buffer.len() - 1
+                if i + 1 < buffer.len()
                     && buffer.get(i + 1).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%'
                 {
                     // %% is rendered as %
                     buffer.remove(i + 1);
-                // buffer.erase(i + 1);
                 } else {
                     // In alpha mode, % should be converted to FNC1 separator 0x1D
                     buffer[i] = char::from(0x1D);
-                    // buffer.replace_range(i..i, &char::from(0x1D).to_string());
-                    // buffer[i] = static_cast<char>(0x1D);
                 }
             }
+            i += 1;
         }
     }
 
@@ -264,7 +262,7 @@ pub fn ParseECIValue(bits: &mut BitSource) -> Result<Eci> {
 pub fn IsEndOfStream(bits: &mut BitSource, version: &Version) -> Result<bool> {
     let bitsRequired = Mode::get_terminator_bit_length(version); //super::qr_codec_mode::TerminatorBitsLength(version);
     let bitsAvailable = std::cmp::min(bits.available(), bitsRequired as usize);
-    Ok(bitsAvailable == 0 || bits.peak_bits(bitsAvailable)? == 0)
+    Ok(bitsAvailable == 0 || bits.peek_bits(bitsAvailable)? == 0)
 }
 
 /**

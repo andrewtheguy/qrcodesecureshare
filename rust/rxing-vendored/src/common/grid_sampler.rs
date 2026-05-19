@@ -185,6 +185,9 @@ pub trait GridSampler {
         let height = image.getHeight();
         // Check and nudge points from start until we see some that are OK:
         let mut nudged;
+        if points.is_empty() {
+            return Ok(());
+        }
         let max_offset = points.len() - 1; // points.length must be even
         for point in points.iter_mut().take(max_offset) {
             let (x, y) = (point.x as i32, point.y as i32);

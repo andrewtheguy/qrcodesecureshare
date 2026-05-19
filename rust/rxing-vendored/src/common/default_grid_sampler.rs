@@ -65,10 +65,6 @@ impl GridSampler for DefaultGridSampler {
                     // for (int x = x0; x < x1; ++x) {
                     let p = transform.transform_point(Point::from((x, y)).centered()); //mod2Pix(centered(PointI{x, y}));
 
-                    if image.get_point(p) {
-                        bits.set(x as u32, y as u32);
-                    }
-
                     // Due to a "numerical instability" in the PerspectiveTransform generation/application it has been observed
                     // that even though all boundary grid points get projected inside the image, it can still happen that an
                     // inner grid points is not. See #563. A true perspective transformation cannot have this property.
@@ -76,6 +72,10 @@ impl GridSampler for DefaultGridSampler {
                     // TODO: Check some mathematical/numercial property of mod2Pix to determine if it is a perspective transforation.
                     if !image.is_in(p) {
                         return Err(Exceptions::NOT_FOUND);
+                    }
+
+                    if image.get_point(p) {
+                        bits.set(x as u32, y as u32);
                     }
                 }
             }

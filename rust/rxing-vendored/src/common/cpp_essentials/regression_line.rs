@@ -150,6 +150,9 @@ impl RegressionLineTrait for RegressionLine {
     }
 
     fn evaluate(&mut self, points: &[Point]) -> bool {
+        if points.is_empty() {
+            return false;
+        }
         let mean = points.iter().sum::<Point>() / points.len() as f32;
 
         let mut sumXX = 0.0;
@@ -162,12 +165,18 @@ impl RegressionLineTrait for RegressionLine {
             sumYY += d.y * d.y;
             sumXY += d.x * d.y;
         }
+        let l = if sumYY >= sumXX {
+            (sumYY * sumYY + sumXY * sumXY).sqrt()
+        } else {
+            (sumXX * sumXX + sumXY * sumXY).sqrt()
+        };
+        if l <= f32::EPSILON {
+            return false;
+        }
         if sumYY >= sumXX {
-            let l = (sumYY * sumYY + sumXY * sumXY).sqrt();
             self.a = sumYY / l;
             self.b = -sumXY / l;
         } else {
-            let l = (sumXX * sumXX + sumXY * sumXY).sqrt();
             self.a = sumXY / l;
             self.b = -sumXX / l;
         }

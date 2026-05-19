@@ -210,10 +210,11 @@ impl ECIEncoderSet {
     }
 
     pub fn get_eci(&self, encoderIndex: usize) -> Eci {
-        self.encoders[encoderIndex].into()
-        // CharacterSetECI::getValue(
-        //     &CharacterSetECI::getCharacterSetECI(self.encoders[encoderIndex]).unwrap(),
-        // )
+        if encoderIndex < self.len() {
+            self.encoders[encoderIndex].into()
+        } else {
+            Eci::Unknown
+        }
     }
 
     /*

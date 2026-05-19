@@ -360,23 +360,29 @@ impl CharacterSet {
                 .map(|&b| if b > 0x7F { '\u{FFFD}' } else { char::from(b) })
                 .collect()),
             CharacterSet::UTF32BE => {
-                let res = input
+                let mut res: String = input
                     .chunks_exact(4)
                     .map(|c| {
                         let val = u32::from_be_bytes([c[0], c[1], c[2], c[3]]);
                         char::from_u32(val).unwrap_or('\u{FFFD}')
                     })
                     .collect();
+                if !input.len().is_multiple_of(4) {
+                    res.push('\u{FFFD}');
+                }
                 Ok(res)
             }
             CharacterSet::UTF32LE => {
-                let res = input
+                let mut res: String = input
                     .chunks_exact(4)
                     .map(|c| {
                         let val = u32::from_le_bytes([c[0], c[1], c[2], c[3]]);
                         char::from_u32(val).unwrap_or('\u{FFFD}')
                     })
                     .collect();
+                if !input.len().is_multiple_of(4) {
+                    res.push('\u{FFFD}');
+                }
                 Ok(res)
             }
             _ => {

@@ -3,7 +3,8 @@ use std::borrow::Cow;
 use crate::LuminanceSource;
 use crate::common::Result;
 
-/// A simple luma8 source for bytes, supports cropping but not rotation
+/// A simple luma8 source for bytes. Supports cropping and 90° counter-clockwise
+/// rotation; 45° rotation is not supported.
 #[derive(Debug, Clone)]
 pub struct Luma8LuminanceSource {
     /// image dimension in form (x,y)
