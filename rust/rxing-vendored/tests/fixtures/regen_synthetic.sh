@@ -32,6 +32,33 @@ magick -size 1600x1600 xc:white \
   \( qr_sample.png -resize 80x80! \) -geometry +40+40 -composite \
   qr_sample_small_in_canvas.png
 
+# qr_sample_rotated_speckled.png — exercises `try_harder` (close-pass) on a
+# clean, synthetic source. In-memory analog of the real-phone-photo
+# qr_code_complex_rotated.jpg fixture, but built from qr_sample.png so the
+# failure mode is isolated to "rotation aliasing + white-salt noise inside
+# black modules".
+#
+# Step 1: nearest-neighbor rotate 17° about the source center, expanding the
+# canvas to 373×373 (≈ 297·(|cos17°|+|sin17°|), pre-centered via SRT). `-rotate`
+# is avoided because its built-in algorithm anti-aliases even with
+# `-filter point`; `-distort SRT` honours the point filter and produces clean
+# nearest-neighbor staircase edges.
+#
+# Step 2: lighten-composite a sparse white-on-black noise mask (1 - 80% = 20%
+# of pixels go white) onto the rotated image. This punches 1-pixel white holes
+# inside the dark finder bars — too disruptive for the original-resolution
+# scan but exactly what `try_harder = true`'s morphological close-pass fills.
+# `-seed 42` keeps the noise reproducible.
+magick qr_sample.png -filter point \
+  -define distort:viewport=373x373 \
+  -distort SRT '148.5,148.5 1 17 186.5,186.5' \
+  -background white -alpha off /tmp/qr_sample_rotated.png
+magick /tmp/qr_sample_rotated.png \
+  \( -size 373x373 xc:black -seed 42 +noise random -threshold 80% \) \
+  -compose lighten -composite -alpha off \
+  qr_sample_rotated_speckled.png
+rm -f /tmp/qr_sample_rotated.png
+
 # qr_two_codes.png — exercises the multi-symbol decode loop with two
 # distinct payloads. qr_sample.png (297x297, payload "jfghjghjghfkghjkghj")
 # and qr_code_complex.png (300x300, payload "https://qr-code-styling.com")
@@ -56,4 +83,4 @@ magick -size 1014x300 xc:white \
   qr_three_codes.png
 
 echo "Regenerated:"
-ls -l qr_sample_inverted.png qr_sample_small_in_canvas.png qr_two_codes.png qr_three_codes.png
+ls -l qr_sample_inverted.png qr_sample_small_in_canvas.png qr_two_codes.png qr_three_codes.png qr_sample_rotated_speckled.png

@@ -188,8 +188,9 @@ Practical consequences:
    `TryHarder` hint → finder-pattern densification; then morphological
    close; then a downscale pyramid. This is what restores the
    real-world-photo capability the removed `FilteredImageReader` used to
-   provide (regression-tested via `qr_zoo_jpg_requires_try_harder_and_try_invert`
-   and `qr_rotated_jpg_requires_try_harder`).
+   provide (regression-tested via `qr_zoo_jpg_requires_try_harder_and_try_invert`,
+   `qr_code_complex_rotated_jpg_requires_try_harder`, and
+   `qr_sample_rotated_speckled_png_requires_try_harder`).
 3. **No `pure_barcode` option.** If a caller has a clean axis-aligned QR
    and wants the fast `DetectPureQR` path, see "Extending the crate" below
    — restoring that path means reintroducing `DetectPureQR` in
@@ -257,7 +258,8 @@ Current fixtures:
 | `qr_code_complex.png` | `https://qr-code-styling.com` | Stylized QR (rounded modules, gradient eyes). | none — decodes in all 8 combos |
 | `qr_sample_inverted.png` | `jfghjghjghfkghjkghj` | Pixel-inverted (`magick … -negate`) copy of `qr_sample.png`. The `AlsoInverted` hint isn't consumed by `QrReader`'s multi-decode path, so the only way to decode is to flip the BitMatrix in the retry loop. | **`try_invert` only** — independent of `try_harder` |
 | `qr_sample_small_in_canvas.png` | `jfghjghjghfkghjkghj` | `qr_sample.png` resized to 80×80 and pasted into a 1600×1600 white canvas. `FindFinderPatterns` picks `skip ≈ 12` by default; the shrunken finder modules (~3 px tall) are walked past unless `try_harder = true` densifies the scan to `skip = 3`. | **`try_harder` only** — independent of `try_invert` |
-| `qr_rotated.jpg` | `https://nc.cesdk12.org/ncsd/…` | Real 183×210 phone photo of a rotated QR. Below the pyramid downscale threshold, so the **close-pass** branch of `try_harder` (`bitmap.close()`) is what surfaces the finders. | **`try_harder` only** |
+| `qr_code_complex_rotated.jpg` | `https://nc.cesdk12.org/ncsd/…` | Real 183×210 phone photo of a rotated QR encoding a longer URL payload. Below the pyramid downscale threshold, so the **close-pass** branch of `try_harder` (`bitmap.close()`) is what surfaces the finders. | **`try_harder` only** |
+| `qr_sample_rotated_speckled.png` | `jfghjghjghfkghjkghj` | Synthetic 373×373 analog of `qr_code_complex_rotated.jpg`: `qr_sample.png` nearest-neighbor rotated 17° + sparse white-salt mask (20% density). Rotation aliasing + 1-pixel holes inside finder bars defeat the original-resolution scan; the **close-pass** branch of `try_harder` fills the holes. | **`try_harder` only** |
 | `qr_zoo.jpg` | `https://zoo.sandiegozoo.org/2024-sdmag-pandas` | Real 2258×1344 phone photo of a white-on-dark-green QR. Needs the pyramid **downscale** branch of `try_harder` to surface finders + `try_invert` to read the inverted reflectance. | **`try_harder` AND `try_invert`** |
 | `fountain_binary_real.png` | binary fountain chunk | Real fountain byte-mode QR; asserts binary output starts with `ff fd`. | none — decodes in all 8 combos |
 
