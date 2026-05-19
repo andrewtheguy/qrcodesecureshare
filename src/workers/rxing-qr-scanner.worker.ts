@@ -19,8 +19,12 @@ interface UnexpectedMessageResponse {
   originalMessage: unknown
 }
 
-self.onmessage = async (e: MessageEvent<ScanMessage>) => {
-  if (e.data.type === 'scan') {
+function isScanMessage(data: unknown): data is ScanMessage {
+  return typeof data === 'object' && data !== null && (data as { type?: unknown }).type === 'scan'
+}
+
+self.onmessage = async (e: MessageEvent<unknown>) => {
+  if (isScanMessage(e.data)) {
     try {
       const { imageData, options } = e.data
 
@@ -49,7 +53,7 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
     }
   } else {
     const unexpectedType = typeof e.data === 'object' && e.data !== null && 'type' in e.data
-      ? String((e.data as unknown as Record<string, unknown>).type)
+      ? String((e.data as Record<string, unknown>).type)
       : 'unknown'
 
     const errorMessage = `Unexpected message type received: ${unexpectedType}`
