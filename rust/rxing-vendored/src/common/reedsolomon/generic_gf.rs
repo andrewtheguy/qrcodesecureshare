@@ -125,8 +125,8 @@ impl GenericGF {
      * @return 2 to the power of a in GF(size)
      */
     pub fn exp(&self, a: i32) -> i32 {
-        // let pos: usize = a.try_into().unwrap();
-        self.expTable[a as usize]
+        let idx = a.rem_euclid(self.size as i32 - 1) as usize;
+        self.expTable[idx]
     }
 
     /**

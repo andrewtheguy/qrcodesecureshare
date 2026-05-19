@@ -29,7 +29,7 @@ pub enum Exceptions {
     #[error("ParseException{}", if .0.is_empty() { String::new()  } else { format!(" - {}", .0) })]
     ParseException(String),
     #[error("ReaderDecodeException")]
-    ReaderDecodeException(),
+    ReaderDecodeException,
 }
 
 impl Exceptions {

@@ -94,7 +94,7 @@ impl PerspectiveTransform {
 
     pub fn transform_points_single(&self, points: &mut [Point]) {
         for point in points.iter_mut() {
-            *point = self.transform_point(Point::new(point.x, point.y));
+            *point = self.transform_point(*point);
         }
     }
 

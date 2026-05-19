@@ -3,7 +3,7 @@ use crate::{
     Binarizer, BinaryBitmap, DecodeHints, Exceptions, Luma8LuminanceSource, LuminanceSource, Reader,
 };
 
-pub const DEFAULT_DOWNSCALE_THRESHHOLD: usize = 500;
+pub const DEFAULT_DOWNSCALE_THRESHOLD: usize = 500;
 pub const DEFAULT_DOWNSCALE_FACTOR: usize = 3;
 
 /// Passed image data is ignored, only the image data
@@ -34,7 +34,7 @@ impl<R: Reader> Reader for FilteredImageReader<R> {
                 image.get_source().get_width() as u32,
                 image.get_source().get_height() as u32,
             ),
-            DEFAULT_DOWNSCALE_THRESHHOLD,
+            DEFAULT_DOWNSCALE_THRESHOLD,
             DEFAULT_DOWNSCALE_FACTOR,
         )
         .ok_or(Exceptions::ILLEGAL_ARGUMENT)?;
