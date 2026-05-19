@@ -759,10 +759,10 @@ pub fn SampleQR(image: &BitMatrix, fp: &FinderPatternSet) -> Result<QRCodeDetect
                             x0 as f32, x1 as f32, y0 as f32, y1 as f32, None,
                         ),
                         Quadrilateral::from([
-                            apP.get(x, y).unwrap(),
-                            apP.get(x + 1, y).unwrap(),
-                            apP.get(x + 1, y + 1).unwrap(),
-                            apP.get(x, y + 1).unwrap(),
+                            apP.get(x, y).ok_or(Exceptions::ILLEGAL_STATE)?,
+                            apP.get(x + 1, y).ok_or(Exceptions::ILLEGAL_STATE)?,
+                            apP.get(x + 1, y + 1).ok_or(Exceptions::ILLEGAL_STATE)?,
+                            apP.get(x, y + 1).ok_or(Exceptions::ILLEGAL_STATE)?,
                         ]),
                     )?,
                 });
