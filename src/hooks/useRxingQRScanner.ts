@@ -15,6 +15,9 @@ interface UseRxingQRScannerOptions {
   preferLowRes?: boolean
 }
 
+// Wait briefly before requesting camera access so React refs and recently stopped streams can settle.
+const DELAY_BEFORE_START_MS = 100
+
 function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
   if (a === b) return true
   if (a.length !== b.length) return false
@@ -182,7 +185,8 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     startTokenRef.current = startToken
     desiredScanningRef.current = true
     try {
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Give refs and any recently stopped stream time to settle before getUserMedia.
+      await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
 
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         return
@@ -255,10 +259,15 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
       videoRef.current.srcObject = null
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
 
     await startCameraScanning()
   }, [startCameraScanning])
+
+  const switchCameraRef = useRef(switchCamera)
+  useEffect(() => {
+    switchCameraRef.current = switchCamera
+  }, [switchCamera])
 
   useEffect(() => {
     if (isScanning && !isScanningRef.current) {
@@ -268,23 +277,18 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
   }, [isScanning, startCameraScanning, stopCameraScanning])
 
-  const facingModeRef = useRef(facingMode)
-  const preferLowResRef = useRef(preferLowRes)
+  const cameraSettingsRef = useRef({ facingMode, preferLowRes })
   useEffect(() => {
-    const facingModeChanged = facingModeRef.current !== facingMode
-    const preferLowResChanged = preferLowResRef.current !== preferLowRes
+    const previousSettings = cameraSettingsRef.current
+    const cameraSettingsChanged =
+      previousSettings.facingMode !== facingMode || previousSettings.preferLowRes !== preferLowRes
 
-    if ((facingModeChanged || preferLowResChanged) && isScanningRef.current) {
-      switchCamera()
+    cameraSettingsRef.current = { facingMode, preferLowRes }
+
+    if (cameraSettingsChanged && isScanningRef.current) {
+      void switchCameraRef.current()
     }
-
-    facingModeRef.current = facingMode
-    preferLowResRef.current = preferLowRes
-    // switchCamera intentionally omitted from dependency array: we only care about facingMode/preferLowRes
-    // changes triggering the effect. switchCamera is called for its side effects (camera restart),
-    // not for its identity. Including it would cause unnecessary effect re-runs on every mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode, preferLowRes])
+  }, [facingMode, preferLowRes, isScanningRef])
 
   useEffect(() => {
     const videoEl = videoRef.current
