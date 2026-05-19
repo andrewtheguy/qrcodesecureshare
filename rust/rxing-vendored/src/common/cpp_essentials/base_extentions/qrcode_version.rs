@@ -213,8 +213,8 @@ impl Version {
             || Self::HasValidSizeType(matrix, Type::RectMicro)
     }
 
-    fn IndexOf(_points: &[PointI], search: PointI) -> i32 {
-        RMQR_SIZES
+    fn IndexOf(points: &[PointI], search: PointI) -> i32 {
+        points
             .iter()
             .position(|p| *p == search)
             .map(|x| x as i32)

@@ -340,7 +340,7 @@ pub fn CollectRingPoints(
     points
 }
 
-pub fn FitQadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Quadrilateral> {
+pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Quadrilateral> {
     // rotate points such that the first one is the furthest away from the center (hence, a corner)
     let max_by_pred = |a: &&Point, b: &&Point| {
         let da = Point::distance(**a, center);
@@ -482,7 +482,7 @@ pub fn FitSquareToPoints(
         return None;
     }
 
-    let res = FitQadrilateralToPoints(center, &mut points)?;
+    let res = FitQuadrilateralToPoints(center, &mut points)?;
     if !QuadrilateralIsPlausibleSquare(&res, (lineIndex - i32::from(backup)) as usize) {
         return None;
     }

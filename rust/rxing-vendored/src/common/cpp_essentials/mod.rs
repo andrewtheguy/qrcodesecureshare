@@ -1,6 +1,5 @@
 mod base_extentions;
 
-pub mod bitmatrix_cursor;
 pub mod bitmatrix_cursor_trait;
 pub mod concentric_finder;
 pub mod decoder_result;

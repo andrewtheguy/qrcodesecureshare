@@ -13,7 +13,7 @@ impl ErrorCorrectionLevel {
                 ErrorCorrectionLevel::M,
                 ErrorCorrectionLevel::Q,
             ];
-            return LEVEL_FOR_BITS[bits as usize & 0x07];
+            return LEVEL_FOR_BITS[(bits as u8 & 0x07) as usize];
         }
         let LEVEL_FOR_BITS: [ErrorCorrectionLevel; 4] = [
             ErrorCorrectionLevel::M,
@@ -21,7 +21,7 @@ impl ErrorCorrectionLevel {
             ErrorCorrectionLevel::H,
             ErrorCorrectionLevel::Q,
         ];
-        LEVEL_FOR_BITS[bits as usize & 0x3]
+        LEVEL_FOR_BITS[(bits as u8 & 0x03) as usize]
     }
 
     pub fn ECLevelFromBits(bits: u8, isMicro: bool) -> Self {
