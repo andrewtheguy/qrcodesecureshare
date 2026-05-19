@@ -195,7 +195,7 @@ impl MinimalECIInput {
         stringToEncodeInput: &str,
         priorityCharset: Option<CharacterSet>,
         fnc1: Option<&str>,
-    ) -> Self {
+    ) -> Result<Self> {
         let stringToEncode = stringToEncodeInput.graphemes(true).collect::<Vec<&str>>();
         let encoderSet = ECIEncoderSet::new(stringToEncodeInput, priorityCharset, fnc1);
         let bytes = if encoderSet.len() == 1 {
@@ -211,17 +211,17 @@ impl MinimalECIInput {
                 })
                 .collect()
         } else {
-            Self::encodeMinimally(&stringToEncode, &encoderSet, fnc1)
+            Self::encodeMinimally(&stringToEncode, &encoderSet, fnc1)?
         };
 
-        Self {
+        Ok(Self {
             bytes,
             fnc1: if let Some(fnc1_exists) = fnc1 {
                 fnc1_exists.chars().next().unwrap() as u16
             } else {
                 1000
             },
-        }
+        })
     }
 
     pub fn getFNC1Character(&self) -> u16 {
@@ -300,12 +300,12 @@ impl MinimalECIInput {
 
     /// Minimially encode a string with the given characterset.
     ///
-    /// Function can panic if the string cannot be encoded.
+    /// Returns an error if the string cannot be encoded.
     pub fn encodeMinimally(
         stringToEncode: &[&str],
         encoderSet: &ECIEncoderSet,
         fnc1: Option<&str>,
-    ) -> Vec<u16> {
+    ) -> Result<Vec<u16>> {
         // let inputLength = stringToEncode.chars().count();
         let inputLength = stringToEncode.len(); //stringToEncode.graphemes(true).count();
 
@@ -336,10 +336,10 @@ impl MinimalECIInput {
             }
         }
         if minimalJ < 0 {
-            panic!(
+            return Err(Exceptions::illegal_state_with(format!(
                 "internal error: failed to encode \"{}\"",
                 stringToEncode.join("")
-            );
+            )));
         }
         let mut intsAL: Vec<u16> = Vec::new();
         let mut current = edges[inputLength][minimalJ as usize].clone();
@@ -371,7 +371,7 @@ impl MinimalECIInput {
         }
 
         intsAL.reverse();
-        intsAL
+        Ok(intsAL)
     }
 }
 
