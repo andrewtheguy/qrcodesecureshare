@@ -6,11 +6,6 @@ export interface RxingReaderOptions {
   useHybridBinarizer?: boolean
 }
 
-export interface DecodedQrPayload {
-  text: string
-  bytes: Uint8Array
-}
-
 let wasmInitialized = false
 let wasmInitPromise: Promise<void> | null = null
 
@@ -40,7 +35,7 @@ export async function decodeQrFromRgba(
   width: number,
   height: number,
   options: RxingReaderOptions = {}
-): Promise<DecodedQrPayload | null> {
+): Promise<Uint8Array | null> {
   await ensureRxingWasmInit()
 
   const { tryHarder = false, tryInvert = false, useHybridBinarizer = true } = options
@@ -54,19 +49,12 @@ export async function decodeQrFromRgba(
     useHybridBinarizer
   )
 
-  if (!result) return null
-
-  const payload: DecodedQrPayload = {
-    text: result.text,
-    bytes: result.bytes,
-  }
-  result.free()
-  return payload
+  return result ?? null
 }
 
 export async function decodeQrFromImageData(
   imageData: ImageData,
   options: RxingReaderOptions = {}
-): Promise<DecodedQrPayload | null> {
+): Promise<Uint8Array | null> {
   return decodeQrFromRgba(imageData.data, imageData.width, imageData.height, options)
 }

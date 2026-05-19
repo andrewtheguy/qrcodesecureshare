@@ -203,7 +203,6 @@ export function TextFountainReceiver({ initialFrame, onReset }: TextFountainRece
       }
     },
     isScanning: isScanning && status !== 'complete' && status !== 'error',
-    binary: true,
     scanInterval: 100,
     preferLowRes: true,
     facingMode,

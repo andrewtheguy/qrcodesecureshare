@@ -166,7 +166,6 @@ export function FountainQRDataScanner({
       onAckTransitionStatus(true)
     },
     scanInterval: 33, // ~30 fps
-    binary: true, // Return Uint8Array for fountain binary data
     preferLowRes: true, // Use lower resolution on mobile for better performance and battery life
     readerOptions: { tryHarder: true, useHybridBinarizer: true },
   })

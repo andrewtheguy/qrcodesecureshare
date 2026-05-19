@@ -223,7 +223,7 @@ impl QrReader {
                         }
 
                         if decoderResult.isValid() {
-                            results.push(RXingResult::with_decoder_result(
+                            results.push(RXingResult::with_decoder_result_bytes_only(
                                 decoderResult,
                                 position,
                                 BarcodeFormat::QR_CODE,
@@ -252,7 +252,7 @@ impl QrReader {
                     let position = detectorResult.getPoints();
                     if let Ok(decoderResult) = decoderResult {
                         if decoderResult.isValid() {
-                            results.push(RXingResult::with_decoder_result(
+                            results.push(RXingResult::with_decoder_result_bytes_only(
                                 decoderResult,
                                 position,
                                 BarcodeFormat::MICRO_QR_CODE,
@@ -280,7 +280,7 @@ impl QrReader {
                     let position = detectorResult.getPoints();
                     if let Ok(decoderResult) = decoderResult {
                         if decoderResult.isValid() {
-                            results.push(RXingResult::with_decoder_result(
+                            results.push(RXingResult::with_decoder_result_bytes_only(
                                 decoderResult,
                                 position,
                                 BarcodeFormat::RECTANGULAR_MICRO_QR_CODE,
@@ -360,7 +360,7 @@ impl QrReader {
         let decoderResult = Decode(detectorResult.getBits())?;
         let position = detectorResult.getPoints();
 
-        Ok(RXingResult::with_decoder_result(
+        Ok(RXingResult::with_decoder_result_bytes_only(
             decoderResult,
             position,
             if detectorResult.getBits().width() != detectorResult.getBits().height() {

@@ -135,7 +135,6 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
-    binary: true,
     readerOptions: {
       tryHarder: true,
       tryInvert: true,

@@ -195,9 +195,8 @@ export function FountainQRFeedbackDisplay({
     }, 5000)
   }
 
-  const handleSenderFeedbackScan = useCallback(async (data: string | Uint8Array): Promise<void> => {
-    // Convert Uint8Array to string if needed
-    const qrData = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
+  const handleSenderFeedbackScan = useCallback(async (data: Uint8Array): Promise<void> => {
+    const qrData = new TextDecoder().decode(data)
 
     // it is necessary to prevent processing binary data by accident
     if (qrData[0] !== '{') {

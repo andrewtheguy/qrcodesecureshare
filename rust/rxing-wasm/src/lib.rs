@@ -7,25 +7,6 @@ use rxing::{
 };
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub struct DecodedQr {
-    text: String,
-    bytes: Vec<u8>,
-}
-
-#[wasm_bindgen]
-impl DecodedQr {
-    #[wasm_bindgen(getter)]
-    pub fn text(&self) -> String {
-        self.text.clone()
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn bytes(&self) -> Vec<u8> {
-        self.bytes.clone()
-    }
-}
-
 fn rgba_to_luma(rgba: &[u8], width: u32, height: u32) -> Result<Vec<u8>, String> {
     let expected = (width as usize)
         .checked_mul(height as usize)
@@ -57,7 +38,7 @@ fn decode_inner(
     try_harder: bool,
     try_invert: bool,
     use_hybrid_binarizer: bool,
-) -> Option<DecodedQr> {
+) -> Option<Vec<u8>> {
     let mut hints = DecodeHints {
         PossibleFormats: Some(HashSet::from([BarcodeFormat::QR_CODE])),
         TryHarder: Some(try_harder),
@@ -84,11 +65,7 @@ fn decode_inner(
         }
     };
 
-    let result = result.ok()?;
-    Some(DecodedQr {
-        text: result.getText().to_string(),
-        bytes: result.getRawBytes().to_vec(),
-    })
+    Some(result.ok()?.getRawBytes().to_vec())
 }
 
 #[cfg(test)]
@@ -115,28 +92,27 @@ mod tests {
     fn decodes_qr_sample_png() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_sample.png");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let result = decode_inner(luma, w, h, true, true, true)
+        let bytes = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_sample.png");
-        assert_eq!(result.text, "jfghjghjghfkghjkghj");
-        assert_eq!(result.bytes.as_slice(), b"jfghjghjghfkghjkghj");
+        assert_eq!(bytes.as_slice(), b"jfghjghjghfkghjkghj");
     }
 
     #[test]
     fn decodes_qr_code_complex_png() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_code_complex.png");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let result = decode_inner(luma, w, h, true, true, true)
+        let bytes = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_code_complex.png");
-        assert_eq!(result.text, "https://qr-code-styling.com");
+        assert_eq!(bytes.as_slice(), b"https://qr-code-styling.com");
     }
 
     #[test]
     fn decodes_qr_zoo_jpg() {
         let (rgba, w, h) = load_image_as_rgba("tests/fixtures/qr_zoo.jpg");
         let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-        let result = decode_inner(luma, w, h, true, true, true)
+        let bytes = decode_inner(luma, w, h, true, true, true)
             .expect("expected a QR decode result from tests/fixtures/qr_zoo.jpg");
-        assert_eq!(result.text, "https://zoo.sandiegozoo.org/2024-sdmag-pandas");
+        assert_eq!(bytes.as_slice(), b"https://zoo.sandiegozoo.org/2024-sdmag-pandas");
     }
 
     #[test]
@@ -145,20 +121,17 @@ mod tests {
 
         for try_harder in [false, true] {
             let luma = rgba_to_luma(&rgba, w, h).expect("luma");
-            let result = decode_inner(luma, w, h, try_harder, false, true)
+            let bytes = decode_inner(luma, w, h, try_harder, false, true)
                 .expect("expected a QR decode result from real fountain byte-mode fixture");
 
-            assert_eq!(&result.bytes[..2], [0xff, 0xfd]);
-            assert_ne!(result.bytes.as_slice(), result.text.as_bytes());
-            assert!(result
-                .text
-                .as_bytes()
-                .starts_with(&[0xc3, 0xbf, 0xc3, 0xbd]));
+            // Binary fountain payload starts with magic bytes 0xff 0xfd; the bytes-only
+            // path returns the raw QR BYTE-mode payload without any UTF-8/Latin-1 mangling.
+            assert_eq!(&bytes[..2], [0xff, 0xfd]);
         }
     }
 }
 
-/// Decode a single QR code from raw RGBA pixels.
+/// Decode a single QR code from raw RGBA pixels, returning the raw QR byte payload.
 ///
 /// - `rgba`: row-major RGBA pixels, length must equal `width * height * 4`
 /// - `try_harder`: spend more time looking for a barcode (maps to rxing's `TryHarder` hint)
@@ -167,7 +140,8 @@ mod tests {
 ///   false, use the faster but less robust `GlobalHistogramBinarizer`.
 ///
 /// Returns `Ok(None)` when no QR code is found. Returns `Err` only for invalid input
-/// (e.g. mismatched buffer length).
+/// (e.g. mismatched buffer length). Callers that need a string must decode the bytes
+/// themselves (e.g. `new TextDecoder().decode(bytes)`).
 #[wasm_bindgen]
 pub fn decode_qr_rgba(
     rgba: &[u8],
@@ -176,7 +150,7 @@ pub fn decode_qr_rgba(
     try_harder: bool,
     try_invert: bool,
     use_hybrid_binarizer: bool,
-) -> Result<Option<DecodedQr>, JsValue> {
+) -> Result<Option<Vec<u8>>, JsValue> {
     let luma = rgba_to_luma(rgba, width, height).map_err(|m| JsValue::from_str(&m))?;
     Ok(decode_inner(
         luma,

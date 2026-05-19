@@ -4,12 +4,11 @@ interface ScanMessage {
   type: 'scan'
   imageData: ImageData
   options?: RxingReaderOptions
-  binary?: boolean
 }
 
 interface ScanResult {
   type: 'result'
-  data: (string | Uint8Array)[] | null
+  data: Uint8Array[] | null
   error?: string
 }
 
@@ -23,7 +22,7 @@ interface UnexpectedMessageResponse {
 self.onmessage = async (e: MessageEvent<ScanMessage>) => {
   if (e.data.type === 'scan') {
     try {
-      const { imageData, options, binary = false } = e.data
+      const { imageData, options } = e.data
 
       const readerOptions: RxingReaderOptions = {
         // Defaults tuned for fountain QR receivers: fast, no extra passes,
@@ -36,9 +35,7 @@ self.onmessage = async (e: MessageEvent<ScanMessage>) => {
 
       const result = await decodeQrFromImageData(imageData, readerOptions)
 
-      const data: (string | Uint8Array)[] | null = result
-        ? [binary ? result.bytes : result.text]
-        : null
+      const data: Uint8Array[] | null = result ? [result] : null
 
       const message: ScanResult = { type: 'result', data }
       self.postMessage(message)

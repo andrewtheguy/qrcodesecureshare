@@ -3,7 +3,8 @@ import { isMobileDevice } from '@/lib/utils'
 import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 import type { RxingReaderOptions } from '@/utils/rxingWasm'
 
-interface UseRxingQRScannerOptionsBase {
+interface UseRxingQRScannerOptions {
+  onScan: (data: Uint8Array[]) => void
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
@@ -14,21 +15,8 @@ interface UseRxingQRScannerOptionsBase {
   preferLowRes?: boolean
 }
 
-interface UseRxingQRScannerBinaryOptions extends UseRxingQRScannerOptionsBase {
-  onScan: (data: Uint8Array[]) => void
-  binary: true
-}
-
-interface UseRxingQRScannerTextOptions extends UseRxingQRScannerOptionsBase {
-  onScan: (data: string[]) => void
-  binary?: false
-}
-
-type UseRxingQRScannerOptions = UseRxingQRScannerBinaryOptions | UseRxingQRScannerTextOptions
-
-function isSameScan(a: string | Uint8Array, b: string | Uint8Array): boolean {
+function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
   if (a === b) return true
-  if (typeof a === 'string' || typeof b === 'string') return false
   if (a.length !== b.length) return false
   for (let i = 0; i < a.length; i++) {
     if (a[i] !== b[i]) return false
@@ -44,7 +32,6 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     isScanning,
     facingMode = 'environment',
     scanInterval = 125,
-    binary = false,
     debounceMs = 0,
     readerOptions = {},
     preferLowRes = false,
@@ -58,7 +45,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   const startTokenRef = useRef<number>(0)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const workerRef = useRef<Worker | null>(null)
-  const lastScannedRef = useRef<string | Uint8Array>('')
+  const lastScannedRef = useRef<Uint8Array>(new Uint8Array())
   const lastScanTimeRef = useRef<number>(0)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
@@ -79,7 +66,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
         if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
-          const scannedData = e.data.data[0] as string | Uint8Array
+          const scannedData = e.data.data[0] as Uint8Array
           const now = Date.now()
           if (
             debounceMs > 0 &&
@@ -138,7 +125,6 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
         {
           type: 'scan',
           imageData,
-          binary,
           options: readerOptions,
         },
         [imageData.data.buffer]
@@ -146,7 +132,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     } catch (err) {
       console.error('Error scanning frame:', err)
     }
-  }, [binary, readerOptions])
+  }, [readerOptions])
 
   const startScanLoop = useCallback(() => {
     let lastScanTime = 0

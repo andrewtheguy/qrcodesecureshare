@@ -137,6 +137,47 @@ impl RXingResult {
         new_res
     }
 
+    /// Like [`with_decoder_result`] but skips the `res.text()` UTF-8 build.
+    /// Use when the caller only consumes `getRawBytes()` — saves an
+    /// `ECIStringBuilder::to_string()` per frame.
+    pub fn with_decoder_result_bytes_only<T>(
+        res: DecoderResult<T>,
+        resultPoints: &[Point],
+        format: BarcodeFormat,
+    ) -> Self
+    where
+        T: Copy + Clone + Default + Eq + PartialEq,
+    {
+        let mut new_res = Self::new(
+            "",
+            res.content().bytes().to_vec(),
+            resultPoints.to_vec(),
+            format,
+        );
+
+        let mut meta_data = MetadataDictionary::new();
+        meta_data.insert(
+            RXingResultMetadataType::ERROR_CORRECTION_LEVEL,
+            RXingResultMetadataValue::ErrorCorrectionLevel(res.ecLevel().to_owned()),
+        );
+        meta_data.insert(
+            RXingResultMetadataType::STRUCTURED_APPEND_PARITY,
+            RXingResultMetadataValue::StructuredAppendParity(res.structuredAppend().count),
+        );
+        meta_data.insert(
+            RXingResultMetadataType::STRUCTURED_APPEND_SEQUENCE,
+            RXingResultMetadataValue::StructuredAppendSequence(res.structuredAppend().index),
+        );
+        meta_data.insert(
+            RXingResultMetadataType::SYMBOLOGY_IDENTIFIER,
+            RXingResultMetadataValue::SymbologyIdentifier(res.symbologyIdentifier()),
+        );
+
+        new_res.putAllMetadata(meta_data);
+
+        new_res
+    }
+
     /**
      * @return raw text encoded by the barcode
      */
