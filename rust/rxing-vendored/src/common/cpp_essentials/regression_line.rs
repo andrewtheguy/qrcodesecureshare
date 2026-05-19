@@ -1,0 +1,216 @@
+use crate::common::Result;
+use crate::{Exceptions, Point};
+
+use super::RegressionLineTrait;
+
+#[derive(Clone)]
+pub struct RegressionLine {
+    points: Vec<Point>,
+    direction_inward: Point,
+    pub(super) a: f32,
+    pub(super) b: f32,
+    pub(super) c: f32,
+}
+
+impl Default for RegressionLine {
+    fn default() -> Self {
+        Self {
+            points: Default::default(),
+            direction_inward: Default::default(),
+            a: f32::NAN,
+            b: f32::NAN,
+            c: f32::NAN,
+        }
+    }
+}
+
+impl RegressionLineTrait for RegressionLine {
+    fn points(&self) -> &[Point] {
+        &self.points
+    }
+
+    fn length(&self) -> u32 {
+        if self.points.len() >= 2 {
+            Point::distance(*self.points.first().unwrap(), *self.points.last().unwrap()) as u32
+        } else {
+            0
+        }
+    }
+
+    fn isValid(&self) -> bool {
+        !self.a.is_nan()
+    }
+
+    fn normal(&self) -> Point {
+        if self.isValid() {
+            Point {
+                x: self.a,
+                y: self.b,
+            }
+        } else {
+            self.direction_inward
+        }
+    }
+
+    fn signedDistance(&self, p: Point) -> f32 {
+        Point::dot(self.normal(), p) - self.c
+    }
+
+    fn distance_single(&self, p: Point) -> f32 {
+        (self.signedDistance(p)).abs()
+    }
+
+    fn reset(&mut self) {
+        self.points.clear();
+        self.direction_inward = Point { x: 0.0, y: 0.0 };
+        self.a = f32::NAN;
+        self.b = f32::NAN;
+        self.c = f32::NAN;
+    }
+
+    fn add(&mut self, p: Point) -> Result<()> {
+        if self.direction_inward == Point::default() {
+            return Err(Exceptions::ILLEGAL_STATE);
+        }
+        self.points.push(p);
+        if self.points.len() == 1 {
+            self.c = Point::dot(self.normal(), p);
+        }
+        Ok(())
+    }
+
+    fn pop_back(&mut self) {
+        self.points.pop();
+    }
+
+    fn setDirectionInward(&mut self, d: Point) {
+        self.direction_inward = Point::normalized(d);
+    }
+
+    fn evaluate_max_distance(
+        &mut self,
+        maxSignedDist: Option<f64>,
+        updatePoints: Option<bool>,
+    ) -> bool {
+        let maxSignedDist = maxSignedDist.unwrap_or(-1.0);
+        let updatePoints = updatePoints.unwrap_or_default();
+
+        let mut ret = self.evaluateSelf();
+        if maxSignedDist > 0.0 {
+            let mut points = self.points.clone();
+            loop {
+                let old_points_size = points.len();
+                // remove points that are further 'inside' than maxSignedDist or further 'outside' than 2 x maxSignedDist
+                points.retain(|&p| {
+                    let sd = self.signedDistance(p) as f64;
+                    !(sd > maxSignedDist || sd < -2.0 * maxSignedDist)
+                });
+                if old_points_size == points.len() {
+                    break;
+                }
+                ret = self.evaluate(&points);
+            }
+
+            if updatePoints {
+                self.points = points;
+            }
+        }
+        ret
+    }
+
+    fn isHighRes(&self) -> bool {
+        let Some(first) = self.points.first().copied() else {
+            return false;
+        };
+        let mut min = first;
+        let mut max = first;
+        for p in &self.points {
+            min.x = f32::min(min.x, p.x);
+            min.y = f32::min(min.y, p.y);
+            max.x = f32::max(max.x, p.x);
+            max.y = f32::max(max.y, p.y);
+        }
+        let diff = max - min;
+        let len = diff.maxAbsComponent();
+        let steps = f32::min(diff.x.abs(), diff.y.abs());
+        // due to aliasing we get bad extrapolations if the line is short and too close to vertical/horizontal
+        steps > 2.0 || len > 50.0
+    }
+
+    fn evaluate(&mut self, points: &[Point]) -> bool {
+        if points.is_empty() {
+            return false;
+        }
+        let mean = points.iter().sum::<Point>() / points.len() as f32;
+
+        let mut sumXX = 0.0;
+        let mut sumYY = 0.0;
+        let mut sumXY = 0.0;
+        for p in points {
+            let d = *p - mean;
+            sumXX += d.x * d.x;
+            sumYY += d.y * d.y;
+            sumXY += d.x * d.y;
+        }
+        let l = if sumYY >= sumXX {
+            (sumYY * sumYY + sumXY * sumXY).sqrt()
+        } else {
+            (sumXX * sumXX + sumXY * sumXY).sqrt()
+        };
+        if l <= f32::EPSILON {
+            return false;
+        }
+        if sumYY >= sumXX {
+            self.a = sumYY / l;
+            self.b = -sumXY / l;
+        } else {
+            self.a = sumXY / l;
+            self.b = -sumXX / l;
+        }
+        if Point::dot(self.direction_inward, self.normal()) < 0.0 {
+            self.a = -self.a;
+            self.b = -self.b;
+        }
+        self.c = Point::dot(self.normal(), mean);
+        // angle between original and new direction is at most 60 degree
+        Point::dot(self.direction_inward, self.normal()) > 0.5
+    }
+
+    fn evaluateSelf(&mut self) -> bool {
+        let points = std::mem::take(&mut self.points);
+        let result = self.evaluate(&points);
+        self.points = points;
+        result
+    }
+
+    fn a(&self) -> f32 {
+        self.a
+    }
+
+    fn b(&self) -> f32 {
+        self.b
+    }
+
+    fn c(&self) -> f32 {
+        self.c
+    }
+}
+
+impl RegressionLine {
+    pub fn with_two_points(point1: Point, point2: Point) -> Self {
+        let mut new_rl = RegressionLine::default();
+        new_rl.setDirectionInward(point2 - point1);
+        new_rl.evaluate(&[point1, point2]);
+        new_rl
+    }
+    pub fn with_point_slice(points: &[Point]) -> Self {
+        let mut new_rl = RegressionLine::default();
+        if let (Some(first), Some(last)) = (points.first(), points.last())
+            && first != last
+        {
+            new_rl.setDirectionInward(*last - *first);
+        }
+        new_rl.evaluate(points);
+        new_rl
+    }
+}

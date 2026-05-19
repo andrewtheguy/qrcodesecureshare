@@ -5,15 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "predev": "npm run postinstall",
     "build:js": "tsc -b && vite build",
-    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web && cd ../fast-qr-wasm && wasm-pack build --release --target web",
+    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web && cd ../fast-qr-wasm && wasm-pack build --release --target web && cd ../rxing-wasm && wasm-pack build --release --target web",
     "build": "npm run build:wasm && npm run build:js",
     "build:cloud": "bash cloud_build.sh && npm run build:js",
     "lint": "tsc --noEmit && eslint .",
     "test": "cd rust/fountain-wasm && cargo test --all --release",
-    "preview": "vite preview",
-    "postinstall": "node scripts/prepare-zxing-wasm.js"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
@@ -34,8 +32,7 @@
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.9.5",
     "tailwind-merge": "^3.3.1",
-    "tailwindcss": "^4.1.13",
-    "zxing-wasm": "^2.2.2"
+    "tailwindcss": "^4.1.13"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
@@ -54,6 +51,6 @@
     "vite": "^7.1.2",
     "vite-plugin-eslint": "^1.8.1",
     "vite-plugin-pwa": "^1.2.0",
-    "wasm-pack": "^0.13.1"
+    "wasm-pack": "^0.15.0"
   }
 }

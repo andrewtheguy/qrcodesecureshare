@@ -1,43 +1,43 @@
 import { useRef, useEffect, useCallback, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
-import ZXingWorker from '@/workers/zxing-qr-scanner.worker?worker'
-import type { ReaderOptions } from 'zxing-wasm/reader'
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
+import type { RxingReaderOptions } from '@/utils/rxingWasm'
 
-interface UseZXingQRScannerOptionsBase {
+interface UseRxingQRScannerOptions {
+  onScan: (data: Uint8Array[]) => void
   onError?: (error: string) => void
   onCameraReady?: () => void
   isScanning: boolean
   facingMode?: 'environment' | 'user'
   scanInterval?: number
-  debounceMs?: number // Debounce duplicate scans within this time window (ms)
-  readerOptions?: Partial<ReaderOptions> // Custom reader options for barcode detection
-  preferLowRes?: boolean // Use lower resolution on mobile devices for better performance
+  debounceMs?: number
+  readerOptions?: RxingReaderOptions
+  preferLowRes?: boolean
 }
 
-interface UseZXingQRScannerBinaryOptions extends UseZXingQRScannerOptionsBase {
-  onScan: (data: Uint8Array[]) => void
-  binary: true
+// Wait briefly before requesting camera access so React refs and recently stopped streams can settle.
+const DELAY_BEFORE_START_MS = 100
+
+function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
+  if (a === b) return true
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
 }
 
-interface UseZXingQRScannerTextOptions extends UseZXingQRScannerOptionsBase {
-  onScan: (data: string[]) => void
-  binary?: false
-}
-
-type UseZXingQRScannerOptions = UseZXingQRScannerBinaryOptions | UseZXingQRScannerTextOptions
-
-export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
+export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   const {
     onScan,
     onError,
     onCameraReady,
     isScanning,
     facingMode = 'environment',
-    scanInterval = 125, // Default to 125ms between scans
-    binary = false, // Default to text mode for backward compatibility
-    debounceMs = 0, // No debounce by default
-    readerOptions = {}, // Custom reader options
-    preferLowRes = false, // Default to standard resolution
+    scanInterval = 125,
+    debounceMs = 0,
+    readerOptions = {},
+    preferLowRes = false,
   } = options
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -48,7 +48,7 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   const startTokenRef = useRef<number>(0)
   const cameraStreamRef = useRef<MediaStream | null>(null)
   const workerRef = useRef<Worker | null>(null)
-  const lastScannedRef = useRef<string>('')
+  const lastScannedRef = useRef<Uint8Array>(new Uint8Array())
   const lastScanTimeRef = useRef<number>(0)
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
 
@@ -62,28 +62,27 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [])
 
-  // Initialize worker
   useEffect(() => {
-    const worker = new ZXingWorker()
+    const worker = new RxingWorker()
     workerRef.current = worker
 
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
-        if (e.data.data && Array.isArray(e.data.data) && e.data.data.length > 0) {
-          // Debounce duplicate scans
-          const scannedData = e.data.data[0]
+        if (e.data.data.length > 0) {
+          const scannedData = e.data.data[0] as Uint8Array
           const now = Date.now()
-          if (debounceMs > 0 && scannedData === lastScannedRef.current && now - lastScanTimeRef.current < debounceMs) {
-            // Skip this duplicate scan
+          if (
+            debounceMs > 0 &&
+            isSameScan(scannedData, lastScannedRef.current) &&
+            now - lastScanTimeRef.current < debounceMs
+          ) {
             return
           }
           lastScannedRef.current = scannedData
           lastScanTimeRef.current = now
 
-          // QR codes found! Pass all detected QR codes
           onScan(e.data.data)
         }
-        // If error or no data, silently continue scanning
         if (e.data.error) {
           console.error('Worker decode error:', e.data.error)
         }
@@ -106,13 +105,11 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     const video = videoRef.current
     const canvas = canvasRef.current
 
-    // Check if video is ready
     if (video.readyState !== video.HAVE_ENOUGH_DATA) {
       return
     }
 
     try {
-      // Set canvas size to match video
       canvas.width = video.videoWidth
       canvas.height = video.videoHeight
 
@@ -123,28 +120,22 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (!ctx) return
 
-      // Draw current video frame to canvas
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
 
-      // Get ImageData from canvas
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
 
-      // Send to worker for decoding using transferable object for performance
-      // The ArrayBuffer will be transferred (not copied) to the worker
       workerRef.current.postMessage(
         {
           type: 'scan',
           imageData,
-          binary,
           options: readerOptions,
         },
         [imageData.data.buffer]
       )
     } catch (err) {
-      // Silent fail - continue scanning
       console.error('Error scanning frame:', err)
     }
-  }, [binary, readerOptions])
+  }, [readerOptions])
 
   const startScanLoop = useCallback(() => {
     let lastScanTime = 0
@@ -174,18 +165,15 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     desiredScanningRef.current = false
     startTokenRef.current += 1
 
-    // Stop camera stream
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => track.stop())
       cameraStreamRef.current = null
     }
 
-    // Stop video element
     if (videoRef.current) {
       videoRef.current.srcObject = null
     }
 
-    // Cancel animation frame
     if (scanLoopRef.current !== null) {
       cancelAnimationFrame(scanLoopRef.current)
       scanLoopRef.current = null
@@ -197,8 +185,8 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     startTokenRef.current = startToken
     desiredScanningRef.current = true
     try {
-      // Wait for video element to be rendered in DOM
-      await new Promise((resolve) => setTimeout(resolve, 100))
+      // Give refs and any recently stopped stream time to settle before getUserMedia.
+      await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
 
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         return
@@ -228,7 +216,6 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       cameraStreamRef.current = stream
       videoRef.current.srcObject = stream
 
-      // Wait for video to load and play
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         stream.getTracks().forEach((track) => track.stop())
         cameraStreamRef.current = null
@@ -258,34 +245,30 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
   }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop, stopCameraScanning])
 
   const switchCamera = useCallback(async () => {
-    // Don't use stopCameraScanning as it sets isScanningRef to false
-    // Instead, manually stop the stream and loop, then restart
-
-    // Cancel animation frame
     if (scanLoopRef.current !== null) {
       cancelAnimationFrame(scanLoopRef.current)
       scanLoopRef.current = null
     }
 
-    // Stop camera stream
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => track.stop())
       cameraStreamRef.current = null
     }
 
-    // Stop video element
     if (videoRef.current) {
       videoRef.current.srcObject = null
     }
 
-    // Wait a bit before restarting
-    await new Promise((resolve) => setTimeout(resolve, 100))
+    await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
 
-    // Restart camera (isScanningRef is still true)
     await startCameraScanning()
   }, [startCameraScanning])
 
-  // Start/stop scanning based on isScanning prop
+  const switchCameraRef = useRef(switchCamera)
+  useEffect(() => {
+    switchCameraRef.current = switchCamera
+  }, [switchCamera])
+
   useEffect(() => {
     if (isScanning && !isScanningRef.current) {
       startCameraScanning()
@@ -294,27 +277,19 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
     }
   }, [isScanning, startCameraScanning, stopCameraScanning])
 
-  // Restart camera when facingMode or preferLowRes changes (only if already scanning)
-  const facingModeRef = useRef(facingMode)
-  const preferLowResRef = useRef(preferLowRes)
+  const cameraSettingsRef = useRef({ facingMode, preferLowRes })
   useEffect(() => {
-    // Skip on initial mount - check if either value has changed
-    const facingModeChanged = facingModeRef.current !== facingMode
-    const preferLowResChanged = preferLowResRef.current !== preferLowRes
+    const previousSettings = cameraSettingsRef.current
+    const cameraSettingsChanged =
+      previousSettings.facingMode !== facingMode || previousSettings.preferLowRes !== preferLowRes
 
-    if ((facingModeChanged || preferLowResChanged) && isScanningRef.current) {
-      switchCamera()
+    cameraSettingsRef.current = { facingMode, preferLowRes }
+
+    if (cameraSettingsChanged && isScanningRef.current) {
+      void switchCameraRef.current()
     }
+  }, [facingMode, preferLowRes, isScanningRef])
 
-    facingModeRef.current = facingMode
-    preferLowResRef.current = preferLowRes
-    // switchCamera intentionally omitted from dependency array: we only care about facingMode/preferLowRes
-    // changes triggering the effect. switchCamera is called for its side effects (camera restart),
-    // not for its identity. Including it would cause unnecessary effect re-runs on every mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode, preferLowRes])
-
-  // Cleanup on unmount
   useEffect(() => {
     const videoEl = videoRef.current
     return () => {
@@ -327,8 +302,9 @@ export function useZXingQRScanner(options: UseZXingQRScannerOptions) {
       if (scanLoopRef.current !== null) {
         cancelAnimationFrame(scanLoopRef.current)
       }
-      // Add a small delay to ensure camera is fully released before new instance tries to access it
-      // This prevents "media was removed from the document" errors when rapidly switching components
+      // Small delay to ensure the camera is fully released before a new instance
+      // tries to access it; prevents "media was removed from the document" errors
+      // when rapidly switching components.
       if (videoEl) {
         setTimeout(() => {
           videoEl.srcObject = null

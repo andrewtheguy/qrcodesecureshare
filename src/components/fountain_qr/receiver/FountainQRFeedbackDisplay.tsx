@@ -15,7 +15,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
 import { generateNonDataQR } from '@/utils/qrUtils'
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
 
 interface FountainQRFeedbackDisplayProps {
@@ -195,9 +195,8 @@ export function FountainQRFeedbackDisplay({
     }, 5000)
   }
 
-  const handleSenderFeedbackScan = useCallback(async (data: string | Uint8Array): Promise<void> => {
-    // Convert Uint8Array to string if needed
-    const qrData = data instanceof Uint8Array ? new TextDecoder().decode(data) : data
+  const handleSenderFeedbackScan = useCallback(async (data: Uint8Array): Promise<void> => {
+    const qrData = new TextDecoder().decode(data)
 
     // it is necessary to prevent processing binary data by accident
     if (qrData[0] !== '{') {
@@ -281,7 +280,7 @@ export function FountainQRFeedbackDisplay({
   }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
-  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useZXingQRScanner({
+  const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useRxingQRScanner({
     onScan: (data) => handleSenderFeedbackScan(data[0]),
     isScanning: ackScannerIsScanning,
     onError: (errorMessage) => {

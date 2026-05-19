@@ -1,23 +1,14 @@
 import { ensureFastQrWasmInit } from './fastQrWasm'
 import { ensureWasmInit } from './fountainCodeWasm'
-import { ZXING_WASM_FILENAME } from './zxingWasmAsset'
+import { ensureRxingWasmInit } from './rxingWasm'
 
 let wasmWarmupStarted = false
-
-async function prefetchZXingWasm(): Promise<void> {
-  const zxingWasmUrl = `${import.meta.env.BASE_URL}${ZXING_WASM_FILENAME}`
-  const response = await fetch(zxingWasmUrl, { cache: 'force-cache' })
-  if (!response.ok) {
-    throw new Error(`Failed to prefetch zxing wasm: ${response.status} ${response.statusText}`)
-  }
-  await response.arrayBuffer()
-}
 
 async function warmupWasmModules(): Promise<void> {
   const results = await Promise.allSettled([
     ensureFastQrWasmInit(),
     ensureWasmInit(),
-    prefetchZXingWasm(),
+    ensureRxingWasmInit(),
   ])
 
   for (const result of results) {

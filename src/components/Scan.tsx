@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { OFFLINE_METADATA_MAGIC } from '../constants'
-import { decodeQRFromImage } from '@/utils/zxingWorkerUtils'
+import { decodeQRFromImage } from '@/utils/rxingWorkerUtils'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { useZXingQRScanner } from '@/hooks/useZXingQRScanner'
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
 import { OfflineMetadataDetails } from './OfflineMetadataDetails'
 import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver'
 import { isTextFountainFrame } from '@/utils/textFountainProtocol'
@@ -42,12 +42,6 @@ interface ParsedQRData {
   type: QRCodeType
   offlineMetadata?: OfflineMetadata
 }
-
-const isStringArray = (value: unknown[]): value is string[] =>
-  value.every((item) => typeof item === 'string')
-
-const isUint8ArrayArray = (value: unknown[]): value is Uint8Array[] =>
-  value.every((item) => item instanceof Uint8Array)
 
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
   const location = useLocation()
@@ -130,23 +124,15 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     setScanning(false)
   }, [])
 
-  // Use the new zxing-wasm scanner hook with maximized detection for general QR code scanning
-  const { videoRef, canvasRef, availableCameras } = useZXingQRScanner({
+  const { videoRef, canvasRef, availableCameras } = useRxingQRScanner({
     onScan: handleQRScan,
     onError: handleCameraError,
     isScanning: scanning,
     facingMode: facingMode,
-    binary: true,
-    // Maximize detection for challenging QR codes (worn, angled, poor lighting, color variations)
     readerOptions: {
-      formats: ['QRCode'],
-      tryHarder: true, // Spend more time finding barcodes
-      tryRotate: true, // Check rotated versions
-      tryInvert: true, // Check inverted versions (important for color/contrast variations)
-      tryDownscale: true, // Try downscaled versions for distant QR codes
-      tryDenoise: true, // Experimental: try denoising for noisy images
-      binarizer: 'LocalAverage', // Use adaptive thresholding for color variations
-      maxNumberOfSymbols: 1, // Only return first QR code found
+      tryHarder: true,
+      tryInvert: true,
+      useHybridBinarizer: true,
     },
   })
 
@@ -218,26 +204,16 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     try {
       console.log('Processing uploaded image for QR code...')
 
-      // Decode the QR codes using zxing-wasm worker
-      const results = await decodeQRFromImage(file, undefined, true)
+      const results = await decodeQRFromImage(file)
 
-      if (!results || results.length === 0) {
+      if (results.length === 0) {
         alert('No QR code found in the uploaded image. Please try a different image.')
         return
       }
 
       console.log('QR codes detected from uploaded image:', results)
 
-      if (isStringArray(results)) {
-        const encoded = results.map((text) => new TextEncoder().encode(text))
-        handleQRScan(encoded)
-      } else if (isUint8ArrayArray(results)) {
-        handleQRScan(results)
-      } else {
-        console.error('Unexpected QR decode result format:', results)
-        alert('Unsupported QR code data format in uploaded image.')
-        return
-      }
+      handleQRScan(results)
     } catch (error) {
       console.error('Failed to scan QR code from image:', error)
       alert('No QR code found in the uploaded image. Please try a different image.')

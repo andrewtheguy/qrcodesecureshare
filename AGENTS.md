@@ -1,2 +1,5 @@
-no backward compatibility is needed for any changes
-run npm run lint and npx tsc -b after making changes to ensure code quality
+- no backward compatibility at all for any changes
+- run npm run lint and npx tsc -b after making changes to ensure code quality
+- after rust codes changes on rust/**, run cargo clippy and cargo test to ensure code quality and correctness
+- no cargo fmt
+- to rebuild the wasm bundles consumed by the frontend, run `npm run build:wasm` from the repo root — this invokes `wasm-pack build --release --target web` for each of `rust/fountain-wasm`, `rust/fast-qr-wasm`, and `rust/rxing-wasm`, writing output to each crate's `pkg/` directory. To rebuild a single crate, run e.g. `cd rust/rxing-wasm && npx wasm-pack build --release --target web`. Always invoke wasm-pack via npm/npx so it resolves to the version pinned in `package.json` devDependencies (currently `^0.15.0`) — never the system-wide `cargo install`ed binary.
