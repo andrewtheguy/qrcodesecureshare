@@ -73,10 +73,6 @@ impl PerspectiveTransform {
         if !src.is_convex() || !dst.is_convex() {
             return Err(Exceptions::ILLEGAL_STATE);
         }
-        // let q_to_s = PerspectiveTransform::quadrilateralToSquare(x0, y0, x1, y1, x2, y2, x3, y3);
-        // let s_to_q =
-        //     PerspectiveTransform::squareToQuadrilateral(x0p, y0p, x1p, y1p, x2p, y2p, x3p, y3p);
-
         let q_to_s = PerspectiveTransform::quadrilateralToSquare(dst);
         let s_to_q = PerspectiveTransform::squareToQuadrilateral(src);
         Ok(s_to_q * q_to_s)
@@ -100,9 +96,7 @@ impl PerspectiveTransform {
 
     pub fn transform_points_double(&self, x_values: &mut [f32], y_values: &mut [f32]) {
         let n = x_values.len();
-        // for i in 0..n {
         for (x, y) in x_values.iter_mut().zip(y_values.iter_mut()).take(n) {
-            // for (int i = 0; i < n; i++) {
             let ox = *x;
             let oy = *y;
             let d = self.a13 * ox + self.a23 * oy + self.a33;

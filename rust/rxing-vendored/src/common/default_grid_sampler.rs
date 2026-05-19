@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import com.google.zxing.NotFoundException;
-
 use crate::common::Result;
 use crate::{Exceptions, Point, point};
 
@@ -58,12 +54,9 @@ impl GridSampler for DefaultGridSampler {
 
         let mut bits = BitMatrix::new(dimensionX, dimensionY)?;
         for SamplerControl { p0, p1, transform } in controls {
-            // for (auto&& [x0, x1, y0, y1, mod2Pix] : rois) {
             for y in (p0.y as i32)..(p1.y as i32) {
-                // for (int y = y0; y < y1; ++y)
                 for x in (p0.x as i32)..(p1.x as i32) {
-                    // for (int x = x0; x < x1; ++x) {
-                    let p = transform.transform_point(Point::from((x, y)).centered()); //mod2Pix(centered(PointI{x, y}));
+                    let p = transform.transform_point(Point::from((x, y)).centered());
 
                     // Due to a "numerical instability" in the PerspectiveTransform generation/application it has been observed
                     // that even though all boundary grid points get projected inside the image, it can still happen that an
@@ -80,9 +73,6 @@ impl GridSampler for DefaultGridSampler {
                 }
             }
         }
-
-        // dbg!(image.to_string());
-        // dbg!(bits.to_string());
 
         let projectCorner = |p: Point| -> Point {
             for SamplerControl { p0, p1, transform } in controls {

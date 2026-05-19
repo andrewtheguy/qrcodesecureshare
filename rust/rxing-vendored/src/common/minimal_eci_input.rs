@@ -107,7 +107,6 @@ impl ECIInput for MinimalECIInput {
         }
         let mut result = Vec::with_capacity(end - start);
         for i in start..end {
-            //   for (int i = start; i < end; i++) {
             if self.isECI(i)? {
                 return Err(Exceptions::illegal_argument_with(format!(
                     "value at {i} is not a character but an ECI"
@@ -171,7 +170,6 @@ impl ECIInput for MinimalECIInput {
             return Ok(false);
         }
         for i in 0..n {
-            //   for (int i = 0; i < n; i++) {
             if self.isECI(index + i)? {
                 return Ok(false);
             }
@@ -249,7 +247,6 @@ impl MinimalECIInput {
     fn addEdge(edges: &mut [Vec<Option<Arc<InputEdge>>>], to: usize, edge: Arc<InputEdge>) {
         if edges[to][edge.encoderIndex].is_none()
             || edges[to][edge.encoderIndex]
-                // .clone()
                 .as_ref()
                 .unwrap()
                 .cachedTotalSize
@@ -271,7 +268,6 @@ impl MinimalECIInput {
 
         let mut start = 0;
         let mut end = encoderSet.len();
-        //if let Some(fnc1) = fnc1 {
         if let Some(pei) = encoderSet.getPriorityEncoderIndex()
             && ((fnc1.is_some()
                 && ch.chars().next().unwrap() == fnc1.as_ref().unwrap().chars().next().unwrap())
@@ -280,10 +276,8 @@ impl MinimalECIInput {
             start = pei;
             end = start + 1;
         }
-        //}
 
         for i in start..end {
-            // for (int i = start; i < end; i++) {
             if (fnc1.is_some()
                 && ch.chars().next().unwrap() == fnc1.as_ref().unwrap().chars().next().unwrap())
                 || encoderSet.canEncode(ch, i).unwrap()
@@ -305,17 +299,14 @@ impl MinimalECIInput {
         encoderSet: &ECIEncoderSet,
         fnc1: Option<&str>,
     ) -> Result<Vec<u16>> {
-        // let inputLength = stringToEncode.chars().count();
-        let inputLength = stringToEncode.len(); //stringToEncode.graphemes(true).count();
+        let inputLength = stringToEncode.len();
 
         // Array that represents vertices. There is a vertex for every character and encoding.
-        let mut edges = vec![vec![None; encoderSet.len()]; inputLength + 1]; //InputEdge[inputLength + 1][encoderSet.length()];
+        let mut edges = vec![vec![None; encoderSet.len()]; inputLength + 1];
         Self::addEdges(stringToEncode, encoderSet, &mut edges, 0, None, fnc1);
 
         for i in 1..=inputLength {
-            // for (int i = 1; i <= inputLength; i++) {
             for j in 0..encoderSet.len() {
-                //   for (int j = 0; j < encoderSet.length(); j++) {
                 if edges[i][j].is_some() && i < inputLength {
                     let edg = edges[i][j].clone();
                     Self::addEdges(stringToEncode, encoderSet, &mut edges, i, edg, fnc1);
@@ -343,10 +334,8 @@ impl MinimalECIInput {
         let mut intsAL: Vec<u16> = Vec::new();
         let mut current = edges[inputLength][minimalJ as usize].clone();
         while let Some(c) = current {
-            //let c = current.unwrap().clone();
             if c.isFNC1() {
                 intsAL.push(1000);
-                // intsAL.splice(0..0, [1000]);
             } else {
                 encoderSet
                     .encode_char(&c.c, c.encoderIndex)
@@ -396,8 +385,6 @@ impl InputEdge {
             encoderSet.encode_char(c, encoderIndex).unwrap().len()
         };
 
-        //let fnc1Str = String::from_utf16(&[fnc1]).unwrap();
-
         if let Some(prev) = previous {
             let previousEncoderIndex = prev.encoderIndex;
             if previousEncoderIndex != encoderIndex {
@@ -432,31 +419,6 @@ impl InputEdge {
                 cachedTotalSize: size,
             }
         }
-
-        //   int size = this.c == 1000 ? 1 : encoderSet.encode(c, encoderIndex).length;
-        // let previousEncoderIndex = if previous.is_none() {
-        //     0
-        // } else {
-        //     previous.unwrap().encoderIndex
-        // };
-        //   int previousEncoderIndex = previous == null ? 0 : previous.encoderIndex;
-        // if previousEncoderIndex != encoderIndex {
-        //     size += COST_PER_ECI;
-        // }
-        // if prev_is_some {
-        //     size += previous.unwrap().cachedTotalSize;
-        // }
-
-        // Self {
-        //     c: if c == fnc1 { 1000 as char } else { c },
-        //     encoderIndex,
-        //     previous: previous,
-        //     cachedTotalSize: size,
-        // }
-        //   this.c = c == fnc1 ? 1000 : c;
-        //   this.encoderIndex = encoderIndex;
-        //   this.previous = previous;
-        //   this.cachedTotalSize = size;
     }
 
     pub fn isFNC1(&self) -> bool {
@@ -468,7 +430,6 @@ impl fmt::Display for MinimalECIInput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut result = String::new();
         for i in 0..self.length() {
-            // for (int i = 0; i < length(); i++) {
             if i > 0 {
                 result.push_str(", ");
             }

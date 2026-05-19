@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing;
-
 use std::collections::{HashMap, HashSet};
 
 use crate::{BarcodeFormat, PointCallback};

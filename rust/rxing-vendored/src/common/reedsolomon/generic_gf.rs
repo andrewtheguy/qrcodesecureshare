@@ -20,8 +20,6 @@ use super::{GenericGFPoly, GenericGFRef};
 pub struct GenericGF {
     expTable: Vec<i32>,
     logTable: Vec<i32>,
-    // zero: Box<GenericGFPoly>,
-    // one: Box<GenericGFPoly>,
     size: usize,
     primitive: i32,
     generatorBase: i32,
@@ -44,9 +42,6 @@ impl GenericGF {
         let mut logTable = vec![0; size];
         let mut x = 1;
         for expTableEntry in expTable.iter_mut().take(size) {
-            // for i in 0..size {
-            //for (int i = 0; i < size; i++) {
-            //expTable.push(x);
             *expTableEntry = x;
             x *= 2; // we're assuming the generator alpha is 2
             if x >= size as i32 {
@@ -56,27 +51,10 @@ impl GenericGF {
             }
         }
         for (i, loc) in expTable.iter().enumerate().take(size - 1) {
-            // for i in 0..size - 1 {
-            //for (int i = 0; i < size - 1; i++) {
-            // let loc: usize = expTable[i] as usize;
             logTable[*loc as usize] = i as i32;
         }
         logTable[0] = 0;
 
-        //     let mut p:u32;
-        // //int i;
-        // /*Initialize the table of powers of a primtive root, alpha=0x02.*/
-        // p = 1;
-        // for i in 0..size {
-        // // for (i = 0; i < 256; i++) {
-        //     expTable[i] = expTable[i + size - 1] = p;
-        // p = ((p << 1) ^ (-(p as i32 >> 7) & primitive) as u32) & 0xFF;
-        // }
-        // /*Invert the table to recover the logs.*/
-        // for i in 0..size-1 {
-        // // for (i = 0; i < 255; i++)
-        // logTable[expTable[i].try_into().unwrap()] = i;
-        // /*Note that we rely on the fact that _gf->log[0]=0 below.*/
         Self {
             expTable,
             logTable,
@@ -84,21 +62,7 @@ impl GenericGF {
             primitive,
             generatorBase: b,
         }
-
-        // logTable[0] == 0 but this should never be used
-        // new_ggf.zero = Box::new(GenericGFPoly::new(Box::new(new_ggf), &vec![0]).unwrap());
-        // new_ggf.one = Box::new(GenericGFPoly::new(Box::new(new_ggf), &vec![1]).unwrap());
-
-        //new_ggf
     }
-
-    // pub fn getZero(&self) -> Box<GenericGFPoly> {
-    //     return self.zero;
-    // }
-
-    // pub fn getOne(&self) -> Box<GenericGFPoly> {
-    //     return self.one;
-    // }
 
     /**
      * @return the monomial representing coefficient * x^degree

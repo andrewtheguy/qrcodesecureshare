@@ -292,7 +292,6 @@ where
     /// L-inf norm
     pub fn maxAbsComponent(self) -> T {
         self.x.abs().max(self.y.abs())
-        // f32::max(self.x.abs(), self.y.abs())
     }
 
     pub fn squaredDistance(self, p: Self) -> T {

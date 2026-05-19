@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing;
-
 use std::borrow::Cow;
 
 use crate::Exceptions;
@@ -33,8 +31,6 @@ use crate::common::Result;
 pub trait LuminanceSource {
     const SUPPORTS_ROTATION: bool = false;
     const SUPPORTS_CROP: bool = false;
-
-    //fn new( width:usize,  height:usize) -> Self;
 
     /**
      * Fetches one row of luminance data from the underlying platform's bitmap. Values range from

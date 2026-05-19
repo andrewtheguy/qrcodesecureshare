@@ -1,8 +1,8 @@
-// /*
-// * Copyright 2016 Nu-book Inc.
-// * Copyright 2016 ZXing authors
-// */
-// // SPDX-License-Identifier: Apache-2.0
+/*
+ * Copyright 2016 Nu-book Inc.
+ * Copyright 2016 ZXing authors
+ */
+// SPDX-License-Identifier: Apache-2.0
 
 use crate::Exceptions;
 use crate::common::cpp_essentials::{DecoderResult, StructuredAppendInfo};
@@ -28,7 +28,6 @@ use crate::qrcode::decoder::DataBlock;
 */
 pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<bool> {
     // First read into an array of ints
-    // std::vector<int> codewordsInts(codewordBytes.begin(), codewordBytes.end());
     let mut codewordsInts: Vec<i32> = codewordBytes.iter().copied().map(|b| b as i32).collect();
 
     let numECCodewords = ((codewordBytes.len() as u32) - numDataCodewords) as i32;
@@ -38,12 +37,6 @@ pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<
 
     rs.decode(&mut codewordsInts, numECCodewords)?;
 
-    // if rs.decode(&mut codewordsInts, numECCodewords)? != 0
-    // // if (!ReedSolomonDecode(GenericGF::QRCodeField256(), codewordsInts, numECCodewords))
-    // {
-    //     return Ok(false);
-    // }
-
     // Copy back into array of bytes -- only need to worry about the bytes that were data
     // We don't care about errors in the error-correction codewords
     for (dst, src) in codewordBytes[..numDataCodewords as usize]
@@ -52,7 +45,6 @@ pub fn CorrectErrors(codewordBytes: &mut [u8], numDataCodewords: u32) -> Result<
     {
         *dst = *src as u8;
     }
-    // std::copy_n(codewordsInts.begin(), numDataCodewords, codewordBytes.begin());
 
     Ok(true)
 }
@@ -128,7 +120,6 @@ pub fn DecodeByteSegment(
     result.reserve(count as usize);
 
     for _i in 0..count {
-        // for (int i = 0; i < count; i++)
         *result += (bits.readBits(8)?) as u8;
     }
     Ok(())
@@ -183,7 +174,6 @@ pub fn DecodeAlphanumericSegment(
                 if i + 1 < buffer.len()
                     && buffer.get(i + 1).ok_or(Exceptions::INDEX_OUT_OF_BOUNDS)? == &'%'
                 {
-                    // %% is rendered as %
                     buffer.remove(i + 1);
                 } else {
                     // In alpha mode, % should be converted to FNC1 separator 0x1D
@@ -279,13 +269,12 @@ pub fn DecodeBitStream(
 ) -> Result<DecoderResult<bool>> {
     let mut bits = BitSource::new(bytes);
     let mut result = ECIStringBuilder::default();
-    // Error error;
     result.symbology = SymbologyIdentifier {
         code: b'Q',
         modifier: b'1',
         eciModifierOffset: 1,
         aiFlag: AIFlag::None,
-    }; //{'Q', '1', 1};
+    };
     let mut structuredAppend = StructuredAppendInfo::default();
     let modeBitLength = Mode::get_codec_mode_bits_length(version);
 
@@ -306,8 +295,6 @@ pub fn DecodeBitStream(
 
             match mode {
                 Mode::FNC1_FIRST_POSITION => {
-                    //				if (!result.empty()) // uncomment to enforce specification
-                    //					throw FormatError("GS1 Indicator (FNC1 in first position) at illegal position");
                     result.symbology.modifier = b'3';
                     result.symbology.aiFlag = AIFlag::GS1; // In Alphanumeric mode undouble doubled '%' and treat single '%' as <GS>
                 }
@@ -316,32 +303,28 @@ pub fn DecodeBitStream(
                         return Err(Exceptions::format_with(
                             "AIM Application Indicator (FNC1 in second position) at illegal position",
                         ));
-                        // throw FormatError("AIM Application Indicator (FNC1 in second position) at illegal position");
                     }
-                    result.symbology.modifier = b'5'; // As above
+                    result.symbology.modifier = b'5';
                     // ISO/IEC 18004:2015 7.4.8.3 AIM Application Indicator (FNC1 in second position), "00-99" or "A-Za-z"
                     let appInd = bits.readBits(8)?;
-                    if appInd < 100
-                    // "00-09"
-                    {
+                    if appInd < 100 {
+                        // "00-09"
                         result +=
                             crate::common::cpp_essentials::util::ToString(appInd as usize, 2)?;
-                    } else if (165..=190).contains(&appInd) || (197..=222).contains(&appInd)
-                    // "A-Za-z"
-                    {
+                    } else if (165..=190).contains(&appInd) || (197..=222).contains(&appInd) {
+                        // "A-Za-z"
                         result += (appInd - 100) as u8;
                     } else {
                         return Err(Exceptions::format_with("Invalid AIM Application Indicator"));
-                        // throw FormatError("Invalid AIM Application Indicator");
                     }
-                    result.symbology.aiFlag = AIFlag::AIM; // see also above
+                    result.symbology.aiFlag = AIFlag::AIM;
                 }
                 Mode::STRUCTURED_APPEND => {
                     // sequence number and parity is added later to the result metadata
                     // Read next 4 bits of index, 4 bits of symbol count, and 8 bits of parity data, then continue
                     structuredAppend.index = bits.readBits(4)? as i32;
                     structuredAppend.count = bits.readBits(4)? as i32 + 1;
-                    structuredAppend.id = (bits.readBits(8)?).to_string(); //std::to_string(bits.readBits(8));
+                    structuredAppend.id = (bits.readBits(8)?).to_string();
                 }
                 Mode::ECI => {
                     // Count doesn't apply to ECI
@@ -351,11 +334,9 @@ pub fn DecodeBitStream(
                     // First handle Hanzi mode which does not start with character count
                     // chinese mode contains a sub set indicator right after mode indicator
                     let subset = bits.readBits(4)?;
-                    if subset != 1
-                    // GB2312_SUBSET is the only supported one right now
-                    {
+                    if subset != 1 {
+                        // GB2312_SUBSET is the only supported one right now
                         return Err(Exceptions::format_with("Unsupported HANZI subset"));
-                        // throw FormatError("Unsupported HANZI subset");
                     }
                     let count = bits.readBits(mode.CharacterCountBits(version) as usize)?;
                     DecodeHanziSegment(&mut bits, count, &mut result)?;
@@ -371,7 +352,7 @@ pub fn DecodeBitStream(
                         }
                         Mode::BYTE => DecodeByteSegment(&mut bits, count, &mut result)?,
                         Mode::KANJI => DecodeKanjiSegment(&mut bits, count, &mut result)?,
-                        _ => return Err(Exceptions::format_with("Invalid CodecMode")), //throw FormatError("Invalid CodecMode");
+                        _ => return Err(Exceptions::format_with("Invalid CodecMode")),
                     };
                 }
             }
@@ -419,9 +400,9 @@ pub fn Decode(bits: &BitMatrix) -> Result<DecoderResult<bool>> {
 
     // Count total number of data bytes
     let op = |totalBytes, dataBlock: &DataBlock| totalBytes + dataBlock.getNumDataCodewords();
-    let totalBytes = dataBlocks.iter().fold(0, op); // std::accumulate(std::begin(dataBlocks), std::end(dataBlocks), int{}, op);
+    let totalBytes = dataBlocks.iter().fold(0, op);
     let mut resultBytes = vec![0u8; totalBytes as usize];
-    let mut resultIterator = 0; //resultBytes.begin();
+    let mut resultIterator = 0;
 
     // Error-correct and copy data blocks together into a stream of bytes
     for dataBlock in dataBlocks.iter() {
@@ -432,7 +413,6 @@ pub fn Decode(bits: &BitMatrix) -> Result<DecoderResult<bool>> {
             return Err(Exceptions::CHECKSUM);
         }
 
-        // resultIterator = std::copy_n(codewordBytes.begin(), numDataCodewords, resultIterator);
         resultBytes[resultIterator..(resultIterator + numDataCodewords)]
             .copy_from_slice(&codewordBytes[..numDataCodewords]);
         resultIterator += numDataCodewords;
@@ -444,5 +424,3 @@ pub fn Decode(bits: &BitMatrix) -> Result<DecoderResult<bool>> {
             .withIsMirrored(formatInfo.isMirrored),
     )
 }
-
-// } // namespace ZXing::QRCode

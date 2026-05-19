@@ -14,13 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import com.google.zxing.FormatException;
-
-// import java.nio.charset.Charset;
-// import java.nio.charset.StandardCharsets;
-
 use std::{
     collections::HashSet,
     fmt::{self},
@@ -139,14 +132,10 @@ impl ECIStringBuilder {
 
     /// Change the current encoding characterset, finding an eci to do so
     pub fn switch_encoding(&mut self, charset: CharacterSet, is_eci: bool) {
-        //self.append_eci(Eci::from(charset))
         if is_eci && !self.has_eci {
             self.eci_positions.clear();
         }
-        if is_eci || !self.has_eci
-        //{self.eci_positions.push_back({eci, Size(bytes)});}
-        {
-            // self.append_eci(Eci::from(charset))
+        if is_eci || !self.has_eci {
             if let Some(last) = self.eci_positions.last_mut() {
                 last.2 = self.bytes.len()
             }
@@ -180,7 +169,6 @@ impl ECIStringBuilder {
 
         // If there are more sets, encode each of them in turn
         for (eci, eci_start, eci_end) in &self.eci_positions {
-            // let (_,end) = *self.eci_positions.first().unwrap_or(&(*eci, self.bytes.len()));
             let end = if *eci_end == 0 {
                 self.bytes.len()
             } else {
@@ -212,22 +200,12 @@ impl ECIStringBuilder {
             } else {
                 return None;
             }
-        } else if eci == Eci::Unknown {
-            /*  // This probably should never be used, it's here just in case I don't understand what's
-                // going on.
-            let cs = CharacterSet::from(Eci::ISO8859_1);
-            if let Ok(enc_str) = cs.decode(bytes) {
-                encoded_string.push_str(&enc_str);
-                    not_encoded_yet = false;
-            }
-
-            else */
-            if let Some(found_encoding) = string_utils::guessCharset(bytes, &DecodeHints::default())
-                && let Ok(found_encoded_str) = found_encoding.decode(bytes)
-            {
-                encoded_string.push_str(&found_encoded_str);
-                not_encoded_yet = false;
-            }
+        } else if eci == Eci::Unknown
+            && let Some(found_encoding) = string_utils::guessCharset(bytes, &DecodeHints::default())
+            && let Ok(found_encoded_str) = found_encoding.decode(bytes)
+        {
+            encoded_string.push_str(&found_encoded_str);
+            not_encoded_yet = false;
         }
 
         if not_encoded_yet {
@@ -279,14 +257,6 @@ impl ECIStringBuilder {
 
         self
     }
-
-    // pub fn list_ecis(&self) -> HashSet<Eci> {
-    //     let mut hs = HashSet::new();
-    //     self.eci_positions.iter().for_each(|pos| {
-    //         hs.insert(pos.0);
-    //     });
-    //     hs
-    // }
 }
 
 impl fmt::Display for ECIStringBuilder {
@@ -329,17 +299,10 @@ pub enum AIFlag {
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct SymbologyIdentifier {
-    //char code = 0, modifier = 0, eciModifierOffset = 0;
     pub code: u8,
     pub modifier: u8,
     pub eciModifierOffset: u8,
     pub aiFlag: AIFlag,
-    // AIFlag aiFlag = AIFlag::None;
-
-    // std::string toString(bool hasECI = false) const
-    // {
-    // 	return code ? ']' + std::string(1, code) + static_cast<char>(modifier + eciModifierOffset * hasECI) : std::string();
-    // }
 }
 
 impl Default for SymbologyIdentifier {

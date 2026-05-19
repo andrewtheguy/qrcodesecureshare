@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing;
-
 use std::borrow::Cow;
 
 use crate::{
@@ -32,9 +30,6 @@ use crate::{
  * @author dswitkin@google.com (Daniel Switkin)
  */
 pub trait Binarizer {
-    //private final LuminanceSource source;
-    //fn new(source:dyn LuminanceSource) -> Self;
-
     type Source: LuminanceSource;
 
     fn get_luminance_source(&self) -> &Self::Source;

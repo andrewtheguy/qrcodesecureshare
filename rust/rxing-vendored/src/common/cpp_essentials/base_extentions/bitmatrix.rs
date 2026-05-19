@@ -15,10 +15,8 @@ impl BitMatrix {
         let mut result = BitMatrix::new(width, height)?;
 
         for y in 0..result.height() {
-            // for (int y = 0; y < result.height(); y++) {
             let yOffset = top + y as f32 * subSampling;
             for x in 0..result.width() {
-                // for (int x = 0; x < result.width(); x++) {
                 if self.get_point(point(left + x as f32 * subSampling, yOffset)) {
                     result.set(x, y);
                 }
@@ -71,16 +69,13 @@ impl BitMatrix {
         }
 
         for y in top..=bottom {
-            // for (int y = top; y <= bottom; y++ ) {
             for x in 0..left {
-                // for (int x = 0; x < left; ++x){
                 if self.get(x, y) {
                     left = x;
                     break;
                 }
             }
             for x in ((right + 1)..self.width()).rev() {
-                // for (int x = _width-1; x > right; x--){
                 if self.get(x, y) {
                     right = x;
                     break;

@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common.reedsolomon;
-
-//import java.util.ArrayList;
-//import java.util.List;
-
 use crate::Exceptions;
 use crate::common::Result;
 
@@ -50,7 +45,6 @@ impl ReedSolomonEncoder {
             let cg_len = self.cachedGenerators.len();
             let mut nextGenerator;
             for d in cg_len..=degree {
-                //for (int d = cachedGenerators.size(); d <= degree; d++) {
                 nextGenerator = lastGenerator
                     .multiply(
                         &GenericGFPoly::new(
@@ -65,7 +59,6 @@ impl ReedSolomonEncoder {
                     .ok()?;
                 self.cachedGenerators.push(nextGenerator);
                 lastGenerator = self.cachedGenerators.get(d)?;
-                //lastGenerator = &nextGenerator;
             }
         }
         let rv = self.cachedGenerators.get(degree)?;
@@ -91,20 +84,17 @@ impl ReedSolomonEncoder {
         let generator = self.buildGenerator(ec_bytes);
         let mut info_coefficients: Vec<i32> = vec![0; data_bytes];
         info_coefficients[0..data_bytes].clone_from_slice(&to_encode[0..data_bytes]);
-        //System.arraycopy(toEncode, 0, infoCoefficients, 0, dataBytes);
         let mut info = GenericGFPoly::new(fld, &info_coefficients)?;
         info = info.multiply_by_monomial(ec_bytes, 1)?;
         let remainder = &info.divide(generator.ok_or(Exceptions::REED_SOLOMON)?)?.1;
         let coefficients = remainder.getCoefficients();
         let num_zero_coefficients = ec_bytes - coefficients.len();
         for i in 0..num_zero_coefficients {
-            //for (int i = 0; i < numZeroCoefficients; i++) {
             to_encode[data_bytes + i] = 0;
         }
         to_encode[data_bytes + num_zero_coefficients
             ..(coefficients.len() + data_bytes + num_zero_coefficients)]
             .clone_from_slice(&coefficients[0..coefficients.len()]);
-        //System.arraycopy(coefficients, 0, toEncode, dataBytes + numZeroCoefficients, coefficients.length);
         Ok(())
     }
 }

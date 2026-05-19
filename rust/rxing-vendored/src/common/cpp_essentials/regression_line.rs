@@ -10,9 +10,6 @@ pub struct RegressionLine {
     pub(super) a: f32,
     pub(super) b: f32,
     pub(super) c: f32,
-    // std::vector<PointF> _points;
-    // PointF _directionInward;
-    // PointF::value_t a = NAN, b = NAN, c = NAN;
 }
 
 impl Default for RegressionLine {
@@ -95,7 +92,6 @@ impl RegressionLineTrait for RegressionLine {
         maxSignedDist: Option<f64>,
         updatePoints: Option<bool>,
     ) -> bool {
-        // let maxSignedDist = if let Some(m) = maxSignedDist { m } else { -1.0 };
         let maxSignedDist = maxSignedDist.unwrap_or(-1.0);
         let updatePoints = updatePoints.unwrap_or_default();
 
@@ -105,11 +101,6 @@ impl RegressionLineTrait for RegressionLine {
             loop {
                 let old_points_size = points.len();
                 // remove points that are further 'inside' than maxSignedDist or further 'outside' than 2 x maxSignedDist
-                // auto end = std::remove_if(points.begin(), points.end(), [this, maxSignedDist](auto p) {
-                // 	auto sd = this->signedDistance(p);
-                //     return sd > maxSignedDist || sd < -2 * maxSignedDist;
-                // });
-                // points.erase(end, points.end());
                 points.retain(|&p| {
                     let sd = self.signedDistance(p) as f64;
                     !(sd > maxSignedDist || sd < -2.0 * maxSignedDist)
@@ -117,9 +108,6 @@ impl RegressionLineTrait for RegressionLine {
                 if old_points_size == points.len() {
                     break;
                 }
-                // #ifdef PRINT_DEBUG
-                // 				printf("removed %zu points\n", old_points_size - points.size());
-                // #endif
                 ret = self.evaluate(&points);
             }
 
@@ -159,7 +147,6 @@ impl RegressionLineTrait for RegressionLine {
         let mut sumYY = 0.0;
         let mut sumXY = 0.0;
         for p in points {
-            // for (auto p = begin; p != end; ++p) {
             let d = *p - mean;
             sumXX += d.x * d.x;
             sumYY += d.y * d.y;
@@ -181,13 +168,12 @@ impl RegressionLineTrait for RegressionLine {
             self.b = -sumXX / l;
         }
         if Point::dot(self.direction_inward, self.normal()) < 0.0 {
-            // if (dot(_directionInward, normal()) < 0) {
             self.a = -self.a;
             self.b = -self.b;
         }
-        self.c = Point::dot(self.normal(), mean); // (a*mean.x + b*mean.y);
-        Point::dot(self.direction_inward, self.normal()) > 0.5
+        self.c = Point::dot(self.normal(), mean);
         // angle between original and new direction is at most 60 degree
+        Point::dot(self.direction_inward, self.normal()) > 0.5
     }
 
     fn evaluateSelf(&mut self) -> bool {

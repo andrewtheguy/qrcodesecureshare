@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common;
-
 use std::fmt::Display;
 
 use crate::common::Result;

@@ -83,7 +83,6 @@ fn build_initial_pattern<const PATTERN_SIZE: usize>(
     let mut position = 0;
 
     for pattern_position in buffer.iter_mut() {
-        // for _ in 0..pattern_length {
         let next = if current {
             source.getNextUnset(position)
         } else {

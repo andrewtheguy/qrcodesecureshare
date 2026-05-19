@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import com.google.zxing.NotFoundException;
-
 use crate::{Exceptions, point};
 use crate::{Point, common::Result};
 
@@ -37,26 +33,6 @@ use super::{BitMatrix, PerspectiveTransform, Quadrilateral};
  * @author Sean Owen
  */
 pub trait GridSampler {
-    //   /**
-    //    * Sets the implementation of GridSampler used by the library. One global
-    //    * instance is stored, which may sound problematic. But, the implementation provided
-    //    * ought to be appropriate for the entire platform, and all uses of this library
-    //    * in the whole lifetime of the JVM. For instance, an Android activity can swap in
-    //    * an implementation that takes advantage of native platform libraries.
-    //    *
-    //    * @param newGridSampler The platform-specific object to install.
-    //    */
-    //   public static void setGridSampler(GridSampler newGridSampler) {
-    //     gridSampler = newGridSampler;
-    //   }
-
-    //   /**
-    //    * @return the current implementation of GridSampler
-    //    */
-    //   public static GridSampler getInstance() {
-    //     return gridSampler;
-    //   }
-
     /**
      * Samples an image for a rectangular matrix of bits of the given dimension. The sampling
      * transformation is determined by the coordinates of 4 points, in the original and transformed
@@ -118,7 +94,6 @@ pub trait GridSampler {
         let mut bits = BitMatrix::new(dimensionX, dimensionY)?;
         let mut points = vec![Point::default(); dimensionX as usize];
         for y in 0..dimensionY {
-            //   for (int y = 0; y < dimensionY; y++) {
             let i_value = y as f32 + 0.5;
 
             for (x, point) in points.iter_mut().enumerate() {
@@ -129,17 +104,10 @@ pub trait GridSampler {
             controls
                 .iter()
                 .for_each(|control| control.transform.transform_points_single(&mut points));
-            // controls
-            //     .first()
-            //     .unwrap()
-            //     .transform
-            //     .transform_points_single(&mut points);
             // Quick check to see if points transformed to something inside the image;
             // sufficient to check the endpoints
             self.checkAndNudgePoints(image, &mut points)?;
-            // try {
             for (x, point) in points.iter().enumerate() {
-                // for x in 0..points.len() {
                 if image.try_get(point.x as u32, point.y as u32).ok_or(
                     Exceptions::not_found_with(
                         "index out of bounds, see documentation in file for explanation",
@@ -149,18 +117,7 @@ pub trait GridSampler {
                     bits.set(x as u32, y);
                 }
             }
-            // } catch (ArrayIndexOutOfBoundsException aioobe) {
-            //   // This feels wrong, but, sometimes if the finder patterns are misidentified, the resulting
-            //   // transform gets "twisted" such that it maps a straight line of points to a set of points
-            //   // whose endpoints are in bounds, but others are not. There is probably some mathematical
-            //   // way to detect this about the transformation that I don't know yet.
-            //   // This results in an ugly runtime exception despite our clever checks above -- can't have
-            //   // that. We could check each point's coordinates but that feels duplicative. We settle for
-            //   // catching and wrapping ArrayIndexOutOfBoundsException.
-            //   throw NotFoundException.getNotFoundInstance();
-            // }
         }
-        // dbg!(bits.to_string());
 
         Ok((bits, [Point::default(); 4]))
     }

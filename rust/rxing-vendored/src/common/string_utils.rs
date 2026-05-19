@@ -25,21 +25,9 @@ use super::CharacterSet;
  * @author Alex Dupre
  */
 
-// const PLATFORM_DEFAULT_ENCODING: &dyn Encoding = encoding::all::UTF_8;
-// const SHIFT_JIS_CHARSET: &dyn Encoding =
-//     encoding::label::encoding_from_whatwg_label("SJIS").unwrap();
-// const GB2312_CHARSET: &dyn Encoding =
-//     encoding::label::encoding_from_whatwg_label("GB2312").unwrap();
-// const EUC_JP: &dyn Encoding = encoding::label::encoding_from_whatwg_label("EUC_JP").unwrap();
 const ASSUME_SHIFT_JIS: bool = false;
-// static SHIFT_JIS: &'static str = "SJIS";
-// static GB2312: &'static str = "GB2312";
 
 pub const SHIFT_JIS_CHARSET: CharacterSet = CharacterSet::Shift_JIS;
-
-//    private static final boolean ASSUME_SHIFT_JIS =
-//        SHIFT_JIS_CHARSET.equals(PLATFORM_DEFAULT_ENCODING) ||
-//        EUC_JP.equals(PLATFORM_DEFAULT_ENCODING);
 
 /**
  * @param bytes bytes encoding a string, whose encoding should be guessed
@@ -105,7 +93,6 @@ pub fn guessCharset(bytes: &[u8], hints: &DecodeHints) -> Option<CharacterSet> {
 
     let utf8bom = bytes.len() > 3 && bytes[0..=2] == [0xEF, 0xBB, 0xBF];
 
-    // for i in 0..length {
     for &byte in bytes {
         if !(can_be_iso88591 || can_be_shift_jis || can_be_utf8) {
             break;
@@ -146,7 +133,6 @@ pub fn guessCharset(bytes: &[u8], hints: &DecodeHints) -> Option<CharacterSet> {
         // ISO-8859-1 stuff
         if can_be_iso88591 {
             if matches!(byte, 0x7F..0xA0) {
-                // if byte > 0x7F && byte < 0xA0 {
                 can_be_iso88591 = false;
             } else if byte > 0x9F && (byte < 0xC0 || byte == 0xD7 || byte == 0xF7) {
                 iso_high_other += 1;
@@ -172,14 +158,12 @@ pub fn guessCharset(bytes: &[u8], hints: &DecodeHints) -> Option<CharacterSet> {
                 }
             } else if byte > 0x7F {
                 sjis_bytes_left += 1;
-                //sjisDoubleBytesChars++;
                 sjis_cur_katakana_word_length = 0;
                 sjis_cur_double_bytes_word_length += 1;
                 if sjis_cur_double_bytes_word_length > sjis_max_double_bytes_word_length {
                     sjis_max_double_bytes_word_length = sjis_cur_double_bytes_word_length;
                 }
             } else {
-                //sjisLowChars++;
                 sjis_cur_katakana_word_length = 0;
                 sjis_cur_double_bytes_word_length = 0;
             }

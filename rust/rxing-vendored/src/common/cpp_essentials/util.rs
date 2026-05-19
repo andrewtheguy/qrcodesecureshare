@@ -42,7 +42,6 @@ pub fn UpdateMinMaxFloat(min: &mut f64, max: &mut f64, val: f64) {
     *max = f64::max(*max, val);
 }
 
-// template<typename T, typename = std::enable_if_t<std::is_integral_v<T>>>
 pub fn ToString<T: Into<usize>>(val: T, len: usize) -> Result<String> {
     let mut len = len as isize;
     let val = val.into();
@@ -50,19 +49,14 @@ pub fn ToString<T: Into<usize>>(val: T, len: usize) -> Result<String> {
 
     let mut result = vec!['0'; len as usize];
     len -= 1;
-    // std::string result(len--, '0');
     if val < 0 {
         return Err(Exceptions::format_with("Invalid value"));
     }
     while len >= 0 && val != 0 {
         result[len as usize] = char::from(b'0' + (val % 10) as u8);
-        // result.replace_range((len as usize)..(len as usize), &char::from(b'0' + (val % 10) as u8).to_string());
-
         len -= 1;
         val /= 10;
     }
-    // for (; len >= 0 && val != 0; --len, val /= 10) {
-    // 	result[len] = '0' + val % 10;}
     if val != 0 {
         return Err(Exceptions::format_with("Invalid value"));
     }
@@ -74,11 +68,9 @@ pub fn ToInt(a: &[u32]) -> Option<u32> {
     if a.iter().sum::<u32>() > 32 {
         return None;
     }
-    // assert(Reduce(a) <= 32);
 
     let mut pattern = 0;
     for (i, element) in a.iter().copied().enumerate() {
-        // for (int i = 0; i < Size(a); i++)
         pattern = (pattern << element) | (!(0xffffffff << element) * (!i & 1) as u32);
     }
 
@@ -91,22 +83,12 @@ pub fn AppendBit(val: &mut i32, bit: bool) {
     *val |= i32::from(bit)
 }
 
-pub fn ToIntPos(
-    bits: &[u8],
-    pos: usize,   /* = 0 */
-    count: usize, /*  = 8 * sizeof(T)*/
-) -> Option<u32> {
-    // assert(0 <= count && count <= 8 * (int)sizeof(T));
-    // assert(0 <= pos && pos + count <= bits.size());
-
+pub fn ToIntPos(bits: &[u8], pos: usize, count: usize) -> Option<u32> {
     let count = std::cmp::min(count, bits.len().saturating_sub(pos));
     let mut res = 0;
     for bit in bits.iter().skip(pos).take(count) {
         AppendBit(&mut res, *bit != 0);
     }
-    // let it = bits.iterAt(pos);
-    // for (int i = 0; i < count; ++i, ++it)
-    // 	{AppendBit(res, *it);}
 
     Some(res as u32)
 }

@@ -14,9 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import java.util.Arrays;
 
 use std::fmt;
 
@@ -80,10 +77,6 @@ impl BitMatrix {
             row_size: (width as usize).div_ceil(BASE_BITS),
             bits: vec![0; (width as usize).div_ceil(BASE_BITS) * height as usize],
         })
-        // this.width = width;
-        // this.height = height;
-        // this.rowSize = (width + 31) / 32;
-        // bits = new int[rowSize * height];
     }
 
     #[allow(dead_code)]
@@ -113,12 +106,7 @@ impl BitMatrix {
         let width: u32 = image[0].len().try_into().unwrap();
         let mut bits = BitMatrix::new(width, height).unwrap();
         for (i, imageI) in image.iter().enumerate().take(height as usize) {
-            // for i in 0..height as usize {
-            //for (int i = 0; i < height; i++) {
-            // let imageI = &image[i];
             for (j, imageI_j) in imageI.iter().enumerate().take(width as usize) {
-                // for j in 0..width as usize {
-                //for (int j = 0; j < width; j++) {
                 if *imageI_j {
                     bits.set(j as u32, i as u32);
                 }
@@ -132,11 +120,6 @@ impl BitMatrix {
         set_string: &str,
         unset_string: &str,
     ) -> Result<Self> {
-        // cannot pass nulls in rust
-        // if (stringRepresentation == null) {
-        //   throw new IllegalArgumentException();
-        // }
-
         let mut bits = vec![false; string_representation.chars().count()];
         let mut bitsPos = 0;
         let mut rowStartPos = 0;
@@ -150,7 +133,6 @@ impl BitMatrix {
                 || chars.get(pos).ok_or(Exceptions::ILLEGAL_STATE)? == &'\r'
             {
                 if bitsPos > rowStartPos {
-                    //if rowLength == -1 {
                     if first_run {
                         first_run = false;
                         rowLength = bitsPos - rowStartPos;
@@ -181,9 +163,7 @@ impl BitMatrix {
 
         // no EOL at end?
         if bitsPos > rowStartPos {
-            //if rowLength == -1 {
             if first_run {
-                // first_run = false;
                 rowLength = bitsPos - rowStartPos;
             } else if bitsPos - rowStartPos != rowLength {
                 return Err(Exceptions::illegal_argument_with(
@@ -195,8 +175,6 @@ impl BitMatrix {
 
         let mut matrix = BitMatrix::new(rowLength as u32, nRows)?;
         for (i, bit) in bits.iter().enumerate().take(bitsPos) {
-            // for i in 0..bitsPos {
-            //for (int i = 0; i < bitsPos; i++) {
             if *bit {
                 matrix.set((i % rowLength) as u32, (i / rowLength) as u32);
             }
@@ -223,8 +201,6 @@ impl BitMatrix {
     #[inline(always)]
     pub fn get_point(&self, point: Point) -> bool {
         self.get(point.x as u32, point.y as u32)
-        // let offset = self.get_offset(point.y as u32, point.x as u32);
-        // ((self.bits[offset] >> (x & BASE_SHIFT)) & 1) != 0
     }
 
     #[inline(always)]
@@ -350,15 +326,11 @@ impl BitMatrix {
                 "input matrix dimensions do not match",
             ));
         }
-        // let mut rowArray = BitArray::with_size(self.width as usize);
         for y in 0..self.height {
-            //for (int y = 0; y < height; y++) {
             let offset = y as usize * self.row_size;
             let rowArray = mask.getRow(y);
             let row = rowArray.getBitArray();
             for (x, row_x) in row.iter().enumerate().take(self.row_size) {
-                // for x in 0..self.row_size {
-                //for (int x = 0; x < rowSize; x++) {
                 self.bits[offset + x] ^= *row_x;
             }
         }
@@ -395,10 +367,8 @@ impl BitMatrix {
             ));
         }
         for y in top..bottom {
-            //for (int y = top; y < bottom; y++) {
             let offset = y as usize * self.row_size;
             for x in left..right {
-                //for (int x = left; x < right; x++) {
                 self.bits[offset + (x as usize / BASE_BITS)] |= 1 << (x as usize & BASE_SHIFT);
             }
         }
@@ -418,7 +388,6 @@ impl BitMatrix {
 
         let offset = y as usize * self.row_size;
         for x in 0..self.row_size {
-            //for (int x = 0; x < rowSize; x++) {
             rw.setBulk(x * BASE_BITS, self.bits[offset + x]);
         }
         rw
@@ -446,7 +415,6 @@ impl BitMatrix {
     pub fn setRow(&mut self, y: u32, row: &BitArray) {
         self.bits[y as usize * self.row_size..y as usize * self.row_size + self.row_size]
             .clone_from_slice(&row.getBitArray()[0..self.row_size])
-        //System.arraycopy(row.getBitArray(), 0, self.bits, y * self.rowSize, self.rowSize);
     }
 
     /**
@@ -480,11 +448,8 @@ impl BitMatrix {
      * Modifies this {@code BitMatrix} to represent the same but rotated 180 degrees
      */
     pub fn rotate180(&mut self) {
-        // let mut topRow = BitArray::with_size(self.width as usize);
-        // let mut bottomRow = BitArray::with_size(self.width as usize);
         let maxHeight = self.height.div_ceil(2);
         for i in 0..maxHeight {
-            //for (int i = 0; i < maxHeight; i++) {
             let mut topRow = self.getRow(i);
             let bottomRowIndex = self.height - 1 - i;
             let mut bottomRow = self.getRow(bottomRowIndex);
@@ -505,9 +470,7 @@ impl BitMatrix {
         let mut newBits = vec![0; (newRowSize * newHeight) as usize];
 
         for y in 0..self.height {
-            //for (int y = 0; y < height; y++) {
             for x in 0..self.width {
-                //for (int x = 0; x < width; x++) {
                 let offset = self.get_offset(y, x);
                 if ((self.bits[offset] >> (x as usize & BASE_SHIFT)) & 1) != 0 {
                     let newOffset: usize =
@@ -530,15 +493,11 @@ impl BitMatrix {
     pub fn getEnclosingRectangle(&self) -> Option<[u32; 4]> {
         let mut left = self.width;
         let mut top = self.height;
-        // let right = -1;
-        // let bottom = -1;
         let mut right: u32 = 0;
         let mut bottom = 0;
 
         for y in 0..self.height {
-            //for (int y = 0; y < height; y++) {
             for x32 in 0..self.row_size {
-                //for (int x32 = 0; x32 < rowSize; x32++) {
                 let theBits = self.bits[y as usize * self.row_size + x32];
                 if theBits != 0 {
                     top = top.min(y);
@@ -641,26 +600,6 @@ impl BitMatrix {
         self.row_size
     }
 
-    // @Override
-    // public boolean equals(Object o) {
-    //   if (!(o instanceof BitMatrix)) {
-    //     return false;
-    //   }
-    //   BitMatrix other = (BitMatrix) o;
-    //   return width == other.width && height == other.height && rowSize == other.rowSize &&
-    //   Arrays.equals(bits, other.bits);
-    // }
-
-    // @Override
-    // public int hashCode() {
-    //   int hash = width;
-    //   hash = 31 * hash + width;
-    //   hash = 31 * hash + height;
-    //   hash = 31 * hash + rowSize;
-    //   hash = 31 * hash + Arrays.hashCode(bits);
-    //   return hash;
-    // }
-
     /**
      * @param setString representation of a set bit
      * @param unsetString representation of an unset bit
@@ -681,9 +620,7 @@ impl BitMatrix {
         let mut result =
             String::with_capacity((self.height * (self.width + 1)).try_into().unwrap());
         for y in 0..self.height {
-            //for (int y = 0; y < height; y++) {
             for x in 0..self.width {
-                //for (int x = 0; x < width; x++) {
                 result.push_str(if self.get(x, y) {
                     setString
                 } else {
@@ -695,17 +632,6 @@ impl BitMatrix {
         result
     }
 
-    // @Override
-    // public BitMatrix clone() {
-    //   return new BitMatrix(width, height, rowSize, bits.clone());
-    // }
-    // pub fn crop(&self, top:usize, left:usize, height: usize, width: usize) -> BitMatrix {
-    //     let area = self.bits.iter().skip(self.row_size * top).take(self.row_size * height)
-    //     .copied().collect::<Vec<u32>>();
-    //     let new_bits = area.chunks(self.row_size)
-    //     .skip(left).take(width).flatten().copied().collect::<Vec<u32>>();
-    //     Self { width: width, height: height, row_size: width, bits: () }
-    // }
     pub fn crop(&self, top: usize, left: usize, height: usize, width: usize) -> BitMatrix {
         let mut new_bm = BitMatrix::new(width as u32, height as u32).expect("create empty");
         for y in top..top + height {

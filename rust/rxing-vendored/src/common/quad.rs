@@ -4,18 +4,10 @@ use crate::{Exceptions, Point, point};
 pub struct Quadrilateral(pub [Point; 4]);
 
 impl Quadrilateral {
-    // 	using Base = std::array<T, 4>;
-    // 	using Base::at;
-    // public:
-    // using Point = T;
-
     #[allow(dead_code)]
     pub const fn new(tl: Point, tr: Point, br: Point, bl: Point) -> Self {
         Self([tl, tr, br, bl])
     }
-    // pub fn with_f32( tl:f32,  tr:f32,  br:f32,  bl:f32) -> Self {
-    //     Self([tl, tr,br, bl ])
-    // }
 
     pub const fn with_points(tl: Point, tr: Point, br: Point, bl: Point) -> Self {
         Self([tl, tr, br, bl])
@@ -23,16 +15,16 @@ impl Quadrilateral {
 
     pub const fn top_left(&self) -> &Point {
         &self.0[0]
-    } //const noexcept { return at(0); }
+    }
     pub const fn top_right(&self) -> &Point {
         &self.0[1]
-    } //const noexcept { return at(1); }
+    }
     pub const fn bottom_right(&self) -> &Point {
         &self.0[2]
-    } //const noexcept { return at(2); }
+    }
     pub const fn bottom_left(&self) -> &Point {
         &self.0[3]
-    } //const noexcept { return at(3); }
+    }
 
     #[allow(dead_code)]
     pub fn orientation(&self) -> f64 {
@@ -127,16 +119,11 @@ impl Quadrilateral {
         let mut m = f32::INFINITY;
         let mut M = 0.0_f32;
 
-        for i in 0..N
-        // for(int i = 0; i < N; i++)
-        {
+        for i in 0..N {
             let d1 = self.0[(i + 2) % N] - self.0[(i + 1) % N];
             let d2 = self.0[i] - self.0[(i + 1) % N];
             let cp = d1.cross(d2);
 
-            // m = if m.abs() > cp { cp } else { m.abs() };
-
-            // M = if M.abs() > cp { M.abs() } else { cp };
             m = f32::min((m).abs(), cp);
             M = f32::max((M).abs(), cp);
 
@@ -172,7 +159,6 @@ impl Quadrilateral {
         let reduced: Point = self.0.iter().sum();
         let size = self.0.len() as f32;
         reduced / size
-        // return Reduce(q) / Size(q);
     }
 
     #[allow(dead_code)]
@@ -183,11 +169,9 @@ impl Quadrilateral {
 
         let mut res = *self;
         res.0.rotate_left(((n + 4) % 4) as usize);
-        // std::rotate_copy(q.begin(), q.begin() + ((n + 4) % 4), q.end(), res.begin());
         if mirror {
             res.0.swap(1, 3);
         }
-        // {std::swap(res[1], res[3]);}
         res
     }
 
@@ -196,15 +180,12 @@ impl Quadrilateral {
         // Test if p is on the same side (right or left) of all polygon segments
         let mut pos = 0;
         let mut neg = 0;
-        for i in 0..self.0.len()
-        // for (int i = 0; i < Size(q); ++i)
-        {
+        for i in 0..self.0.len() {
             if Point::cross(p - self.0[i], self.0[(i + 1) % self.0.len()] - self.0[i]) < 0.0 {
                 neg += 1;
             } else {
                 pos += 1;
             }
-            // (cross(p - q[i], q[(i + 1) % Size(q)] - q[i]) < 0 ? neg : pos)++;
         }
 
         pos == 0 || neg == 0
@@ -235,11 +216,9 @@ impl Quadrilateral {
             b.0.iter()
                 .position(|v| *v == min_element)
                 .unwrap_or_default();
-        // let offset = std::min_element(b.begin(), b.end(), dist2First) - b.begin();
 
         let mut res = Quadrilateral::default();
         for i in 0..4 {
-            // for (int i = 0; i < 4; ++i){
             res[i] = (a[i] + b[(i + offset) % 4]) / 2.0;
         }
 

@@ -44,7 +44,6 @@ pub const VERSION_DECODE_INFO: [u32; 34] = [
     0x2542E, 0x26A64, 0x27541, 0x28C69,
 ];
 
-// const VERSIONS: &'static[Version] = &Version::buildVersions();
 /**
  * See ISO 18004:2006 Annex D
  *
@@ -52,7 +51,6 @@ pub const VERSION_DECODE_INFO: [u32; 34] = [
  */
 #[derive(Debug)]
 pub struct Version {
-    //   private static final Version[] VERSIONS = buildVersions();
     versionNumber: u32,
     alignmentPatternCenters: Box<[u32]>,
     ecBlocks: Box<[ECBlocks]>,
@@ -68,11 +66,8 @@ impl Version {
         let mut total = 0;
         let ecCodewords = ecBlocks[1].getECCodewordsPerBlock();
         let ecbArray = ecBlocks[1].getECBlocks();
-        // let mut i = 0;
         for ecb in ecbArray {
-            // while i < ecbArray.len() {
             total += ecb.getCount() * (ecb.getDataCodewords() + ecCodewords);
-            // i += 1;
         }
 
         Self {
@@ -131,7 +126,6 @@ impl Version {
 
     pub fn getDimensionForVersion(&self) -> u32 {
         Self::DimensionOfVersion(self.versionNumber, self.qr_type == Type::Micro)
-        // 17 + 4 * self.versionNumber
     }
 
     pub fn getECBlocksForLevel(&self, ecLevel: ErrorCorrectionLevel) -> Result<&ECBlocks> {
@@ -210,7 +204,6 @@ impl Version {
             // Set vertical timing and alignment patterns
             let max = self.alignmentPatternCenters.len(); // Same as vertical timing column
             for x in 0..max {
-                // for (size_t x = 0; x < max; ++x) {
                 let cx = self.alignmentPatternCenters[x];
                 bitMatrix.setRegion(cx - 1, 1, 3, 2)?; // Top alignment pattern
                 bitMatrix.setRegion(cx - 1, (size.y - 3) as u32, 3, 2)?; // Bottom alignment pattern

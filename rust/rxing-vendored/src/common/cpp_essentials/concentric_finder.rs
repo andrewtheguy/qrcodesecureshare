@@ -37,7 +37,6 @@ pub fn CenterFromEnd<const N: usize, T: Into<f32> + std::iter::Sum<T> + Copy>(
         // aztec
         let a: f32 =
             pattern.iter().skip(N / 2 + 1).copied().sum::<T>().into() + pattern[N / 2].into() / 2.0;
-        // let a = std::accumulate(pattern.begin() + (N/2 + 1), pattern.end(), pattern[N/2] / 2.0);
         end - a
     }
 }
@@ -59,7 +58,6 @@ pub fn ReadSymmetricPattern<const N: usize, Cursor: BitMatrixCursorTrait>(
     let mut next = |cur: &mut Cursor, i: isize| {
         let v = cur.stepToEdge(Some(1), Some(range), None);
         res[(s_2 + i) as usize] = (res[(s_2 + i) as usize] as i32 + v) as u16;
-        // res[(s_2 + i) as usize] += v;
         if range != 0 {
             range -= v;
         }
@@ -68,7 +66,6 @@ pub fn ReadSymmetricPattern<const N: usize, Cursor: BitMatrixCursorTrait>(
     };
 
     for i in 0..=s_2 {
-        // for (int i = 0; i <= s_2; ++i) {
         if next(cur, i) == 0 || next(&mut cuo, -i) == 0 {
             return None;
         }
@@ -120,7 +117,6 @@ pub fn CheckSymmetricPattern<
     };
 
     for i in 1..=s_2 {
-        // for (int i = 1; i <= s_2; ++i) {
         if next(&mut curFwd, i as isize) == 0 || next(&mut curBwd, -(i as isize)) == 0 {
             return 0;
         }
@@ -152,14 +148,11 @@ pub fn AverageEdgePixels<T: BitMatrixCursorTrait>(
     let mut sum = Point::default();
 
     for _i in 0..numOfEdges {
-        // for (int i = 0; i < numOfEdges; ++i) {
         if !cur.isInSelf() {
             return None;
         }
         cur.stepToEdge(Some(1), Some(range), None);
         sum += cur.p().centered() + (cur.p() + cur.back()).centered()
-        // sum += centered(cur.p) + centered(cur.p + cur.back());
-        // log(cur.p + cur.back(), 2);
     }
     Some(sum / (2 * numOfEdges) as f32)
 }
@@ -178,7 +171,6 @@ pub fn CenterOfDoubleCross(
         point(1.0, 1.0),
         point(1.0, -1.0),
     ] {
-        // for (auto d : {PointI{0, 1}, {1, 0}, {1, 1}, {1, -1}}) {
         let avr1 = AverageEdgePixels(&mut EdgeTracer::new(image, center, d), range, numOfEdges)?;
         let avr2 = AverageEdgePixels(&mut EdgeTracer::new(image, center, -d), range, numOfEdges)?;
 
@@ -199,7 +191,6 @@ pub fn CenterOfRing(
     let radius = range;
     let inner = nth < 0;
     let nth = nth.abs();
-    // log(center, 3);
     let mut cur = EdgeTracer::new(image, center, point(0.0, 1.0));
     if cur.stepToEdge(Some(nth), Some(radius), Some(inner)) == 0 {
         return None;
@@ -216,7 +207,6 @@ pub fn CenterOfRing(
     let mut sum = Point::default();
     let mut n = 0;
     loop {
-        // log(cur.p, 4);
         sum += cur.p().centered();
         n += 1;
 
@@ -243,7 +233,7 @@ pub fn CenterOfRing(
         if !(cur.p != start) {
             break;
         }
-    } //while (cur.p != start);
+    }
 
     if requireCircle && neighbourMask != 0b111101111 {
         return None;
@@ -261,7 +251,6 @@ pub fn CenterOfRings(
     let mut n = 1;
     let mut sum = center;
     for i in 2..(numOfRings + 1) {
-        // for (int i = 1; i < numOfRings; ++i) {
         let c = CenterOfRing(image, center.floor(), range, i as i32, true)?;
 
         if c == Point::default() {
@@ -305,7 +294,6 @@ pub fn CollectRingPoints(
     let mut points = Vec::<Point>::with_capacity(4 * range as usize);
 
     loop {
-        // log(cur.p, 4);
         points.push(cur.p().centered());
 
         // find out if we come full circle around the center. 8 bits have to be set in the end.
@@ -331,7 +319,7 @@ pub fn CollectRingPoints(
         if !(cur.p != start) {
             break;
         }
-    } //while (cur.p != start);
+    }
 
     if neighbourMask != 0b111101111 {
         return Vec::default();
@@ -360,7 +348,6 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
     corners[2] = *points[(points.len() * 3 / 8)..=(points.len() * 5 / 8)]
         .iter()
         .max_by(max_by_pred)?;
-    // corners[2] = std::max_element(&points[Size(points) * 3 / 8], &points[Size(points) * 5 / 8], dist2Center);
     // find the two in between corners by looking for the points farthest from the long diagonal
     let l = RegressionLine::with_two_points(corners[0], corners[2]);
 
@@ -373,12 +360,10 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
         .iter()
         .copied()
         .max_by(diagonal_max_by_pred)?;
-    // corners[1] = std::max_element(&points[Size(points) * 1 / 8], &points[Size(points) * 3 / 8], dist2Diagonal);
     corners[3] = points[(points.len() * 5 / 8)..=(points.len() * 7 / 8)]
         .iter()
         .copied()
         .max_by(diagonal_max_by_pred)?;
-    // corners[3] = std::max_element(&points[Size(points) * 5 / 8], &points[Size(points) * 7 / 8], dist2Diagonal);
 
     let corner_positions = [
         0,
@@ -433,14 +418,9 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
 
     // check if all points belonging to each line segment are sufficiently close to that line
     for i in 0..4 {
-        // for (int i = 0; i < 4; ++i){
         for p in &points[beg[i]..end[i]] {
-            // for (const PointF* p = beg[i]; p != end[i]; ++p) {
-            let len = (end[i] - beg[i]) as f64; //std::distance(beg[i], end[i]);
+            let len = (end[i] - beg[i]) as f64;
             if len > 3.0 && (lines[i].distance_single(*p) as f64) > (len / 8.0).clamp(1.0, 8.0) {
-                // #ifdef PRINT_DEBUG
-                // 				printf("%d: %.2f > %.2f @ %.fx%.f\n", i, lines[i].distance(*p), std::distance(beg[i], end[i]) / 1., p->x, p->y);
-                // #endif
                 return None;
             }
         }
@@ -448,7 +428,6 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
 
     let mut res = Quadrilateral::default();
     for i in 0..4 {
-        // for (int i = 0; i < 4; ++i) {
         res[i] = RegressionLine::intersect(&lines[i], &lines[(i + 1) % 4])?;
     }
 
@@ -458,12 +437,10 @@ pub fn FitQuadrilateralToPoints(center: Point, points: &mut [Point]) -> Option<Q
 pub fn QuadrilateralIsPlausibleSquare(q: &Quadrilateral, lineIndex: usize) -> bool {
     let mut m;
 
-    m = Point::distance(q[0], q[3]) as f64; //M = distance(q[0], q[3]);
+    m = Point::distance(q[0], q[3]) as f64;
     let mut M = m;
 
     for i in 1..4 {
-        // for (int i = 1; i < 4; ++i)
-
         UpdateMinMaxFloat(&mut m, &mut M, Point::distance(q[i - 1], q[i]) as f64);
     }
 
@@ -569,7 +546,6 @@ pub fn LocateConcentricPattern<const E2E: bool, const LEN: usize, const SUM: usi
     // finder patterns, but it sutantially increases the runtime (approx. 20% slower for the falsepositive images).
     let mut maxError = 0;
     for d in [point(0.0, 1.0), point(1.0, 0.0)] {
-        // for (auto d : {PointI{0, 1}, {1, 0}}) {
         cur.setDirection(d); // THIS COULD POSSIBLY BE WRONG, WE MIGHT MEAN TO CLONE cur EACH RUN?
 
         let spread = CheckSymmetricPattern::<E2E, LEN, SUM, _>(&mut cur, pattern, range, true);
@@ -583,9 +559,7 @@ pub fn LocateConcentricPattern<const E2E: bool, const LEN: usize, const SUM: usi
         }
     }
 
-    //#if 1
     for d in [point(1.0, 1.0), point(1.0, -1.0)] {
-        // for (auto d : {PointI{1, 1}, {1, -1}}) {
         cur.setDirection(d); // THIS COULD POSSIBLY BE WRONG, WE MIGHT MEAN TO CLONE cur EACH RUN?
         let spread = CheckSymmetricPattern::<E2E, LEN, SUM, _>(&mut cur, pattern, range * 2, false);
         if spread != 0 {
@@ -597,7 +571,6 @@ pub fn LocateConcentricPattern<const E2E: bool, const LEN: usize, const SUM: usi
             }
         }
     }
-    //#endif
 
     if maxSpread > 5 * minSpread {
         return None;

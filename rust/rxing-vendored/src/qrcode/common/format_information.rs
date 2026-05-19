@@ -115,7 +115,6 @@ impl FormatInformation {
 
     pub fn numBitsDiffering(a: u32, b: u32) -> u32 {
         (a ^ b).count_ones()
-        // return Integer.bitCount(a ^ b);
     }
 
     /**
@@ -184,19 +183,4 @@ impl FormatInformation {
     pub fn getDataMask(&self) -> u8 {
         self.data_mask
     }
-
-    // @Override
-    // public int hashCode() {
-    //   return (errorCorrectionLevel.ordinal() << 3) | dataMask;
-    // }
-
-    // @Override
-    // public boolean equals(Object o) {
-    //   if (!(o instanceof FormatInformation)) {
-    //     return false;
-    //   }
-    //   FormatInformation other = (FormatInformation) o;
-    //   return this.errorCorrectionLevel == other.errorCorrectionLevel &&
-    //       this.dataMask == other.dataMask;
-    // }
 }

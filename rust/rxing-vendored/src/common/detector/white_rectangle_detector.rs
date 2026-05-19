@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common.detector;
 
 use crate::{
     Exceptions, Point,
@@ -214,7 +213,6 @@ impl<'a> WhiteRectangleDetector<'_> {
             let mut z: Option<Point> = None;
             let mut i = 1;
             while z.is_none() && i < max_size {
-                //for (int i = 1; z == null && i < maxSize; i++) {
                 z = self.get_black_point_on_segment(
                     left as f32,
                     (down - i) as f32,
@@ -232,7 +230,6 @@ impl<'a> WhiteRectangleDetector<'_> {
             //go down right
             let mut i = 1;
             while t.is_none() && i < max_size {
-                //for (int i = 1; t == null && i < maxSize; i++) {
                 t = self.get_black_point_on_segment(
                     left as f32,
                     (up + i) as f32,
@@ -250,7 +247,6 @@ impl<'a> WhiteRectangleDetector<'_> {
             //go down left
             let mut i = 1;
             while x.is_none() && i < max_size {
-                //for (int i = 1; x == null && i < maxSize; i++) {
                 x = self.get_black_point_on_segment(
                     right as f32,
                     (up + i) as f32,
@@ -268,7 +264,6 @@ impl<'a> WhiteRectangleDetector<'_> {
             //go up left
             let mut i = 1;
             while y.is_none() && i < max_size {
-                //for (int i = 1; y == null && i < maxSize; i++) {
                 y = self.get_black_point_on_segment(
                     right as f32,
                     (down - i) as f32,

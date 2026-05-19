@@ -66,8 +66,6 @@ impl FormatInformation {
      * @param formatInfoBits2 second copy of same info; both are checked at the same time to establish best match
      */
     pub fn DecodeRMQR(formatInfoBits1: u32, formatInfoBits2: u32) -> Self {
-        //FormatInformation fi;
-
         let mut fi = if formatInfoBits2 != 0 {
             Self::FindBestFormatInfoRMQR(&[formatInfoBits1], &[formatInfoBits2])
         } else {
@@ -101,17 +99,12 @@ impl FormatInformation {
         ];
 
         for mask in masks {
-            // for (auto mask : masks)
-            // for bitsIndex in 0..bits.len() {
             for (bitsIndex, bitsItem) in bits.iter().enumerate() {
-                // for (int bitsIndex = 0; bitsIndex < Size(bits); ++bitsIndex)
                 for ref_pattern in MODEL2_MASKED_PATTERNS {
-                    // for (uint32_t pattern : MODEL2_MASKED_PATTERNS) {
                     // 'unmask' the pattern first to get the original 5-data bits + 10-ec bits back
                     let pattern = ref_pattern ^ FORMAT_INFO_MASK_MODEL2;
                     // Find the pattern with fewest bits differing
                     let hammingDist = ((bitsItem ^ mask) ^ pattern).count_ones();
-                    // if (int hammingDist = BitHacks::CountBitsSet((bits[bitsIndex] ^ mask) ^ pattern);
                     if hammingDist < fi.hammingDistance {
                         fi.mask = *mask; // store the used mask to discriminate between types/models
                         fi.data = pattern >> 10; // drop the 10 BCH error correction bits
@@ -121,26 +114,6 @@ impl FormatInformation {
                 }
             }
         }
-
-        // // Some QR codes apparently do not apply the XOR mask. Try without and with additional masking.
-        // for mask in masks {
-        //     // for (auto mask : {0, mask})
-        //     for (bitsIndex, bit_set) in bits.iter().enumerate() {
-        //         // for (int bitsIndex = 0; bitsIndex < Size(bits); ++bitsIndex)
-        //         for [pattern, _index] in FORMAT_INFO_DECODE_LOOKUP {
-        //             // for (const auto& [pattern, index] : lookup) {
-        //             // Find the int in lookup with fewest bits differing
-        //             let hammingDist = ((bit_set ^ mask) ^ pattern).count_ones();
-        //             if hammingDist < fi.hammingDistance {
-        //                 // if (int hammingDist = BitHacks::CountBitsSet((bits[bitsIndex] ^ mask) ^ pattern); hammingDist < fi.hammingDistance) {
-        //                     fi.mask = *mask; // store the used mask to discriminate between types/models
-        //                     fi.data = pattern >> 10; // drop the 10 BCH error correction bits
-        //                 fi.hammingDistance = hammingDist;
-        //                 fi.bitsIndex = bitsIndex as u8;
-        //             }
-        //         }
-        //     }
-        // }
 
         fi
     }
@@ -174,10 +147,7 @@ impl FormatInformation {
 
         let mut best = |bits: &[u32], &patterns: &[u32; 64], mask: u32| {
             for (bitsIndex, bitsItem) in bits.iter().enumerate() {
-                // for bitsIndex in 0..bits.len() {
-                // for (int bitsIndex = 0; bitsIndex < Size(bits); ++bitsIndex) {
                 for l_pattern in patterns {
-                    // for (uint32_t pattern : patterns) {
                     // 'unmask' the pattern first to get the original 6-data bits + 12-ec bits back
                     let pattern = l_pattern ^ mask;
                     // Find the pattern with fewest bits differing

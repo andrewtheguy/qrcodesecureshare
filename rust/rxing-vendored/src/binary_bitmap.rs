@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing;
-
 use std::{borrow::Cow, fmt};
 
 use once_cell::sync::OnceCell;

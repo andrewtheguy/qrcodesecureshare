@@ -10,9 +10,6 @@ pub struct DMRegressionLine {
     pub(super) a: f32,
     pub(super) b: f32,
     pub(super) c: f32,
-    // std::vector<PointF> _points;
-    // PointF _directionInward;
-    // PointF::value_t a = NAN, b = NAN, c = NAN;
 }
 
 impl Default for DMRegressionLine {
@@ -95,7 +92,6 @@ impl RegressionLineTrait for DMRegressionLine {
         maxSignedDist: Option<f64>,
         updatePoints: Option<bool>,
     ) -> bool {
-        // let maxSignedDist = if let Some(m) = maxSignedDist { m } else { -1.0 };
         let maxSignedDist = maxSignedDist.unwrap_or(-1.0);
         let updatePoints = updatePoints.unwrap_or_default();
 
@@ -105,11 +101,6 @@ impl RegressionLineTrait for DMRegressionLine {
             loop {
                 let old_points_size = points.len();
                 // remove points that are further 'inside' than maxSignedDist or further 'outside' than 2 x maxSignedDist
-                // auto end = std::remove_if(points.begin(), points.end(), [this, maxSignedDist](auto p) {
-                // 	auto sd = this->signedDistance(p);
-                //     return sd > maxSignedDist || sd < -2 * maxSignedDist;
-                // });
-                // points.erase(end, points.end());
                 points.retain(|&p| {
                     let sd = self.signedDistance(p) as f64;
                     !(sd > maxSignedDist || sd < -2.0 * maxSignedDist)
@@ -117,9 +108,6 @@ impl RegressionLineTrait for DMRegressionLine {
                 if old_points_size == points.len() {
                     break;
                 }
-                // #ifdef PRINT_DEBUG
-                // 				printf("removed %zu points\n", old_points_size - points.size());
-                // #endif
                 ret = self.evaluate(&points);
             }
 
@@ -157,7 +145,6 @@ impl RegressionLineTrait for DMRegressionLine {
         let mut sumYY = 0.0;
         let mut sumXY = 0.0;
         for p in points {
-            // for (auto p = begin; p != end; ++p) {
             let d = *p - mean;
             sumXX += d.x * d.x;
             sumYY += d.y * d.y;
@@ -173,13 +160,12 @@ impl RegressionLineTrait for DMRegressionLine {
             self.b = -sumXX / l;
         }
         if Point::dot(self.direction_inward, self.normal()) < 0.0 {
-            // if (dot(_directionInward, normal()) < 0) {
             self.a = -self.a;
             self.b = -self.b;
         }
-        self.c = Point::dot(self.normal(), mean); // (a*mean.x + b*mean.y);
-        Point::dot(self.direction_inward, self.normal()) > 0.5
+        self.c = Point::dot(self.normal(), mean);
         // angle between original and new direction is at most 60 degree
+        Point::dot(self.direction_inward, self.normal()) > 0.5
     }
 
     fn evaluateSelf(&mut self) -> bool {
@@ -209,7 +195,6 @@ impl DMRegressionLine {
         new
     }
 
-    // template <typename Container, typename Filter>
     fn average<T>(c: &[f64], f: T) -> Option<f64>
     where
         T: Fn(f64) -> bool,
@@ -217,7 +202,6 @@ impl DMRegressionLine {
         let mut sum: f64 = 0.0;
         let mut num = 0;
         for v in c {
-            // for (const auto& v : c)
             if f(*v) {
                 sum += *v;
                 num += 1;
@@ -242,7 +226,6 @@ impl DMRegressionLine {
         // re-evaluate and filter out all points too far away. required for the gapSizes calculation.
         self.evaluate_max_distance(Some(1.0), Some(true));
 
-        // std::vector<double> gapSizes, modSizes;
         let mut gapSizes: Vec<f64> = Vec::new();
         let mut modSizes = Vec::new();
 
@@ -250,7 +233,6 @@ impl DMRegressionLine {
 
         // calculate the distance between the points projected onto the regression line
         for i in 1..self.points.len() {
-            // for (size_t i = 1; i < _points.size(); ++i)
             gapSizes.push(Point::distance(
                 self.project(self.points[i]),
                 self.project(self.points[i - 1]),
@@ -275,7 +257,6 @@ impl DMRegressionLine {
             Point::distance(beg, self.project(self.points[0])) as f64 - unitPixelDist;
         let mut sumBack: f64 = 0.0; // (last black pixel to last black pixel)
         for dist in gapSizes {
-            // for (auto dist : gapSizes) {
             if dist > 1.9 * unitPixelDist {
                 modSizes.push(std::mem::take(&mut sumBack));
             }
@@ -302,23 +283,13 @@ impl DMRegressionLine {
         let lineLength = Point::distance(beg, end) as f64 - unitPixelDist;
         let mut meanModSize =
             Self::average(&modSizes, |_: f64| true).ok_or(Exceptions::ILLEGAL_STATE)?;
-        // let meanModSize = average(modSizes, [](double){ return true; });
-        // #ifdef PRINT_DEBUG
-        // 		printf("unit pixel dist: %.1f\n", unitPixelDist);
-        // 		printf("lineLength: %.1f, meanModSize: %.1f, gaps: %lu\n", lineLength, meanModSize, modSizes.size());
-        // #endif
         for i in 0..2 {
-            // for (int i = 0; i < 2; ++i)
             if let Some(next) = Self::average(&modSizes, |dist: f64| {
                 (dist - meanModSize).abs() < meanModSize / (2 + i) as f64
             }) {
                 meanModSize = next;
             }
-            // meanModSize = average(modSizes, [=](double dist) { return std::abs(dist - meanModSize) < meanModSize / (2 + i); });
         }
-        // #ifdef PRINT_DEBUG
-        // 		printf("post filter meanModSize: %.1f\n", meanModSize);
-        // #endif
         Ok(lineLength / meanModSize)
     }
 }

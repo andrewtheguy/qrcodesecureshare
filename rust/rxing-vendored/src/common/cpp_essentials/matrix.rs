@@ -50,18 +50,6 @@ impl<T: Default + Clone + Copy> Matrix<T> {
         self.data.len()
     }
 
-    // value_t& operator()(int x, int y)
-    // {
-    // 	assert(x >= 0 && x < _width && y >= 0 && y < _height);
-    // 	return _data[y * _width + x];
-    // }
-
-    // const T& operator()(int x, int y) const
-    // {
-    // 	assert(x >= 0 && x < _width && y >= 0 && y < _height);
-    // 	return _data[y * _width + x];
-    // }
-
     fn get_offset(x: usize, y: usize, width: usize) -> usize {
         y * width + x
     }
@@ -104,14 +92,6 @@ impl<T: Default + Clone + Copy> Matrix<T> {
     pub fn data(&self) -> &[Option<T>] {
         &self.data
     }
-
-    // const value_t* begin() const {
-    // 	return _data.data();
-    // }
-
-    // const value_t* end() const {
-    // 	return _data.data() + _width * _height;
-    // }
 
     pub fn clear_with(&mut self, value: T) {
         self.data.fill(Some(value))

@@ -14,7 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common.reedsolomon;
 
 use crate::Exceptions;
 use crate::common::Result;
@@ -66,7 +65,6 @@ impl ReedSolomonDecoder {
         let mut syndromeCoefficients = vec![0; twoS as usize];
         let mut noError = true;
         for i in 0..twoS {
-            //for (int i = 0; i < twoS; i++) {
             let eval = poly.evaluateAt(self.field.exp(i + self.field.getGeneratorBase()) as usize);
             let len = syndromeCoefficients.len();
             syndromeCoefficients[len - 1 - i as usize] = eval;
@@ -90,8 +88,6 @@ impl ReedSolomonDecoder {
         let errorLocations = self.findErrorLocations(sigma)?;
         let errorMagnitudes = self.findErrorMagnitudes(omega, &errorLocations)?;
         for (error_location, error_magnitude) in errorLocations.iter().zip(errorMagnitudes) {
-            // for i in 0..errorLocations.len() {
-            //for (int i = 0; i < errorLocations.length; i++) {
             let log_value = self.field.log(*error_location as i32)?;
             if log_value > received.len() as i32 - 1 {
                 return Err(Exceptions::reed_solomon_with("Bad error location"));
@@ -121,8 +117,6 @@ impl ReedSolomonDecoder {
 
         let mut rLast = a;
         let mut r = b;
-        // let tLast = self.field.getZero();
-        // let t = self.field.getOne();
         let mut tLast = rLast.getZero();
         let mut t = rLast.getOne();
 
@@ -184,7 +178,6 @@ impl ReedSolomonDecoder {
         let mut result: Vec<usize> = vec![0; numErrors];
         let mut e = 0;
         for i in 1..self.field.getSize() {
-            //for (int i = 1; i < field.getSize() && e < numErrors; i++) {
             if e >= numErrors {
                 break;
             }
@@ -210,17 +203,12 @@ impl ReedSolomonDecoder {
         let s = errorLocations.len();
         let mut result = vec![0; s];
         for i in 0..s {
-            //for (int i = 0; i < s; i++) {
             let xiInverse = self.field.inverse(errorLocations[i] as i32)?;
             let mut denominator = 1;
             for (j, loc) in errorLocations.iter().enumerate().take(s) {
-                // for j in 0..s {
-                //for (int j = 0; j < s; j++) {
                 if i != j {
-                    //denominator = field.multiply(denominator,
-                    //    GenericGF.addOrSubtract(1, field.multiply(errorLocations[j], xiInverse)));
-                    // Above should work but fails on some Apple and Linux JDKs due to a Hotspot bug.
-                    // Below is a funny-looking workaround from Steven Parkes
+                    // The naive multiplication fails on some Apple and Linux JDKs due to a Hotspot bug.
+                    // Below is a funny-looking workaround from Steven Parkes.
                     let term = self.field.multiply(*loc as i32, xiInverse);
                     let termPlus1 = if (term & 0x1) == 0 {
                         term | 1

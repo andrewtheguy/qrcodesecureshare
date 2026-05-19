@@ -18,8 +18,6 @@ where
     structuredAppend: StructuredAppendInfo,
     isMirrored: bool, // = false;
     readerInit: bool, // = false;
-    //Error _error;
-    //std::shared_ptr<CustomData> _extra;
     error: Option<Exceptions>,
     extra: Arc<T>,
 }
@@ -59,7 +57,6 @@ where
 
     pub fn isValid(&self) -> bool {
         self.content.symbology.code != 0 && self.error.is_none()
-        //return includeErrors || (_content.symbology.code != 0 && !_error);
     }
 
     pub fn content(&self) -> &ECIStringBuilder {
@@ -165,10 +162,6 @@ where
         }
         self
     }
-
-    // pub fn build(self) -> DecoderResult<T> {
-
-    // }
 }
 
 impl<T> DecoderResult<T>

@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing;
-
 use crate::Point;
 
 pub trait ResultPoint {

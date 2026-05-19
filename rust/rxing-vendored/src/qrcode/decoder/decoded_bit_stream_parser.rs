@@ -286,11 +286,6 @@ fn decodeByteSegment(
         string_utils::guessCharset(&readBytes, hints).ok_or(Exceptions::ILLEGAL_STATE)?
     } else {
         currentCharacterSetECI.ok_or(Exceptions::ILLEGAL_STATE)?
-        // CharacterSetECI::getCharset(
-        //     currentCharacterSetECI
-        //         .as_ref()
-        //         .ok_or(Exceptions::ILLEGAL_STATE)?,
-        // )
     };
 
     result.append_eci(Eci::from(encoding));
@@ -348,7 +343,6 @@ fn decodeAlphanumericSegment(
                 } else {
                     // In alpha mode, % should be converted to FNC1 separator 0x1D
                     r_hld[i..i + 1].copy_from_slice(&[0x1D as char]);
-                    // r_hld.replace_range(i..i + 1, "\u{1D}");
                 }
             }
         }

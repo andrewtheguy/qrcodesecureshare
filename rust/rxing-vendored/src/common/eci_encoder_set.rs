@@ -18,53 +18,14 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use super::{CharacterSet, Eci};
 
-// static ENCODERS: Lazy<Vec<CharacterSet>> = Lazy::new(|| {
-//     let mut enc_vec = Vec::new();
-//     for name in NAMES {
-//         if let Some(enc) = CharacterSet::get_character_set_by_name(name) {
-//             enc_vec.push(enc);
-//         }
-//     }
-//     enc_vec
-// });
-
-// const NAMES: [&str; 20] = [
-//     "IBM437",
-//     "ISO-8859-2",
-//     "ISO-8859-3",
-//     "ISO-8859-4",
-//     "ISO-8859-5",
-//     "ISO-8859-6",
-//     "ISO-8859-7",
-//     "ISO-8859-8",
-//     "ISO-8859-9",
-//     "ISO-8859-10",
-//     "ISO-8859-11",
-//     "ISO-8859-13",
-//     "ISO-8859-14",
-//     "ISO-8859-15",
-//     "ISO-8859-16",
-//     "windows-1250",
-//     "windows-1251",
-//     "windows-1252",
-//     "windows-1256",
-//     "Shift_JIS",
-// ];
-
 const ENCODERS: [CharacterSet; 14] = [
     CharacterSet::Cp437,
     CharacterSet::ISO8859_2,
     CharacterSet::ISO8859_3,
     CharacterSet::ISO8859_4,
     CharacterSet::ISO8859_5,
-    // CharacterSet::ISO8859_6,
     CharacterSet::ISO8859_7,
-    // CharacterSet::ISO8859_8,
     CharacterSet::ISO8859_9,
-    // CharacterSet::ISO8859_10,
-    // CharacterSet::ISO8859_11,
-    // CharacterSet::ISO8859_13,
-    // CharacterSet::ISO8859_14,
     CharacterSet::ISO8859_15,
     CharacterSet::ISO8859_16,
     CharacterSet::Shift_JIS,
@@ -120,7 +81,6 @@ impl ECIEncoderSet {
         //we always need the ISO-8859-1 encoder. It is the default encoding
         neededEncoders.push(CharacterSet::ISO8859_1);
         let mut needUnicodeEncoder = if let Some(pc) = priorityCharset {
-            //pc.name().starts_with("UTF") || pc.name().starts_with("utf")
             pc == CharacterSet::UTF8 || pc == CharacterSet::UTF16BE
         } else {
             false
@@ -128,10 +88,8 @@ impl ECIEncoderSet {
 
         //Walk over the input string and see if all characters can be encoded with the list of encoders
         for i in 0..stringToEncode.len() {
-            // for (int i = 0; i < stringToEncode.length(); i++) {
             let mut canEncode = false;
             for encoder in &neededEncoders {
-                //   for (CharsetEncoder encoder : neededEncoders) {
                 let c = stringToEncode.get(i).unwrap();
                 if (fnc1.is_some() && c == fnc1.as_ref().unwrap()) || encoder.encode(c).is_ok() {
                     canEncode = true;
@@ -164,7 +122,6 @@ impl ECIEncoderSet {
         } else {
             // we need more than one single byte encoder or we need a Unicode encoder.
             // In this case we append a UTF-8 and UTF-16 encoder to the list
-            //   encoders = [] new CharsetEncoder[neededEncoders.size() + 2];
             encoders = Vec::with_capacity(neededEncoders.len() + 2);
 
             encoders.extend(neededEncoders);
@@ -238,10 +195,7 @@ impl ECIEncoderSet {
     pub fn encode_char(&self, c: &str, encoderIndex: usize) -> Option<Vec<u8>> {
         if encoderIndex < self.len() {
             let encoder = self.encoders[encoderIndex];
-            let enc_data = encoder.encode(c);
-            enc_data.ok()
-        // assert!(enc_data.is_ok());
-        // enc_data.unwrap()
+            encoder.encode(c).ok()
         } else {
             None
         }

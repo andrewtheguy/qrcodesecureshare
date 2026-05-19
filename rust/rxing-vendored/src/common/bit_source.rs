@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common;
-
 use std::cmp;
 use std::io::{ErrorKind, Read};
 
@@ -99,7 +97,6 @@ impl<'a> BitSource<'a> {
         if num_bits > 0 {
             while num_bits >= 8 {
                 result = (result << 8) | self.bytes[self.byte_offset] as u32;
-                // result = ((result as u16) << 8) as u8 | (self.bytes[self.byte_offset]);
                 self.byte_offset += 1;
                 num_bits -= 8;
             }
@@ -140,7 +137,6 @@ impl<'a> BitSource<'a> {
             num_bits -= toRead;
             bit_offset += toRead;
             if bit_offset == 8 {
-                //bit_offset = 0;
                 byte_offset += 1;
             }
         }
@@ -149,7 +145,6 @@ impl<'a> BitSource<'a> {
         if num_bits > 0 {
             while num_bits >= 8 {
                 result = (result << 8) | self.bytes[byte_offset] as u32;
-                // result = ((result as u16) << 8) as u8 | (self.bytes[self.byte_offset]);
                 byte_offset += 1;
                 num_bits -= 8;
             }
@@ -160,7 +155,6 @@ impl<'a> BitSource<'a> {
                 let mask = (0xFF >> bits_to_not_read) << bits_to_not_read;
                 result = (result << num_bits)
                     | ((self.bytes[byte_offset] & mask) as u32 >> bits_to_not_read);
-                //bit_offset += num_bits; // Removed, this is a holdover from setting the actual values in c++
             }
         }
 

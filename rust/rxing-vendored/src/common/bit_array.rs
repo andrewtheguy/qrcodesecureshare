@@ -426,7 +426,6 @@ impl BitArray {
             let leftOffset = oldBitsLen * BASE_BITS - self.size;
             let mut currentInt = self.bits[0] >> leftOffset;
             for i in 1..oldBitsLen {
-                //for (int i = 1; i < oldBitsLen; i++) {
                 let nextInt = self.bits[i];
                 currentInt |= nextInt << (BASE_BITS - leftOffset);
                 self.bits[i - 1] = currentInt;
@@ -441,7 +440,6 @@ impl fmt::Display for BitArray {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut _str = String::with_capacity(self.size + (self.size / 8) + 1);
         for i in 0..self.size {
-            //for (int i = 0; i < size; i++) {
             if (i & 0x07) == 0 {
                 _str.push(' ');
             }

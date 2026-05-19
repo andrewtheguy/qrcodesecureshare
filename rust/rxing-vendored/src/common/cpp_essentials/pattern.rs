@@ -20,7 +20,6 @@ fn BarAndSpaceSum<
 ) -> BarAndSpace<RT> {
     let mut res = BarAndSpace::default();
     for i in 0..LEN {
-        // for (int i = 0; i < LEN; ++i)
         res[i] += view[i].into();
     }
     res
@@ -28,8 +27,6 @@ fn BarAndSpaceSum<
 
 #[derive(Default, Debug)]
 pub struct PatternRow(Vec<PatternType>);
-
-// pub struct PatternRow<T: std::iter::Sum + Into<f32> + Into<usize> + Copy>(Vec<T>);
 
 impl PatternRow {
     pub fn new(v: Vec<PatternType>) -> Self {
@@ -152,15 +149,9 @@ impl<'a> PatternView<'a> {
         Some(*self.data.0.get(self.start)?)
     }
     pub fn end(&self) -> Option<PatternType> {
-        // if self.start + self.count < self.data.0.len() {
-        //     Some(self.data.0[self.start + self.count])
-        // } else {
-        //     None
-        // }
         Some(self.data.0.len() as PatternType)
     }
 
-    // int sum(int n = 0) const { return std::accumulate(_data, _data + (n == 0 ? _size : n), 0); }
     pub fn sum(&self, n: Option<usize>) -> PatternType {
         if self.count == self.data.len() {
             return self.data.0.iter().sum::<PatternType>();
@@ -190,7 +181,7 @@ impl<'a> PatternView<'a> {
 
     // index is the number of bars and spaces from the first bar to the current position
     pub fn index(&self) -> usize {
-        self.current /*return narrow_cast<int>(_data - _base) - 1;*/
+        self.current
     }
     pub fn pixelsInFront(&self) -> PatternType {
         self.data
@@ -198,7 +189,7 @@ impl<'a> PatternView<'a> {
             .iter()
             .take(self.start + self.current)
             .copied()
-            .sum::<PatternType>() /*return std::accumulate(_base, _data, 0);*/
+            .sum::<PatternType>()
     }
     pub fn pixelsTillEnd(&self) -> PatternType {
         self.data
@@ -207,19 +198,18 @@ impl<'a> PatternView<'a> {
             .take(self.start + self.current + self.count)
             .copied()
             .sum::<PatternType>()
-            .saturating_sub(1) /*return std::accumulate(_base, _data + _size, 0) - 1;*/
+            .saturating_sub(1)
     }
     pub fn isAtFirstBar(&self) -> bool {
-        self.start == (self.current + 1) /*return _data == _base + 1;*/
+        self.start == (self.current + 1)
     }
     pub fn isAtLastBar(&self) -> bool {
-        self.current == self.start + self.count - 1 /*return _data + _size == _end - 1;*/
+        self.current == self.start + self.count - 1
     }
     pub fn isValidWithN(&self, n: usize) -> bool {
         !self.data.0.is_empty()
             && self.start <= self.current + self.start
             && self.current + n < (self.data.0.len())
-        /*return _data && _data >= _base && _data + n <= _end;*/
     }
     pub fn isValid(&self) -> bool {
         self.isValidWithN(self.size())
@@ -255,9 +245,6 @@ impl<'a> PatternView<'a> {
         if size == 0 {
             size = self.count - offset;
         }
-        // else if size < 0 {
-        //     size += self.count - offset;
-        // }
 
         PatternView {
             data: self.data,
@@ -269,7 +256,7 @@ impl<'a> PatternView<'a> {
 
     pub fn shift(&mut self, n: usize) -> bool {
         self.current += n;
-        !self.data.0.is_empty() //&& self.start + self.count <= (self.start + self.count)
+        !self.data.0.is_empty()
     }
 
     pub fn skipPair(&mut self) -> bool {
@@ -280,8 +267,8 @@ impl<'a> PatternView<'a> {
         self.shift(self.count)
     }
 
-    pub fn skipSingle(&mut self /*  maxWidth: usize */) -> bool {
-        self.shift(1) //&& _data[-1] <= maxWidth;
+    pub fn skipSingle(&mut self) -> bool {
+        self.shift(1)
     }
 
     pub fn extend(&mut self) {
@@ -421,16 +408,6 @@ impl<T: Default + std::cmp::PartialEq> std::ops::IndexMut<usize> for BarAndSpace
     }
 }
 
-// 	using value_type = T;
-// 	T bar = {}, space = {};
-// 	// even index -> bar, odd index -> space
-// 	T& operator[](int i) { return reinterpret_cast<T*>(this)[i & 1]; }
-// 	T operator[](int i) const { return reinterpret_cast<const T*>(this)[i & 1]; }
-// 	bool isValid() const { return bar != T{} && space != T{}; }
-// };
-
-// type BarAndSpaceI = BarAndSpace<PatternType>;
-
 /**
  * @brief FixedPattern describes a compile-time constant (start/stop) pattern.
  *
@@ -484,33 +461,16 @@ impl<const N: usize, const SUM: usize, const IS_SPARCE: bool> std::ops::Index<us
 
 pub type FixedSparcePattern<const N: usize, const SUM: usize> = FixedPattern<N, SUM, true>;
 
-// template <int N, int SUM, bool IS_SPARCE = false>
-// struct FixedPattern
-// {
-// 	using value_type = PatternRow::value_type;
-// 	value_type _data[N];
-// 	constexpr value_type operator[](int i) const noexcept { return _data[i]; }
-// 	constexpr const value_type* data() const noexcept { return _data; }
-// 	constexpr int size() const noexcept { return N; }
-// };
-
-// template <int N, int SUM>
-// using FixedSparcePattern = FixedPattern<N, SUM, true>;
-
 pub fn IsPattern<const E2E: bool, const LEN: usize, const SUM: usize, const SPARSE: bool>(
     view: &PatternView,
     pattern: &FixedPattern<LEN, SUM, SPARSE>,
     space_in_pixel: Option<f32>,
     min_quiet_zone: f32,
     module_size_ref: f32,
-    // e2e: Option<bool>,
 ) -> f32 {
-    //let e2e = E2E; //e2e.unwrap_or(false);
     let mut module_size_ref = module_size_ref;
 
     if E2E {
-        //using float_t = double;
-        // let v_src: [PatternType; LEN] = view.into();
         let widths = BarAndSpaceSum::<LEN, PatternType, f64>(view.into());
         let sums = pattern.sums();
         let modSize: BarAndSpace<f64> = BarAndSpace {
@@ -539,7 +499,6 @@ pub fn IsPattern<const E2E: bool, const LEN: usize, const SUM: usize, const SPAR
         };
 
         for x in 0..LEN {
-            // for (int x = 0; x < LEN; ++x){
             if (view[x] as f64 - pattern[x] as f64 * modSize[x]).abs() > thr[x] {
                 return 0.0;
             }
@@ -602,7 +561,6 @@ pub fn IsRightGuard<const N: usize, const SUM: usize, const IS_SPARCE: bool>(
         spaceInPixel,
         minQuietZone,
         moduleSizeRef,
-        // None,
     ) != 0.0
 }
 
@@ -642,8 +600,6 @@ pub fn FindLeftGuard<'a, const LEN: usize, const SUM: usize, const IS_SPARCE: bo
 ) -> Result<PatternView<'a>> {
     FindLeftGuardBy::<LEN, _>(view, std::cmp::max(minSize, LEN), |window, spaceInPixel| {
         // perform a fast plausability test for 1:1:3:1:1 pattern
-        // dbg!(window[2], 2 as PatternType * std::cmp::max(window[0], window[4]));
-        // dbg!(window[2] < std::cmp::max(window[1], window[3]));
         if window[2] < 2 as PatternType * std::cmp::max(window[0], window[4])
             || window[2] < std::cmp::max(window[1], window[3])
         {
@@ -680,7 +636,6 @@ pub fn NormalizedPattern<const LEN: usize, const SUM: usize>(
     let mut is = [PatternType::default(); LEN];
     let mut rs = [0.0; LEN];
     for i in 0..LEN {
-        // for (int i = 0; i < LEN; i++) {
         let v: f32 = Into::<f32>::into(view[i]) / moduleSize;
         is[i] = (v + 0.5) as PatternType;
         rs[i] = v - Into::<f32>::into(is[i]);
@@ -692,8 +647,6 @@ pub fn NormalizedPattern<const LEN: usize, const SUM: usize>(
     }
 
     if err != 0 {
-        // let mi =if  err > 0 { std::max_element(std::begin(rs), std::end(rs)) - std::begin(rs)}
-        // 				  else {std::min_element(std::begin(rs), std::end(rs)) - std::begin(rs)};
         let mi = if err > 0 {
             rs.iter()
                 .enumerate()
@@ -744,11 +697,10 @@ pub fn GetPatternRow<T: Into<PatternType> + Copy + Default + From<T>>(
     p_row.0.clear();
 
     if Color::from(p_row.0.first().copied().unwrap_or_default()) == Color::Black {
-        // first
         p_row.0.push(0);
     }
 
-    let mut current_color = Color::from(p_row.0.first().copied().unwrap_or_default()); //if p_row.0.first().copied().unwrap_or_default() == 1 {Color::Black} else { Color::White};
+    let mut current_color = Color::from(p_row.0.first().copied().unwrap_or_default());
     let mut count = 0;
 
     for bit in b_row.iter() {
@@ -763,8 +715,6 @@ pub fn GetPatternRow<T: Into<PatternType> + Copy + Default + From<T>>(
 
         count += 1;
     }
-
-    // dbg!(&p_row.0);
 
     if count != 0 {
         p_row.0.push(count);
@@ -785,9 +735,7 @@ mod tests {
     #[test]
     fn all_white() {
         for s in 1..=N {
-            // for (int s = 1; s <= N; ++s) {
             let t_in: Vec<PatternType> = vec![0; s];
-            // std::vector<uint8_t> in(s, 0);
             let mut pr = PatternRow::default();
             GetPatternRow(&t_in, &mut pr);
 
@@ -799,7 +747,6 @@ mod tests {
     #[test]
     fn all_black() {
         for s in 1..=N {
-            // for (int s = 1; s <= N; ++s) {
             let t_in: Vec<PatternType> = vec![0xff; s];
             let mut pr = PatternRow::default();
             GetPatternRow(&t_in, &mut pr);
@@ -814,10 +761,8 @@ mod tests {
     #[test]
     fn black_white() {
         for s in 1..=N {
-            // for (int s = 1; s <= N; ++s) {
             let mut t_in: Vec<PatternType> = vec![0; N];
             t_in[..s].copy_from_slice(&vec![1; s]);
-            // std::fill_n(in.data(), s, 0xff);
             let mut pr = PatternRow::default();
             GetPatternRow(&t_in, &mut pr);
 
@@ -831,7 +776,6 @@ mod tests {
     #[test]
     fn white_black() {
         for s in 0..N {
-            // for (int s = 0; s < N; ++s) {
             let mut t_in: Vec<PatternType> = vec![0xff; N];
             t_in[..s].copy_from_slice(&vec![0; s]);
             let mut pr = PatternRow::default();

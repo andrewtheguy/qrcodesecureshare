@@ -14,10 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import java.util.List;
-
 use std::{any::Any, sync::Arc};
 
 /**

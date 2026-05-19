@@ -14,12 +14,6 @@
  * limitations under the License.
  */
 
-// package com.google.zxing.common;
-
-// import com.google.zxing.Binarizer;
-// import com.google.zxing.LuminanceSource;
-// import com.google.zxing.NotFoundException;
-
 use std::borrow::Cow;
 
 use once_cell::sync::OnceCell;
@@ -47,9 +41,6 @@ use super::{BitArray, BitMatrix, GlobalHistogramBinarizer};
  * @author dswitkin@google.com (Daniel Switkin)
  */
 pub struct HybridBinarizer<LS: LuminanceSource> {
-    //width: usize,
-    //height: usize,
-    //source: Box<dyn LuminanceSource>,
     ghb: GlobalHistogramBinarizer<LS>,
     black_matrix: OnceCell<BitMatrix>,
 }
@@ -121,12 +112,10 @@ impl<LS: LuminanceSource> HybridBinarizer<LS> {
     fn calculateBlackMatrix<LS2: LuminanceSource>(
         ghb: &GlobalHistogramBinarizer<LS2>,
     ) -> Result<BitMatrix> {
-        // let matrix;
         let source = ghb.get_luminance_source();
         let width = source.get_width();
         let height = source.get_height();
 
-        //  dbg!(matrix.to_string());
         if width >= MINIMUM_DIMENSION && height >= MINIMUM_DIMENSION {
             let luminances = source.get_matrix();
             let mut sub_width = width >> BLOCK_SIZE_POWER;
@@ -180,18 +169,15 @@ impl<LS: LuminanceSource> HybridBinarizer<LS> {
         let maxYOffset = height - BLOCK_SIZE as u32;
         let maxXOffset = width - BLOCK_SIZE as u32;
         for y in 0..sub_height {
-            // for (int y = 0; y < subHeight; y++) {
             let yoffset = u32::min(y << BLOCK_SIZE_POWER, maxYOffset);
 
-            let top = u32::clamp(y, 2, sub_height - 3); // Self::cap(y, sub_height - 3);
+            let top = u32::clamp(y, 2, sub_height - 3);
             for x in 0..sub_width {
-                //   for (int x = 0; x < subWidth; x++) {
                 let xoffset = u32::min(x << BLOCK_SIZE_POWER, maxXOffset);
 
-                let left = u32::clamp(x, 2, sub_width - 3); //Self::cap(x, sub_width - 3);
+                let left = u32::clamp(x, 2, sub_width - 3);
                 let mut sum = 0;
                 for z in -2..=2 {
-                    // for (int z = -2; z <= 2; z++) {
                     let blackRow = &black_points[((top as i32 + z) as u32 * sub_width) as usize..];
                     sum += blackRow[(left - 2) as usize]
                         + blackRow[(left - 1) as usize]
@@ -218,9 +204,7 @@ impl<LS: LuminanceSource> HybridBinarizer<LS> {
     ) {
         let mut offset = yoffset * stride + xoffset;
         for y in 0..BLOCK_SIZE {
-            // for (int y = 0, offset = yoffset * stride + xoffset; y < HybridBinarizer::BLOCK_SIZE; y++, offset += stride) {
             for x in 0..BLOCK_SIZE {
-                //   for (int x = 0; x < HybridBinarizer::BLOCK_SIZE; x++) {
                 // Comparison needs to be <= so that black == 0 pixels are black even if the threshold is 0.
                 if luminances[offset as usize + x] as u32 <= threshold {
                     matrix.set(xoffset + x as u32, yoffset + y as u32);
@@ -246,11 +230,9 @@ impl<LS: LuminanceSource> HybridBinarizer<LS> {
         let maxXOffset = width as usize - BLOCK_SIZE;
         let mut blackPoints = vec![0; (subHeight * subWidth) as usize];
         for y in 0..subHeight {
-            // for (int y = 0; y < subHeight; y++) {
             let yoffset = u32::min(y << BLOCK_SIZE_POWER, maxYOffset as u32);
 
             for x in 0..subWidth {
-                //   for (int x = 0; x < subWidth; x++) {
                 let xoffset = u32::min(x << BLOCK_SIZE_POWER, maxXOffset as u32);
 
                 let mut sum: u32 = 0;

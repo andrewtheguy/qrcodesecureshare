@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//Point
-
 use crate::{Point, point};
 
 /**

@@ -28,25 +28,18 @@ use super::Version;
  */
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Mode {
-    TERMINATOR,           //(new int[]{0, 0, 0}, 0x00), // Not really a mode...
-    NUMERIC,              //(new int[]{10, 12, 14}, 0x01),
-    ALPHANUMERIC,         //(new int[]{9, 11, 13}, 0x02),
-    STRUCTURED_APPEND,    //(new int[]{0, 0, 0}, 0x03), // Not supported
-    BYTE,                 //(new int[]{8, 16, 16}, 0x04),
-    ECI,                  //(new int[]{0, 0, 0}, 0x07), // character counts don't apply
-    KANJI,                //(new int[]{8, 10, 12}, 0x08),
-    FNC1_FIRST_POSITION,  //(new int[]{0, 0, 0}, 0x05),
-    FNC1_SECOND_POSITION, //(new int[]{0, 0, 0}, 0x09),
+    TERMINATOR,
+    NUMERIC,
+    ALPHANUMERIC,
+    STRUCTURED_APPEND,
+    BYTE,
+    ECI,
+    KANJI,
+    FNC1_FIRST_POSITION,
+    FNC1_SECOND_POSITION,
     /** See GBT 18284-2000; "Hanzi" is a transliteration of this mode name. */
-    HANZI, //(new int[]{8, 10, 12}, 0x0D);
+    HANZI,
 }
-// private final int[] characterCountBitsForVersions;
-// private final int bits;
-
-// Mode(int[] characterCountBitsForVersions, int bits) {
-//   this.characterCountBitsForVersions = characterCountBitsForVersions;
-//   this.bits = bits;
-// }
 
 impl Mode {
     /**

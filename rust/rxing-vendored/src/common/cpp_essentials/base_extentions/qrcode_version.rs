@@ -93,7 +93,6 @@ impl Version {
             true => 9,
             false => 17,
         }
-        // return std::array{17, 9}[isMicro];
     }
 
     pub const fn DimensionStep(is_micro: bool) -> u32 {
@@ -101,15 +100,13 @@ impl Version {
             true => 2,
             false => 4,
         }
-        // return std::array{4, 2}[isMicro];
     }
     pub fn DecodeVersionInformation(versionBitsA: i32, versionBitsB: i32) -> Result<VersionRef> {
         let mut bestDifference = u32::MAX;
         let mut bestVersion = 0;
         for (i, targetVersion) in VERSION_DECODE_INFO.into_iter().enumerate() {
             for bits in [versionBitsA, versionBitsB] {
-                // for (int bits : {versionBitsA, versionBitsB}) {
-                let bitsDifference = ((bits as u32) ^ targetVersion).count_ones(); //BitHacks::CountBitsSet(bits ^ targetVersion);
+                let bitsDifference = ((bits as u32) ^ targetVersion).count_ones();
                 if bitsDifference < bestDifference {
                     bestVersion = i + 7;
                     bestDifference = bitsDifference;

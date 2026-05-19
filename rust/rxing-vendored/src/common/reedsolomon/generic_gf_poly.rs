@@ -14,8 +14,6 @@
  * limitations under the License.
  */
 
-//package com.google.zxing.common.reedsolomon;
-
 use std::fmt;
 
 use crate::Exceptions;
@@ -71,11 +69,6 @@ impl GenericGFPoly {
                         let mut new_coefficients = vec![0; coefficients_length - first_non_zero];
                         let l = new_coefficients.len() - 1;
                         new_coefficients[0..=l].clone_from_slice(&coefficients[first_non_zero..]);
-                        // System.arraycopy(coefficients,
-                        //     firstNonZero,
-                        //     this.coefficients,
-                        //     0,
-                        //     this.coefficients.length);
                         new_coefficients
                     }
                 } else {
@@ -122,7 +115,6 @@ impl GenericGFPoly {
             // Just the sum of the coefficients
             let mut result = 0;
             for coefficient in &self.coefficients {
-                //for (int coefficient : coefficients) {
                 result = GenericGF::addOrSubtract(result, *coefficient);
             }
             return result;
@@ -130,7 +122,6 @@ impl GenericGFPoly {
         let mut result = self.coefficients[0];
         let size = self.coefficients.len();
         for i in 1..size {
-            //for (int i = 1; i < size; i++) {
             result = GenericGF::addOrSubtract(
                 self.field.multiply(a as i32, result),
                 self.coefficients[i],
@@ -162,10 +153,8 @@ impl GenericGFPoly {
         let lengthDiff = largerCoefficients.len() - smallerCoefficients.len();
         // Copy high-order terms only found in higher-degree polynomial's coefficients
         sumDiff[0..lengthDiff].clone_from_slice(&largerCoefficients[0..lengthDiff]);
-        //System.arraycopy(largerCoefficients, 0, sumDiff, 0, lengthDiff);
 
         for i in lengthDiff..largerCoefficients.len() {
-            //for (int i = lengthDiff; i < largerCoefficients.length; i++) {
             sumDiff[i] = GenericGF::addOrSubtract(
                 smallerCoefficients[i - lengthDiff],
                 largerCoefficients[i],
@@ -177,7 +166,6 @@ impl GenericGFPoly {
 
     pub fn multiply(&self, other: &GenericGFPoly) -> Result<GenericGFPoly> {
         if self.field != other.field {
-            //if (!field.equals(other.field)) {
             return Err(Exceptions::illegal_argument_with(
                 "GenericGFPolys do not have same GenericGF field",
             ));
@@ -191,10 +179,8 @@ impl GenericGFPoly {
         let bLength = bCoefficients.len();
         let mut product = vec![0; aLength + bLength - 1];
         for i in 0..aLength {
-            //for (int i = 0; i < aLength; i++) {
             let aCoeff = aCoefficients[i];
             for j in 0..bLength {
-                //for (int j = 0; j < bLength; j++) {
                 product[i + j] = GenericGF::addOrSubtract(
                     product[i + j],
                     self.field.multiply(aCoeff, bCoefficients[j]),
@@ -215,8 +201,6 @@ impl GenericGFPoly {
 
         let mut product = vec![0; size];
         for (i, prod) in product.iter_mut().enumerate().take(size) {
-            // for i in 0..size {
-            //for (int i = 0; i < size; i++) {
             *prod = self.field.multiply(self.coefficients[i], scalar);
         }
         GenericGFPoly::new(self.field, &product).unwrap()
@@ -237,8 +221,6 @@ impl GenericGFPoly {
         let size = self.coefficients.len();
         let mut product = vec![0; size + degree];
         for (i, prod) in product.iter_mut().enumerate().take(size) {
-            // for i in 0..size {
-            //for (int i = 0; i < size; i++) {
             *prod = self.field.multiply(self.coefficients[i], coefficient);
         }
         GenericGFPoly::new(self.field, &product)
@@ -286,7 +268,6 @@ impl fmt::Display for GenericGFPoly {
         }
         let mut result = String::with_capacity(8 * self.getDegree());
         for degree in (0..=self.getDegree()).rev() {
-            //for (int degree = getDegree(); degree >= 0; degree--) {
             let mut coefficient = self.getCoefficient(degree);
             if coefficient != 0 {
                 if coefficient < 0 {

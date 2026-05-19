@@ -42,11 +42,9 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
         // Read top-left format info bits
         let mut formatInfoBits = 0;
         for x in 1..9 {
-            // for (int x = 1; x < 9; x++)
             AppendBit(&mut formatInfoBits, getBit(bitMatrix, x, 8, None));
         }
         for y in (1..=7).rev() {
-            // for (int y = 7; y >= 1; y--)
             AppendBit(&mut formatInfoBits, getBit(bitMatrix, 8, y, None));
         }
 
@@ -57,13 +55,10 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
         // Read top-left format info bits
         let mut formatInfoBits1 = 0;
         for y in (1..=3).rev() {
-            // for (int y = 3; y >= 1; y--){
             AppendBit(&mut formatInfoBits1, getBit(bitMatrix, 11, y, None));
         }
         for x in (8..=10).rev() {
-            // for (int x = 10; x >= 8; x--){
             for y in (1..=5).rev() {
-                // for (int y = 5; y >= 1; y--){
                 AppendBit(&mut formatInfoBits1, getBit(bitMatrix, x, y, None));
             }
         }
@@ -72,16 +67,13 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
         let width = bitMatrix.width();
         let height = bitMatrix.height();
         for x in 3..=5 {
-            // for (int x = 3; x <= 5; x++){
             AppendBit(
                 &mut formatInfoBits2,
                 getBit(bitMatrix, width - x, height - 6, None),
             );
         }
         for x in 6..=8 {
-            // for (int x = 6; x <= 8; x++){
             for y in 2..=6 {
-                // for (int y = 2; y <= 6; y++){
                 AppendBit(
                     &mut formatInfoBits2,
                     getBit(bitMatrix, width - x, height - y, None),
@@ -97,7 +89,6 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
     // Read top-left format info bits
     let mut formatInfoBits1 = 0;
     for x in 0..6 {
-        // for (int x = 0; x < 6; x++)
         AppendBit(&mut formatInfoBits1, getBit(bitMatrix, x, 8, None));
     }
     // .. and skip a bit in the timing pattern ...
@@ -106,7 +97,6 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
     AppendBit(&mut formatInfoBits1, getBit(bitMatrix, 8, 7, None));
     // .. and skip a bit in the timing pattern ...
     for y in (0..=5).rev() {
-        // for (int y = 5; y >= 0; y--)
         AppendBit(&mut formatInfoBits1, getBit(bitMatrix, 8, y, None));
     }
 
@@ -116,11 +106,9 @@ pub fn ReadFormatInformation(bitMatrix: &BitMatrix) -> Result<FormatInformation>
     let dimension = bitMatrix.height();
     let mut formatInfoBits2 = 0;
     for y in ((dimension - 8)..=(dimension - 1)).rev() {
-        // for (int y = dimension - 1; y >= dimension - 8; y--)
         AppendBit(&mut formatInfoBits2, getBit(bitMatrix, 8, y, None));
     }
     for x in (dimension - 8)..dimension {
-        // for (int x = dimension - 8; x < dimension; x++)
         AppendBit(&mut formatInfoBits2, getBit(bitMatrix, x, 8, None));
     }
 
@@ -145,17 +133,14 @@ pub fn ReadQRCodewords(
     // Read columns in pairs, from right to left
     let mut x = (dimension as i32) - 1;
     while x > 0 {
-        // for (int x = dimension - 1; x > 0; x -= 2) {
         // Skip whole column with vertical timing pattern.
         if x == 6 {
             x -= 1;
         }
         // Read alternatingly from bottom to top then top to bottom
         for row in 0..dimension {
-            // for (int row = 0; row < dimension; row++) {
             let y = if readingUp { dimension - 1 - row } else { row };
             for col in 0..2 {
-                // for (int col = 0; col < 2; col++) {
                 let xx = (x - col) as u32;
                 // Ignore bits covered by the function pattern
                 if !functionPattern.get(xx, y) {
@@ -211,13 +196,10 @@ pub fn ReadMQRCodewords(
     // Read columns in pairs, from right to left
     let mut x = dimension - 1;
     while x > 0 {
-        // for (int x = dimension - 1; x > 0; x -= 2) {
         // Read alternatingly from bottom to top then top to bottom
         for row in 0..dimension {
-            // for (int row = 0; row < dimension; row++) {
             let y = if readingUp { dimension - 1 - row } else { row };
             for col in 0..2 {
-                // for (int col = 0; col < 2; col++) {
                 let xx = x - col;
                 // Ignore bits covered by the function pattern
                 if !functionPattern.get(xx, y) {
@@ -258,12 +240,10 @@ pub fn ReadQRCodewordsModel1(
     let dimension = bitMatrix.height();
     let columns = dimension / 4 + 1 + 2;
     for j in 0..columns {
-        // for (int j = 0; j < columns; j++) {
         if j <= 1 {
             // vertical symbols on the right side
             let rows = (dimension - 8) / 4;
             for i in 0..rows {
-                // for (int i = 0; i < rows; i++) {
                 if j == 0 && i % 2 == 0 && i > 0 && i < rows - 1
                 // extension
                 {
@@ -273,7 +253,6 @@ pub fn ReadQRCodewordsModel1(
                 let y = (dimension - 1) - (i * 4);
                 let mut currentByte = 0;
                 for b in 0..8 {
-                    // for (int b = 0; b < 8; b++) {
                     AppendBit(
                         &mut currentByte,
                         GetDataMaskBit(formatInfo.data_mask as u32, x - b % 2, y - (b / 2), None)?
@@ -291,12 +270,10 @@ pub fn ReadQRCodewordsModel1(
             // vertical symbols on the left side
             let rows = (dimension - 16) / 4;
             for i in 0..rows {
-                // for (int i = 0; i < rows; i++) {
                 let x = (columns - j - 1) * 2 + 1 + (if columns - j == 4 { 1 } else { 0 }); // timing
                 let y = (dimension - 1) - 8 - (i * 4);
                 let mut currentByte = 0;
                 for b in 0..8 {
-                    // for (int b = 0; b < 8; b++) {
                     AppendBit(
                         &mut currentByte,
                         GetDataMaskBit(formatInfo.data_mask as u32, x - b % 2, y - (b / 2), None)?
@@ -314,7 +291,6 @@ pub fn ReadQRCodewordsModel1(
             // horizontal symbols
             let rows = dimension / 2;
             for i in 0..rows {
-                // for (int i = 0; i < rows; i++) {
                 if j == 2 && i >= rows - 4
                 // alignment & finder
                 {
@@ -329,7 +305,6 @@ pub fn ReadQRCodewordsModel1(
                 let y = (dimension - 1) - (i * 2) - (if i >= rows - 3 { 1 } else { 0 }); // timing
                 let mut currentByte = 0;
                 for b in 0..8 {
-                    // for (int b = 0; b < 8; b++) {
                     AppendBit(
                         &mut currentByte,
                         GetDataMaskBit(formatInfo.data_mask as u32, x - b % 4, y - (b / 4), None)?
@@ -367,16 +342,13 @@ pub fn ReadRMQRCodewords(
     let mut bitsRead = 0;
     let width = bitMatrix.width();
     let height = bitMatrix.height();
-    // Read columns in pairs, from right to left
+    // Read columns in pairs, from right to left. Skip right edge alignment.
     let mut x = width as i32 - 1 - 1;
     while x > 0 {
-        // for (int x = width - 1 - 1; x > 0; x -= 2) { // Skip right edge alignment
         // Read alternatingly from bottom to top then top to bottom
         for row in 0..height {
-            // for (int row = 0; row < height; row++) {
             let y = if readingUp { height - 1 - row } else { row };
             for col in 0..2 {
-                // for (int col = 0; col < 2; col++) {
                 let xx = x - col;
                 // Ignore bits covered by the function pattern
                 if !functionPattern.get(xx as u32, y) {
@@ -389,7 +361,6 @@ pub fn ReadRMQRCodewords(
                     // If we've made a whole byte, save it off
                     bitsRead += 1;
                     if bitsRead % 8 == 0 {
-                        // if (++bitsRead % 8 == 0){
                         result.push(currentByte);
                         currentByte = 0;
                     }
