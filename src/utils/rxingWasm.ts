@@ -27,14 +27,11 @@ export interface RxingReaderOptions {
    * variants are not available — rxing doesn't ship them.)
    */
   useHybridBinarizer?: boolean
-  /**
-   * Cap on the number of symbols returned per frame. Pass `0` to remove the
-   * cap. Pass `1` when only one detection is needed (lets the multi-decode
-   * loop short-circuit on the first valid result). Mirrors zxing-wasm's
-   * option of the same name; default matches zxing-wasm (`255`).
-   */
-  maxNumberOfSymbols?: number
 }
+
+// Hardcoded to 1: every consumer in this app reads only `results[0]`, so the
+// underlying multi-decode loop short-circuits on the first valid detection.
+const MAX_NUMBER_OF_SYMBOLS = 1
 
 let wasmInitialized = false
 let wasmInitPromise: Promise<void> | null = null
@@ -73,7 +70,6 @@ export async function readQrCodesFromRgba(
     tryInvert = false,
     tryRotate = true,
     useHybridBinarizer = true,
-    maxNumberOfSymbols = 255,
   } = options
 
   // `read_qr_codes_rgba` returns a JS Array of Uint8Array (one entry per
@@ -86,7 +82,7 @@ export async function readQrCodesFromRgba(
     tryInvert,
     tryRotate,
     useHybridBinarizer,
-    maxNumberOfSymbols
+    MAX_NUMBER_OF_SYMBOLS
   ) as Uint8Array[]
 
   return results

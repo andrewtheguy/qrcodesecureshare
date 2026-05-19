@@ -32,17 +32,16 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
         // Defaults tuned for general-purpose QR scanning: try rotated
         // orientations as a safety net (zero allocations when not needed —
         // `read_inner` only allocates rotated buffers when a previous pass
-        // failed), skip the heavier `tryHarder` + `tryInvert` passes, single
-        // symbol per frame so the multi-decode loop short-circuits on the
-        // first valid result, adaptive binarizer for noisy camera output.
-        // The hottest-fps consumer (fountain data scanner) overrides
-        // `tryRotate: false` for an extra speed margin since the sender
-        // never produces rotated frames.
+        // failed), skip the heavier `tryHarder` + `tryInvert` passes,
+        // adaptive binarizer for noisy camera output. The hottest-fps
+        // consumer (fountain data scanner) overrides `tryRotate: false`
+        // for an extra speed margin since the sender never produces
+        // rotated frames. Single-symbol output is enforced at the wasm
+        // boundary in `readQrCodesFromRgba`.
         tryHarder: false,
         tryInvert: false,
         tryRotate: true,
         useHybridBinarizer: true,
-        maxNumberOfSymbols: 1,
         ...options,
       }
 
