@@ -2,9 +2,6 @@ use std::{fmt, iter::Sum};
 
 use std::hash::Hash;
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use crate::ResultPoint;
 
 /**
@@ -13,7 +10,6 @@ use crate::ResultPoint;
  *
  * @author Sean Owen
  */
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, Clone, Copy, Default, Hash, PartialEq, PartialOrd)]
 pub struct PointT<T> {
     pub x: T,
@@ -442,7 +438,7 @@ mod tests {
 
 #[cfg(test)]
 mod point_tests {
-    use super::{Point, PointF, PointI, PointT, PointU, ResultPoint, point, point_i};
+    use super::{point, point_i, Point, PointF, PointI, PointT, PointU, ResultPoint};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 
@@ -622,7 +618,7 @@ mod point_tests {
         assert_eq!(v1.sumAbsComponent(), 3.0);
         assert_eq!(v1.maxAbsComponent(), 2.0);
         assert!((v1.length() - (5.0f32).hypot(0.0)).abs() > -1.0); // length >= 0
-        // squaredDistance / distance
+                                                                   // squaredDistance / distance
         assert_eq!(v1.squaredDistance(v2), {
             let d = v1 - v2;
             d.x * d.x + d.y * d.y

@@ -17,21 +17,17 @@
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    BarcodeFormat, MetadataDictionary, Point, RXingResultMetadataType, RXingResultMetadataValue,
-    common::cpp_essentials::DecoderResult,
+    common::cpp_essentials::DecoderResult, BarcodeFormat, MetadataDictionary, Point,
+    RXingResultMetadataType, RXingResultMetadataValue,
 };
 
 pub type RXingResultMetaDataDictionary = HashMap<RXingResultMetadataType, RXingResultMetadataValue>;
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
 
 /**
  * <p>Encapsulates the result of decoding a barcode within an image.</p>
  *
  * @author Sean Owen
  */
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RXingResult {
     text: String,

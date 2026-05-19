@@ -118,12 +118,9 @@
 // } // namespace ZXing::QRCode
 
 use crate::{
+    common::{cpp_essentials::ConcentricPattern, DetectorRXingResult},
     BarcodeFormat, DecodeHints, Exceptions, ImmutableReader, RXingResult, Reader,
-    common::{DetectorRXingResult, cpp_essentials::ConcentricPattern},
 };
-
-#[cfg(feature = "multi_barcode_readers")]
-use crate::multi::MultipleBarcodeReader;
 
 use super::{
     decoder::Decode,
@@ -160,24 +157,6 @@ impl ImmutableReader for QrReader {
         hints: &DecodeHints,
     ) -> crate::common::Result<RXingResult> {
         self.internal_decode_with_hints(image, hints)
-    }
-}
-
-#[cfg(feature = "multi_barcode_readers")]
-impl MultipleBarcodeReader for QrReader {
-    fn decode_multiple<B: crate::Binarizer>(
-        &mut self,
-        image: &mut crate::BinaryBitmap<B>,
-    ) -> crate::common::Result<Vec<crate::RXingResult>> {
-        self.decode_multiple_with_hints(image, &DecodeHints::default())
-    }
-
-    fn decode_multiple_with_hints<B: crate::Binarizer>(
-        &mut self,
-        image: &mut crate::BinaryBitmap<B>,
-        hints: &DecodeHints,
-    ) -> crate::common::Result<Vec<crate::RXingResult>> {
-        self.decode_set_number_with_hints(image, hints, u32::MAX)
     }
 }
 
@@ -339,8 +318,8 @@ impl QrReader {
         // #endif
 
         let binImg = image.get_black_matrix(); //image.getBitMatrix();
-        // if (binImg == nullptr)
-        // 	{return {};}
+                                               // if (binImg == nullptr)
+                                               // 	{return {};}
 
         let mut detectorResult = Err(Exceptions::NOT_FOUND);
         if let Some(formats) = &hints.PossibleFormats {

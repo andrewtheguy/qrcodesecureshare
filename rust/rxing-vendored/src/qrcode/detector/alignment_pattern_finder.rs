@@ -15,8 +15,8 @@
  */
 
 use crate::{
-    Exceptions, PointCallback,
     common::{BitMatrix, Result},
+    Exceptions, PointCallback,
 };
 
 use super::AlignmentPattern;

@@ -16,7 +16,7 @@
 
 //Point
 
-use crate::{Point, point};
+use crate::{point, Point};
 
 /**
  * <p>Encapsulates an alignment pattern, which are the smaller square patterns found in

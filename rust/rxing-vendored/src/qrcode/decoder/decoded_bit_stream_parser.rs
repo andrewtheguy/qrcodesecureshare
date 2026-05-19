@@ -17,10 +17,10 @@
 use once_cell::sync::Lazy;
 
 use crate::{
-    DecodeHints, Exceptions,
     common::{
-        BitSource, CharacterSet, DecoderRXingResult, ECIStringBuilder, Eci, Result, string_utils,
+        string_utils, BitSource, CharacterSet, DecoderRXingResult, ECIStringBuilder, Eci, Result,
     },
+    DecodeHints, Exceptions,
 };
 
 use crate::qrcode::common::{ErrorCorrectionLevel, Mode, VersionRef};
@@ -72,12 +72,12 @@ pub fn decode(
             Mode::TERMINATOR => {}
             Mode::FNC1_FIRST_POSITION => {
                 hasFNC1first = true; // symbology detection
-                // We do little with FNC1 except alter the parsed result a bit according to the spec
+                                     // We do little with FNC1 except alter the parsed result a bit according to the spec
                 fc1InEffect = true;
             }
             Mode::FNC1_SECOND_POSITION => {
                 hasFNC1second = true; // symbology detection
-                // We do little with FNC1 except alter the parsed result a bit according to the spec
+                                      // We do little with FNC1 except alter the parsed result a bit according to the spec
                 fc1InEffect = true;
             }
             Mode::STRUCTURED_APPEND => {
@@ -259,19 +259,9 @@ fn decodeKanjiSegment(
         count -= 1;
     }
 
-    #[cfg(not(feature = "allow_forced_iso_ied_18004_compliance"))]
-    let encoder = {
-        let _ = currentCharacterSetECI;
-        let _ = hints;
-        CharacterSet::Shift_JIS
-    };
-
-    #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-    let encoder = if let Some(true) = hints.QrAssumeSpecConformInput.as_ref() {
-        currentCharacterSetECI.unwrap_or(CharacterSet::ISO8859_1)
-    } else {
-        CharacterSet::Shift_JIS
-    };
+    let _ = currentCharacterSetECI;
+    let _ = hints;
+    let encoder = CharacterSet::Shift_JIS;
 
     result.append_eci(Eci::from(encoder));
     result.append_bytes(&buffer);
@@ -303,17 +293,7 @@ fn decodeByteSegment(
         // upon decoding. I have seen ISO-8859-1 used as well as
         // Shift_JIS -- without anything like an ECI designator to
         // give a hint.
-        {
-            #[cfg(not(feature = "allow_forced_iso_ied_18004_compliance"))]
-            string_utils::guessCharset(&readBytes, hints).ok_or(Exceptions::ILLEGAL_STATE)?
-        }
-
-        #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-        if let Some(true) = hints.QrAssumeSpecConformInput.as_ref() {
-            CharacterSet::ISO8859_1
-        } else {
-            string_utils::guessCharset(&readBytes, hints).ok_or(Exceptions::ILLEGAL_STATE)?
-        }
+        string_utils::guessCharset(&readBytes, hints).ok_or(Exceptions::ILLEGAL_STATE)?
     } else {
         currentCharacterSetECI.ok_or(Exceptions::ILLEGAL_STATE)?
         // CharacterSetECI::getCharset(

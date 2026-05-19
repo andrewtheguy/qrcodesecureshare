@@ -17,9 +17,8 @@
 use std::ops::Div;
 
 use crate::{
-    DecodeHints, Exceptions, Point, PointCallback,
     common::{BitMatrix, Result},
-    result_point_utils,
+    result_point_utils, DecodeHints, Exceptions, Point, PointCallback,
 };
 
 use super::{FinderPattern, FinderPatternInfo};

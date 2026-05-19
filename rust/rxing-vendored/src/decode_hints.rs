@@ -20,9 +20,6 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{BarcodeFormat, PointCallback};
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 /**
  * Encapsulates a type of hint that a caller may pass to a barcode reader to help it
  * more quickly or accurately decode it. It is up to implementations to decide what,
@@ -32,7 +29,6 @@ use serde::{Deserialize, Serialize};
  * @author dswitkin@google.com (Daniel Switkin)
  * @see Reader#decode(BinaryBitmap,java.util.Map)
  */
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Eq, PartialEq, Hash, Debug, Clone, Copy)]
 pub enum DecodeHintType {
     /**
@@ -109,19 +105,6 @@ pub enum DecodeHintType {
      */
     ALSO_INVERTED,
 
-    /**
-     * Specifies that the codes are expected to be in conformance with the specification
-     * ISO/IEC 18004 regading the interpretation of character encoding. Values encoded in BYTE mode
-     * or in KANJI mode are interpreted as ISO-8859-1 characters unless an ECI specified at a prior
-     * location in the input specified a different encoding. By default the encoding of BYTE encoded
-     * values is determinied by the {@link #CHARACTER_SET} hint or otherwise by a heuristic that
-     * examines the bytes. By default KANJI encoded values are interpreted as the bytes of Shift-JIS
-     * encoded characters (note that this is the case even if an ECI specifies a different
-     * encoding).
-     */
-    #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-    QR_ASSUME_SPEC_CONFORM_INPUT,
-
     /*
      * Will translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form.
      */
@@ -146,7 +129,6 @@ pub enum DecodeHintType {
     }*/
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Clone)]
 pub enum DecodeHintValue {
     /**
@@ -206,7 +188,6 @@ pub enum DecodeHintValue {
      * The caller needs to be notified via callback when a possible {@link Point}
      * is found. Maps to a {@link PointCallback}.
      */
-    #[cfg_attr(feature = "serde", serde(skip_serializing, skip_deserializing))]
     NeedResultPointCallback(PointCallback),
 
     /**
@@ -225,25 +206,11 @@ pub enum DecodeHintValue {
     AlsoInverted(bool),
 
     /**
-     * Specifies that the codes are expected to be in conformance with the specification
-     * ISO/IEC 18004 regading the interpretation of character encoding. Values encoded in BYTE mode
-     * or in KANJI mode are interpreted as ISO-8859-1 characters unless an ECI specified at a prior
-     * location in the input specified a different encoding. By default the encoding of BYTE encoded
-     * values is determinied by the {@link #CHARACTER_SET} hint or otherwise by a heuristic that
-     * examines the bytes. By default KANJI encoded values are interpreted as the bytes of Shift-JIS
-     * encoded characters (note that this is the case even if an ECI specifies a different
-     * encoding).
-     */
-    #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-    QrAssumeSpecConformInput(bool),
-
-    /**
      * Translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form; use {@link Boolean#TRUE}.
      */
     TelepenAsNumeric(bool),
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Default, Clone)]
 pub struct DecodeHints {
     /**
@@ -303,7 +270,6 @@ pub struct DecodeHints {
      * The caller needs to be notified via callback when a possible {@link Point}
      * is found. Maps to a {@link PointCallback}.
      */
-    #[cfg_attr(feature = "serde", serde(skip_serializing, skip_deserializing))]
     pub NeedResultPointCallback: Option<PointCallback>,
 
     /**
@@ -320,19 +286,6 @@ pub struct DecodeHints {
      * second time with an inverted image. Doesn't matter what it maps to; use {@link Boolean#TRUE}.
      */
     pub AlsoInverted: Option<bool>,
-
-    /**
-     * Specifies that the codes are expected to be in conformance with the specification
-     * ISO/IEC 18004 regading the interpretation of character encoding. Values encoded in BYTE mode
-     * or in KANJI mode are interpreted as ISO-8859-1 characters unless an ECI specified at a prior
-     * location in the input specified a different encoding. By default the encoding of BYTE encoded
-     * values is determinied by the {@link #CHARACTER_SET} hint or otherwise by a heuristic that
-     * examines the bytes. By default KANJI encoded values are interpreted as the bytes of Shift-JIS
-     * encoded characters (note that this is the case even if an ECI specifies a different
-     * encoding).
-     */
-    #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-    pub QrAssumeSpecConformInput: Option<bool>,
 
     /**
      * Translate the ASCII values parsed by the Telepen reader into the Telepen Numeric form; use {@link Boolean#TRUE}.
@@ -364,10 +317,6 @@ impl From<super::DecodingHintDictionary> for DecodeHints {
                 DecodeHintValue::AllowedEanExtensions(v) => new_self.AllowedEanExtensions = Some(v),
                 DecodeHintValue::AlsoInverted(v) => new_self.AlsoInverted = Some(v),
                 DecodeHintValue::TelepenAsNumeric(v) => new_self.TelepenAsNumeric = Some(v),
-                #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-                DecodeHintValue::QrAssumeSpecConformInput(v) => {
-                    new_self.QrAssumeSpecConformInput = Some(v)
-                }
             }
         }
         new_self
@@ -460,14 +409,6 @@ impl From<DecodeHints> for super::DecodingHintDictionary {
             );
         }
 
-        #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-        if let Some(v) = value.QrAssumeSpecConformInput {
-            new_self.insert(
-                DecodeHintType::QR_ASSUME_SPEC_CONFORM_INPUT,
-                DecodeHintValue::QrAssumeSpecConformInput(v),
-            );
-        }
-
         new_self
     }
 }
@@ -488,8 +429,6 @@ impl DecodeHints {
             DecodeHintValue::AllowedEanExtensions(v) => self.AllowedEanExtensions = Some(v),
             DecodeHintValue::AlsoInverted(v) => self.AlsoInverted = Some(v),
             DecodeHintValue::TelepenAsNumeric(v) => self.TelepenAsNumeric = Some(v),
-            #[cfg(feature = "allow_forced_iso_ied_18004_compliance")]
-            DecodeHintValue::QrAssumeSpecConformInput(v) => self.QrAssumeSpecConformInput = Some(v),
         }
         self
     }

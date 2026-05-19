@@ -16,21 +16,12 @@
 
 //package com.google.zxing;
 
-use std::sync::Arc;
-
-#[cfg(feature = "pdf417")]
-use crate::pdf417::PDF417RXingResultMetadata;
-
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 /**
  * Represents some type of metadata about the result of the decoding that the decoder
  * wishes to communicate back to the caller.
  *
  * @author Sean Owen
  */
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub enum RXingResultMetadataType {
     /**
@@ -87,12 +78,6 @@ pub enum RXingResultMetadataType {
     UPC_EAN_EXTENSION,
 
     /**
-     * PDF417-specific metadata
-     */
-    #[cfg(feature = "pdf417")]
-    PDF417_EXTRA_METADATA,
-
-    /**
      * If the code format supports structured append and the current scanned code is part of one then the
      * sequence number is given with it.
      */
@@ -137,10 +122,6 @@ impl From<String> for RXingResultMetadataType {
             "SUGGESTED_PRICE" | "SUGGESTEDPRICE" => RXingResultMetadataType::SUGGESTED_PRICE,
             "POSSIBLE_COUNTRY" | "POSSIBLECOUNTRY" => RXingResultMetadataType::POSSIBLE_COUNTRY,
             "UPC_EAN_EXTENSION" | "UPCEANEXTENSION" => RXingResultMetadataType::UPC_EAN_EXTENSION,
-            #[cfg(feature = "pdf417")]
-            "PDF417_EXTRA_METADATA" | "PDF417EXTRAMETADATA" => {
-                RXingResultMetadataType::PDF417_EXTRA_METADATA
-            }
             "STRUCTURED_APPEND_SEQUENCE" | "STRUCTUREDAPPENDSEQUENCE" => {
                 RXingResultMetadataType::STRUCTURED_APPEND_SEQUENCE
             }
@@ -160,7 +141,6 @@ impl From<String> for RXingResultMetadataType {
     }
 }
 
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RXingResultMetadataValue {
     /**
@@ -215,12 +195,6 @@ pub enum RXingResultMetadataValue {
      * For some products, the extension text
      */
     UpcEanExtension(String),
-
-    /**
-     * PDF417-specific metadata
-     */
-    #[cfg(feature = "pdf417")]
-    Pdf417ExtraMetadata(Arc<PDF417RXingResultMetadata>),
 
     /**
      * If the code format supports structured append and the current scanned code is part of one then the

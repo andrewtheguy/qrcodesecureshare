@@ -1,6 +1,6 @@
 use crate::{
-    Point,
     common::{BitMatrix, DetectorRXingResult},
+    Point,
 };
 
 pub struct QRCodeDetectorResult {

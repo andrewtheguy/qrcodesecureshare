@@ -21,7 +21,7 @@
 use std::fmt;
 
 use crate::common::Result;
-use crate::{Exceptions, Point, point, point_i};
+use crate::{point, point_i, Exceptions, Point};
 
 use super::BitArray;
 
@@ -759,70 +759,5 @@ impl From<&BitMatrix> for Vec<bool> {
             }
         }
         arr
-    }
-}
-
-#[cfg(feature = "image")]
-/// This should only be used if you *know* that the `DynamicImage` is binary.
-impl TryFrom<image::DynamicImage> for BitMatrix {
-    type Error = Exceptions;
-
-    fn try_from(value: image::DynamicImage) -> Result<Self, Self::Error> {
-        let mut new_bitmatrix = BitMatrix::new(value.width(), value.height())?;
-        for (x, y, value) in value.as_luma8().unwrap().enumerate_pixels() {
-            if value.0[0] != u8::MAX {
-                new_bitmatrix.set(x, y)
-            }
-        }
-        Ok(new_bitmatrix)
-    }
-}
-
-#[cfg(feature = "image")]
-impl From<BitMatrix> for image::DynamicImage {
-    fn from(value: BitMatrix) -> Self {
-        (&value).into()
-    }
-}
-
-#[cfg(feature = "image")]
-impl From<&BitMatrix> for image::DynamicImage {
-    fn from(value: &BitMatrix) -> Self {
-        let mut pixels = image::ImageBuffer::new(value.width, value.height);
-
-        for (x, y, pixel) in pixels.enumerate_pixels_mut() {
-            let new_pixel = if value.get(x, y) {
-                image::Luma([0])
-            } else {
-                image::Luma([u8::MAX])
-            };
-            *pixel = new_pixel
-        }
-
-        pixels.into()
-    }
-}
-
-#[cfg(feature = "svg_write")]
-impl From<&BitMatrix> for svg::Document {
-    fn from(value: &BitMatrix) -> Self {
-        let block_size = 1;
-        let mut document = svg::Document::new().set(
-            "viewBox",
-            (0, 0, value.width * block_size, value.height * block_size),
-        );
-        for x in 0..value.width {
-            for y in 0..value.height {
-                if value.get(x, y) {
-                    let block = svg::node::element::Rectangle::new()
-                        .set("x", x * block_size)
-                        .set("y", y * block_size)
-                        .set("width", block_size)
-                        .set("height", block_size);
-                    document = document.add(block);
-                }
-            }
-        }
-        document
     }
 }
