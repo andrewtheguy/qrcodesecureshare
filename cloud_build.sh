@@ -11,7 +11,3 @@ source "$HOME/.cargo/env"
 pushd "$BASE_DIR/rust/fountain-wasm"
 wasm-pack build --release --target web
 popd
-
-pushd "$BASE_DIR/rust/fast-qr-wasm"
-wasm-pack build --release --target web
-popd

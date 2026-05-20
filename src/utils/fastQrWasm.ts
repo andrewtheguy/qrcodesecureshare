@@ -2,7 +2,7 @@ import initFastQrWasm, {
   generate_qr_matrix,
   generate_qr_png,
   generate_qr_svg,
-} from '../../rust/fast-qr-wasm/pkg/fast_qr_wasm'
+} from '@andrewtheguy/fast-qr-wasm'
 
 export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
 

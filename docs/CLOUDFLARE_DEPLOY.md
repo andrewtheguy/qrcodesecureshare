@@ -67,7 +67,7 @@ If you get errors about missing WASM modules, rebuild locally:
 npm run build:wasm
 ```
 
-The generated `rust/fountain-wasm/pkg/` and `rust/fast-qr-wasm/pkg/`
-directories should be committed to git for Cloudflare Pages to work properly.
-The QR reader package is installed from GitHub Packages instead of being built
-inside this repository.
+The generated `rust/fountain-wasm/pkg/` directory should be committed to git
+for Cloudflare Pages to work properly. The QR reader (`@andrewtheguy/rxing-wasm`)
+and QR generator (`@andrewtheguy/fast-qr-wasm`) packages are installed from
+GitHub release tarballs instead of being built inside this repository.
