@@ -213,8 +213,12 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         </Alert>
       )}
 
-      {/* Active Sender View */}
-      {senderMode === 'data-display' && (
+      {/* Active Sender View — kept mounted across mode switches so the QR worker and the
+          generated-chunk buffer survive the feedback/ack detour. The component pauses its
+          animation and buffer generation internally whenever isActive is false; we only
+          hide it visually here. Conditionally unmounting it caused worker-timeout races
+          when in-flight QR generations outlived the worker that was being terminated. */}
+      <div className={senderMode === 'data-display' ? '' : 'hidden'}>
         <FountainQRDataDisplay
           encoder={encoder}
           sessionId={sessionId}
@@ -227,7 +231,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           onError={handleDataDisplayError}
           maxQRDataSize={maxQRDataSize}
         />
-      )}
+      </div>
 
       {senderMode === 'ack-display' && ackPayload && (
         <Card className="border border-emerald-500/50 bg-emerald-950 text-emerald-100 shadow-2xl">

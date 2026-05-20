@@ -279,7 +279,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
   useEffect(() => {
-    if (!isPlaying) {
+    // Suspend the auto-pause timer while we're inactive (sender is in feedback/ack mode).
+    // Otherwise the timer could fire mid-feedback and leave isPlaying=false on resume.
+    if (!isPlaying || !isActive) {
       if (autoPauseTimeoutRef.current !== null) {
         clearTimeout(autoPauseTimeoutRef.current)
         autoPauseTimeoutRef.current = null
@@ -310,7 +312,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         autoPauseTimeoutRef.current = null
       }
     }
-  }, [isPlaying, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
+  }, [isPlaying, isActive, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
 
   // Initialize encoder state
   useEffect(() => {
@@ -320,26 +322,38 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
   }, [encoder, maxQRDataSize, currentQROptions.errorCorrectionLevel])
 
-  // Auto-start playback once encoder is ready and activation token changes
-  // This prevents auto-start during mode transitions in the parent component
+  // Resume playback when the parent signals activation (encoder ready + token bump).
+  // The chunk counter is intentionally NOT reset here so progress is preserved when the
+  // parent toggles isActive across mode switches (data-display ↔ feedback/ack). True
+  // session resets happen in the sessionId-change effect below.
   useEffect(() => {
     if (encoder && isActive && !isPlaying && activationToken > 0) {
-      // Reset counters for fresh session
-      chunkCounterRef.current = 0
-      setChunkCount(0)
       setIsPlaying(true)
     }
     // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encoder, isActive, activationToken])
 
-  // Reset on session change
+  // Reset on session change (new file / new transfer). chunkCounterRef lives here, not in
+  // the activation effect, so mode-switch toggles preserve progress while a real session
+  // change starts from zero.
   useEffect(() => {
+    chunkCounterRef.current = 0
     setChunkCount(0)
     setOversizedChunkCount(0)
     setHasRenderedFrame(false)
     clearBuffer()
   }, [sessionId, clearBuffer])
+
+  // Drop any pre-generated chunks the moment we go inactive. Buffered chunks have the
+  // encoder's part metadata baked into their QR frame at generation time; if the sender
+  // processes feedback while we're paused, the encoder advances to the next part and any
+  // buffered chunks for the previous part are now wrong to broadcast on resume.
+  useEffect(() => {
+    if (!isActive) {
+      clearBuffer()
+    }
+  }, [isActive, clearBuffer])
 
   // Initialize QR generation worker
   useEffect(() => {
