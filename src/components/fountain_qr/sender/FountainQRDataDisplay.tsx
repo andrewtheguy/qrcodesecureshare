@@ -92,6 +92,11 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const bufferLengthRef = useRef(bufferLength)
   const fpsRef = useRef(fps)
   const chunkCounterRef = useRef<number>(0) // Track actual chunk count, synced to state every 500ms
+  // Tracks whether the component has been unmounted. In-flight async chunk/QR generation
+  // can outlive the component (e.g. when the sender switches to ack-display, which unmounts
+  // this component). Once unmounted we must NOT call onError or otherwise propagate worker
+  // timeouts to the parent, because the worker was terminated by our own cleanup.
+  const isUnmountedRef = useRef(false)
 
   const renderQrFrame = useCallback((frame: QrMatrixFrame) => {
     const canvas = qrCanvasRef.current
@@ -338,6 +343,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   // Initialize QR generation worker
   useEffect(() => {
+    // Capture the Map instance up front so the cleanup closes over the same Map the effect
+    // observed (also silences react-hooks/exhaustive-deps on ref access in cleanup — we only
+    // mutate this Map, never reassign .current).
+    const pendingMap = pendingRequests.current
     try {
       workerRef.current = new QRWorker()
       workerRef.current.onmessage = (e) => {
@@ -348,7 +357,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           moduleCount?: number
           error?: string
         }
-        const resolver = pendingRequests.current.get(id)
+        const resolver = pendingMap.get(id)
         if (resolver) {
           if (type === 'success' && moduleBuffer instanceof ArrayBuffer && typeof moduleCount === 'number') {
             try {
@@ -362,7 +371,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           } else {
             resolver.reject(new Error(error || 'Worker error'))
           }
-          pendingRequests.current.delete(id)
+          pendingMap.delete(id)
         }
       }
     } catch (err) {
@@ -371,6 +380,14 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     return () => {
+      isUnmountedRef.current = true
+      // Reject pending QR requests immediately so awaiting callers fail fast
+      // instead of waiting up to ~8s for the worker timeout (the worker is being terminated).
+      const pending = Array.from(pendingMap.values())
+      pendingMap.clear()
+      for (const { reject } of pending) {
+        reject(new Error('Component unmounted'))
+      }
       workerRef.current?.terminate()
     }
   }, [])
@@ -444,6 +461,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     })
 
     return workerPromise.catch((err) => {
+      if (isUnmountedRef.current) {
+        throw err
+      }
       console.warn('QR worker failed during generation:', err)
 
       consecutiveWorkerFailuresRef.current++
@@ -517,6 +537,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           let success = false
 
           while (attempt < maxRetries && !success) {
+            if (isUnmountedRef.current) return
             try {
               const chunk = encoder.generateChunk()
               const partInfo = encoder.getPartInfo()
@@ -570,6 +591,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     let attempt = 0
 
     while (attempt < maxRetries) {
+      if (isUnmountedRef.current) return
       try {
         // Generate next fountain-coded chunk (internally tuned distribution + doping)
         const chunk = encoder.generateChunk()
@@ -597,6 +619,14 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         return // Exit successfully
 
       } catch (err) {
+        // If we unmounted (e.g. sender switched to ack-display), the worker was terminated
+        // by our cleanup and any in-flight request will reject. Swallow the error rather than
+        // propagating a "Worker timeout" to the parent, which would otherwise render only the
+        // destructive Alert and strand the user on an error screen.
+        if (isUnmountedRef.current) {
+          return
+        }
+
         const errorMsg = err instanceof Error ? err.message : String(err)
 
         // Check if error is about data being too big
