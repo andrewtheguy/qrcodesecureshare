@@ -14,14 +14,17 @@ When setting up your Cloudflare Pages project, use these settings:
 
 ### Environment Variables
 
-No special environment variables are needed for the build.
+Configure npm auth for GitHub Packages so Cloudflare can install
+`@andrewtheguy/rxing-wasm`. The repository `.npmrc` reads:
+
+- `NODE_AUTH_TOKEN`: a token that can read packages from `andrewtheguy`.
 
 ## What the build:cloud script does
 
 The `build:cloud` script (`cloud_build.sh`) performs the following:
 
 1. **Installs Rust toolchain** via rustup
-2. **Builds the WASM module** using wasm-pack
+2. **Builds the in-repo WASM modules** using wasm-pack
 3. **Builds the Vite app** with TypeScript compilation
 
 ## Local Development
@@ -29,7 +32,7 @@ The `build:cloud` script (`cloud_build.sh`) performs the following:
 For local development, you don't need to use `build:cloud`. Instead:
 
 ```bash
-# Install dependencies (including wasm-pack)
+# Install dependencies, including the published QR reader package
 npm install
 
 # Run dev server (uses pre-built WASM or rebuild with build:wasm if needed)
@@ -64,4 +67,7 @@ If you get errors about missing WASM modules, rebuild locally:
 npm run build:wasm
 ```
 
-The generated `rust/fountain-wasm/pkg/` directory should be committed to git for Cloudflare Pages to work properly.
+The generated `rust/fountain-wasm/pkg/` and `rust/fast-qr-wasm/pkg/`
+directories should be committed to git for Cloudflare Pages to work properly.
+The QR reader package is installed from GitHub Packages instead of being built
+inside this repository.

@@ -16,14 +16,14 @@ Offline file transfer and QR code generation. Share files between devices using 
 - CRC32 checksums for data integrity verification
 
 ### QR Scanner
-- Camera-based scanning with ZXing WASM
+- Camera-based scanning with rxing-reader WASM
 - Image upload support
 
 ## Tech Stack
 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Styling**: Tailwind CSS + Radix UI
-- **QR Scanning**: ZXing WASM (WebAssembly)
+- **QR Scanning**: `@andrewtheguy/rxing-wasm` from [rxing-reader](https://github.com/andrewtheguy/rxing-reader)
 - **QR Generation**: fast_qr-based Rust/WASM generator
 - **Binary QR Transport**: Fountain transfer worker path only (raw byte mode)
 - **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-code-architecture.md))
@@ -31,7 +31,8 @@ Offline file transfer and QR code generation. Share files between devices using 
 ## Prerequisites
 
 - Node.js 18+
-- Rust toolchain with `wasm-pack` (for building fountain-wasm)
+- Rust toolchain with `wasm-pack` (for building the in-repo WASM crates)
+- GitHub Packages npm access for `@andrewtheguy/rxing-wasm`
 
 ## Installation
 
@@ -86,7 +87,8 @@ src/
 └── wasm/                   # WASM bindings
 
 rust/
-└── fountain-wasm/          # LT fountain codes implementation
+├── fountain-wasm/          # LT fountain codes implementation
+└── fast-qr-wasm/           # QR generator implementation
 ```
 
 ## Performance
@@ -118,6 +120,10 @@ npm run lint
 # Build WASM only
 npm run build:wasm
 ```
+
+The QR reader WASM is built and published from
+[andrewtheguy/rxing-reader](https://github.com/andrewtheguy/rxing-reader);
+this app consumes it as the pinned npm package `@andrewtheguy/rxing-wasm`.
 
 ## Deployment
 

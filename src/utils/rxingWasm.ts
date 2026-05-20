@@ -1,4 +1,4 @@
-import initRxingWasm, { read_qr_codes_rgba } from '../../rust/rxing-wasm/pkg/rxing_wasm'
+import initRxingWasm, { read_qr_codes_rgba } from '@andrewtheguy/rxing-wasm'
 
 /**
  * Which binarizer to apply when thresholding the luminance buffer.
