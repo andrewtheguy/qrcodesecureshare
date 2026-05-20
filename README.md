@@ -24,7 +24,7 @@ Offline file transfer and QR code generation. Share files between devices using 
 - **Frontend**: React 19 + TypeScript + Vite
 - **Styling**: Tailwind CSS + Radix UI
 - **QR Scanning**: `@andrewtheguy/rxing-wasm` from [rxing-reader](https://github.com/andrewtheguy/rxing-reader)
-- **QR Generation**: fast_qr-based Rust/WASM generator
+- **QR Generation**: `@andrewtheguy/fast-qr-wasm` from [fast_qr](https://github.com/andrewtheguy/fast_qr)
 - **Binary QR Transport**: Fountain transfer worker path only (raw byte mode)
 - **Fountain Codes**: Custom Rust/WASM implementation ([architecture docs](docs/fountain-code-architecture.md))
 
@@ -87,8 +87,7 @@ src/
 └── wasm/                   # WASM bindings
 
 rust/
-├── fountain-wasm/          # LT fountain codes implementation
-└── fast-qr-wasm/           # QR generator implementation
+└── fountain-wasm/          # LT fountain codes implementation
 ```
 
 ## Performance
@@ -122,8 +121,12 @@ npm run build:wasm
 ```
 
 The QR reader WASM is built and published from
-[andrewtheguy/rxing-reader](https://github.com/andrewtheguy/rxing-reader);
-this app consumes it as the pinned npm package `@andrewtheguy/rxing-wasm`.
+[andrewtheguy/rxing-reader](https://github.com/andrewtheguy/rxing-reader); this
+app consumes it as the pinned npm package `@andrewtheguy/rxing-wasm`. The QR
+generator WASM is built and published from
+[andrewtheguy/fast_qr](https://github.com/andrewtheguy/fast_qr); this app
+consumes it as the pinned npm package `@andrewtheguy/fast-qr-wasm`. Both are
+pulled in as GitHub release tarball URLs declared in `package.json`.
 
 ## Deployment
 

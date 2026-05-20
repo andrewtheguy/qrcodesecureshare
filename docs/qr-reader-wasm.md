@@ -51,6 +51,6 @@ version.
 ## Local App Build
 
 `npm run build:wasm` in this repository only builds the in-repo
-`fountain-wasm` and `fast-qr-wasm` crates. The QR reader is installed like any
-other npm dependency from GitHub Packages, so local and CI environments need
-npm auth for the `@andrewtheguy` scope.
+`fountain-wasm` crate. The QR reader (`@andrewtheguy/rxing-wasm`) and QR
+generator (`@andrewtheguy/fast-qr-wasm`) are installed like any other npm
+dependencies — both are pinned to GitHub release tarballs in `package.json`.
