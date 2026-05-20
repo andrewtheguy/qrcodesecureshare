@@ -97,6 +97,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // this component). Once unmounted we must NOT call onError or otherwise propagate worker
   // timeouts to the parent, because the worker was terminated by our own cleanup.
   const isUnmountedRef = useRef(false)
+  // Mirror of the isActive prop for use inside async loops. An in-flight generateBufferChunk
+  // that started while active may await worker results across a transition to inactive; by
+  // the time it resumes, the isActive-change effect below has already called clearBuffer().
+  // Checking this ref before pushToBuffer prevents repopulating the just-cleared buffer with
+  // chunks whose part metadata is now stale (encoder may have advanced parts via feedback).
+  const isActiveRef = useRef(isActive)
 
   const renderQrFrame = useCallback((frame: QrMatrixFrame) => {
     const canvas = qrCanvasRef.current
@@ -124,6 +130,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   useEffect(() => {
     fpsRef.current = fps
   }, [fps])
+
+  useEffect(() => {
+    isActiveRef.current = isActive
+  }, [isActive])
 
   // Worker failure tracking
   const consecutiveWorkerFailuresRef = useRef(0)
@@ -585,8 +595,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
           if (!success) break // Stop trying if we can't generate any more chunks
         }
 
-        // Single batched state update
-        if (batch.length > 0) {
+        // Single batched state update. Skip the push if we went inactive while awaiting the
+        // worker — the isActive-change effect cleared the buffer for a reason (the encoder may
+        // have advanced parts via feedback), and these chunks would carry stale part metadata.
+        if (batch.length > 0 && isActiveRef.current) {
           pushToBuffer(batch)
         }
       } finally {
