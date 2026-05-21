@@ -38,7 +38,8 @@
       "Bash(cargo check:*)",
       "Bash(rustup show:*)",
       "Bash(ls:*)",
-      "Bash(cargo clippy *)"
+      "Bash(cargo clippy *)",
+      "Bash(gh release *)"
     ],
     "deny": [],
     "ask": []

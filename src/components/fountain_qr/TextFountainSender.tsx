@@ -163,7 +163,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
     const matrix = await generateFastQrModuleMatrix(frameBytes, {
       margin: 1,
       errorCorrectionLevel: 'L',
-      forceByteMode: true,
+      mode: 'byte',
     })
 
     const canvas = qrCanvasRef.current

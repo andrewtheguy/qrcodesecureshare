@@ -43,7 +43,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     const matrix = await generateFastQrModuleMatrix(binaryData, {
       margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel ?? 'M',
-      forceByteMode: true,
+      mode: 'byte',
     })
 
     const transferableModules =
