@@ -7,40 +7,6 @@ import tailwindcss from "@tailwindcss/vite"
 // @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
 import eslint from 'vite-plugin-eslint'
 
-// Custom plugin to verify worker build output
-const verifyWorkerBuildPlugin = () => {
-  interface RollupChunk {
-    type: 'chunk'
-    facadeModuleId?: string
-    fileName: string
-    code: string
-  }
-
-  return {
-    name: 'verify-worker-build',
-    writeBundle(options: unknown, bundle: Record<string, unknown>) {
-      const workerChunks: [string, RollupChunk][] = []
-      for (const [_key, chunk] of Object.entries(bundle)) {
-        if (typeof chunk === 'object' && chunk !== null && 'type' in chunk && chunk.type === 'chunk') {
-          const chunkObj = chunk as RollupChunk
-          if (typeof chunkObj.facadeModuleId === 'string' && /src\/workers\/.+\.worker\.(t|j)sx?$/.test(chunkObj.facadeModuleId)) {
-            workerChunks.push([_key, chunkObj])
-          }
-        }
-      }
-      if (workerChunks.length > 0) {
-        console.log('✓ Worker chunks found in build output:')
-        workerChunks.forEach(([, chunk]) => {
-          const size = chunk.code.length / 1024
-          console.log(`  - ${chunk.fileName} (${size.toFixed(2)} KB)`)
-        })
-      } else {
-        console.warn('⚠ No worker chunks found in build output')
-      }
-    }
-  }
-}
-
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
@@ -82,7 +48,6 @@ export default defineConfig(({ command }) => ({
     },
   },
   plugins: [
-    verifyWorkerBuildPlugin(),
     react(),
     tailwindcss(),
     eslint({
