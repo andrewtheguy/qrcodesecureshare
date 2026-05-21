@@ -1,5 +1,5 @@
-import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 import type { RxingReaderOptions } from '@/utils/rxingWasm'
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 
 interface ScanResult {
   type: 'result'

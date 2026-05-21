@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { FountainDecoder } from '../utils/fountainCodeWasm'
 import { computeChecksum } from '../utils/checksum'
+import { FountainDecoder } from '../utils/fountainCodeWasm'
 import { parseTextFountainFrame, type TextFountainFrame } from '../utils/textFountainProtocol'
 
 interface DecoderSessionConfig {

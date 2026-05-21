@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { FountainDecoder } from '../utils/fountainCodeWasm';
 import type { FountainMetadata } from '../utils/fountainCodeWasm';
+import { FountainDecoder } from '../utils/fountainCodeWasm';
 
 /**
  * Result types from Rust processBinaryChunk method

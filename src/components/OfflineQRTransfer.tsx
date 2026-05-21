@@ -1,10 +1,15 @@
-import { useState, useEffect, useRef } from 'react'
+import { ArrowLeft, ExternalLink, FileUp, Globe, Info, ScanLine, Shield, Smartphone, TriangleAlert } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { OfflineQRMode } from './OfflineQRMode'
-import { OfflineQRReceiver } from './OfflineQRReceiver'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -13,15 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
-import { ScanLine, ArrowLeft, Info, FileUp, Smartphone, Globe, TriangleAlert, Shield, ExternalLink } from 'lucide-react'
-
-import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK } from './OfflineQRMode'
+import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK, OfflineQRMode } from './OfflineQRMode'
+import { OfflineQRReceiver } from './OfflineQRReceiver'
 
 const MAX_SIZE_MB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0)
 

@@ -8,13 +8,13 @@
  *
  */
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Slider } from '@/components/ui/slider'
-import { FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
 import { computeChecksum } from '@/utils/checksum'
 import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
+import type { FountainChunk, FountainEncoder } from '@/utils/fountainCodeWasm'
 import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 import QRWorker from '@/workers/qrGenerator.worker?worker'
 
@@ -495,7 +495,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       const failures = consecutiveWorkerFailuresRef.current
 
       if (failures >= 3) {
-        const skipChunks = Math.min(Math.pow(2, failures - 2), 64)
+        const skipChunks = Math.min(2 ** (failures - 2), 64)
         workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
 
         console.warn(`${failures} consecutive worker failures. Pausing worker for next ${skipChunks} chunks.`)
@@ -659,8 +659,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         if (errorMsg.includes('too big') || errorMsg.includes('too large') || errorMsg.includes('too much')) {
           console.warn(`Chunk too large for QR code (attempt ${attempt + 1}/${maxRetries}), generating new chunk...`)
           attempt++
-          // Try again with a new chunk
-          continue
         } else {
           // Other error, stop and report
           console.error('QR generation error:', err)

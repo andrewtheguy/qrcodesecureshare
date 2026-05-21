@@ -1,7 +1,7 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
-import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 import type { RxingReaderOptions } from '@/utils/rxingWasm'
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 
 interface UseRxingQRScannerOptions {
   onScan: (data: Uint8Array[]) => void

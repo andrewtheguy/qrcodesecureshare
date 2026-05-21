@@ -8,16 +8,17 @@
  *
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { FountainEncoder } from '@/utils/fountainCodeWasm';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
-import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
+import type { FountainEncoder } from '@/utils/fountainCodeWasm';
+import { generateNonDataQR } from '@/utils/qrUtils';
 
 interface ProcessedFeedbackData {
   sequence: number;

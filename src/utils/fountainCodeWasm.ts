@@ -1,4 +1,4 @@
-import init, { WasmFountainEncoder, WasmFountainDecoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
+import init, { WasmFountainDecoder, WasmFountainEncoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
 import { DEFAULT_BLOCK_SIZE } from './fountainConfig'
 
 // WASM initialization state
@@ -396,4 +396,4 @@ export class FountainWasmDecoder {
 }
 
 // Re-export with simplified names for backward compatibility with fountainCodeHybrid
-export { FountainWasmEncoder as FountainEncoder, FountainWasmDecoder as FountainDecoder }
+export { FountainWasmDecoder as FountainDecoder, FountainWasmEncoder as FountainEncoder }

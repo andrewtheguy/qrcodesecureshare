@@ -1,15 +1,23 @@
-import { useState, useEffect } from 'react'
-import { computeChecksum } from '@/utils/checksum'
-import { OFFLINE_METADATA_MAGIC } from '@/constants'
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { FountainQRSender } from './fountain_qr/FountainQRSender'
-import { generateQRTextDataURL } from '@/utils/qrUtils'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Label } from '@/components/ui/label'
+import { 
+  ArrowRight, 
+  CheckCircle2, 
+  FileDigit,
+  Maximize2, 
+  Play,
+  QrCode,
+  RefreshCw, 
+  Settings,
+  ShieldCheck, 
+  Smartphone, 
+  TriangleAlert,
+  Zap
+} from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -18,21 +26,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { 
-  RefreshCw, 
-  ArrowRight, 
-  ShieldCheck, 
-  Smartphone, 
-  Maximize2, 
-  Settings,
-  QrCode,
-  FileDigit,
-  TriangleAlert,
-  Play,
-  Zap,
-  CheckCircle2
-} from 'lucide-react'
-import { Badge } from '@/components/ui/badge'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { OFFLINE_METADATA_MAGIC } from '@/constants'
+import { computeChecksum } from '@/utils/checksum'
+import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
+import { generateQRTextDataURL } from '@/utils/qrUtils'
+import { FountainQRSender } from './fountain_qr/FountainQRSender'
 
 const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
 const ADVANCED_PART_SIZES_ACCORDION_VALUE = 'advanced-part-sizes'

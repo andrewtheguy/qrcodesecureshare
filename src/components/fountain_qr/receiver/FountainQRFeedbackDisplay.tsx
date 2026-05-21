@@ -7,16 +7,16 @@
  *
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { generateNonDataQR } from '@/utils/qrUtils'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
+import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
+import type { FountainMetadata } from '@/utils/fountainCodeWasm'
+import { generateNonDataQR } from '@/utils/qrUtils'
 
 interface FountainQRFeedbackDisplayProps {
   fountainMetadata: FountainMetadata

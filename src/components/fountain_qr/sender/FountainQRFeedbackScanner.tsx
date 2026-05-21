@@ -8,14 +8,15 @@
  *
  */
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import type React from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { FountainEncoder } from '@/utils/fountainCodeWasm';
-import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
-import { generateNonDataQR } from '@/utils/qrUtils';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useRxingQRScanner } from '@/hooks/useRxingQRScanner';
+import type { FountainFeedback, SenderFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
+import type { FountainEncoder } from '@/utils/fountainCodeWasm';
+import { generateNonDataQR } from '@/utils/qrUtils';
 
 const textDecoder = new TextDecoder();
 

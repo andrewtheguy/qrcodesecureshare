@@ -5,9 +5,9 @@
  * decode files sent via fountain-coded QR streams.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'

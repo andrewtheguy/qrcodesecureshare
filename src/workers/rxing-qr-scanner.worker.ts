@@ -1,4 +1,4 @@
-import { readQrCodesFromImageData, type RxingReaderOptions } from '@/utils/rxingWasm'
+import { type RxingReaderOptions, readQrCodesFromImageData } from '@/utils/rxingWasm'
 
 interface ScanMessage {
   type: 'scan'
@@ -73,5 +73,3 @@ self.onmessage = async (e: MessageEvent<unknown>) => {
     self.postMessage(errorResponse)
   }
 }
-
-export {}
