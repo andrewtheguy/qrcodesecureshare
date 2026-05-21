@@ -21,7 +21,6 @@ export async function generateQRTextDataURL(
     const svg = await generateFastQrSvgString(utf8Bytes, {
       margin: options?.margin ?? 1,
       errorCorrectionLevel: options?.errorCorrectionLevel || 'M',
-      forceByteMode: false,
       svgWidth: SVG_QR_DISPLAY_SIZE,
       svgHeight: SVG_QR_DISPLAY_SIZE,
     })
@@ -50,7 +49,6 @@ export const generateNonDataQR = async (
     const svg = await generateFastQrSvgString(jsonBytes, {
       margin: options.margin ?? 1,
       errorCorrectionLevel: options.errorCorrectionLevel || 'M',
-      forceByteMode: false,
       svgWidth: SVG_QR_DISPLAY_SIZE,
       svgHeight: SVG_QR_DISPLAY_SIZE,
     })

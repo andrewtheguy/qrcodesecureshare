@@ -443,7 +443,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       return generateFastQrModuleMatrix(binaryData, {
         margin: options.margin ?? 1,
         errorCorrectionLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') ?? 'M',
-        forceByteMode: true,
+        mode: 'byte',
       })
     }
 

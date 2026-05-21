@@ -6,17 +6,24 @@ import initFastQrWasm, {
 
 export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
 
+/**
+ * QR encoding mode. `'auto'` picks the most compact mode for the payload;
+ * the other values pin a specific encoding (use `'byte'` for arbitrary
+ * binary data).
+ */
+export type FastQrMode = 'auto' | 'numeric' | 'alphanumeric' | 'byte'
+
 export interface FastQrPngGenerateOptions {
   width?: number
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  forceByteMode?: boolean
+  mode?: FastQrMode
 }
 
 export interface FastQrSvgGenerateOptions {
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  forceByteMode?: boolean
+  mode?: FastQrMode
   svgWidth?: number
   svgHeight?: number
 }
@@ -24,13 +31,13 @@ export interface FastQrSvgGenerateOptions {
 export interface FastQrMatrixGenerateOptions {
   margin?: number
   errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  forceByteMode?: boolean
+  mode?: FastQrMode
 }
 
 interface NormalizedCommonGenerateOptions {
   normalizedMargin: number
   errorCorrectionLevel: FastQrErrorCorrectionLevel
-  forceByteMode: boolean
+  mode: FastQrMode
 }
 
 export interface FastQrModuleMatrix {
@@ -63,7 +70,7 @@ function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
     normalizedWidth,
     normalizedMargin,
     errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
-    forceByteMode: options.forceByteMode ?? false,
+    mode: options.mode ?? 'auto',
   }
 }
 
@@ -75,7 +82,7 @@ function normalizeCommonGenerateOptions(
   return {
     normalizedMargin,
     errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
-    forceByteMode: options.forceByteMode ?? false,
+    mode: options.mode ?? 'auto',
   }
 }
 
@@ -121,14 +128,14 @@ export async function generateFastQrPngBytes(
 ): Promise<Uint8Array> {
   await ensureFastQrWasmInit()
 
-  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, forceByteMode } = normalizePngGenerateOptions(options)
+  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, mode } = normalizePngGenerateOptions(options)
 
   const pngBytes = generate_qr_png(
     payload,
     normalizedWidth,
     normalizedMargin,
     errorCorrectionLevel,
-    forceByteMode
+    mode
   )
 
   return pngBytes instanceof Uint8Array ? pngBytes : new Uint8Array(pngBytes)
@@ -140,13 +147,13 @@ export async function generateFastQrSvgString(
 ): Promise<string> {
   await ensureFastQrWasmInit()
 
-  const { normalizedMargin, errorCorrectionLevel, forceByteMode, svgWidth, svgHeight } = normalizeSvgGenerateOptions(options)
+  const { normalizedMargin, errorCorrectionLevel, mode, svgWidth, svgHeight } = normalizeSvgGenerateOptions(options)
 
   return generate_qr_svg(
     payload,
     normalizedMargin,
     errorCorrectionLevel,
-    forceByteMode,
+    mode,
     svgWidth,
     svgHeight
   )
@@ -158,14 +165,14 @@ export async function generateFastQrModuleMatrix(
 ): Promise<FastQrModuleMatrix> {
   await ensureFastQrWasmInit()
 
-  const { normalizedMargin, errorCorrectionLevel, forceByteMode } =
+  const { normalizedMargin, errorCorrectionLevel, mode } =
     normalizeMatrixGenerateOptions(options)
 
   const matrixBytes = generate_qr_matrix(
     payload,
     normalizedMargin,
     errorCorrectionLevel,
-    forceByteMode
+    mode
   )
   const normalizedBytes =
     matrixBytes instanceof Uint8Array ? matrixBytes : new Uint8Array(matrixBytes)
