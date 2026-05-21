@@ -35,3 +35,5 @@ tmp/
 # Rust/WASM build artifacts
 rust/**/target/
 target/
+
+.claude/
