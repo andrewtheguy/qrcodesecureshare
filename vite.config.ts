@@ -1,11 +1,8 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
-import path from 'path'
 import tailwindcss from "@tailwindcss/vite"
-
-// @ts-expect-error - vite-plugin-eslint has type definition issues with package.json exports
-import eslint from 'vite-plugin-eslint'
+import react from '@vitejs/plugin-react'
+import path from 'node:path'
+import { defineConfig } from 'vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 
 // https://vite.dev/config/
@@ -50,12 +47,6 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     tailwindcss(),
-    eslint({
-      // Optional: Configure eslint plugin behavior
-      // failOnWarning: false, // Don't fail the build on warnings
-      failOnError: true,   // Fail the build on errors
-      // cache: false,        // Disable cache for faster linting during development
-    }),
     ...(command === 'build' ? [VitePWA({
       registerType: 'autoUpdate',
       workbox: {
