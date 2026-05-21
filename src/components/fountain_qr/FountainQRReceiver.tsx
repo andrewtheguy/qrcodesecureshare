@@ -185,7 +185,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Debug logging moved to subcomponent
 
           // Handle part completion if in part-based mode (only for non-duplicate chunks)
-          if (partCompleteInfo && partCompleteInfo.partComplete) {
+          if (partCompleteInfo?.partComplete) {
             console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`)
 
             // Store part completion info in state

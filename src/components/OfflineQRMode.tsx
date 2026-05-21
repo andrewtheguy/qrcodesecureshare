@@ -320,19 +320,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
           <div className="grid md:grid-cols-2 gap-4">
              {/* Interactive Mode (Recommended) */}
-             <div
-                className="relative group cursor-pointer"
-                role="button"
-                tabIndex={0}
+             <button
+                type="button"
+                className="relative group cursor-pointer text-left"
                 onClick={() => handleSelectMode('fountain-feedback')}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    if (event.key === ' ') {
-                      event.preventDefault()
-                    }
-                    handleSelectMode('fountain-feedback')
-                  }
-                }}
              >
                 <div className="absolute inset-0 bg-primary/5 rounded-xl border-2 border-primary/20 group-hover:border-primary transition-colors" />
                 <div className="relative p-6 space-y-4">
@@ -365,22 +356,13 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                       </li>
                    </ul>
                 </div>
-             </div>
+             </button>
 
              {/* Basic Mode */}
-             <div
-                className="relative group cursor-pointer"
-                role="button"
-                tabIndex={0}
+             <button
+                type="button"
+                className="relative group cursor-pointer text-left"
                 onClick={() => handleSelectMode('fountain-simple')}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    if (event.key === ' ') {
-                      event.preventDefault()
-                    }
-                    handleSelectMode('fountain-simple')
-                  }
-                }}
              >
                 <div className="absolute inset-0 bg-muted/30 rounded-xl border-2 border-transparent group-hover:border-muted-foreground/30 transition-colors" />
                 <div className="relative p-6 space-y-4">
@@ -409,7 +391,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                       </li>
                    </ul>
                 </div>
-             </div>
+             </button>
           </div>
 
           <div className="flex justify-center pt-2">

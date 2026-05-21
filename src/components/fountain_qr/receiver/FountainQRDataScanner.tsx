@@ -297,11 +297,9 @@ export function FountainQRDataScanner({
                 </Button>
               )}
               {receiverMode === 'data-scanning' && isScanning && !success && (
-                <>
-                  <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
-                    ⏹ Stop Scanning
-                  </Button>
-                </>
+                <Button onClick={handleStopScan} variant="destructive" className="flex-1 sm:flex-none">
+                  ⏹ Stop Scanning
+                </Button>
               )}
             </div>
           )}
@@ -358,7 +356,7 @@ export function FountainQRDataScanner({
               if (relativeStartBlock >= gridBlockCount) {
                 return (
                   <div
-                    key={i}
+                    key={`empty-${absoluteStartBlock}`}
                     className="aspect-square hidden"
                   />
                 )
@@ -371,7 +369,7 @@ export function FountainQRDataScanner({
 
               return (
                 <div
-                  key={i}
+                  key={`range-${absoluteStartBlock}-${absoluteEndBlock}`}
                   className="aspect-square p-0.5 bg-transparent"
                   title={`Blocks ${absoluteStartBlock + 1}-${absoluteEndBlock}: ${decodedInRange}/${rangeBlocks.length} decoded`}
                 >
@@ -396,6 +394,7 @@ export function FountainQRDataScanner({
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => {
                   setShowMetadataInfo(false)
                   onToggleMetadataInfo(false)

@@ -51,6 +51,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }, [currentQROptions.errorCorrectionLevel])
 
   // Initialize fountain encoder when file is loaded
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when QR sizing parameters change so the encoder reflects them
   useEffect(() => {
     const reader = new FileReader()
     reader.onload = async (e) => {
@@ -125,6 +126,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption, maxQRDataSize])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId/file are triggers, not referenced in body
   useEffect(() => {
       setLastProcessedSequence(-1)
    }, [sessionId, file])
@@ -146,6 +148,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     lastSenderModeRef.current = senderMode
   }, [senderMode])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: file/sessionId are triggers, not referenced in body
   useEffect(() => {
     setAckPayload(null)
     setSenderMode('data-display')

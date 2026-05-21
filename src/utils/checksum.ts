@@ -123,5 +123,5 @@ export async function generateFeedbackConfirmationCode(feedback: FountainFeedbac
 
   // Format as user-friendly code: uppercase hex with hyphen (e.g., "AB-CD")
   const upperChecksum = checksum.toUpperCase()
-  return upperChecksum.slice(0, 2) + '-' + upperChecksum.slice(2)
+  return `${upperChecksum.slice(0, 2)}-${upperChecksum.slice(2)}`
 }

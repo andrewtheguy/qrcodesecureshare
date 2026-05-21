@@ -69,9 +69,9 @@ function parseLocationMetadata(state: LocationState | null): { metadata: Detecte
     sessionId: parsed.sessionId,
     checksum: parsed.checksum,
     checksumAlg: parsed.checksumAlg,
-    totalSourceBlocks: parsed.totalSourceBlocks!,
-    blockSize: parsed.blockSize!,
-    feedbackEnabled: parsed.feedbackEnabled!,
+    totalSourceBlocks: parsed.totalSourceBlocks as number,
+    blockSize: parsed.blockSize as number,
+    feedbackEnabled: parsed.feedbackEnabled as boolean,
   }
 
   // Add optional part-based fields only if defined

@@ -5,7 +5,10 @@ export default function Logo({ className = "w-12 h-12" }: { className?: string }
       viewBox="0 0 100 100"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="QR Code Secure Share logo"
     >
+      <title>QR Code Secure Share logo</title>
       {/* Dark Background */}
       <rect width="100" height="100" fill="#000000" />
 

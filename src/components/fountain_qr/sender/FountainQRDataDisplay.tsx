@@ -288,6 +288,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   const currentQROptions = useMemo(() => qrOptions, [qrOptions])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: autoPauseResetToken is a poke dependency used to restart the auto-pause timer when the parent signals a reset
   useEffect(() => {
     // Suspend the auto-pause timer while we're inactive (sender is in feedback/ack mode).
     // Otherwise the timer could fire mid-feedback and leave isPlaying=false on resume.
@@ -325,6 +326,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [isPlaying, isActive, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
 
   // Initialize encoder state
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when QR sizing parameters change so the estimate stays accurate even though they're not referenced in the body
   useEffect(() => {
     if (encoder) {
       const meta = encoder.getMetadata()
@@ -336,17 +338,17 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // The chunk counter is intentionally NOT reset here so progress is preserved when the
   // parent toggles isActive across mode switches (data-display ↔ feedback/ack). True
   // session resets happen in the sessionId-change effect below.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: isPlaying is intentionally excluded to avoid restarting mid-session
   useEffect(() => {
     if (encoder && isActive && !isPlaying && activationToken > 0) {
       setIsPlaying(true)
     }
-    // We intentionally exclude isPlaying setters from deps to avoid restarting mid-session
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encoder, isActive, activationToken])
 
   // Reset on session change (new file / new transfer). chunkCounterRef lives here, not in
   // the activation effect, so mode-switch toggles preserve progress while a real session
   // change starts from zero.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger - body doesn't reference it directly
   useEffect(() => {
     chunkCounterRef.current = 0
     setChunkCount(0)
@@ -525,6 +527,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }, [])
 
   // Generate and display fountain-coded chunk in binary format
+  // biome-ignore lint/correctness/useExhaustiveDependencies: chunkCount is intentionally a re-trigger; refs are stable and don't need to be listed
   useEffect(() => {
     const bufferTargetSize = bufferTargetSizeRef.current
     if (!isActive) return
@@ -607,7 +610,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }
 
     generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, chunkCountRef, bufferLengthRef, fpsRef, calculateExpectedChunkSize, serializeChunkToBinary])
+  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, calculateExpectedChunkSize, serializeChunkToBinary])
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
@@ -662,7 +665,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         } else {
           // Other error, stop and report
           console.error('QR generation error:', err)
-          onError('Failed to generate QR code: ' + errorMsg)
+          onError(`Failed to generate QR code: ${errorMsg}`)
           return
         }
       }
@@ -674,6 +677,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   }
 
   // Animation loop
+  // biome-ignore lint/correctness/useExhaustiveDependencies: generateAndShowNextChunk and consumeFromBuffer are intentionally omitted to prevent re-subscription churn
   useEffect(() => {
     if (!isPlaying || !encoder || !isActive) return
 
@@ -701,8 +705,6 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     }, 1000 / fps)
 
     return () => clearInterval(interval)
-    // generateAndShowNextChunk is intentionally omitted from deps to prevent re-subscription churn
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, encoder, fps, isActive, onChunkGenerated, renderQrFrame])
 
   const handlePlayPause = () => {
