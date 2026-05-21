@@ -7,16 +7,16 @@
  *
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
-import { generateNonDataQR } from '@/utils/qrUtils'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
+import type { FountainFeedback, SenderFeedback } from '@/types/fountainFeedback'
 import { generateFeedbackConfirmationCode } from '@/utils/checksum'
+import type { FountainMetadata } from '@/utils/fountainCodeWasm'
+import { generateNonDataQR } from '@/utils/qrUtils'
 
 interface FountainQRFeedbackDisplayProps {
   fountainMetadata: FountainMetadata
@@ -160,7 +160,7 @@ export function FountainQRFeedbackDisplay({
         dataUrl = await generateNonDataQR(feedback)
       } catch(err) {
         console.error('[FountainQRFeedbackDisplay] Feedback QR generation error:', err)
-        setError('Failed to generate feedback QR code - please try again, error:' + (err as Error).message)
+        setError(`Failed to generate feedback QR code - please try again, error:${(err as Error).message}`)
         return
       }
       setFeedbackQRUrl(dataUrl)
@@ -180,7 +180,7 @@ export function FountainQRFeedbackDisplay({
     } finally { generatingRef.current = false; }
   }, [feedbackSequence, partCompleteInfo, onFeedbackGenerated, onSequenceIncrement, onModeChange, success, onError])
 
-  const showAckError = (message: string) => {
+  const showAckError = useCallback((message: string) => {
     // Clear any existing timeout
     if (ackErrorTimeoutRef.current) {
       clearTimeout(ackErrorTimeoutRef.current)
@@ -193,7 +193,7 @@ export function FountainQRFeedbackDisplay({
       setAckError('')
       ackErrorTimeoutRef.current = null
     }, 5000)
-  }
+  }, [])
 
   const handleSenderFeedbackScan = useCallback(async (data: Uint8Array): Promise<void> => {
     const qrData = new TextDecoder().decode(data)
@@ -277,7 +277,7 @@ export function FountainQRFeedbackDisplay({
       console.error('[FountainQRFeedbackDisplay] Sender feedback parse error:', err)
       showAckError('Failed to read ACK QR code. The QR may be damaged or malformed. Please ask sender to regenerate the ACK QR and try scanning again.')
     }
-  }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus])
+  }, [sessionId, lastSenderFeedbackSequence, onSenderSequenceUpdate, onModeChange, onAckReceived, lastAckTransitionSuccessful, onAckTransitionStatus, showAckError])
 
   const ackScannerIsScanning = receiverMode === 'ack-scanning'
   const { videoRef: ackVideoRefFromHook, canvasRef: ackCanvasRef } = useRxingQRScanner({
@@ -497,6 +497,7 @@ export function FountainQRFeedbackDisplay({
               <div className="flex items-start gap-2">
                 <p className="text-sm font-medium">⚠️ {ackError}</p>
                 <button
+                  type="button"
                   onClick={() => {
                     setAckError('')
                     if (ackErrorTimeoutRef.current) {

@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
-import { FountainDecoder } from '../utils/fountainCodeWasm';
 import type { FountainMetadata } from '../utils/fountainCodeWasm';
+import { FountainDecoder } from '../utils/fountainCodeWasm';
 
 /**
  * Result types from Rust processBinaryChunk method
@@ -44,10 +44,11 @@ let partSize = 0;
 /**
  * Ensures the decoder is initialized before use
  */
-function ensureDecoder(): void {
+function ensureDecoder(): FountainDecoder {
     if (!decoder) {
         throw new Error('Decoder not initialized');
     }
+    return decoder;
 }
 
 // Message handler
@@ -106,20 +107,20 @@ self.onmessage = async (event: MessageEvent) => {
             }
 
             case 'processChunk': {
-                ensureDecoder();
+                const dec = ensureDecoder();
                 const { binaryData } = data as { binaryData: Uint8Array };
 
                 // Process binary chunk through complete Rust pipeline
                 let result: BinaryChunkProcessResult;
                 try {
                     // Check if method exists
-                    if (typeof decoder!.wasm.processBinaryChunk !== 'function') {
-                        console.error('[Worker] processBinaryChunk method not found! WASM may not be updated. Available methods:', Object.keys(decoder!.wasm));
+                    if (typeof dec.wasm.processBinaryChunk !== 'function') {
+                        console.error('[Worker] processBinaryChunk method not found! WASM may not be updated. Available methods:', Object.keys(dec.wasm));
                         self.postMessage({ type: 'error', id, error: 'processBinaryChunk method not found - please hard refresh (Ctrl+Shift+R or Cmd+Shift+R)' });
                         break;
                     }
 
-                    const rawResult = decoder!.wasm.processBinaryChunk(binaryData);
+                    const rawResult = dec.wasm.processBinaryChunk(binaryData);
 
                     // WASM returns a Map due to serde flatten - convert to plain object
                     result = Object.fromEntries(rawResult as Map<string, unknown>) as unknown as BinaryChunkProcessResult;
@@ -222,7 +223,7 @@ self.onmessage = async (event: MessageEvent) => {
                     console.log('[Worker] completionData:', result.completionData);
 
                     // Get the decoded data separately (data field is skipped in serialization)
-                    const decodedData = decoder!.wasm.getDecodedData();
+                    const decodedData = dec.wasm.getDecodedData();
                     if (!decodedData) {
                         console.error('[Worker] Completion detected but no decoded data available!');
                         self.postMessage({ type: 'error', id, error: 'Transfer complete but data is missing' });
@@ -244,16 +245,16 @@ self.onmessage = async (event: MessageEvent) => {
             }
 
             case 'getStatus': {
-                ensureDecoder();
-                const decodedBlockCount = decoder!.wasm.getDecodedBlockCount();
-                const overallProgress = decoder!.wasm.getProgress();
-                const isComplete = decoder!.isComplete();
-                const decodedBlockIndices = decoder!.wasm.getDecodedBlockIndices();
+                const dec = ensureDecoder();
+                const decodedBlockCount = dec.wasm.getDecodedBlockCount();
+                const overallProgress = dec.wasm.getProgress();
+                const isComplete = dec.isComplete();
+                const decodedBlockIndices = dec.wasm.getDecodedBlockIndices();
 
                 // Calculate part progress
                 const partProgress = partBasedMode
-                    ? (decoder!.wasm.getCurrentPartTotalBlockCount() > 0
-                        ? decoder!.wasm.getCurrentPartDecodedBlockCount() / decoder!.wasm.getCurrentPartTotalBlockCount()
+                    ? (dec.wasm.getCurrentPartTotalBlockCount() > 0
+                        ? dec.wasm.getCurrentPartDecodedBlockCount() / dec.wasm.getCurrentPartTotalBlockCount()
                         : 0)
                     : overallProgress;
 
@@ -270,15 +271,15 @@ self.onmessage = async (event: MessageEvent) => {
             }
 
             case 'moveToNextPart': {
-                ensureDecoder();
+                const dec = ensureDecoder();
                 if (!partBasedMode) {
                     self.postMessage({ type: 'error', id, error: 'Not in part-based mode' });
                     break;
                 }
 
-                const moved = decoder!.wasm.moveToNextPart();
+                const moved = dec.wasm.moveToNextPart();
                 if (moved) {
-                    const partInfo = decoder!.getPartInfo();
+                    const partInfo = dec.getPartInfo();
                     self.postMessage({
                         type: 'partTransitioned',
                         id,

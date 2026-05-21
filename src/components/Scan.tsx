@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { OFFLINE_METADATA_MAGIC } from '../constants'
-import { decodeQRFromImage } from '@/utils/rxingWorkerUtils'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
-import { OfflineMetadataDetails } from './OfflineMetadataDetails'
-import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver'
+import { decodeQRFromImage } from '@/utils/rxingWorkerUtils'
 import { isTextFountainFrame } from '@/utils/textFountainProtocol'
+import { OFFLINE_METADATA_MAGIC } from '../constants'
+import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver'
+import { OfflineMetadataDetails } from './OfflineMetadataDetails'
 
 interface FountainMetadata {
   type: 'METADATA'
@@ -158,11 +158,11 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     const urlRegex = /(https?:\/\/[^\s]+)/g
     const parts = text.split(urlRegex)
 
-    return parts.map((part, index) => {
+    return parts.map((part) => {
       if (part.match(urlRegex)) {
         return (
           <a
-            key={index}
+            key={`url-${part}`}
             href={part}
             target="_blank"
             rel="noopener noreferrer"
@@ -226,6 +226,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only run unmount cleanup; including stopScanning would re-subscribe each call change
   useEffect(() => {
     return () => {
       stopScanning()
@@ -293,9 +294,10 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
               {uploadMode === 'camera' ? (
                 <div className="space-y-4">
-                  <div
+                  <button
+                    type="button"
                     onClick={startScanning}
-                    className="cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors"
+                    className="w-full cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors"
                   >
                     <div className="space-y-2">
                       <div className="text-4xl">📷</div>
@@ -306,7 +308,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                         Point camera at QR code to scan
                       </div>
                     </div>
-                  </div>
+                  </button>
                 </div>
               ) : (
                 <div className="space-y-4">

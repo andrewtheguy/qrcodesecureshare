@@ -1,7 +1,7 @@
-import { useRef, useEffect, useCallback, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { isMobileDevice } from '@/lib/utils'
-import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 import type { RxingReaderOptions } from '@/utils/rxingWasm'
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
 
 interface UseRxingQRScannerOptions {
   onScan: (data: Uint8Array[]) => void
@@ -166,7 +166,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     startTokenRef.current += 1
 
     if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
       cameraStreamRef.current = null
     }
 
@@ -210,14 +210,14 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-        stream.getTracks().forEach((track) => track.stop())
+        stream.getTracks().forEach((track) => { track.stop() })
         return
       }
       cameraStreamRef.current = stream
       videoRef.current.srcObject = stream
 
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-        stream.getTracks().forEach((track) => track.stop())
+        stream.getTracks().forEach((track) => { track.stop() })
         cameraStreamRef.current = null
         if (videoRef.current) {
           videoRef.current.srcObject = null
@@ -251,7 +251,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
 
     if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+      cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
       cameraStreamRef.current = null
     }
 
@@ -288,7 +288,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     if (cameraSettingsChanged && isScanningRef.current) {
       void switchCameraRef.current()
     }
-  }, [facingMode, preferLowRes, isScanningRef])
+  }, [facingMode, preferLowRes])
 
   useEffect(() => {
     const videoEl = videoRef.current
@@ -297,7 +297,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
       desiredScanningRef.current = false
       startTokenRef.current += 1
       if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => track.stop())
+        cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
       }
       if (scanLoopRef.current !== null) {
         cancelAnimationFrame(scanLoopRef.current)

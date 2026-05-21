@@ -5,14 +5,14 @@
  * transmit files via fountain-coded QR streams.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Label } from '@/components/ui/label'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { FountainEncoder, DEFAULT_FOUNTAIN_ENCODER_OPTIONS, type PartBasedModeConfig } from '@/utils/fountainCodeWasm'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { DEFAULT_FOUNTAIN_ENCODER_OPTIONS, FountainEncoder, type PartBasedModeConfig } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
 import { getQRCapacity } from '@/utils/qrCapacity'
 import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
@@ -51,6 +51,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }, [currentQROptions.errorCorrectionLevel])
 
   // Initialize fountain encoder when file is loaded
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when QR sizing parameters change so the encoder reflects them
   useEffect(() => {
     const reader = new FileReader()
     reader.onload = async (e) => {
@@ -125,6 +126,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption, maxQRDataSize])
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId/file are triggers, not referenced in body
   useEffect(() => {
       setLastProcessedSequence(-1)
    }, [sessionId, file])
@@ -146,6 +148,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     lastSenderModeRef.current = senderMode
   }, [senderMode])
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: file/sessionId are triggers, not referenced in body
   useEffect(() => {
     setAckPayload(null)
     setSenderMode('data-display')

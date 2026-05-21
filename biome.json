@@ -1,0 +1,43 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!dist",
+      "!rust/**/pkg",
+      "!rust/**/target",
+      "!src/wasm",
+      "!tmp",
+      "!node_modules",
+      "!public",
+      "!package-lock.json"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["scripts/**/*.js"],
+      "javascript": {
+        "globals": ["process", "require", "__dirname", "module", "console"]
+      }
+    }
+  ]
+}

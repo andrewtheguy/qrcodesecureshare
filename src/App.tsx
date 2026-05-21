@@ -1,12 +1,12 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
-import { Routes, Route, NavLink, Navigate, useNavigate, useLocation, Link } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
+import { Button } from '@/components/ui/button'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
-import Scan from './components/Scan'
-import OfflineTransfer from './components/OfflineTransfer'
 import HomePage from './components/HomePage'
 import Logo from './components/Logo'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { Button } from '@/components/ui/button'
+import OfflineTransfer from './components/OfflineTransfer'
+import Scan from './components/Scan'
 import './App.css'
 
 const TABS = [
@@ -65,7 +65,8 @@ function App() {
               <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
                 <SheetTrigger asChild>
                   <Button variant="ghost" size="icon">
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" role="img" aria-label="Open menu">
+                      <title>Open menu</title>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
                   </Button>

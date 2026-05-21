@@ -1,17 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
 import {
   TEXT_FOUNTAIN_AUTO_PAUSE_MIN_MS,
   TEXT_FOUNTAIN_FPS,
   TEXT_FOUNTAIN_VERSION,
 } from '@/constants'
 import { computeChecksum } from '@/utils/checksum'
-import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
-import { DEFAULT_FOUNTAIN_ENCODER_OPTIONS, FountainEncoder, type FountainChunk } from '@/utils/fountainCodeWasm'
 import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
+import { DEFAULT_FOUNTAIN_ENCODER_OPTIONS, type FountainChunk, FountainEncoder } from '@/utils/fountainCodeWasm'
+import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 import { serializeTextFountainFrame } from '@/utils/textFountainProtocol'
 

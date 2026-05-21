@@ -5,9 +5,9 @@
  * decode files sent via fountain-coded QR streams.
  */
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { Button } from '@/components/ui/button'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import type { FountainMetadata } from '@/utils/fountainCodeWasm'
 import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
 import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
@@ -185,7 +185,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Debug logging moved to subcomponent
 
           // Handle part completion if in part-based mode (only for non-duplicate chunks)
-          if (partCompleteInfo && partCompleteInfo.partComplete) {
+          if (partCompleteInfo?.partComplete) {
             console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`)
 
             // Store part completion info in state

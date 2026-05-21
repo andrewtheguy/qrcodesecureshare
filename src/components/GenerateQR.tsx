@@ -1,16 +1,16 @@
-import { useState, useCallback, useEffect, useMemo, useRef, forwardRef, useImperativeHandle } from 'react'
-import { generateFastQrModuleMatrix, generateFastQrSvgString } from '@/utils/fastQrWasm'
-import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { TextFountainSender } from '@/components/fountain_qr/TextFountainSender'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Textarea } from '@/components/ui/textarea'
-import { Alert, AlertDescription } from '@/components/ui/alert'
 import {
+  SVG_QR_DISPLAY_SIZE,
   TEXT_FOUNTAIN_MAX_TEXT_BYTES,
   TEXT_FOUNTAIN_TRIGGER_CHAR_COUNT,
-  SVG_QR_DISPLAY_SIZE,
 } from '@/constants'
-import { TextFountainSender } from '@/components/fountain_qr/TextFountainSender'
+import { generateFastQrModuleMatrix, generateFastQrSvgString } from '@/utils/fastQrWasm'
+import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
 
 export interface GenerateQRRef {
   setTextFromScan: (text: string) => void

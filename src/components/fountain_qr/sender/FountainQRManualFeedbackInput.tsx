@@ -8,16 +8,17 @@
  *
  */
 
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import type React from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { FountainEncoder } from '@/utils/fountainCodeWasm';
 import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
-import { generateNonDataQR } from '@/utils/qrUtils';
 import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
+import type { FountainEncoder } from '@/utils/fountainCodeWasm';
+import { generateNonDataQR } from '@/utils/qrUtils';
 
 interface ProcessedFeedbackData {
   sequence: number;
@@ -58,6 +59,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const validationErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Reset sequence on session change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger - body doesn't reference it directly
   useEffect(() => {
     setSenderFeedbackSequence(0);
     setInputSequence((lastProcessedSequence + 1).toString());
@@ -85,7 +87,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   }, []);
 
 
-  const showValidationError = (message: string) => {
+  const showValidationError = useCallback((message: string) => {
     // Clear any existing timeout
     if (validationErrorTimeoutRef.current) {
       clearTimeout(validationErrorTimeoutRef.current);
@@ -98,7 +100,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       setValidationError('');
       validationErrorTimeoutRef.current = null;
     }, 5000);
-  };
+  }, []);
 
   const resetInputFields = useCallback(() => {
     setInputSequence((lastProcessedSequence + 1).toString());
@@ -115,14 +117,14 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
   const validateInputs = useCallback(async (): Promise<{ valid: boolean; error: string; feedback: FountainFeedback | null }> => {
     // Parse and validate sessionId
-    const parsedSessionId = parseInt(inputSessionId);
-    if (isNaN(parsedSessionId) || parsedSessionId !== sessionId) {
+    const parsedSessionId = parseInt(inputSessionId, 10);
+    if (Number.isNaN(parsedSessionId) || parsedSessionId !== sessionId) {
       return { valid: false, error: `Session ID mismatch: Expected ${sessionId}, but got ${parsedSessionId}. Please verify you copied the correct Session ID from the receiver's feedback display.`, feedback: null };
     }
 
     // Parse and validate sequence
-    const parsedSequence = parseInt(inputSequence);
-    if (isNaN(parsedSequence) || parsedSequence <= lastProcessedSequence) {
+    const parsedSequence = parseInt(inputSequence, 10);
+    if (Number.isNaN(parsedSequence) || parsedSequence <= lastProcessedSequence) {
       return { valid: false, error: `Invalid sequence: Must be greater than ${lastProcessedSequence} (last processed). Current value: ${parsedSequence}. Please check the Sequence field from receiver's feedback display.`, feedback: null };
     }
 
@@ -140,14 +142,14 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     // NOTE: Checksum fields excluded - receiver only sends feedback if part is valid
 
     // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
-    const parsedCurrentPartDisplay = parseInt(inputCurrentPart);
-    if (isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
+    const parsedCurrentPartDisplay = parseInt(inputCurrentPart, 10);
+    if (Number.isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
       return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
 
     // Parse and validate totalParts
-    const parsedTotalParts = parseInt(inputTotalParts);
-    if (isNaN(parsedTotalParts) || parsedTotalParts < 1) {
+    const parsedTotalParts = parseInt(inputTotalParts, 10);
+    if (Number.isNaN(parsedTotalParts) || parsedTotalParts < 1) {
       return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
     }
 
@@ -258,7 +260,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR]);
+  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR, showValidationError]);
 
   const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const rawValue = e.target.value;
@@ -279,7 +281,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     // 6. Auto-insert dash after 2nd character if length > 2
     let formatted = cleaned;
     if (cleaned.length > 2) {
-      formatted = cleaned.slice(0, 2) + '-' + cleaned.slice(2);
+      formatted = `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
     }
 
     // 7. Set the formatted value to state
@@ -370,6 +372,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
               <div className="flex items-start gap-2">
                 <span className="font-semibold">⚠️ {validationError}</span>
                 <button
+                  type="button"
                   onClick={() => {
                     setValidationError('');
                     if (validationErrorTimeoutRef.current) {

@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
-import { Button, buttonVariants } from '@/components/ui/button'
 import Logo from '@/components/Logo'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const features = [

@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { FountainQRReceiver } from './fountain_qr/FountainQRReceiver'
 
 interface DetectedMetadata {
@@ -69,9 +69,9 @@ function parseLocationMetadata(state: LocationState | null): { metadata: Detecte
     sessionId: parsed.sessionId,
     checksum: parsed.checksum,
     checksumAlg: parsed.checksumAlg,
-    totalSourceBlocks: parsed.totalSourceBlocks!,
-    blockSize: parsed.blockSize!,
-    feedbackEnabled: parsed.feedbackEnabled!,
+    totalSourceBlocks: parsed.totalSourceBlocks as number,
+    blockSize: parsed.blockSize as number,
+    feedbackEnabled: parsed.feedbackEnabled as boolean,
   }
 
   // Add optional part-based fields only if defined
