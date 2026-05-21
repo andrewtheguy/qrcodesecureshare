@@ -43,7 +43,7 @@ const verifyWorkerBuildPlugin = () => {
 
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: {
     host: true,
     allowedHosts: [
@@ -91,11 +91,8 @@ export default defineConfig({
       failOnError: true,   // Fail the build on errors
       // cache: false,        // Disable cache for faster linting during development
     }),
-    VitePWA({
+    ...(command === 'build' ? [VitePWA({
       registerType: 'autoUpdate',
-      devOptions: {
-        enabled: false, // Disable PWA in development to avoid caching issues
-      },
       workbox: {
         // Cache all static assets including workers and WASM
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,wasm}'],
@@ -131,7 +128,7 @@ export default defineConfig({
           },
         ],
       },
-    }),
+    })] : []),
   ],
   // Testing Recommendations:
   // 1. Run `npm run build` and check the `dist` directory for worker chunks
@@ -139,4 +136,4 @@ export default defineConfig({
   // 3. Test in production build using `npm run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-})
+}))
