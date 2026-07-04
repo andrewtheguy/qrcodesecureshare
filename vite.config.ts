@@ -23,18 +23,10 @@ function getGitCommitHash(): string {
   return git('git rev-parse --short HEAD') ?? 'local'
 }
 
-function getGitBranch(): string {
-  const cfBranch = process.env.CF_PAGES_BRANCH
-  if (cfBranch) return cfBranch
-  return git('git rev-parse --abbrev-ref HEAD') ?? 'unknown'
-}
-
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   define: {
     __GIT_COMMIT_HASH__: JSON.stringify(getGitCommitHash()),
-    __GIT_BRANCH__: JSON.stringify(getGitBranch()),
-    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   server: {
     host: true,
