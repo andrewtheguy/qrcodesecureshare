@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, Navigate, NavLink, Route, Routes, useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import Footer from './components/Footer'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import HomePage from './components/HomePage'
 import Logo from './components/Logo'
@@ -39,7 +40,7 @@ function App() {
   }, [location.pathname])
 
   return (
-    <div className="min-h-screen">
+    <div className="flex min-h-screen flex-col">
       {/* Navbar */}
       <nav className="border-b border-white/10 bg-transparent">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -145,7 +146,7 @@ function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-2 py-4 min-h-[calc(100vh-4rem)]">
+      <main className="w-full max-w-4xl mx-auto px-2 py-4 flex-1">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/generate" element={<GenerateQRWithState />} />
@@ -161,6 +162,9 @@ function App() {
           </Route>
         </Routes>
       </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   )
 }
