@@ -1,21 +1,40 @@
+import { execSync } from 'node:child_process'
 import path from 'node:path'
 import tailwindcss from "@tailwindcss/vite"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
+function git(command: string): string | null {
+  try {
+    return execSync(command, { stdio: ['ignore', 'pipe', 'ignore'] })
+      .toString()
+      .trim()
+  } catch {
+    return null
+  }
+}
+
 function getGitCommitHash(): string {
   // Cloudflare Pages exposes the deployed commit via this env var. Local builds
-  // fall back to a placeholder to avoid confusion about which commit is running.
+  // fall back to `git`, then to a placeholder if that is unavailable too.
   const cfSha = process.env.CF_PAGES_COMMIT_SHA
-  return cfSha ? cfSha.slice(0, 7) : 'local'
+  if (cfSha) return cfSha.slice(0, 7)
+  return git('git rev-parse --short HEAD') ?? 'local'
+}
+
+function getGitBranch(): string {
+  const cfBranch = process.env.CF_PAGES_BRANCH
+  if (cfBranch) return cfBranch
+  return git('git rev-parse --abbrev-ref HEAD') ?? 'unknown'
 }
 
 // https://vite.dev/config/
 export default defineConfig(({ command }) => ({
   define: {
-    __APP_VERSION__: JSON.stringify(process.env.npm_package_version ?? '0.0.0'),
     __GIT_COMMIT_HASH__: JSON.stringify(getGitCommitHash()),
+    __GIT_BRANCH__: JSON.stringify(getGitBranch()),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
   },
   server: {
     host: true,
