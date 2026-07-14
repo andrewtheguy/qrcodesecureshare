@@ -14,6 +14,7 @@ interface BinaryChunkProcessResult {
     overallProgress: number;
     partProgress: number;
     isComplete: boolean;
+    realDecodingStarted: boolean;
     decodedBlockIndices: number[];
     currentPartIndex?: number;
     totalParts?: number;
@@ -139,11 +140,12 @@ self.onmessage = async (event: MessageEvent) => {
                         decodedBlockCount: result.decodedBlockCount,
                         overallProgress: result.overallProgress,
                         isComplete: result.isComplete,
+                        realDecodingStarted: result.realDecodingStarted,
                         decodedBlockIndices: result.decodedBlockIndices?.length
                     });
 
                     // Validate result has expected fields
-                    if (result.decodedBlockCount === undefined || result.overallProgress === undefined) {
+                    if (result.decodedBlockCount === undefined || result.overallProgress === undefined || result.realDecodingStarted === undefined) {
                         console.error('[Worker] Result missing expected fields! Result:', result);
                         self.postMessage({ type: 'error', id, error: 'Invalid result from WASM - missing fields' });
                         break;
@@ -177,6 +179,7 @@ self.onmessage = async (event: MessageEvent) => {
                         overallProgress: result.overallProgress,
                         partProgress: result.partProgress,
                         isComplete: result.isComplete,
+                        realDecodingStarted: result.realDecodingStarted,
                         decodedBlockIndices: result.decodedBlockIndices,
                         currentPartDecodedBlocks: result.currentPartDecodedBlocks,
                         currentPartTotalBlocks: result.currentPartTotalBlocks,
@@ -209,6 +212,7 @@ self.onmessage = async (event: MessageEvent) => {
                     overallProgress: result.overallProgress,
                     partProgress: result.partProgress,
                     isComplete: result.isComplete,
+                    realDecodingStarted: result.realDecodingStarted,
                     decodedBlockIndices: result.decodedBlockIndices,
                     currentPartDecodedBlocks: result.currentPartDecodedBlocks,
                     currentPartTotalBlocks: result.currentPartTotalBlocks,

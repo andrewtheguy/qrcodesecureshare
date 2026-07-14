@@ -27,6 +27,7 @@ interface FountainQRDataScannerProps {
   isAwaitingFeedback: boolean
   success: boolean
   decodedBlocks: number
+  realDecodingStarted: boolean
   invalidChecksumCount: number
   senderFeedbackMessage: string
   receivedFountainChunks: number
@@ -54,6 +55,7 @@ export function FountainQRDataScanner({
   isAwaitingFeedback,
   success,
   decodedBlocks,
+  realDecodingStarted,
   invalidChecksumCount,
   senderFeedbackMessage,
   receivedFountainChunks,
@@ -205,21 +207,6 @@ export function FountainQRDataScanner({
   // Determine if we're in multi-part mode
   const isMultiPartMode = fountainMetadata.partBasedMode && totalParts > 1
 
-  // Use part-specific values when in multi-part mode, otherwise use total blocks
-  const displayDecodedBlocks = isMultiPartMode ? currentPartDecodedBlocks : decodedBlocks
-  const displayTotalBlocks = isMultiPartMode ? currentPartTotalBlocks : fountainMetadata.totalSourceBlocks
-  const displayChunksScanned = isMultiPartMode ? currentPartChunkCount : receivedFountainChunks
-  const progress = displayTotalBlocks > 0 ? (displayDecodedBlocks / displayTotalBlocks) * 100 : 0
-
-  // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
-  // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
-  const k = displayTotalBlocks
-  const c = 0.2
-  const delta = 0.01
-  const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
-  const dopingOverhead = 1.05 // Account for forced low-degree chunks
-  const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
-
   // Calculate block range for the current part in multi-part mode
   let partStartBlock = 0
   let partEndBlock = fountainMetadata.totalSourceBlocks
@@ -229,6 +216,32 @@ export function FountainQRDataScanner({
     partStartBlock = Math.floor(partStartByte / fountainMetadata.blockSize)
     partEndBlock = Math.ceil(partEndByte / fountainMetadata.blockSize)
   }
+
+  // Use part-specific values when in multi-part mode, otherwise use total blocks
+  const displayDecodedBlocks = isMultiPartMode ? currentPartDecodedBlocks : decodedBlocks
+  const displayTotalBlocks = isMultiPartMode
+    ? currentPartTotalBlocks || partEndBlock - partStartBlock
+    : fountainMetadata.totalSourceBlocks
+  const displayChunksScanned = isMultiPartMode ? currentPartChunkCount : receivedFountainChunks
+  const progress = displayTotalBlocks > 0 ? (displayDecodedBlocks / displayTotalBlocks) * 100 : 0
+  const decodePhase = realDecodingStarted
+    ? 'decoding'
+    : displayDecodedBlocks > 0
+      ? 'accumulation'
+      : 'validation'
+  const fullDecodeChunkThreshold = Math.ceil(displayTotalBlocks * 1.1)
+  const accumulationProgress = fullDecodeChunkThreshold > 0
+    ? Math.min((displayChunksScanned / fullDecodeChunkThreshold) * 100, 100)
+    : 0
+
+  // More accurate estimate based on robust soliton parameters (c=0.2, delta=0.01) + degree doping
+  // Formula: k * (1 + c * ln(k/delta) / sqrt(k)) * 1.05 (accounting for degree doping overhead)
+  const k = displayTotalBlocks
+  const c = 0.2
+  const delta = 0.01
+  const theoreticalOverhead = c * Math.log(k / delta) / Math.sqrt(k)
+  const dopingOverhead = 1.05 // Account for forced low-degree chunks
+  const estimatedChunksNeeded = Math.ceil(k * (1 + theoreticalOverhead) * dopingOverhead)
 
   // Calculate compressed rectangle grid layout
   // In multi-part mode, use the number of blocks in the current part
@@ -309,17 +322,53 @@ export function FountainQRDataScanner({
       {/* Progress */}
       {!success && (
         <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>
-              {isMultiPartMode ? (
-                <>Part {currentPartIndex + 1}/{totalParts}: Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
-              ) : (
-                <>Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
-              )}
-            </span>
-            <span>{Math.round(progress)}%</span>
-          </div>
-          <Progress value={progress} />
+          {decodePhase === 'decoding' ? (
+            <>
+              <div className="flex justify-between text-sm">
+                <span>
+                  {isMultiPartMode ? (
+                    <>Part {currentPartIndex + 1}/{totalParts}: Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
+                  ) : (
+                    <>Decoded {displayDecodedBlocks} of {displayTotalBlocks} blocks</>
+                  )}
+                </span>
+                <span>{Math.round(progress)}%</span>
+              </div>
+              <Progress value={progress} />
+            </>
+          ) : decodePhase === 'validation' ? (
+            <div className="space-y-3 rounded-xl border border-amber-400/50 bg-amber-50/80 p-4 dark:border-amber-500/40 dark:bg-amber-950/25">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+                  Validation phase
+                </span>
+                <span className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                  Waiting for first block
+                </span>
+              </div>
+              <p className="text-sm text-amber-900/80 dark:text-amber-100/80">
+                Scanning and testing decode attempts until the first source block is recovered.
+              </p>
+              <div className="h-2 overflow-hidden rounded-full bg-amber-200/70 dark:bg-amber-900/60">
+                <div className="h-full w-1/3 animate-pulse rounded-full bg-amber-500" />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 rounded-xl border border-indigo-400/50 bg-indigo-50/80 p-4 dark:border-indigo-500/40 dark:bg-indigo-950/25">
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-semibold text-indigo-800 dark:text-indigo-200">
+                  Accumulation phase
+                </span>
+                <span className="text-xs font-medium text-indigo-700 dark:text-indigo-300">
+                  {displayChunksScanned} / {fullDecodeChunkThreshold} chunks
+                </span>
+              </div>
+              <p className="text-sm text-indigo-900/80 dark:text-indigo-100/80">
+                The stream is validated. Collecting enough chunks to begin full decoding.
+              </p>
+              <Progress value={accumulationProgress} />
+            </div>
+          )}
           <div className="text-xs text-muted-foreground">
             Chunks scanned: {displayChunksScanned} (est. {estimatedChunksNeeded} needed)
             {invalidChecksumCount > 0 && (
@@ -332,7 +381,7 @@ export function FountainQRDataScanner({
       )}
 
       {/* Block Progress Grid */}
-      {!success && fountainMetadata.totalSourceBlocks > 0 && (
+      {!success && decodePhase === 'decoding' && fountainMetadata.totalSourceBlocks > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <div className="text-sm font-medium">

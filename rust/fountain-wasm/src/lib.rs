@@ -625,6 +625,7 @@ impl WasmFountainDecoder {
     /// - `overallProgress`: Overall decoding progress (0.0 to 1.0)
     /// - `partProgress`: Current part progress (0.0 to 1.0)
     /// - `isComplete`: Whether decoding is complete
+    /// - `realDecodingStarted`: Whether the full decode at 110% has started
     /// - `decodedBlockIndices`: Array of decoded block indices
     /// - `currentPartIndex`: Current part index (if in part-based mode)
     /// - `totalParts`: Total parts (if in part-based mode)

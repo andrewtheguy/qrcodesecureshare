@@ -654,8 +654,11 @@ impl FountainDecoder {
             // Early decode threshold: max(10 chunks, 2% of total blocks)
             let early_decode_threshold = ((total_blocks as f64 * 0.02).ceil() as usize).max(10);
 
-            // Trigger at early threshold OR at 110% total chunks
-            total_chunks_current_part == early_decode_threshold
+            // Retry validation on every new chunk after the early threshold until
+            // at least one source block has been decoded. Once that proves the
+            // stream is decodable, accumulate chunks until the 110% full decode.
+            (total_chunks_current_part >= early_decode_threshold
+                && self.decoded_blocks.is_empty())
                 || total_chunks_current_part >= required_chunks_110
         } else {
             // After first decode at 110%: incremental decodes at 5% or 10 chunks since last decode
@@ -812,6 +815,7 @@ impl FountainDecoder {
             seed: u32,
             decoded_count: usize,
             progress: f64,
+            real_decoding_started: bool,
         ) -> BinaryChunkProcessResult {
             BinaryChunkProcessResult {
                 status,
@@ -820,6 +824,7 @@ impl FountainDecoder {
                 overall_progress: progress,
                 part_progress: 0.0,
                 is_complete: false,
+                real_decoding_started,
                 decoded_block_indices: vec![],
                 current_part_index: None,
                 total_parts: None,
@@ -845,6 +850,7 @@ impl FountainDecoder {
                     0,
                     decoded_count,
                     progress,
+                    self.first_decode_attempted,
                 );
             }
         };
@@ -871,6 +877,7 @@ impl FountainDecoder {
                 chunk_seed,
                 decoded_count,
                 progress,
+                self.first_decode_attempted,
             );
         }
         let stored_bytes = &binary_data[parsed.checksum_start..parsed.checksum_start + 4];
@@ -887,6 +894,7 @@ impl FountainDecoder {
                 chunk_seed,
                 decoded_count,
                 progress,
+                self.first_decode_attempted,
             );
         }
 
@@ -909,7 +917,13 @@ impl FountainDecoder {
         if process_result.is_duplicate {
             let decoded_count = self.decoded_blocks.len();
             let progress = self.get_progress();
-            return make_error_result(ChunkStatus::Duplicate, chunk_seed, decoded_count, progress);
+            return make_error_result(
+                ChunkStatus::Duplicate,
+                chunk_seed,
+                decoded_count,
+                progress,
+                self.first_decode_attempted,
+            );
         }
 
         // 7. Gather all state
@@ -979,6 +993,7 @@ impl FountainDecoder {
             overall_progress,
             part_progress,
             is_complete,
+            real_decoding_started: self.first_decode_attempted,
             decoded_block_indices,
             current_part_index,
             total_parts,
