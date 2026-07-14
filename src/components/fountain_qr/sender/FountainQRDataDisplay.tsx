@@ -369,6 +369,10 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
   // Initialize QR generation worker
   useEffect(() => {
+    // React Strict Mode replays effects in development. Reset this flag when the
+    // replayed setup mounts a fresh worker after the intentional cleanup pass.
+    isUnmountedRef.current = false
+
     // Capture the Map instance up front so the cleanup closes over the same Map the effect
     // observed (also silences react-hooks/exhaustive-deps on ref access in cleanup — we only
     // mutate this Map, never reassign .current).
