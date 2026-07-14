@@ -60,6 +60,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // Metadata is immutable for this mount (component remounted per file)
   const fountainMetadata: FountainMetadata = initialMeta
   const [decodedBlocks, setDecodedBlocks] = useState(0)
+  const [realDecodingStarted, setRealDecodingStarted] = useState(false)
   const [success, setSuccess] = useState(false)
   const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
   const [actualChecksum, setActualChecksum] = useState<string>('')
@@ -89,9 +90,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
     totalParts: number
   } | null>(null)
   const [currentPartIndex, setCurrentPartIndex] = useState<number>(0)
-  const [totalParts, setTotalParts] = useState<number>(1)
+  const [totalParts, setTotalParts] = useState<number>(() => (
+    initialMeta.partBasedMode && initialMeta.partSize
+      ? Math.ceil(initialMeta.size / initialMeta.partSize)
+      : 1
+  ))
   const [currentPartDecodedBlocks, setCurrentPartDecodedBlocks] = useState<number>(0)
-  const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(0)
+  const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(() => (
+    initialMeta.partBasedMode && initialMeta.partSize
+      ? Math.ceil(Math.min(initialMeta.partSize, initialMeta.size) / initialMeta.blockSize)
+      : initialMeta.totalSourceBlocks
+  ))
   const [currentPartChunkCount, setCurrentPartChunkCount] = useState<number>(0)
   const currentPartChunkCountRef = useRef<number>(0)
   const lastPartIndexRef = useRef<number>(0)
@@ -133,11 +142,12 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           break
 
         case 'chunkProcessed': {
-          const { duplicate, decodedBlockCount, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
+          const { duplicate, decodedBlockCount, realDecodingStarted, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
 
           console.log('[FountainQRReceiver] chunkProcessed:', {
             duplicate,
             decodedBlockCount,
+            realDecodingStarted,
             decodedBlockIndicesLength: decodedBlockIndices?.length,
             partDecodedBlocks,
             partTotalBlocks
@@ -164,6 +174,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
           // Always update progress, even for duplicates, so UI shows current state
           setDecodedBlocks(decodedBlockCount)
+          setRealDecodingStarted(realDecodingStarted)
           decodedBlockIndicesRef.current = decodedBlockIndices
 
           // Update part-specific state if in part-based mode
@@ -250,6 +261,17 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           lastPartIndexRef.current = newPartIndex
           currentPartChunkCountRef.current = 0
           setCurrentPartChunkCount(0)
+          setDecodedBlocks(0)
+          setCurrentPartDecodedBlocks(0)
+          if (initialMeta.partBasedMode && initialMeta.partSize) {
+            const partStartByte = newPartIndex * initialMeta.partSize
+            const partEndByte = Math.min((newPartIndex + 1) * initialMeta.partSize, initialMeta.size)
+            const startBlock = Math.floor(partStartByte / initialMeta.blockSize)
+            const endBlock = Math.ceil(partEndByte / initialMeta.blockSize)
+            setCurrentPartTotalBlocks(endBlock - startBlock)
+          }
+          decodedBlockIndicesRef.current = []
+          setRealDecodingStarted(false)
           break
         }
 
@@ -557,6 +579,7 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         isAwaitingFeedback={isAwaitingFeedback}
         success={success}
         decodedBlocks={decodedBlocks}
+        realDecodingStarted={realDecodingStarted}
         invalidChecksumCount={invalidChecksumCount}
         senderFeedbackMessage={senderFeedbackMessage}
         receivedFountainChunks={receivedFountainChunks}

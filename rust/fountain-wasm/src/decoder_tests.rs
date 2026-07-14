@@ -2,7 +2,7 @@
 mod decoder_tests {
     use crate::decoder::FountainDecoder;
     use crate::encoder::FountainEncoder;
-    use crate::types::FountainEncoderOptions;
+    use crate::types::{FountainChunk, FountainEncoderOptions};
 
     fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
         let mut options = FountainEncoderOptions::default();
@@ -1947,6 +1947,70 @@ mod decoder_tests {
             pending_before,
             pending_after
         );
+    }
+
+    #[test]
+    fn test_validation_retries_until_first_block_then_accumulates() {
+        let data = vec![0u8; 100];
+        let options = options_with_block_size(1);
+        let encoder = FountainEncoder::new(
+            data,
+            "test.dat".to_string(),
+            "application/octet-stream".to_string(),
+            0.0,
+            options,
+            false,
+            0,
+            None,
+        );
+
+        let metadata = encoder.get_metadata();
+        let total_source_blocks = metadata.total_source_blocks;
+        let mut decoder = FountainDecoder::new(metadata);
+
+        // Reach the 10-chunk validation threshold with chunks that cannot yet
+        // produce a singleton source block.
+        for seed in 0..10 {
+            let chunk = FountainChunk::new_unchecked(seed, 2, vec![0, 1], vec![0]);
+            let binary = crate::parser::serialize_chunk_to_binary(&chunk, false);
+            let result = decoder.process_binary_chunk(&binary, total_source_blocks, "");
+            assert!(!result.real_decoding_started);
+        }
+        assert_eq!(decoder.get_decoded_block_count(), 0);
+        assert_eq!(decoder.get_pending_chunk_count(), 0);
+
+        // The next chunk must trigger another validation decode immediately.
+        let singleton = FountainChunk::new_unchecked(10, 1, vec![0], vec![0]);
+        let binary = crate::parser::serialize_chunk_to_binary(&singleton, false);
+        let validation_result =
+            decoder.process_binary_chunk(&binary, total_source_blocks, "");
+        assert!(validation_result.decoded_block_count > 0);
+        assert!(!validation_result.real_decoding_started);
+
+        // Once validation succeeds, chunks accumulate without another decode.
+        let accumulated = FountainChunk::new_unchecked(11, 2, vec![2, 3], vec![0]);
+        let binary = crate::parser::serialize_chunk_to_binary(&accumulated, false);
+        let accumulation_result =
+            decoder.process_binary_chunk(&binary, total_source_blocks, "");
+        assert!(!accumulation_result.real_decoding_started);
+        assert_eq!(decoder.get_pending_chunk_count(), 1);
+
+        let full_decode_threshold = (total_source_blocks as f64 * 1.10).ceil() as u32;
+        for seed in 12..(full_decode_threshold - 1) {
+            let chunk = FountainChunk::new_unchecked(seed, 2, vec![2, 3], vec![0]);
+            let binary = crate::parser::serialize_chunk_to_binary(&chunk, false);
+            let result = decoder.process_binary_chunk(&binary, total_source_blocks, "");
+            assert!(!result.real_decoding_started);
+        }
+
+        // Reaching the configured 110% threshold starts the real decode and
+        // clears accumulation.
+        let threshold_chunk =
+            FountainChunk::new_unchecked(full_decode_threshold - 1, 2, vec![2, 3], vec![0]);
+        let binary = crate::parser::serialize_chunk_to_binary(&threshold_chunk, false);
+        let decoding_result = decoder.process_binary_chunk(&binary, total_source_blocks, "");
+        assert!(decoding_result.real_decoding_started);
+        assert_eq!(decoder.get_pending_chunk_count(), 0);
     }
 
     #[test]

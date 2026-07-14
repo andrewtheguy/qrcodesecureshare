@@ -228,6 +228,8 @@ pub struct BinaryChunkProcessResult {
     pub part_progress: f64,
     /// Whether decoding is complete
     pub is_complete: bool,
+    /// Whether the full decode at the 110% chunk threshold has started
+    pub real_decoding_started: bool,
     /// List of decoded block indices
     pub decoded_block_indices: Vec<usize>,
     /// Current part index (if in part mode)
