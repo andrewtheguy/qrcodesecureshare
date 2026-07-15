@@ -2,45 +2,8 @@ import { execSync } from 'node:child_process'
 import path from 'node:path'
 import tailwindcss from "@tailwindcss/vite"
 import react from '@vitejs/plugin-react'
-import { defineConfig, type Plugin } from 'vite'
+import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
-
-const DEV_SERVICE_WORKER = `
-self.addEventListener('install', (event) => {
-  event.waitUntil(self.skipWaiting())
-})
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil((async () => {
-    await self.registration.unregister()
-    const cacheNames = await self.caches.keys()
-    await Promise.all(cacheNames.map((cacheName) => self.caches.delete(cacheName)))
-    const clients = await self.clients.matchAll({ type: 'window' })
-    await Promise.all(clients.map((client) => client.navigate(client.url)))
-  })())
-})
-`
-
-function devServiceWorkerCleanup(): Plugin {
-  return {
-    name: 'dev-service-worker-cleanup',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use((request, response, next) => {
-        if (request.url?.split('?', 1)[0] !== '/sw.js') {
-          next()
-          return
-        }
-
-        response.statusCode = 200
-        response.setHeader('Content-Type', 'text/javascript')
-        response.setHeader('Cache-Control', 'no-store')
-        response.setHeader('Service-Worker-Allowed', '/')
-        response.end(DEV_SERVICE_WORKER)
-      })
-    },
-  }
-}
 
 function git(command: string): string | null {
   try {
@@ -61,7 +24,7 @@ function getGitCommitHash(): string {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig({
   define: {
     __GIT_COMMIT_HASH__: JSON.stringify(getGitCommitHash()),
   },
@@ -105,9 +68,11 @@ export default defineConfig(({ command }) => ({
   plugins: [
     react(),
     tailwindcss(),
-    devServiceWorkerCleanup(),
-    ...(command === 'build' ? [VitePWA({
-      registerType: 'autoUpdate',
+    VitePWA({
+      registerType: 'prompt',
+      devOptions: {
+        enabled: false, // Disable PWA in development to avoid caching issues
+      },
       workbox: {
         // Cache all static assets including workers and WASM
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,wasm}'],
@@ -143,7 +108,7 @@ export default defineConfig(({ command }) => ({
           },
         ],
       },
-    })] : []),
+    }),
   ],
   // Testing Recommendations:
   // 1. Run `npm run build` and check the `dist` directory for worker chunks
@@ -151,4 +116,4 @@ export default defineConfig(({ command }) => ({
   // 3. Test in production build using `npm run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-}))
+})

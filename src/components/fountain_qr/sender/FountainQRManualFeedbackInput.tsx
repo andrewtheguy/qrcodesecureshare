@@ -56,7 +56,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
   const [inputTotalParts, setInputTotalParts] = useState('1');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
   const [validationError, setValidationError] = useState('')
-  const validationErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const validationErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Reset sequence on session change
   // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger - body doesn't reference it directly

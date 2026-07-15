@@ -73,8 +73,8 @@ export function FountainQRFeedbackDisplay({
   const [ackError, setAckError] = useState<string>('')
 
   const generatingRef = useRef<boolean>(false)
-  const ackErrorTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const transitionTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const ackErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const transitionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Refs for stable inputs to prevent mid-cycle re-generation
   const decodedBlockIndicesRef = useRef<number[]>(decodedBlockIndices)
