@@ -400,7 +400,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
           disabled={!encoder}
           className="w-full"
         >
-          Process Feedback & Generate ACK
+          Generate ACK
         </Button>
       </CardContent>
     </Card>
