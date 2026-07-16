@@ -2,7 +2,7 @@
 
 Offline file transfer and QR code generation. Share files between devices using animated QR codes with no internet required.
 
-**Demo: [qrsecure.kuvi.app](https://qrsecure.kuvi.app/)**
+**Demo: [qrsecure.kuvi.dev](https://qrsecure.kuvi.dev/)**
 
 ## Features
 
