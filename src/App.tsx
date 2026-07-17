@@ -6,6 +6,7 @@ import Footer from './components/Footer'
 import GenerateQR, { type GenerateQRRef } from './components/GenerateQR'
 import HomePage from './components/HomePage'
 import Logo from './components/Logo'
+import NotFound from './components/NotFound'
 import OfflineTransfer from './components/OfflineTransfer'
 import Scan from './components/Scan'
 import './App.css'
@@ -160,6 +161,7 @@ function App() {
             <Route path="send" element={<OfflineTransfer defaultMode="send" />} />
             <Route path="receive" element={<OfflineTransfer defaultMode="receive" />} />
           </Route>
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </main>
 
