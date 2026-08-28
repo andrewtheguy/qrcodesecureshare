@@ -430,7 +430,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             </Button>
             <Button asChild onClick={() => setOnlineConfirmOpen(false)}>
               <a href="https://ptransfer.app/" target="_blank" rel="noopener noreferrer">
-                Continue to PTransfer <ExternalLink className="ml-2 w-4 h-4" />
+                Continue to pTransfer <ExternalLink className="ml-2 w-4 h-4" />
               </a>
             </Button>
           </DialogFooter>
