@@ -419,7 +419,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
           <DialogHeader>
             <DialogTitle>Continue to Online Transfer?</DialogTitle>
             <DialogDescription>
-              You are about to visit <strong>ptransfer.kuvi.dev</strong> for online file transfer.
+              You are about to visit <strong>ptransfer.app</strong> for online file transfer.
               <br /><br />
               This is a <strong>sister site</strong> managed by the same developer. It requires an internet connection and uses end-to-end encryption to keep your files secure.
             </DialogDescription>
@@ -429,7 +429,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
               Cancel
             </Button>
             <Button asChild onClick={() => setOnlineConfirmOpen(false)}>
-              <a href="https://ptransfer.kuvi.dev/" target="_blank" rel="noopener noreferrer">
+              <a href="https://ptransfer.app/" target="_blank" rel="noopener noreferrer">
                 Continue to PTransfer <ExternalLink className="ml-2 w-4 h-4" />
               </a>
             </Button>
