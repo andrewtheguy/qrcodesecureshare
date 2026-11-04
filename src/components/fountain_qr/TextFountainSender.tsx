@@ -270,7 +270,7 @@ export function TextFountainSender({ text, onReset }: TextFountainSenderProps) {
         )}
 
         <div className="mx-auto w-fit max-w-full rounded-xl border border-sky-300/40 bg-slate-950/95 p-2">
-          <div className="relative">
+          <div className="relative flex items-center justify-center">
             <canvas
               ref={qrCanvasRef}
               width={DISPLAY_SIZE}
