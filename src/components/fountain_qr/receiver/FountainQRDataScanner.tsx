@@ -111,12 +111,10 @@ export function FountainQRDataScanner({
       // Note: Counter is now incremented in parent's worker message handler
       // to ensure we only count non-duplicate chunks
 
-      addDebugLog('📤 Sent chunk to worker for processing');
-
       // Invoke callback with parsed seed
       onChunkScanned(seed);
     },
-    [addDebugLog, onChunkScanned, workerRef, messageIdCounterRef],
+    [onChunkScanned, workerRef, messageIdCounterRef],
   );
 
   const handleScan = useCallback(
@@ -125,8 +123,6 @@ export function FountainQRDataScanner({
 
       const bytes = qrCodes[0];
       try {
-        addDebugLog(`Scanned chunk, length: ${bytes.length} bytes`);
-
         if (receiverMode === 'ack-scanning') {
           console.log(
             '[DIAGNOSTIC] Early return: already in ack-scanning mode',
@@ -164,7 +160,6 @@ export function FountainQRDataScanner({
 
         // Expect only fountain data chunks now; metadata is JSON and handled by parent before this component mounts
         if (bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfd) {
-          addDebugLog('🔁 Processing fountain chunk');
           handleBinaryFountainChunk(bytes);
         } else {
           addDebugLog('⚠ Ignoring non-fountain-chunk QR content');
@@ -203,6 +198,12 @@ export function FountainQRDataScanner({
       onAckTransitionStatus(true);
     },
     scanInterval: 0,
+    // A repeat of the read before it is the same chunk seen in consecutive
+    // camera frames, which the decoder would only discard.
+    debounceMs: Number.POSITIVE_INFINITY,
+    // Two workers decode frames side by side on phones too slow to decode
+    // every camera frame on one core.
+    workerCount: 2,
     preferLowRes: true, // Use lower resolution on mobile for better performance and battery life
     readerOptions: { tryHarder: false, binarizer: 'global' },
   });

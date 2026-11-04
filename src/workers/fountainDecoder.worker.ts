@@ -162,16 +162,6 @@ self.onmessage = async (event: MessageEvent) => {
             ) as BinaryChunkProcessResult['partCompleteInfo'];
           }
 
-          console.log('[Worker] processBinaryChunk result:', {
-            type: result.type,
-            seed: result.seed,
-            decodedBlockCount: result.decodedBlockCount,
-            overallProgress: result.overallProgress,
-            isComplete: result.isComplete,
-            realDecodingStarted: result.realDecodingStarted,
-            decodedBlockIndices: result.decodedBlockIndices?.length,
-          });
-
           // Validate result has expected fields
           if (
             result.decodedBlockCount === undefined ||

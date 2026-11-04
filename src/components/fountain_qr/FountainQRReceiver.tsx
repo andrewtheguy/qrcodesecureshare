@@ -169,15 +169,6 @@ export function FountainQRReceiver({
               currentPartTotalBlocks: partTotalBlocks,
             } = data;
 
-            console.log('[FountainQRReceiver] chunkProcessed:', {
-              duplicate,
-              decodedBlockCount,
-              realDecodingStarted,
-              decodedBlockIndicesLength: decodedBlockIndices?.length,
-              partDecodedBlocks,
-              partTotalBlocks,
-            });
-
             if (
               partIndex !== undefined &&
               partIndex !== lastPartIndexRef.current

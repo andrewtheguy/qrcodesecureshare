@@ -10,9 +10,18 @@ interface UseRxingQRScannerOptions {
   isScanning: boolean;
   facingMode?: 'environment' | 'user';
   scanInterval?: number;
+  /**
+   * Drop a read whose bytes match the previous read when it comes within this
+   * many milliseconds of it. `Number.POSITIVE_INFINITY` drops every repeat.
+   */
   debounceMs?: number;
   readerOptions?: RxingReaderOptions;
   preferLowRes?: boolean;
+  /**
+   * How many decoding workers to run, each holding one frame at a time. Capped
+   * at one fewer than the device's cores, so the page keeps a core.
+   */
+  workerCount?: number;
 }
 
 type ScanLoopHandle =
@@ -73,6 +82,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     debounceMs = 0,
     readerOptions = {},
     preferLowRes = false,
+    workerCount = 1,
   } = options;
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -82,11 +92,11 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   const desiredScanningRef = useRef<boolean>(false);
   const startTokenRef = useRef<number>(0);
   const cameraStreamRef = useRef<MediaStream | null>(null);
-  const workerRef = useRef<Worker | null>(null);
-  // The worker holds one frame at a time. A frame that arrives while it is
-  // busy is not queued behind it; it marks `pendingFrameRef` so the newest
-  // frame is read the moment the worker is free.
-  const scanInFlightRef = useRef<boolean>(false);
+  // Each worker holds one frame at a time. A frame that arrives while every
+  // worker is busy is not queued; it marks `pendingFrameRef` so the newest
+  // frame is read the moment a worker is free.
+  const workersRef = useRef<Worker[]>([]);
+  const idleWorkersRef = useRef<Worker[]>([]);
   const readFramesInWorkerRef = useRef<boolean>(canReadFramesInWorker());
   const pendingFrameRef = useRef<boolean>(false);
   const lastFrameScanTimeRef = useRef<number>(Number.NEGATIVE_INFINITY);
@@ -122,15 +132,14 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   }, []);
 
   /**
-   * Sends the video's current frame to the worker; false if none was sent.
+   * Sends the video's current frame to `worker`; false if none was sent.
    * Where the browser can, the frame goes over as an ImageBitmap and the
    * worker reads its pixels, so the page's thread never waits on a readback.
    * Otherwise the pixels are read here on a canvas.
    */
-  const scanVideoFrame = useCallback((): boolean => {
+  const scanVideoFrame = useCallback((worker: Worker): boolean => {
     const video = videoRef.current;
-    const worker = workerRef.current;
-    if (!video || !worker) return false;
+    if (!video) return false;
 
     if (
       video.readyState !== video.HAVE_ENOUGH_DATA ||
@@ -141,12 +150,11 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
 
     if (readFramesInWorkerRef.current) {
-      scanInFlightRef.current = true;
       createImageBitmap(video).then(
         (frame) => {
-          // The worker was replaced while the bitmap was made (the scanner
-          // unmounted); its cleanup already cleared the in-flight flag.
-          if (workerRef.current !== worker) {
+          // The pool was replaced while the bitmap was made (the scanner
+          // unmounted), so this worker is gone.
+          if (!workersRef.current.includes(worker)) {
             frame.close();
             return;
           }
@@ -161,7 +169,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
             err,
           );
           readFramesInWorkerRef.current = false;
-          if (workerRef.current === worker) scanInFlightRef.current = false;
+          releaseWorkerRef.current(worker);
         },
       );
       return true;
@@ -196,7 +204,6 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
         },
         [imageData.data.buffer],
       );
-      scanInFlightRef.current = true;
       return true;
     } catch (err) {
       console.error('Error scanning frame:', err);
@@ -204,71 +211,97 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
   }, []);
 
-  /** Scans a frame if the interval has passed and the worker is free. */
+  /** Scans a frame if the interval has passed and a worker is free. */
   const offerFrame = useCallback(
     (now: number) => {
       if (now - lastFrameScanTimeRef.current < scanIntervalRef.current) return;
-      if (scanInFlightRef.current) {
+      const worker = idleWorkersRef.current.pop();
+      if (!worker) {
         pendingFrameRef.current = true;
         return;
       }
       pendingFrameRef.current = false;
-      if (scanVideoFrame()) {
+      if (scanVideoFrame(worker)) {
         lastFrameScanTimeRef.current = now;
+      } else {
+        idleWorkersRef.current.push(worker);
       }
     },
     [scanVideoFrame],
   );
 
-  useEffect(() => {
-    const worker = new RxingWorker();
-    workerRef.current = worker;
-
-    const onWorkerFree = () => {
-      scanInFlightRef.current = false;
+  /** Returns a worker to the idle pool and gives it the pending frame, if any. */
+  const releaseWorker = useCallback(
+    (worker: Worker) => {
+      if (
+        !workersRef.current.includes(worker) ||
+        idleWorkersRef.current.includes(worker)
+      ) {
+        return;
+      }
+      idleWorkersRef.current.push(worker);
       if (pendingFrameRef.current && isScanningRef.current) {
         offerFrame(performance.now());
       }
-    };
+    },
+    [offerFrame],
+  );
+  const releaseWorkerRef = useRef(releaseWorker);
+  useEffect(() => {
+    releaseWorkerRef.current = releaseWorker;
+  }, [releaseWorker]);
 
-    worker.onmessage = (e: MessageEvent) => {
-      if (e.data.type === 'result') {
-        if (e.data.data.length > 0) {
-          const scannedData = e.data.data[0] as Uint8Array;
-          const now = Date.now();
-          const debounce = debounceMsRef.current;
-          if (
-            debounce > 0 &&
-            isSameScan(scannedData, lastScannedRef.current) &&
-            now - lastScanTimeRef.current < debounce
-          ) {
-            onWorkerFree();
-            return;
-          }
-          lastScannedRef.current = scannedData;
-          lastScanTimeRef.current = now;
+  useEffect(() => {
+    const cores = navigator.hardwareConcurrency || 2;
+    const count = Math.max(1, Math.min(workerCount, cores - 1));
+    const workers = Array.from({ length: count }, () => new RxingWorker());
+    workersRef.current = workers;
+    idleWorkersRef.current = [...workers];
 
-          onScanRef.current(e.data.data);
-        }
-        if (e.data.error) {
-          console.error('Worker decode error:', e.data.error);
-        }
+    const handleResult = (data: { data: Uint8Array[]; error?: string }) => {
+      if (data.error) {
+        console.error('Worker decode error:', data.error);
       }
-      onWorkerFree();
+      if (data.data.length === 0) return;
+
+      const scannedData = data.data[0];
+      const debounce = debounceMsRef.current;
+      if (debounce > 0) {
+        const now = Date.now();
+        if (
+          isSameScan(scannedData, lastScannedRef.current) &&
+          now - lastScanTimeRef.current < debounce
+        ) {
+          return;
+        }
+        // Keep a copy: callers may transfer the read's buffer elsewhere.
+        lastScannedRef.current = scannedData.slice();
+        lastScanTimeRef.current = now;
+      }
+
+      onScanRef.current(data.data);
     };
 
-    worker.onerror = (err) => {
-      console.error('Worker error:', err);
-      onWorkerFree();
-    };
+    for (const worker of workers) {
+      worker.onmessage = (e: MessageEvent) => {
+        if (e.data.type === 'result') {
+          handleResult(e.data);
+        }
+        releaseWorker(worker);
+      };
+      worker.onerror = (err) => {
+        console.error('Worker error:', err);
+        releaseWorker(worker);
+      };
+    }
 
     return () => {
-      worker.terminate();
-      workerRef.current = null;
-      scanInFlightRef.current = false;
+      for (const worker of workers) worker.terminate();
+      workersRef.current = [];
+      idleWorkersRef.current = [];
       pendingFrameRef.current = false;
     };
-  }, [offerFrame]);
+  }, [releaseWorker, workerCount]);
 
   const cancelScanLoop = useCallback(() => {
     const handle = scanLoopRef.current;
