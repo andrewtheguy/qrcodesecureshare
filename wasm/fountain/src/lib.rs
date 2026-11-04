@@ -667,19 +667,19 @@ impl WasmFountainDecoder {
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
 
         // Handle completion_data.data separately (it's skipped in serialization)
-        if let Some(completion_data) = result.completion_data {
-            if !completion_data.data.is_empty() {
-                // Create Uint8Array for the decoded data
-                let data_array = Uint8Array::new_with_length(completion_data.data.len() as u32);
-                data_array.copy_from(&completion_data.data);
+        if let Some(completion_data) = result.completion_data
+            && !completion_data.data.is_empty()
+        {
+            // Create Uint8Array for the decoded data
+            let data_array = Uint8Array::new_with_length(completion_data.data.len() as u32);
+            data_array.copy_from(&completion_data.data);
 
-                // Get the completionData object from the result
-                let completion_obj = js_sys::Reflect::get(&js_result, &"completionData".into())
-                    .unwrap_or(JsValue::NULL);
+            // Get the completionData object from the result
+            let completion_obj =
+                js_sys::Reflect::get(&js_result, &"completionData".into()).unwrap_or(JsValue::NULL);
 
-                // Add data to completionData
-                js_sys::Reflect::set(&completion_obj, &"data".into(), &data_array).ok();
-            }
+            // Add data to completionData
+            js_sys::Reflect::set(&completion_obj, &"data".into(), &data_array).ok();
         }
 
         Ok(js_result)

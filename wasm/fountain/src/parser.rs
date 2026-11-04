@@ -385,7 +385,7 @@ mod tests {
         binary.extend_from_slice(&[0x00, 0x00]); // currentPart = 0
         binary.extend_from_slice(&[0x00, 0x05]); // totalParts = 5
         binary.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // partChecksum bytes
-                                                             // Data
+        // Data
         binary.extend_from_slice(&[0x42, 0x43]);
         // Checksum
         binary.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);

@@ -573,10 +573,10 @@ impl FountainEncoderOptions {
         }
 
         // Validate max_degree if specified (must be >= 1)
-        if let Some(max_deg) = self.max_degree {
-            if max_deg == 0 {
-                errors.push("max_degree must be >= 1, got 0".to_string());
-            }
+        if let Some(max_deg) = self.max_degree
+            && max_deg == 0
+        {
+            errors.push("max_degree must be >= 1, got 0".to_string());
         }
 
         if errors.is_empty() {

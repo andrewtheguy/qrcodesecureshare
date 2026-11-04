@@ -249,12 +249,12 @@ impl FountainDecoder {
                         continue;
                     }
 
-                    if let Some(other_chunk) = self.chunks.get_mut(other_chunk_idx) {
-                        if other_chunk.indices.remove(&block_idx) {
-                            xor_into(&mut other_chunk.data, &data);
-                            if other_chunk.indices.len() == 1 {
-                                self.enqueue_singleton(other_chunk_idx);
-                            }
+                    if let Some(other_chunk) = self.chunks.get_mut(other_chunk_idx)
+                        && other_chunk.indices.remove(&block_idx)
+                    {
+                        xor_into(&mut other_chunk.data, &data);
+                        if other_chunk.indices.len() == 1 {
+                            self.enqueue_singleton(other_chunk_idx);
                         }
                     }
                 }
@@ -439,16 +439,16 @@ impl FountainDecoder {
         }
 
         // Get the current part data before clearing
-        if part_index == self.current_part_index {
-            if let Some(part_data) = self.get_current_part_data() {
-                self.stored_part_data.insert(part_index, part_data);
-                self.completed_parts.insert(part_index);
+        if part_index == self.current_part_index
+            && let Some(part_data) = self.get_current_part_data()
+        {
+            self.stored_part_data.insert(part_index, part_data);
+            self.completed_parts.insert(part_index);
 
-                // Clear decoded blocks for this part to save memory
-                let (start_block, end_block) = self.get_current_part_block_range();
-                for i in start_block..end_block {
-                    self.decoded_blocks.remove(&i);
-                }
+            // Clear decoded blocks for this part to save memory
+            let (start_block, end_block) = self.get_current_part_block_range();
+            for i in start_block..end_block {
+                self.decoded_blocks.remove(&i);
             }
         }
     }
@@ -701,23 +701,22 @@ impl FountainDecoder {
 
             // Only validate if not the last part
             if should_validate {
-                if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index) {
-                    if let Some(validation_result) =
+                if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index)
+                    && let Some(validation_result) =
                         self.validate_current_part_checksum(expected_checksum_bytes)
-                    {
-                        // Mark part as completed (stores data and frees memory)
-                        if validation_result.is_valid {
-                            self.mark_part_completed(part_index);
-                        }
-
-                        part_complete_info = Some(crate::types::PartCompleteInfo {
-                            is_valid: validation_result.is_valid,
-                            expected_checksum: validation_result.expected_checksum,
-                            actual_checksum: validation_result.actual_checksum,
-                            current_part: part_index as u32,
-                            total_parts: self.total_parts as u32,
-                        });
+                {
+                    // Mark part as completed (stores data and frees memory)
+                    if validation_result.is_valid {
+                        self.mark_part_completed(part_index);
                     }
+
+                    part_complete_info = Some(crate::types::PartCompleteInfo {
+                        is_valid: validation_result.is_valid,
+                        expected_checksum: validation_result.expected_checksum,
+                        actual_checksum: validation_result.actual_checksum,
+                        current_part: part_index as u32,
+                        total_parts: self.total_parts as u32,
+                    });
                 }
             } else {
                 // For last part, just mark as completed without validation
