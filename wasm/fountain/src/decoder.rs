@@ -95,7 +95,7 @@ impl FountainDecoder {
 
     /// Create a new decoder with part-based mode
     pub fn with_part_mode(metadata: FountainMetadata, part_size: usize) -> Self {
-        let total_parts = (metadata.size + part_size - 1) / part_size; // ceil division
+        let total_parts = metadata.size.div_ceil(part_size); // ceil division
         Self {
             metadata,
             decoded_blocks: HashMap::new(),
@@ -129,7 +129,7 @@ impl FountainDecoder {
             for &block_idx in &chunk.indices {
                 self.block_to_chunks
                     .entry(block_idx)
-                    .or_insert_with(BTreeSet::new)
+                    .or_default()
                     .insert(chunk_idx);
             }
 
@@ -249,12 +249,12 @@ impl FountainDecoder {
                         continue;
                     }
 
-                    if let Some(other_chunk) = self.chunks.get_mut(other_chunk_idx) {
-                        if other_chunk.indices.remove(&block_idx) {
-                            xor_into(&mut other_chunk.data, &data);
-                            if other_chunk.indices.len() == 1 {
-                                self.enqueue_singleton(other_chunk_idx);
-                            }
+                    if let Some(other_chunk) = self.chunks.get_mut(other_chunk_idx)
+                        && other_chunk.indices.remove(&block_idx)
+                    {
+                        xor_into(&mut other_chunk.data, &data);
+                        if other_chunk.indices.len() == 1 {
+                            self.enqueue_singleton(other_chunk_idx);
                         }
                     }
                 }
@@ -315,12 +315,9 @@ impl FountainDecoder {
         // Reassemble blocks in order
         let mut result = Vec::new();
         for i in 0..self.metadata.total_source_blocks {
-            if let Some(block) = self.decoded_blocks.get(&i) {
-                result.extend_from_slice(block);
-            } else {
-                // Should never happen if is_complete() returned true
-                return None;
-            }
+            // Always present once is_complete() returned true
+            let block = self.decoded_blocks.get(&i)?;
+            result.extend_from_slice(block);
         }
 
         // Trim to original size
@@ -398,16 +395,13 @@ impl FountainDecoder {
 
         // Concatenate blocks
         for i in start_block..end_block {
-            if let Some(block) = self.decoded_blocks.get(&i) {
-                if i == start_block && offset_in_first_block > 0 {
-                    // First block: skip bytes before part starts
-                    result.extend_from_slice(&block[offset_in_first_block..]);
-                } else {
-                    // Other blocks: copy entire block
-                    result.extend_from_slice(block);
-                }
+            let block = self.decoded_blocks.get(&i)?;
+            if i == start_block && offset_in_first_block > 0 {
+                // First block: skip bytes before part starts
+                result.extend_from_slice(&block[offset_in_first_block..]);
             } else {
-                return None;
+                // Other blocks: copy entire block
+                result.extend_from_slice(block);
             }
         }
 
@@ -445,16 +439,16 @@ impl FountainDecoder {
         }
 
         // Get the current part data before clearing
-        if part_index == self.current_part_index {
-            if let Some(part_data) = self.get_current_part_data() {
-                self.stored_part_data.insert(part_index, part_data);
-                self.completed_parts.insert(part_index);
+        if part_index == self.current_part_index
+            && let Some(part_data) = self.get_current_part_data()
+        {
+            self.stored_part_data.insert(part_index, part_data);
+            self.completed_parts.insert(part_index);
 
-                // Clear decoded blocks for this part to save memory
-                let (start_block, end_block) = self.get_current_part_block_range();
-                for i in start_block..end_block {
-                    self.decoded_blocks.remove(&i);
-                }
+            // Clear decoded blocks for this part to save memory
+            let (start_block, end_block) = self.get_current_part_block_range();
+            for i in start_block..end_block {
+                self.decoded_blocks.remove(&i);
             }
         }
     }
@@ -503,7 +497,7 @@ impl FountainDecoder {
             ((self.current_part_index + 1) * self.part_size).min(self.metadata.size);
 
         let start_block = part_start_byte / self.metadata.block_size;
-        let end_block = (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size; // ceil division
+        let end_block = part_end_byte.div_ceil(self.metadata.block_size); // ceil division
         let end_block = end_block.min(self.metadata.total_source_blocks);
 
         (start_block, end_block)
@@ -657,8 +651,7 @@ impl FountainDecoder {
             // Retry validation on every new chunk after the early threshold until
             // at least one source block has been decoded. Once that proves the
             // stream is decodable, accumulate chunks until the 110% full decode.
-            (total_chunks_current_part >= early_decode_threshold
-                && self.decoded_blocks.is_empty())
+            (total_chunks_current_part >= early_decode_threshold && self.decoded_blocks.is_empty())
                 || total_chunks_current_part >= required_chunks_110
         } else {
             // After first decode at 110%: incremental decodes at 5% or 10 chunks since last decode
@@ -708,23 +701,22 @@ impl FountainDecoder {
 
             // Only validate if not the last part
             if should_validate {
-                if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index) {
-                    if let Some(validation_result) =
+                if let Some(expected_checksum_bytes) = self.get_expected_part_checksum(part_index)
+                    && let Some(validation_result) =
                         self.validate_current_part_checksum(expected_checksum_bytes)
-                    {
-                        // Mark part as completed (stores data and frees memory)
-                        if validation_result.is_valid {
-                            self.mark_part_completed(part_index);
-                        }
-
-                        part_complete_info = Some(crate::types::PartCompleteInfo {
-                            is_valid: validation_result.is_valid,
-                            expected_checksum: validation_result.expected_checksum,
-                            actual_checksum: validation_result.actual_checksum,
-                            current_part: part_index as u32,
-                            total_parts: self.total_parts as u32,
-                        });
+                {
+                    // Mark part as completed (stores data and frees memory)
+                    if validation_result.is_valid {
+                        self.mark_part_completed(part_index);
                     }
+
+                    part_complete_info = Some(crate::types::PartCompleteInfo {
+                        is_valid: validation_result.is_valid,
+                        expected_checksum: validation_result.expected_checksum,
+                        actual_checksum: validation_result.actual_checksum,
+                        current_part: part_index as u32,
+                        total_parts: self.total_parts as u32,
+                    });
                 }
             } else {
                 // For last part, just mark as completed without validation

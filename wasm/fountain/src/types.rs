@@ -573,10 +573,10 @@ impl FountainEncoderOptions {
         }
 
         // Validate max_degree if specified (must be >= 1)
-        if let Some(max_deg) = self.max_degree {
-            if max_deg == 0 {
-                errors.push("max_degree must be >= 1, got 0".to_string());
-            }
+        if let Some(max_deg) = self.max_degree
+            && max_deg == 0
+        {
+            errors.push("max_degree must be >= 1, got 0".to_string());
         }
 
         if errors.is_empty() {
@@ -707,12 +707,14 @@ mod tests {
 
     #[test]
     fn test_fountain_encoder_options_customization() {
-        let mut options = FountainEncoderOptions::default();
-        options.block_size = 512;
-        options.c = 0.3;
-        options.delta = 0.02;
-        options.max_degree = Some(10);
-        options.degree1_rate = 0.1;
+        let options = FountainEncoderOptions {
+            block_size: 512,
+            c: 0.3,
+            delta: 0.02,
+            max_degree: Some(10),
+            degree1_rate: 0.1,
+            ..FountainEncoderOptions::default()
+        };
 
         assert_eq!(options.block_size, 512);
         assert_eq!(options.c, 0.3);
@@ -1113,7 +1115,7 @@ mod tests {
 
         // Deserialize and verify
         let deserialized: PartInfo = serde_json::from_str(&json).expect("deserialization failed");
-        assert_eq!(deserialized.part_based_mode, true);
+        assert!(deserialized.part_based_mode);
         assert_eq!(deserialized.current_part_index, 2);
         assert_eq!(deserialized.total_parts, 5);
         assert_eq!(deserialized.part_size, 1024);

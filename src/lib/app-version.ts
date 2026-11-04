@@ -1,1 +1,1 @@
-export const GIT_COMMIT_HASH = __GIT_COMMIT_HASH__
+export const GIT_COMMIT_HASH = __GIT_COMMIT_HASH__;

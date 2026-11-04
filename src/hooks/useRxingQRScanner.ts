@@ -1,30 +1,50 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { isMobileDevice } from '@/lib/utils'
-import type { RxingReaderOptions } from '@/utils/rxingWasm'
-import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { isMobileDevice } from '@/lib/utils';
+import type { RxingReaderOptions } from '@/utils/rxingWasm';
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker';
 
 interface UseRxingQRScannerOptions {
-  onScan: (data: Uint8Array[]) => void
-  onError?: (error: string) => void
-  onCameraReady?: () => void
-  isScanning: boolean
-  facingMode?: 'environment' | 'user'
-  scanInterval?: number
-  debounceMs?: number
-  readerOptions?: RxingReaderOptions
-  preferLowRes?: boolean
+  onScan: (data: Uint8Array[]) => void;
+  onError?: (error: string) => void;
+  onCameraReady?: () => void;
+  isScanning: boolean;
+  facingMode?: 'environment' | 'user';
+  scanInterval?: number;
+  debounceMs?: number;
+  readerOptions?: RxingReaderOptions;
+  preferLowRes?: boolean;
 }
 
 // Wait briefly before requesting camera access so React refs and recently stopped streams can settle.
-const DELAY_BEFORE_START_MS = 100
+const DELAY_BEFORE_START_MS = 100;
+
+/** A message a person can act on, for why the camera did not start. */
+function describeCameraError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : '';
+  switch (name) {
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found on this device. Connect a camera, or upload an image of the QR code instead.';
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was blocked. Allow camera access for this site in your browser settings, or upload an image of the QR code instead.';
+    case 'NotSupportedError':
+      return 'This browser does not allow camera access on this page. Open it over HTTPS in an up-to-date browser, or upload an image of the QR code instead.';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'The camera could not be started. It may be in use by another app; close it and try again, or upload an image of the QR code instead.';
+    default:
+      return `The camera could not be started${err instanceof Error && err.message ? ` (${err.message})` : ''}. Try again, or upload an image of the QR code instead.`;
+  }
+}
 
 function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
-  if (a === b) return true
-  if (a.length !== b.length) return false
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {
-    if (a[i] !== b[i]) return false
+    if (a[i] !== b[i]) return false;
   }
-  return true
+  return true;
 }
 
 export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
@@ -38,91 +58,95 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     debounceMs = 0,
     readerOptions = {},
     preferLowRes = false,
-  } = options
+  } = options;
 
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const scanLoopRef = useRef<number | null>(null)
-  const isScanningRef = useRef<boolean>(false)
-  const desiredScanningRef = useRef<boolean>(false)
-  const startTokenRef = useRef<number>(0)
-  const cameraStreamRef = useRef<MediaStream | null>(null)
-  const workerRef = useRef<Worker | null>(null)
-  const lastScannedRef = useRef<Uint8Array>(new Uint8Array())
-  const lastScanTimeRef = useRef<number>(0)
-  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>([])
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scanLoopRef = useRef<number | null>(null);
+  const isScanningRef = useRef<boolean>(false);
+  const desiredScanningRef = useRef<boolean>(false);
+  const startTokenRef = useRef<number>(0);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const lastScannedRef = useRef<Uint8Array>(new Uint8Array());
+  const lastScanTimeRef = useRef<number>(0);
+  const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>(
+    [],
+  );
 
   const enumerateCameras = useCallback(async () => {
     try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      const videoDevices = devices.filter((device) => device.kind === 'videoinput')
-      setAvailableCameras(videoDevices)
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoDevices = devices.filter(
+        (device) => device.kind === 'videoinput',
+      );
+      setAvailableCameras(videoDevices);
     } catch (err) {
-      console.error('Failed to enumerate cameras:', err)
+      console.error('Failed to enumerate cameras:', err);
     }
-  }, [])
+  }, []);
 
   useEffect(() => {
-    const worker = new RxingWorker()
-    workerRef.current = worker
+    const worker = new RxingWorker();
+    workerRef.current = worker;
 
     worker.onmessage = (e: MessageEvent) => {
       if (e.data.type === 'result') {
         if (e.data.data.length > 0) {
-          const scannedData = e.data.data[0] as Uint8Array
-          const now = Date.now()
+          const scannedData = e.data.data[0] as Uint8Array;
+          const now = Date.now();
           if (
             debounceMs > 0 &&
             isSameScan(scannedData, lastScannedRef.current) &&
             now - lastScanTimeRef.current < debounceMs
           ) {
-            return
+            return;
           }
-          lastScannedRef.current = scannedData
-          lastScanTimeRef.current = now
+          lastScannedRef.current = scannedData;
+          lastScanTimeRef.current = now;
 
-          onScan(e.data.data)
+          onScan(e.data.data);
         }
         if (e.data.error) {
-          console.error('Worker decode error:', e.data.error)
+          console.error('Worker decode error:', e.data.error);
         }
       }
-    }
+    };
 
     worker.onerror = (err) => {
-      console.error('Worker error:', err)
-    }
+      console.error('Worker error:', err);
+    };
 
     return () => {
-      worker.terminate()
-      workerRef.current = null
-    }
-  }, [onScan, debounceMs])
+      worker.terminate();
+      workerRef.current = null;
+    };
+  }, [onScan, debounceMs]);
 
   const scanVideoFrame = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !workerRef.current) return
+    if (!videoRef.current || !canvasRef.current || !workerRef.current) return;
 
-    const video = videoRef.current
-    const canvas = canvasRef.current
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
 
     if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-      return
+      return;
     }
 
     try {
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
 
       if (canvas.width === 0 || canvas.height === 0) {
-        return
+        return;
       }
 
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (!ctx) return
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      if (!ctx) return;
 
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
       workerRef.current.postMessage(
         {
@@ -130,72 +154,76 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
           imageData,
           options: readerOptions,
         },
-        [imageData.data.buffer]
-      )
+        [imageData.data.buffer],
+      );
     } catch (err) {
-      console.error('Error scanning frame:', err)
+      console.error('Error scanning frame:', err);
     }
-  }, [readerOptions])
+  }, [readerOptions]);
 
   const startScanLoop = useCallback(() => {
-    let lastScanTime = 0
+    let lastScanTime = 0;
 
     const scanFrame = () => {
       if (!isScanningRef.current) {
-        return
+        return;
       }
 
-      const now = Date.now()
+      const now = Date.now();
       if (now - lastScanTime >= scanInterval) {
-        scanVideoFrame()
-        lastScanTime = now
+        scanVideoFrame();
+        lastScanTime = now;
       }
 
       if (isScanningRef.current) {
-        scanLoopRef.current = requestAnimationFrame(scanFrame)
+        scanLoopRef.current = requestAnimationFrame(scanFrame);
       }
-    }
+    };
 
-    isScanningRef.current = true
-    scanFrame()
-  }, [scanInterval, scanVideoFrame])
+    isScanningRef.current = true;
+    scanFrame();
+  }, [scanInterval, scanVideoFrame]);
 
   const stopCameraScanning = useCallback(() => {
-    isScanningRef.current = false
-    desiredScanningRef.current = false
-    startTokenRef.current += 1
+    isScanningRef.current = false;
+    desiredScanningRef.current = false;
+    startTokenRef.current += 1;
 
     if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
-      cameraStreamRef.current = null
+      cameraStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      cameraStreamRef.current = null;
     }
 
     if (videoRef.current) {
-      videoRef.current.srcObject = null
+      videoRef.current.srcObject = null;
     }
 
     if (scanLoopRef.current !== null) {
-      cancelAnimationFrame(scanLoopRef.current)
-      scanLoopRef.current = null
+      cancelAnimationFrame(scanLoopRef.current);
+      scanLoopRef.current = null;
     }
-  }, [])
+  }, []);
 
   const startCameraScanning = useCallback(async () => {
-    const startToken = startTokenRef.current + 1
-    startTokenRef.current = startToken
-    desiredScanningRef.current = true
+    const startToken = startTokenRef.current + 1;
+    startTokenRef.current = startToken;
+    desiredScanningRef.current = true;
     try {
       // Give refs and any recently stopped stream time to settle before getUserMedia.
-      await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
+      await new Promise((resolve) =>
+        setTimeout(resolve, DELAY_BEFORE_START_MS),
+      );
 
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-        return
+        return;
       }
       if (!videoRef.current) {
-        throw new Error('Video element not available')
+        throw new Error('Video element not available');
       }
 
-      const isMobile = isMobileDevice()
+      const isMobile = isMobileDevice();
       const constraints: MediaStreamConstraints = {
         video: isMobile
           ? {
@@ -206,117 +234,148 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
           : {
               facingMode: facingMode,
             },
-      }
+      };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-        stream.getTracks().forEach((track) => { track.stop() })
-        return
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException(
+          'getUserMedia is unavailable',
+          'NotSupportedError',
+        );
       }
-      cameraStreamRef.current = stream
-      videoRef.current.srcObject = stream
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
+        stream.getTracks().forEach((track) => {
+          track.stop();
+        });
+        return;
+      }
+      cameraStreamRef.current = stream;
+      videoRef.current.srcObject = stream;
 
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
-        stream.getTracks().forEach((track) => { track.stop() })
-        cameraStreamRef.current = null
+        stream.getTracks().forEach((track) => {
+          track.stop();
+        });
+        cameraStreamRef.current = null;
         if (videoRef.current) {
-          videoRef.current.srcObject = null
+          videoRef.current.srcObject = null;
         }
-        return
+        return;
       }
-      await videoRef.current.play()
+      await videoRef.current.play();
 
-      await enumerateCameras()
+      await enumerateCameras();
 
-      if (onCameraReady && startTokenRef.current === startToken && desiredScanningRef.current) {
-        onCameraReady()
+      if (
+        onCameraReady &&
+        startTokenRef.current === startToken &&
+        desiredScanningRef.current
+      ) {
+        onCameraReady();
       }
 
       if (startTokenRef.current === startToken && desiredScanningRef.current) {
-        startScanLoop()
+        startScanLoop();
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to access camera'
-      if (onError && desiredScanningRef.current && startTokenRef.current === startToken) {
-        onError(`Camera access denied or unavailable. Please check your permissions. ${errorMessage}`)
+      console.error('Failed to start camera:', err);
+      if (
+        onError &&
+        desiredScanningRef.current &&
+        startTokenRef.current === startToken
+      ) {
+        onError(describeCameraError(err));
       }
-      stopCameraScanning()
+      stopCameraScanning();
     }
-  }, [facingMode, preferLowRes, enumerateCameras, onCameraReady, onError, startScanLoop, stopCameraScanning])
+  }, [
+    facingMode,
+    preferLowRes,
+    enumerateCameras,
+    onCameraReady,
+    onError,
+    startScanLoop,
+    stopCameraScanning,
+  ]);
 
   const switchCamera = useCallback(async () => {
     if (scanLoopRef.current !== null) {
-      cancelAnimationFrame(scanLoopRef.current)
-      scanLoopRef.current = null
+      cancelAnimationFrame(scanLoopRef.current);
+      scanLoopRef.current = null;
     }
 
     if (cameraStreamRef.current) {
-      cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
-      cameraStreamRef.current = null
+      cameraStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+      cameraStreamRef.current = null;
     }
 
     if (videoRef.current) {
-      videoRef.current.srcObject = null
+      videoRef.current.srcObject = null;
     }
 
-    await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS))
+    await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS));
 
-    await startCameraScanning()
-  }, [startCameraScanning])
+    await startCameraScanning();
+  }, [startCameraScanning]);
 
-  const switchCameraRef = useRef(switchCamera)
+  const switchCameraRef = useRef(switchCamera);
   useEffect(() => {
-    switchCameraRef.current = switchCamera
-  }, [switchCamera])
+    switchCameraRef.current = switchCamera;
+  }, [switchCamera]);
 
   useEffect(() => {
     if (isScanning && !isScanningRef.current) {
-      startCameraScanning()
+      startCameraScanning();
     } else if (!isScanning && isScanningRef.current) {
-      stopCameraScanning()
+      stopCameraScanning();
     }
-  }, [isScanning, startCameraScanning, stopCameraScanning])
+  }, [isScanning, startCameraScanning, stopCameraScanning]);
 
-  const cameraSettingsRef = useRef({ facingMode, preferLowRes })
+  const cameraSettingsRef = useRef({ facingMode, preferLowRes });
   useEffect(() => {
-    const previousSettings = cameraSettingsRef.current
+    const previousSettings = cameraSettingsRef.current;
     const cameraSettingsChanged =
-      previousSettings.facingMode !== facingMode || previousSettings.preferLowRes !== preferLowRes
+      previousSettings.facingMode !== facingMode ||
+      previousSettings.preferLowRes !== preferLowRes;
 
-    cameraSettingsRef.current = { facingMode, preferLowRes }
+    cameraSettingsRef.current = { facingMode, preferLowRes };
 
     if (cameraSettingsChanged && isScanningRef.current) {
-      void switchCameraRef.current()
+      void switchCameraRef.current();
     }
-  }, [facingMode, preferLowRes])
+  }, [facingMode, preferLowRes]);
 
   useEffect(() => {
-    const videoEl = videoRef.current
+    const videoEl = videoRef.current;
     return () => {
-      isScanningRef.current = false
-      desiredScanningRef.current = false
-      startTokenRef.current += 1
+      isScanningRef.current = false;
+      desiredScanningRef.current = false;
+      startTokenRef.current += 1;
       if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((track) => { track.stop() })
+        cameraStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
       }
       if (scanLoopRef.current !== null) {
-        cancelAnimationFrame(scanLoopRef.current)
+        cancelAnimationFrame(scanLoopRef.current);
       }
       // Small delay to ensure the camera is fully released before a new instance
       // tries to access it; prevents "media was removed from the document" errors
       // when rapidly switching components.
       if (videoEl) {
         setTimeout(() => {
-          videoEl.srcObject = null
-        }, 50)
+          videoEl.srcObject = null;
+        }, 50);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   return {
     videoRef,
     canvasRef,
     switchCamera,
     availableCameras,
-  }
+  };
 }

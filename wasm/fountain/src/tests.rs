@@ -20,9 +20,10 @@ mod integration_tests {
     }
 
     fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
-        let mut options = FountainEncoderOptions::default();
-        options.block_size = block_size;
-        options
+        FountainEncoderOptions {
+            block_size,
+            ..FountainEncoderOptions::default()
+        }
     }
 
     /// Create a test encoder with sensible defaults for non-part-based mode
@@ -379,7 +380,7 @@ mod integration_tests {
         let mut decoder = FountainDecoder::with_part_mode(metadata, part_size);
 
         // Decode all parts
-        let total_parts = (data.len() + part_size - 1) / part_size;
+        let total_parts = data.len().div_ceil(part_size);
         let mut all_parts_data = Vec::new();
 
         for part_idx in 0..total_parts {
@@ -538,7 +539,7 @@ mod wasm_refactoring_tests {
         let encoder = make_encoder(1000, false, 0);
         let (part_based_mode, current_part_index, total_parts, part_size) = encoder.get_part_info();
 
-        assert_eq!(part_based_mode, false);
+        assert!(!part_based_mode);
         assert_eq!(current_part_index, 0);
         assert_eq!(total_parts, 0);
         assert_eq!(part_size, 0);
@@ -552,7 +553,7 @@ mod wasm_refactoring_tests {
         let (part_based_mode, current_part_index, total_parts, _part_size) =
             encoder.get_part_info();
 
-        assert_eq!(part_based_mode, true);
+        assert!(part_based_mode);
         assert_eq!(current_part_index, 0); // Initial state
         assert!(total_parts > 0); // Should have calculated parts
     }
@@ -570,7 +571,7 @@ mod wasm_refactoring_tests {
         let (part_based_mode, current_part_index, total_parts, _part_size) =
             encoder.get_part_info();
 
-        assert_eq!(part_based_mode, true);
+        assert!(part_based_mode);
         assert_eq!(current_part_index, 1); // Should be at part 1
         assert!(total_parts > 1);
     }
@@ -580,7 +581,7 @@ mod wasm_refactoring_tests {
         let decoder = make_decoder(1000, false, 0);
         let (part_based_mode, current_part_index, total_parts, part_size) = decoder.get_part_info();
 
-        assert_eq!(part_based_mode, false);
+        assert!(!part_based_mode);
         assert_eq!(current_part_index, 0);
         assert_eq!(total_parts, 0);
         assert_eq!(part_size, 0);
@@ -594,7 +595,7 @@ mod wasm_refactoring_tests {
         let (part_based_mode, current_part_index, total_parts, returned_part_size) =
             decoder.get_part_info();
 
-        assert_eq!(part_based_mode, true);
+        assert!(part_based_mode);
         assert_eq!(current_part_index, 0); // Initial state
         assert!(total_parts > 0);
         assert_eq!(returned_part_size, part_size);
@@ -616,7 +617,7 @@ mod wasm_refactoring_tests {
         };
 
         // Verify fields
-        assert_eq!(part_info.part_based_mode, true);
+        assert!(part_info.part_based_mode);
         assert_eq!(part_info.current_part_index, 0);
         assert!(part_info.total_parts > 0);
         assert_eq!(part_info.part_size, 1000);
@@ -653,20 +654,21 @@ mod wasm_refactoring_tests {
 
     #[test]
     fn test_parse_binary_chunk_internal_basic() {
-        let data = vec![0xAA, 0xBB, 0xCC];
+        let data = [0xAA, 0xBB, 0xCC];
         let mut encoder = make_encoder(data.len(), false, 0);
 
         // Generate a chunk
         let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
 
         // Convert to binary format (this is the format parse_binary_chunk expects)
-        let mut binary = Vec::new();
-        binary.push(0xFF); // Magic byte 1
-        binary.push(0xFD); // Magic byte 2
-        binary.push((chunk.seed >> 8) as u8); // Seed high
-        binary.push(chunk.seed as u8); // Seed low
-        binary.push(chunk.degree as u8); // Degree
-        binary.push(chunk.indices.len() as u8); // NumIndices
+        let mut binary = vec![
+            0xFF,                      // Magic byte 1
+            0xFD,                      // Magic byte 2
+            (chunk.seed >> 8) as u8,   // Seed high
+            chunk.seed as u8,          // Seed low
+            chunk.degree as u8,        // Degree
+            chunk.indices.len() as u8, // NumIndices
+        ];
 
         // Add indices
         for &idx in &chunk.indices {
@@ -697,13 +699,14 @@ mod wasm_refactoring_tests {
         let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
 
         // Build binary with part metadata
-        let mut binary = Vec::new();
-        binary.push(0xFF);
-        binary.push(0xFD);
-        binary.push((chunk.seed >> 8) as u8);
-        binary.push(chunk.seed as u8);
-        binary.push(chunk.degree as u8);
-        binary.push(chunk.indices.len() as u8);
+        let mut binary = vec![
+            0xFF,
+            0xFD,
+            (chunk.seed >> 8) as u8,
+            chunk.seed as u8,
+            chunk.degree as u8,
+            chunk.indices.len() as u8,
+        ];
 
         for &idx in &chunk.indices {
             binary.push((idx >> 8) as u8);
@@ -742,13 +745,14 @@ mod wasm_refactoring_tests {
         let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
 
         // Build binary representation
-        let mut binary = Vec::new();
-        binary.push(0xFF);
-        binary.push(0xFD);
-        binary.push((chunk.seed >> 8) as u8);
-        binary.push(chunk.seed as u8);
-        binary.push(chunk.degree as u8);
-        binary.push(chunk.indices.len() as u8);
+        let mut binary = vec![
+            0xFF,
+            0xFD,
+            (chunk.seed >> 8) as u8,
+            chunk.seed as u8,
+            chunk.degree as u8,
+            chunk.indices.len() as u8,
+        ];
 
         for &idx in &chunk.indices {
             binary.push((idx >> 8) as u8);
@@ -837,7 +841,7 @@ mod wasm_refactoring_tests {
 
         // Get initial part info
         let (pb_mode, current, _total, _part_size) = encoder.get_part_info();
-        assert_eq!(pb_mode, true);
+        assert!(pb_mode);
         assert_eq!(current, 0);
 
         // Generate chunks for first part
@@ -871,7 +875,7 @@ mod wasm_refactoring_tests {
         let decoder = make_decoder(5000, true, 1000);
 
         let (pb_mode, current, total, part_size) = decoder.get_part_info();
-        assert_eq!(pb_mode, true);
+        assert!(pb_mode);
         assert_eq!(current, 0);
         assert_eq!(part_size, 1000);
 
@@ -891,13 +895,14 @@ mod wasm_refactoring_tests {
         let chunk1 = encoder.generate_chunk().expect("Failed to generate chunk");
 
         // Parse the binary format (simulating what JavaScript would do)
-        let mut binary = Vec::new();
-        binary.push(0xFF);
-        binary.push(0xFD);
-        binary.push((chunk1.seed >> 8) as u8);
-        binary.push(chunk1.seed as u8);
-        binary.push(chunk1.degree as u8);
-        binary.push(chunk1.indices.len() as u8);
+        let mut binary = vec![
+            0xFF,
+            0xFD,
+            (chunk1.seed >> 8) as u8,
+            chunk1.seed as u8,
+            chunk1.degree as u8,
+            chunk1.indices.len() as u8,
+        ];
 
         for &idx in &chunk1.indices {
             binary.push((idx >> 8) as u8);
@@ -936,7 +941,7 @@ mod wasm_refactoring_tests {
         // Compute and verify checksum
         let payload = &binary[2..parsed.checksum_start];
         let computed = crc32(payload);
-        assert!(computed.len() > 0);
+        assert!(!computed.is_empty());
     }
 }
 
@@ -1026,7 +1031,6 @@ mod wasm_lib_tests {
         let mut encoder = make_test_encoder(1000, false, 0);
         let chunk = encoder.generate_chunk().expect("Failed to generate chunk");
 
-        assert!(chunk.seed > 0 || chunk.seed == 0); // Seed can be any value
         assert_eq!(chunk.degree, chunk.indices.len()); // Degree should match indices
         assert!(chunk.degree > 0);
         assert!(!chunk.data.is_empty());
@@ -1121,7 +1125,7 @@ mod wasm_lib_tests {
             assert!(data.is_some());
 
             let data_array = data.unwrap();
-            assert!(data_array.len() > 0);
+            assert!(!data_array.is_empty());
         }
     }
 
@@ -1329,7 +1333,7 @@ mod wasm_lib_tests {
         // Should eventually complete
         if decoder.is_complete() {
             let decoded = decoder.get_decoded_data().expect("No decoded data");
-            assert!(decoded.len() > 0);
+            assert!(!decoded.is_empty());
         }
     }
 
@@ -1344,9 +1348,9 @@ mod wasm_lib_tests {
         let (enc_pb, _enc_cur, _enc_total, enc_size) = encoder.get_part_info();
         let (dec_pb, _dec_cur, _dec_total, dec_size) = decoder.get_part_info();
 
-        assert_eq!(enc_pb, true);
+        assert!(enc_pb);
         assert_eq!(enc_size, part_size);
-        assert_eq!(dec_pb, true);
+        assert!(dec_pb);
         assert_eq!(dec_size, part_size);
     }
 
@@ -1741,7 +1745,7 @@ mod wasm_lib_tests {
 
         let mut all_decoded_parts = Vec::new();
 
-        for part_idx in 0..4 {
+        for (part_idx, expected_checksum) in expected_checksums.iter().enumerate() {
             // Encode and decode current part
             let mut chunks_sent = 0;
             while !decoder.is_current_part_complete() && chunks_sent < 500 {
@@ -1762,7 +1766,7 @@ mod wasm_lib_tests {
             let decoded_checksum = crc32(&decoded_part);
 
             assert_eq!(
-                decoded_checksum, expected_checksums[part_idx],
+                decoded_checksum, *expected_checksum,
                 "Part {} checksum mismatch",
                 part_idx
             );
@@ -1865,7 +1869,7 @@ mod wasm_lib_tests {
 
         let mut all_decoded = Vec::new();
 
-        for part_idx in 0..3 {
+        for (part_idx, expected_checksum) in expected_checksums.iter().enumerate() {
             let mut chunks = 0;
             while !decoder.is_current_part_complete() && chunks < 400 {
                 if let Some(chunk) = encoder.generate_chunk() {
@@ -1879,7 +1883,7 @@ mod wasm_lib_tests {
             let decoded_checksum = crc32(&decoded_part);
 
             assert_eq!(
-                decoded_checksum, expected_checksums[part_idx],
+                decoded_checksum, *expected_checksum,
                 "Part {} checksum mismatch",
                 part_idx
             );
@@ -2030,7 +2034,7 @@ mod wasm_lib_tests {
             );
             let decoded_part = decoder
                 .get_current_part_data()
-                .expect(&format!("Failed to get part {}", part_idx));
+                .unwrap_or_else(|| panic!("Failed to get part {}", part_idx));
             let decoded_checksum = crc32(&decoded_part);
 
             // Verify individual part checksum matches expected
@@ -2089,7 +2093,7 @@ mod wasm_lib_tests {
 
         let mut all_decoded = Vec::new();
 
-        for part_idx in 0..3 {
+        for (part_idx, part_checksum) in part_checksums.iter().enumerate() {
             let mut chunks = 0;
             while !decoder.is_current_part_complete() && chunks < 400 {
                 if let Some(chunk) = encoder.generate_chunk() {
@@ -2101,12 +2105,12 @@ mod wasm_lib_tests {
             assert!(decoder.is_current_part_complete());
             let decoded_part = decoder
                 .get_current_part_data()
-                .expect(&format!("Failed to get part {}", part_idx));
+                .unwrap_or_else(|| panic!("Failed to get part {}", part_idx));
 
             // Verify individual part checksum
             assert_eq!(
                 crc32(&decoded_part),
-                part_checksums[part_idx],
+                *part_checksum,
                 "Part {} checksum mismatch",
                 part_idx
             );
@@ -2164,7 +2168,7 @@ mod wasm_lib_tests {
             assert!(decoder.is_current_part_complete());
             let decoded_part = decoder
                 .get_current_part_data()
-                .expect(&format!("Failed to get part {}", part_idx));
+                .unwrap_or_else(|| panic!("Failed to get part {}", part_idx));
             let part_checksum = crc32(&decoded_part);
 
             actual_part_checksums.push(part_checksum);

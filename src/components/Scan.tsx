@@ -1,128 +1,139 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { useRxingQRScanner } from '@/hooks/useRxingQRScanner'
-import { decodeQRFromImage } from '@/utils/rxingWorkerUtils'
-import { isTextFountainFrame } from '@/utils/textFountainProtocol'
-import { OFFLINE_METADATA_MAGIC } from '../constants'
-import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver'
-import { OfflineMetadataDetails } from './OfflineMetadataDetails'
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { useRxingQRScanner } from '@/hooks/useRxingQRScanner';
+import { decodeQRFromImage } from '@/utils/rxingWorkerUtils';
+import { isTextFountainFrame } from '@/utils/textFountainProtocol';
+import { OFFLINE_METADATA_MAGIC } from '../constants';
+import { TextFountainReceiver } from './fountain_qr/TextFountainReceiver';
+import { OfflineMetadataDetails } from './OfflineMetadataDetails';
 
 interface FountainMetadata {
-  type: 'METADATA'
-  mode: 'fountain'
-  version: 1
-  sessionId: number
-  fileName: string
-  fileType: string
-  fileSize: number
-  timestamp: number
-  totalSourceBlocks: number
-  blockSize: number
-  chunkSize: number
-  checksumAlg: 'crc32'
-  checksum: string
-  feedbackEnabled: boolean
-  partBasedMode?: boolean
-  partSize?: number
+  type: 'METADATA';
+  mode: 'fountain';
+  version: 1;
+  sessionId: number;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  timestamp: number;
+  totalSourceBlocks: number;
+  blockSize: number;
+  chunkSize: number;
+  checksumAlg: 'crc32';
+  checksum: string;
+  feedbackEnabled: boolean;
+  partBasedMode?: boolean;
+  partSize?: number;
 }
 
-type OfflineMetadata = FountainMetadata
+type OfflineMetadata = FountainMetadata;
 
 interface ScanProps {
-  onGenerateQR?: (text: string) => void
-  defaultMode?: 'camera' | 'file'
+  onGenerateQR?: (text: string) => void;
+  defaultMode?: 'camera' | 'file';
 }
 
-type QRCodeType = 'offline-metadata' | 'text'
+type QRCodeType = 'offline-metadata' | 'text';
 
 interface ParsedQRData {
-  type: QRCodeType
-  offlineMetadata?: OfflineMetadata
+  type: QRCodeType;
+  offlineMetadata?: OfflineMetadata;
 }
 
 const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
-  const location = useLocation()
-  const navigate = useNavigate()
-  const [scannedText, setScannedText] = useState<string | null>(null)
-  const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null)
-  const [textFountainModeActive, setTextFountainModeActive] = useState(false)
-  const [textFountainInitialFrame, setTextFountainInitialFrame] = useState<Uint8Array | null>(null)
-  const [scanning, setScanning] = useState(false)
-  const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode)
-  const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null)
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [scannedText, setScannedText] = useState<string | null>(null);
+  const [parsedQRData, setParsedQRData] = useState<ParsedQRData | null>(null);
+  const [textFountainModeActive, setTextFountainModeActive] = useState(false);
+  const [textFountainInitialFrame, setTextFountainInitialFrame] =
+    useState<Uint8Array | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'camera' | 'file'>(defaultMode);
+  const [copiedFeedback, setCopiedFeedback] = useState<string | null>(null);
   // Simplified camera handling: only track facing mode categories (environment/back vs user/front)
-  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() => (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ? 'environment' : 'user'))
-  const [cameraError, setCameraError] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>(() =>
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+      ? 'environment'
+      : 'user',
+  );
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync uploadMode with route changes
   useEffect(() => {
     if (location.pathname === '/scan/camera') {
-      setUploadMode('camera')
+      setUploadMode('camera');
     } else if (location.pathname === '/scan/upload') {
-      setUploadMode('file')
+      setUploadMode('file');
     }
-  }, [location.pathname])
+  }, [location.pathname]);
 
   // Handle QR scan results (multiple QR codes from a single scan)
   const handleQRScan = useCallback((qrCodes: Uint8Array[]) => {
     if (!qrCodes || qrCodes.length === 0) {
-      return
+      return;
     }
 
-    const rawBytes = qrCodes[0]
+    const rawBytes = qrCodes[0];
     if (isTextFountainFrame(rawBytes)) {
-      setScanning(false)
-      setScannedText(null)
-      setParsedQRData(null)
-      setTextFountainInitialFrame(rawBytes.slice())
-      setTextFountainModeActive(true)
-      return
+      setScanning(false);
+      setScannedText(null);
+      setParsedQRData(null);
+      setTextFountainInitialFrame(rawBytes.slice());
+      setTextFountainModeActive(true);
+      return;
     }
 
-    const data = new TextDecoder().decode(rawBytes)
-    console.log('QR code detected:', data)
+    const data = new TextDecoder().decode(rawBytes);
+    console.log('QR code detected:', data);
 
     // Always set the scanned text
-    setScanning(false)
-    setTextFountainModeActive(false)
-    setTextFountainInitialFrame(null)
-    setScannedText(data)
+    setScanning(false);
+    setTextFountainModeActive(false);
+    setTextFountainInitialFrame(null);
+    setScannedText(data);
 
     if (data.startsWith(OFFLINE_METADATA_MAGIC)) {
       try {
-        const jsonData = data.substring(OFFLINE_METADATA_MAGIC.length)
-        const parsedData = JSON.parse(jsonData) as OfflineMetadata
-        console.log('Parsed offline metadata:', parsedData)
+        const jsonData = data.substring(OFFLINE_METADATA_MAGIC.length);
+        const parsedData = JSON.parse(jsonData) as OfflineMetadata;
+        console.log('Parsed offline metadata:', parsedData);
         // Validate that it's actually metadata
         if (parsedData.type === 'METADATA' && parsedData.mode === 'fountain') {
           setParsedQRData({
             type: 'offline-metadata',
-            offlineMetadata: parsedData
-          })
+            offlineMetadata: parsedData,
+          });
         } else {
-          console.error('Invalid offline metadata structure')
-          setParsedQRData({ type: 'text' })
+          console.error('Invalid offline metadata structure');
+          setParsedQRData({ type: 'text' });
         }
       } catch (error) {
-        console.error('Invalid offline metadata in QR code:', error)
-        setParsedQRData({ type: 'text' })
+        console.error('Invalid offline metadata in QR code:', error);
+        setParsedQRData({ type: 'text' });
       }
     } else {
       // Regular text QR code
-      console.log('Regular text QR code:', data)
-      setParsedQRData({ type: 'text' })
+      console.log('Regular text QR code:', data);
+      setParsedQRData({ type: 'text' });
     }
-  }, [])
+  }, []);
 
   // Handle camera errors
   const handleCameraError = useCallback((error: string) => {
-    setCameraError(error)
-    setScanning(false)
-  }, [])
+    setCameraError(error);
+    setScanning(false);
+  }, []);
 
   const { videoRef, canvasRef, availableCameras } = useRxingQRScanner({
     onScan: handleQRScan,
@@ -135,28 +146,28 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
       binarizer: 'hybrid',
       binarizerFallback: true,
     },
-  })
+  });
 
   const copyToClipboard = async (text: string, label?: string) => {
     try {
-      await navigator.clipboard.writeText(text)
-      setCopiedFeedback(label || 'Copied!')
-      setTimeout(() => setCopiedFeedback(null), 2000)
+      await navigator.clipboard.writeText(text);
+      setCopiedFeedback(label || 'Copied!');
+      setTimeout(() => setCopiedFeedback(null), 2000);
     } catch {
-      const textArea = document.createElement('textarea')
-      textArea.value = text
-      document.body.appendChild(textArea)
-      textArea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textArea)
-      setCopiedFeedback(label || 'Copied!')
-      setTimeout(() => setCopiedFeedback(null), 2000)
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      setCopiedFeedback(label || 'Copied!');
+      setTimeout(() => setCopiedFeedback(null), 2000);
     }
-  }
+  };
 
   const renderTextWithLinks = (text: string) => {
-    const urlRegex = /(https?:\/\/[^\s]+)/g
-    const parts = text.split(urlRegex)
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = text.split(urlRegex);
 
     return parts.map((part) => {
       if (part.match(urlRegex)) {
@@ -170,68 +181,80 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
           >
             {part}
           </a>
-        )
+        );
       }
-      return part
-    })
-  }
+      return part;
+    });
+  };
 
   const handleProceedToOfflineReceive = () => {
-    if (parsedQRData?.type === 'offline-metadata' && parsedQRData.offlineMetadata) {
+    if (
+      parsedQRData?.type === 'offline-metadata' &&
+      parsedQRData.offlineMetadata
+    ) {
       // Navigate to /offline/receive with metadata in location state
-      navigate('/offline/receive', { state: { metadata: parsedQRData.offlineMetadata } })
+      navigate('/offline/receive', {
+        state: { metadata: parsedQRData.offlineMetadata },
+      });
     }
-  }
+  };
 
   const startScanning = () => {
-    setCameraError(null)
-    setScanning(true)
-  }
+    setCameraError(null);
+    setScanning(true);
+  };
 
   const stopScanning = () => {
-    setScanning(false)
-  }
+    setScanning(false);
+  };
 
   const toggleFacingMode = () => {
-    const nextMode: 'environment' | 'user' = facingMode === 'environment' ? 'user' : 'environment'
-    setFacingMode(nextMode)
+    const nextMode: 'environment' | 'user' =
+      facingMode === 'environment' ? 'user' : 'environment';
+    setFacingMode(nextMode);
     // The hook will automatically restart the camera with the new facingMode
-  }
+  };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const handleFileUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
 
     try {
-      console.log('Processing uploaded image for QR code...')
+      console.log('Processing uploaded image for QR code...');
 
-      const results = await decodeQRFromImage(file)
+      const results = await decodeQRFromImage(file);
 
       if (results.length === 0) {
-        alert('No QR code found in the uploaded image. Please try a different image.')
-        return
+        alert(
+          'No QR code found in the uploaded image. Please try a different image.',
+        );
+        return;
       }
 
-      console.log('QR codes detected from uploaded image:', results)
+      console.log('QR codes detected from uploaded image:', results);
 
-      handleQRScan(results)
+      handleQRScan(results);
     } catch (error) {
-      console.error('Failed to scan QR code from image:', error)
-      alert('No QR code found in the uploaded image. Please try a different image.')
+      console.error('Failed to scan QR code from image:', error);
+      alert(
+        'No QR code found in the uploaded image. Please try a different image.',
+      );
     }
 
     // Clear the file input
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = '';
     }
-  }
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: only run unmount cleanup; including stopScanning would re-subscribe each call change
   useEffect(() => {
     return () => {
-      stopScanning()
-    }
-  }, [])
+      stopScanning();
+    };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -245,13 +268,13 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         <TextFountainReceiver
           initialFrame={textFountainInitialFrame}
           onReset={() => {
-            setTextFountainModeActive(false)
-            setTextFountainInitialFrame(null)
-            setScannedText(null)
-            setParsedQRData(null)
-            setScanning(false)
-            setCameraError(null)
-            setUploadMode('camera')
+            setTextFountainModeActive(false);
+            setTextFountainInitialFrame(null);
+            setScannedText(null);
+            setParsedQRData(null);
+            setScanning(false);
+            setCameraError(null);
+            setUploadMode('camera');
           }}
         />
       )}
@@ -264,7 +287,9 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               <div className="space-y-2">
                 <h2 className="text-2xl font-bold">Scan QR Code</h2>
                 <p className="text-muted-foreground max-w-md mx-auto">
-                  Scan any QR code to view its content. Supports offline transfer metadata, plain text, and streamlined long-text fountain streams.
+                  Scan any QR code to view its content. Supports offline
+                  transfer metadata, plain text, and streamlined long-text
+                  fountain streams.
                 </p>
               </div>
 
@@ -294,6 +319,21 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
               {uploadMode === 'camera' ? (
                 <div className="space-y-4">
+                  {cameraError && (
+                    <Alert variant="destructive" className="text-left">
+                      <AlertDescription className="space-y-3">
+                        <p>{cameraError}</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate('/scan/upload')}
+                        >
+                          🖼️ Upload Image
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <button
                     type="button"
                     onClick={startScanning}
@@ -355,8 +395,12 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               <div className="flex flex-col gap-2 items-center">
                 {availableCameras.length > 1 && (
                   <div className="flex items-center gap-3 flex-wrap justify-center">
-                    <span className="text-xs font-medium text-muted-foreground">Mode:</span>
-                    <code className="text-xs bg-muted px-2 py-1 rounded">{facingMode}</code>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Mode:
+                    </span>
+                    <code className="text-xs bg-muted px-2 py-1 rounded">
+                      {facingMode}
+                    </code>
                     <Button
                       type="button"
                       size="sm"
@@ -368,7 +412,9 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                     </Button>
                   </div>
                 )}
-                {cameraError && <p className="text-xs text-red-600">{cameraError}</p>}
+                {cameraError && (
+                  <p className="text-xs text-red-600">{cameraError}</p>
+                )}
               </div>
               <Button variant="outline" onClick={stopScanning}>
                 Stop Scanning
@@ -390,40 +436,43 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {parsedQRData?.type === 'offline-metadata' && (() => {
-              const metadata = parsedQRData.offlineMetadata
-              return (
-                <>
-                  <Alert className="bg-amber-50 border-amber-200">
-                    <AlertDescription className="space-y-2">
-                      <div className="font-medium flex items-center gap-2">
-                        📡 Offline File Transfer Detected
-                      </div>
-                      <p className="text-sm text-muted-foreground">
-                        This QR code contains metadata for an offline file transfer. Click below to proceed to receive the file data.
-                      </p>
-                    </AlertDescription>
-                  </Alert>
-                  <div className="flex justify-center">
-                    <Button
-                      onClick={handleProceedToOfflineReceive}
-                      className="flex items-center gap-2"
-                    >
-                      📡 Proceed to Receive Data
-                    </Button>
-                  </div>
-                  {metadata && (
-                    <OfflineMetadataDetails
-                      metadata={{
-                        fileName: metadata.fileName,
-                        fileSize: metadata.fileSize,
-                        totalSourceBlocks: metadata.totalSourceBlocks
-                      }}
-                    />
-                  )}
-                </>
-              )
-            })()}
+            {parsedQRData?.type === 'offline-metadata' &&
+              (() => {
+                const metadata = parsedQRData.offlineMetadata;
+                return (
+                  <>
+                    <Alert className="bg-amber-50 border-amber-200">
+                      <AlertDescription className="space-y-2">
+                        <div className="font-medium flex items-center gap-2">
+                          📡 Offline File Transfer Detected
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          This QR code contains metadata for an offline file
+                          transfer. Click below to proceed to receive the file
+                          data.
+                        </p>
+                      </AlertDescription>
+                    </Alert>
+                    <div className="flex justify-center">
+                      <Button
+                        onClick={handleProceedToOfflineReceive}
+                        className="flex items-center gap-2"
+                      >
+                        📡 Proceed to Receive Data
+                      </Button>
+                    </div>
+                    {metadata && (
+                      <OfflineMetadataDetails
+                        metadata={{
+                          fileName: metadata.fileName,
+                          fileSize: metadata.fileSize,
+                          totalSourceBlocks: metadata.totalSourceBlocks,
+                        }}
+                      />
+                    )}
+                  </>
+                );
+              })()}
             <div className="space-y-3">
               <div className="bg-muted p-4 rounded-md font-mono text-sm whitespace-pre-wrap break-words max-h-[300px] overflow-y-auto text-left">
                 {renderTextWithLinks(scannedText)}
@@ -438,9 +487,9 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
                 </Button>
                 <Button
                   onClick={() => {
-                    setScannedText(null)
-                    setParsedQRData(null)
-                    setUploadMode('camera')
+                    setScannedText(null);
+                    setParsedQRData(null);
+                    setUploadMode('camera');
                   }}
                 >
                   📷 Scan Another QR
@@ -448,9 +497,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
               </div>
               {onGenerateQR && parsedQRData?.type === 'text' && (
                 <div className="flex justify-center">
-                  <Button
-                    onClick={() => onGenerateQR(scannedText)}
-                  >
+                  <Button onClick={() => onGenerateQR(scannedText)}>
                     🔄 Generate QR Code from Result
                   </Button>
                 </div>
@@ -460,7 +507,7 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
         </Card>
       )}
     </div>
-  )
-}
+  );
+};
 
-export default Scan
+export default Scan;

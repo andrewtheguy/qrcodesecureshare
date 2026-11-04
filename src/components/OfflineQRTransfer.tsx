@@ -1,15 +1,25 @@
-import { ArrowLeft, ExternalLink, FileUp, Globe, Info, ScanLine, Shield, Smartphone, TriangleAlert } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import {
+  ArrowLeft,
+  ExternalLink,
+  FileUp,
+  Globe,
+  Info,
+  ScanLine,
+  Shield,
+  Smartphone,
+  TriangleAlert,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/accordion"
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
+} from '@/components/ui/accordion';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -17,105 +27,120 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { MAX_FILE_SIZE_FOUNTAIN_FEEDBACK, OfflineQRMode } from './OfflineQRMode'
-import { OfflineQRReceiver } from './OfflineQRReceiver'
+} from '@/components/ui/dialog';
+import {
+  MAX_FILE_SIZE_FOUNTAIN_FEEDBACK,
+  OfflineQRMode,
+} from './OfflineQRMode';
+import { OfflineQRReceiver } from './OfflineQRReceiver';
 
-const MAX_SIZE_MB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0)
+const MAX_SIZE_MB = (MAX_FILE_SIZE_FOUNTAIN_FEEDBACK / 1024 / 1024).toFixed(0);
 
 interface OfflineQRTransferProps {
-  defaultMode?: 'select' | 'send' | 'receive'
-  onModeChange?: (mode: 'select' | 'send' | 'receive') => void
+  defaultMode?: 'select' | 'send' | 'receive';
+  onModeChange?: (mode: 'select' | 'send' | 'receive') => void;
 }
 
-export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange }: OfflineQRTransferProps) {
-  const location = useLocation()
-  const navigate = useNavigate()
+export default function OfflineQRTransfer({
+  defaultMode = 'select',
+  onModeChange,
+}: OfflineQRTransferProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [selectedFile, setSelectedFile] = useState<File | null>(() => {
-    const state = location.state as { selectedFile?: File } | null
-    return state?.selectedFile instanceof File ? state.selectedFile : null
-  })
-  const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode)
+    const state = location.state as { selectedFile?: File } | null;
+    return state?.selectedFile instanceof File ? state.selectedFile : null;
+  });
+  const [mode, setMode] = useState<'select' | 'send' | 'receive'>(defaultMode);
 
   // Sync mode with route changes
   useEffect(() => {
     if (location.pathname === '/offline/send') {
-      setMode('send')
+      setMode('send');
     } else if (location.pathname === '/offline/receive') {
-      setMode('receive')
-    } else if (location.pathname === '/transfer' || location.pathname === '/transfer/') {
-      setMode('select')
+      setMode('receive');
+    } else if (
+      location.pathname === '/transfer' ||
+      location.pathname === '/transfer/'
+    ) {
+      setMode('select');
     }
-  }, [location.pathname])
+  }, [location.pathname]);
 
   // Notify parent of mode changes
   useEffect(() => {
-    onModeChange?.(mode)
-  }, [mode, onModeChange])
+    onModeChange?.(mode);
+  }, [mode, onModeChange]);
 
   // Redirect to /transfer if on /send route but no file is selected
   useEffect(() => {
     if (location.pathname === '/offline/send' && !selectedFile) {
-      navigate('/transfer', { replace: true })
+      navigate('/transfer', { replace: true });
     }
-  }, [location.pathname, selectedFile, navigate])
-  
-  const [backDialogOpen, setBackDialogOpen] = useState(false)
-  const [onlineConfirmOpen, setOnlineConfirmOpen] = useState(false)
-  const [pendingBackContext, setPendingBackContext] = useState<'send' | 'receive' | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+  }, [location.pathname, selectedFile, navigate]);
+
+  const [backDialogOpen, setBackDialogOpen] = useState(false);
+  const [onlineConfirmOpen, setOnlineConfirmOpen] = useState(false);
+  const [pendingBackContext, setPendingBackContext] = useState<
+    'send' | 'receive' | null
+  >(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const file = e.target.files?.[0];
     if (file) {
       if (file.size > MAX_FILE_SIZE_FOUNTAIN_FEEDBACK) {
-        const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2)
-        alert(`File size must be under ${MAX_SIZE_MB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`)
+        const selectedSizeMB = (file.size / 1024 / 1024).toFixed(2);
+        alert(
+          `File size must be under ${MAX_SIZE_MB}MB for offline transfer. Selected file is ${selectedSizeMB}MB.\n\nPlease use "Online Send" below for files up to 100MB.`,
+        );
         // Clear the file input so re-selecting the same file works
-        e.target.value = ''
-        return
+        e.target.value = '';
+        return;
       }
-      setSelectedFile(file)
-      navigate('/offline/send', { state: { selectedFile: file } })
+      setSelectedFile(file);
+      navigate('/offline/send', { state: { selectedFile: file } });
     }
-  }
+  };
 
   const handleReset = () => {
-    setSelectedFile(null)
-    navigate('/transfer')
+    setSelectedFile(null);
+    navigate('/transfer');
     // Reset file input value so selecting the same file again works
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = '';
     }
-  }
+  };
 
   const requestBackNavigation = (context: 'send' | 'receive') => {
-    setPendingBackContext(context)
-    setBackDialogOpen(true)
-  }
+    setPendingBackContext(context);
+    setBackDialogOpen(true);
+  };
 
   const handleConfirmBackNavigation = () => {
-    setBackDialogOpen(false)
-    handleReset()
-  }
+    setBackDialogOpen(false);
+    handleReset();
+  };
 
   const handleCancelBackNavigation = () => {
-    setBackDialogOpen(false)
-    setPendingBackContext(null)
-  }
+    setBackDialogOpen(false);
+    setPendingBackContext(null);
+  };
 
   const backDialogCopy = {
     send: {
       title: 'Leave Sender?',
-      description: 'Leaving this screen will stop the current transfer and clear the selected file.',
-      confirmLabel: 'Yes, Leave Sender'
+      description:
+        'Leaving this screen will stop the current transfer and clear the selected file.',
+      confirmLabel: 'Yes, Leave Sender',
     },
     receive: {
       title: 'Leave Receiver?',
-      description: 'Leaving will stop the receiver and clear the current scan progress.',
-      confirmLabel: 'Yes, Leave Receiver'
-    }
-  } as const
+      description:
+        'Leaving will stop the receiver and clear the current scan progress.',
+      confirmLabel: 'Yes, Leave Receiver',
+    },
+  } as const;
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -134,7 +159,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
         <div className="space-y-5">
           <div className="grid md:grid-cols-2 gap-6">
             {/* Send Card */}
-            <Card 
+            <Card
               className="relative overflow-hidden group cursor-pointer border-emerald-500/20 shadow-lg hover:border-emerald-600 hover:shadow-2xl transition-all duration-300 ring-1 ring-emerald-500/20"
               onClick={() => fileInputRef.current?.click()}
             >
@@ -149,13 +174,17 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                   <FileUp className="w-8 h-8" />
                 </div>
                 <div className="space-y-2 flex-1">
-                  <h3 className="text-xl font-bold text-foreground">Offline Send</h3>
+                  <h3 className="text-xl font-bold text-foreground">
+                    Offline Send
+                  </h3>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">
-                      Stream a file as QR codes. Receiver can miss some codes and still complete the transfer.
+                      Stream a file as QR codes. Receiver can miss some codes
+                      and still complete the transfer.
                     </p>
                     <p className="text-[11px] text-amber-600 dark:text-amber-500 font-semibold px-2">
-                      Up to {MAX_SIZE_MB}MB. For larger files, use the alternative method below.
+                      Up to {MAX_SIZE_MB}MB. For larger files, use the
+                      alternative method below.
                     </p>
                   </div>
                 </div>
@@ -167,12 +196,12 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                     id="offline-file-input"
                     accept="*/*"
                     ref={fileInputRef}
-                    onClick={(e) => e.stopPropagation()} 
+                    onClick={(e) => e.stopPropagation()}
                   />
                   <Button
                     onClick={(e) => {
-                      e.stopPropagation()
-                      fileInputRef.current?.click()
+                      e.stopPropagation();
+                      fileInputRef.current?.click();
                     }}
                     className="w-full shadow-md bg-emerald-600 hover:bg-emerald-700 text-white border-transparent"
                     variant="default"
@@ -197,7 +226,9 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                     <Smartphone className="w-8 h-8" />
                   </div>
                   <div className="space-y-2 flex-1">
-                    <h3 className="text-xl font-bold text-foreground">Offline Receive</h3>
+                    <h3 className="text-xl font-bold text-foreground">
+                      Offline Receive
+                    </h3>
                     <p className="text-sm text-muted-foreground">
                       Scan QR stream to receive and save file
                     </p>
@@ -214,8 +245,10 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
           </div>
 
           <div>
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">Alternative Transfer Methods</h2>
-            <Card 
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 px-2">
+              Alternative Transfer Methods
+            </h2>
+            <Card
               className="relative overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-lg transition-all duration-300"
               onClick={() => setOnlineConfirmOpen(true)}
             >
@@ -226,11 +259,17 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                 </div>
                 <div className="flex-1 text-center sm:text-left min-w-0">
                   <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                    <h3 className="font-bold text-xl text-foreground">Online Send</h3>
-                    <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">FAST</span>
+                    <h3 className="font-bold text-xl text-foreground">
+                      Online Send
+                    </h3>
+                    <span className="bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      FAST
+                    </span>
                   </div>
                   <p className="text-muted-foreground text-sm leading-relaxed">
-                    Transfer files up to 100MB via secure WebRTC P2P connection. Perfect for larger files when both devices have internet access.
+                    Transfer files up to 100MB via secure WebRTC P2P connection.
+                    Perfect for larger files when both devices have internet
+                    access.
                   </p>
                   <div className="flex items-center justify-center sm:justify-start gap-1 mt-2 text-[11px] font-medium text-blue-600 dark:text-blue-400">
                     <Shield className="w-3.5 h-3.5" />
@@ -251,7 +290,7 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
             <Accordion type="single" collapsible className="w-full max-w-3xl">
               <AccordionItem value="how-it-works" className="border-none">
                 <AccordionTrigger className="justify-center text-muted-foreground hover:text-foreground hover:no-underline py-2">
-                   How does Offline Transfer work?
+                  How does Offline Transfer work?
                 </AccordionTrigger>
                 <AccordionContent>
                   <Card className="bg-muted/50 border-none shadow-none mt-4">
@@ -259,38 +298,54 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                       <div className="grid sm:grid-cols-2 gap-6">
                         <div className="space-y-3">
                           <h3 className="font-semibold flex items-center gap-2">
-                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                              1
+                            </span>
                             Fountain Data Stream
                           </h3>
                           <p className="text-sm text-muted-foreground leading-relaxed">
-                            Files are split into small chunks using Fountain codes. This acts like a "data fountain" where the sender broadcasts a continuous stream of QR frames.
+                            Files are split into small chunks using Fountain
+                            codes. This acts like a "data fountain" where the
+                            sender broadcasts a continuous stream of QR frames.
                           </p>
                         </div>
                         <div className="space-y-3">
                           <h3 className="font-semibold flex items-center gap-2">
-                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                              2
+                            </span>
                             Feedback System
                           </h3>
                           <p className="text-sm text-muted-foreground leading-relaxed">
-                            The receiver shows feedback QR codes back to the sender to signal which parts are missing, making the transfer significantly faster and more reliable.
+                            The receiver shows feedback QR codes back to the
+                            sender to signal which parts are missing, making the
+                            transfer significantly faster and more reliable.
                           </p>
                         </div>
                         <div className="space-y-3">
                           <h3 className="font-semibold flex items-center gap-2">
-                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                              3
+                            </span>
                             Air-Gapped Security
                           </h3>
                           <p className="text-sm text-muted-foreground leading-relaxed">
-                            All processing is local. No data ever leaves your device via the internet, making it ideal for highly sensitive data or air-gapped environments.
+                            All processing is local. No data ever leaves your
+                            device via the internet, making it ideal for highly
+                            sensitive data or air-gapped environments.
                           </p>
                         </div>
                         <div className="space-y-3">
                           <h3 className="font-semibold flex items-center gap-2">
-                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">4</span>
+                            <span className="bg-primary/10 text-primary w-6 h-6 rounded-full flex items-center justify-center text-xs">
+                              4
+                            </span>
                             Device Agnostic
                           </h3>
                           <p className="text-sm text-muted-foreground leading-relaxed">
-                            No Wi-Fi, Bluetooth, or local network pairing required. Works between any devices with a screen and camera regardless of OS.
+                            No Wi-Fi, Bluetooth, or local network pairing
+                            required. Works between any devices with a screen
+                            and camera regardless of OS.
                           </p>
                         </div>
                         <div className="space-y-3 sm:col-span-2 border-t pt-4">
@@ -301,19 +356,35 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                           <ul className="grid sm:grid-cols-2 gap-x-8 gap-y-2 text-sm text-muted-foreground">
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>File Size:</strong> Optimized for small files (up to {MAX_SIZE_MB}MB). Larger files take significantly longer due to QR density limits.</span>
+                              <span>
+                                <strong>File Size:</strong> Optimized for small
+                                files (up to {MAX_SIZE_MB}MB). Larger files take
+                                significantly longer due to QR density limits.
+                              </span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>Speed Factors:</strong> Transfer speed depends on screen brightness, camera focus, and device processing power (typically 5-20 KB/s).</span>
+                              <span>
+                                <strong>Speed Factors:</strong> Transfer speed
+                                depends on screen brightness, camera focus, and
+                                device processing power (typically 5-20 KB/s).
+                              </span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>Environment:</strong> Requires steady hands and decent lighting. Glare on screens or very low light can interfere with QR scanning.</span>
+                              <span>
+                                <strong>Environment:</strong> Requires steady
+                                hands and decent lighting. Glare on screens or
+                                very low light can interfere with QR scanning.
+                              </span>
                             </li>
                             <li className="flex items-start gap-2">
                               <span className="text-primary font-bold">•</span>
-                              <span><strong>Visual Path:</strong> Needs a clear line of sight between devices. Screen protectors or scratched lenses may reduce reliability.</span>
+                              <span>
+                                <strong>Visual Path:</strong> Needs a clear line
+                                of sight between devices. Screen protectors or
+                                scratched lenses may reduce reliability.
+                              </span>
                             </li>
                           </ul>
 
@@ -323,9 +394,18 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
                               When to use Online Send instead?
                             </h4>
                             <ul className="text-sm text-blue-800 dark:text-blue-400 space-y-1 ml-5 list-disc">
-                              <li>Transferring <strong>large files</strong> (up to 100MB) or folders</li>
-                              <li>When <strong>speed</strong> is a priority (uses WebRTC P2P)</li>
-                              <li>When devices are <strong>remote</strong> or not side-by-side</li>
+                              <li>
+                                Transferring <strong>large files</strong> (up to
+                                100MB) or folders
+                              </li>
+                              <li>
+                                When <strong>speed</strong> is a priority (uses
+                                WebRTC P2P)
+                              </li>
+                              <li>
+                                When devices are <strong>remote</strong> or not
+                                side-by-side
+                              </li>
                             </ul>
                           </div>
                         </div>
@@ -343,9 +423,9 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       {mode === 'send' && selectedFile && (
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
-            <Button 
-              onClick={() => requestBackNavigation('send')} 
-              variant="ghost" 
+            <Button
+              onClick={() => requestBackNavigation('send')}
+              variant="ghost"
               size="icon"
               className="rounded-full hover:bg-muted"
             >
@@ -357,7 +437,8 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
           <Alert className="bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900">
             <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-700 dark:text-blue-300">
-              Prepare your file for transmission. Follow the steps below to generate the QR stream.
+              Prepare your file for transmission. Follow the steps below to
+              generate the QR stream.
             </AlertDescription>
           </Alert>
 
@@ -369,9 +450,9 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
       {mode === 'receive' && (
         <div className="space-y-4">
           <div className="flex items-center gap-2 mb-2">
-            <Button 
-              onClick={() => requestBackNavigation('receive')} 
-              variant="ghost" 
+            <Button
+              onClick={() => requestBackNavigation('receive')}
+              variant="ghost"
               size="icon"
               className="rounded-full hover:bg-muted"
             >
@@ -389,14 +470,16 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
         open={backDialogOpen}
         onOpenChange={(open) => {
           if (!open) {
-            handleCancelBackNavigation()
+            handleCancelBackNavigation();
           }
         }}
       >
         {pendingBackContext && (
           <DialogContent showCloseButton={false}>
             <DialogHeader>
-              <DialogTitle>{backDialogCopy[pendingBackContext].title}</DialogTitle>
+              <DialogTitle>
+                {backDialogCopy[pendingBackContext].title}
+              </DialogTitle>
               <DialogDescription>
                 {backDialogCopy[pendingBackContext].description}
               </DialogDescription>
@@ -405,7 +488,10 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
               <Button variant="outline" onClick={handleCancelBackNavigation}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleConfirmBackNavigation}>
+              <Button
+                variant="destructive"
+                onClick={handleConfirmBackNavigation}
+              >
                 {backDialogCopy[pendingBackContext].confirmLabel}
               </Button>
             </DialogFooter>
@@ -419,17 +505,28 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
           <DialogHeader>
             <DialogTitle>Continue to Online Transfer?</DialogTitle>
             <DialogDescription>
-              You are about to visit <strong>ptransfer.app</strong> for online file transfer.
-              <br /><br />
-              This is a <strong>sister site</strong> managed by the same developer. It requires an internet connection and uses end-to-end encryption to keep your files secure.
+              You are about to visit <strong>ptransfer.app</strong> for online
+              file transfer.
+              <br />
+              <br />
+              This is a <strong>sister site</strong> managed by the same
+              developer. It requires an internet connection and uses end-to-end
+              encryption to keep your files secure.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setOnlineConfirmOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setOnlineConfirmOpen(false)}
+            >
               Cancel
             </Button>
             <Button asChild onClick={() => setOnlineConfirmOpen(false)}>
-              <a href="https://ptransfer.app/" target="_blank" rel="noopener noreferrer">
+              <a
+                href="https://ptransfer.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
                 Continue to pTransfer <ExternalLink className="ml-2 w-4 h-4" />
               </a>
             </Button>
@@ -437,5 +534,5 @@ export default function OfflineQRTransfer({ defaultMode = 'select', onModeChange
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

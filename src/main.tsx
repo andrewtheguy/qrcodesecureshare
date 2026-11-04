@@ -1,15 +1,15 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
-import './index.css'
-import { PwaUpdatePrompt } from '@/components/pwa-update-prompt'
-import App from './App.tsx'
-import { startWasmWarmup } from './utils/wasmWarmup'
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { BrowserRouter } from 'react-router-dom';
+import './index.css';
+import { PwaUpdatePrompt } from '@/components/pwa-update-prompt';
+import App from './App.tsx';
+import { startWasmWarmup } from './utils/wasmWarmup';
 
-startWasmWarmup()
+startWasmWarmup();
 
-const rootElement = document.getElementById('root')
-if (!rootElement) throw new Error('Root element not found')
+const rootElement = document.getElementById('root');
+if (!rootElement) throw new Error('Root element not found');
 createRoot(rootElement).render(
   <StrictMode>
     <BrowserRouter>
@@ -17,4 +17,4 @@ createRoot(rootElement).render(
       <App />
     </BrowserRouter>
   </StrictMode>,
-)
+);

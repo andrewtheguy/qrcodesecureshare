@@ -91,7 +91,6 @@ mod tests {
         assert_eq!(dest, vec![0xF0, 0xF0, 0xFF, 0xFF]);
     }
 
-
     #[test]
     #[should_panic]
     fn test_xor_blocks_different_sizes() {
@@ -113,5 +112,4 @@ mod tests {
         let src = vec![0x0F, 0xF0];
         xor_into(&mut dest, &src);
     }
-
 }

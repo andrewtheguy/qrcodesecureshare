@@ -3,7 +3,7 @@
 The QR reader is maintained outside this repository in
 [andrewtheguy/rxing-reader](https://github.com/andrewtheguy/rxing-reader). That
 repository owns the Rust workspace, builds the wasm package, and publishes
-`@andrewtheguy/rxing-wasm` to GitHub Packages.
+`@andrewtheguy/rxing-wasm` as a tarball on its GitHub releases.
 
 ## Package Layout
 
@@ -17,6 +17,7 @@ This app imports the published package in
 
 ```ts
 import initRxingWasm, { read_qr_codes_rgba } from '@andrewtheguy/rxing-wasm'
+import rxingWasmUrl from '@andrewtheguy/rxing-wasm/rxing_wasm_bg.wasm?url'
 ```
 
 ## App API
@@ -43,14 +44,14 @@ npm run clippy
 npm test
 ```
 
-The GitHub Actions workflow in `rxing-reader` publishes
-`@andrewtheguy/rxing-wasm` on version tags. This repository consumes a pinned
-semver in `package.json`; update that dependency after publishing a new reader
-version.
+The GitHub Actions workflow in `rxing-reader` attaches
+`andrewtheguy-rxing-wasm-<version>.tgz` to a release. This repository depends on
+that release's tarball URL in `package.json`; point it at the new release with
+`bun add` after publishing a new reader version.
 
 ## Local App Build
 
-`npm run build:wasm` in this repository only builds the in-repo
-`fountain-wasm` crate. The QR reader (`@andrewtheguy/rxing-wasm`) and QR
-generator (`@andrewtheguy/fast-qr-wasm`) are installed like any other npm
+`bun run build:wasm` in this repository only builds the in-repo
+`wasm/fountain` crate. The QR reader (`@andrewtheguy/rxing-wasm`) and QR
+generator (`@andrewtheguy/fast-qr-wasm`) are installed like any other
 dependencies — both are pinned to GitHub release tarballs in `package.json`.

@@ -1,0 +1,7 @@
+# The stable toolchain and the one target this module has, so rustup brings
+# both wherever the app is built, Cloudflare Pages included.
+[toolchain]
+channel = "stable"
+targets = ["wasm32-unknown-unknown"]
+components = ["clippy"]
+profile = "minimal"

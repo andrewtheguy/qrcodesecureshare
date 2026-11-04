@@ -14,14 +14,16 @@
  * calculateFirstMissingBlock([0, 1, 2, 3, 4]) // returns 5
  * calculateFirstMissingBlock([1, 2, 3]) // returns 0
  */
-export function calculateFirstMissingBlock(decodedBlockIndices: number[]): number {
+export function calculateFirstMissingBlock(
+  decodedBlockIndices: number[],
+): number {
   // Find the first index where the sequence breaks
   for (let i = 0; i < decodedBlockIndices.length; i++) {
     if (decodedBlockIndices[i] !== i) {
-      return i
+      return i;
     }
   }
 
   // If all blocks from 0 to length-1 are contiguous, return the length
-  return decodedBlockIndices.length
+  return decodedBlockIndices.length;
 }

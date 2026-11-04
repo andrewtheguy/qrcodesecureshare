@@ -44,8 +44,6 @@ interface SenderFeedbackBase {
   command: 'acknowledge';
 }
 
-
-
 /**
  * Sender feedback for acknowledgment.
  */
@@ -62,7 +60,6 @@ export interface SenderFeedbackAcknowledge extends SenderFeedbackBase {
   /** New part index after transition */
   newPartIndex?: number;
 }
-
 
 /**
  * Union type for all sender feedback payloads.

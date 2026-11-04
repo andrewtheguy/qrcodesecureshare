@@ -42,6 +42,8 @@ impl WasmFountainEncoder {
     /// * `part_based_mode` - Whether part-based mode is enabled (session setting)
     /// * `part_size` - Size of each part in bytes (session setting)
     /// * `seed_offset` - Optional seed offset for session-specific randomization
+    // The JS constructor's positional arguments, as src/utils/fountainCodeWasm.ts passes them.
+    #[allow(clippy::too_many_arguments)]
     #[wasm_bindgen(constructor)]
     pub fn new(
         data: Uint8Array,
@@ -56,13 +58,11 @@ impl WasmFountainEncoder {
         // Convert Uint8Array to Vec<u8>
         let data_vec = data.to_vec();
 
-        // Validate part_size when part_based_mode is enabled
-        if part_based_mode {
-            if part_size == 0 {
-                return Err(JsValue::from_str("part_size must be > 0"));
-            }
-            // Note: part_size can be larger than data length - it will result in a single part
-            // The encoder correctly handles this with ceiling division: total_parts = (total_size + part_size - 1) / part_size
+        // Validate part_size when part_based_mode is enabled.
+        // part_size can be larger than data length - it will result in a single part
+        // (the encoder uses ceiling division: total_parts = total_size.div_ceil(part_size))
+        if part_based_mode && part_size == 0 {
+            return Err(JsValue::from_str("part_size must be > 0"));
         }
 
         // Deserialize options from JS (all fields required, TypeScript must provide complete object)
@@ -149,7 +149,7 @@ impl WasmFountainEncoder {
             .map(|s| s.to_string());
         let checksums = self.encoder.get_part_checksums();
         let part_checksums = if !checksums.is_empty() {
-            Some(checksums.into_iter().map(|s| s.to_string()).collect())
+            Some(checksums.iter().map(|s| s.to_string()).collect())
         } else {
             None
         };
@@ -667,19 +667,19 @@ impl WasmFountainDecoder {
             .map_err(|e| JsValue::from_str(&format!("Serialization error: {}", e)))?;
 
         // Handle completion_data.data separately (it's skipped in serialization)
-        if let Some(completion_data) = result.completion_data {
-            if !completion_data.data.is_empty() {
-                // Create Uint8Array for the decoded data
-                let data_array = Uint8Array::new_with_length(completion_data.data.len() as u32);
-                data_array.copy_from(&completion_data.data);
+        if let Some(completion_data) = result.completion_data
+            && !completion_data.data.is_empty()
+        {
+            // Create Uint8Array for the decoded data
+            let data_array = Uint8Array::new_with_length(completion_data.data.len() as u32);
+            data_array.copy_from(&completion_data.data);
 
-                // Get the completionData object from the result
-                let completion_obj = js_sys::Reflect::get(&js_result, &"completionData".into())
-                    .unwrap_or(JsValue::NULL);
+            // Get the completionData object from the result
+            let completion_obj =
+                js_sys::Reflect::get(&js_result, &"completionData".into()).unwrap_or(JsValue::NULL);
 
-                // Add data to completionData
-                js_sys::Reflect::set(&completion_obj, &"data".into(), &data_array).ok();
-            }
+            // Add data to completionData
+            js_sys::Reflect::set(&completion_obj, &"data".into(), &data_array).ok();
         }
 
         Ok(js_result)

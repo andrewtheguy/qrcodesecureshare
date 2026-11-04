@@ -2,153 +2,168 @@ import initFastQrWasm, {
   generate_qr_matrix,
   generate_qr_png,
   generate_qr_svg,
-} from '@andrewtheguy/fast-qr-wasm'
-import fastQrWasmUrl from '@andrewtheguy/fast-qr-wasm/fast_qr_wasm_bg.wasm?url'
+} from '@andrewtheguy/fast-qr-wasm';
+import fastQrWasmUrl from '@andrewtheguy/fast-qr-wasm/fast_qr_wasm_bg.wasm?url';
 
-export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H'
+export type FastQrErrorCorrectionLevel = 'L' | 'M' | 'Q' | 'H';
 
 /**
  * QR encoding mode. `'auto'` picks the most compact mode for the payload;
  * the other values pin a specific encoding (use `'byte'` for arbitrary
  * binary data).
  */
-export type FastQrMode = 'auto' | 'numeric' | 'alphanumeric' | 'byte'
+export type FastQrMode = 'auto' | 'numeric' | 'alphanumeric' | 'byte';
 
 export interface FastQrPngGenerateOptions {
-  width?: number
-  margin?: number
-  errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  mode?: FastQrMode
+  width?: number;
+  margin?: number;
+  errorCorrectionLevel?: FastQrErrorCorrectionLevel;
+  mode?: FastQrMode;
 }
 
 export interface FastQrSvgGenerateOptions {
-  margin?: number
-  errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  mode?: FastQrMode
-  svgWidth?: number
-  svgHeight?: number
+  margin?: number;
+  errorCorrectionLevel?: FastQrErrorCorrectionLevel;
+  mode?: FastQrMode;
+  svgWidth?: number;
+  svgHeight?: number;
 }
 
 export interface FastQrMatrixGenerateOptions {
-  margin?: number
-  errorCorrectionLevel?: FastQrErrorCorrectionLevel
-  mode?: FastQrMode
+  margin?: number;
+  errorCorrectionLevel?: FastQrErrorCorrectionLevel;
+  mode?: FastQrMode;
 }
 
 interface NormalizedCommonGenerateOptions {
-  normalizedMargin: number
-  errorCorrectionLevel: FastQrErrorCorrectionLevel
-  mode: FastQrMode
+  normalizedMargin: number;
+  errorCorrectionLevel: FastQrErrorCorrectionLevel;
+  mode: FastQrMode;
 }
 
 export interface FastQrModuleMatrix {
-  moduleCount: number
-  modules: Uint8Array
+  moduleCount: number;
+  modules: Uint8Array;
 }
 
-let wasmInitialized = false
-let wasmInitPromise: Promise<void> | null = null
+let wasmInitialized = false;
+let wasmInitPromise: Promise<void> | null = null;
 
 function normalizeMargin(margin?: number): number {
-  const normalizedMargin = Number(margin ?? 1)
-  if (!Number.isFinite(normalizedMargin) || !Number.isInteger(normalizedMargin) || normalizedMargin < 0) {
-    throw new TypeError('Invalid margin: expected a finite integer >= 0')
+  const normalizedMargin = Number(margin ?? 1);
+  if (
+    !Number.isFinite(normalizedMargin) ||
+    !Number.isInteger(normalizedMargin) ||
+    normalizedMargin < 0
+  ) {
+    throw new TypeError('Invalid margin: expected a finite integer >= 0');
   }
 
-  return normalizedMargin
+  return normalizedMargin;
 }
 
 function normalizePngGenerateOptions(options: FastQrPngGenerateOptions = {}) {
-  const width = options.width ?? 300
-  const normalizedWidth = Number(width)
-  if (!Number.isFinite(normalizedWidth) || !Number.isInteger(normalizedWidth) || normalizedWidth <= 0) {
-    throw new TypeError('Invalid width: expected a finite integer > 0')
+  const width = options.width ?? 300;
+  const normalizedWidth = Number(width);
+  if (
+    !Number.isFinite(normalizedWidth) ||
+    !Number.isInteger(normalizedWidth) ||
+    normalizedWidth <= 0
+  ) {
+    throw new TypeError('Invalid width: expected a finite integer > 0');
   }
 
-  const normalizedMargin = normalizeMargin(options.margin)
+  const normalizedMargin = normalizeMargin(options.margin);
 
   return {
     normalizedWidth,
     normalizedMargin,
     errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
     mode: options.mode ?? 'auto',
-  }
+  };
 }
 
 function normalizeCommonGenerateOptions(
-  options: FastQrSvgGenerateOptions | FastQrMatrixGenerateOptions = {}
+  options: FastQrSvgGenerateOptions | FastQrMatrixGenerateOptions = {},
 ): NormalizedCommonGenerateOptions {
-  const normalizedMargin = normalizeMargin(options.margin)
+  const normalizedMargin = normalizeMargin(options.margin);
 
   return {
     normalizedMargin,
     errorCorrectionLevel: options.errorCorrectionLevel ?? 'M',
     mode: options.mode ?? 'auto',
-  }
+  };
 }
 
-function normalizeOptionalDimension(value: number | undefined, name: string): number | undefined {
-  if (value === undefined) return undefined
-  const n = Number(value)
+function normalizeOptionalDimension(
+  value: number | undefined,
+  name: string,
+): number | undefined {
+  if (value === undefined) return undefined;
+  const n = Number(value);
   if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
-    throw new TypeError(`Invalid ${name}: expected a finite integer > 0`)
+    throw new TypeError(`Invalid ${name}: expected a finite integer > 0`);
   }
-  return n
+  return n;
 }
 
 function normalizeSvgGenerateOptions(options: FastQrSvgGenerateOptions = {}) {
-  const common = normalizeCommonGenerateOptions(options)
-  const svgWidth = normalizeOptionalDimension(options.svgWidth, 'svgWidth')
-  const svgHeight = normalizeOptionalDimension(options.svgHeight, 'svgHeight')
-  return { ...common, svgWidth, svgHeight }
+  const common = normalizeCommonGenerateOptions(options);
+  const svgWidth = normalizeOptionalDimension(options.svgWidth, 'svgWidth');
+  const svgHeight = normalizeOptionalDimension(options.svgHeight, 'svgHeight');
+  return { ...common, svgWidth, svgHeight };
 }
 
-function normalizeMatrixGenerateOptions(options: FastQrMatrixGenerateOptions = {}) {
-  return normalizeCommonGenerateOptions(options)
+function normalizeMatrixGenerateOptions(
+  options: FastQrMatrixGenerateOptions = {},
+) {
+  return normalizeCommonGenerateOptions(options);
 }
 
 export async function ensureFastQrWasmInit(): Promise<void> {
-  if (wasmInitialized) return
+  if (wasmInitialized) return;
 
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
-      await initFastQrWasm({ module_or_path: fastQrWasmUrl })
-      wasmInitialized = true
+      await initFastQrWasm({ module_or_path: fastQrWasmUrl });
+      wasmInitialized = true;
     })().catch((error) => {
-      wasmInitPromise = null
-      throw error
-    })
+      wasmInitPromise = null;
+      throw error;
+    });
   }
 
-  await wasmInitPromise
+  await wasmInitPromise;
 }
 
 export async function generateFastQrPngBytes(
   payload: Uint8Array,
-  options: FastQrPngGenerateOptions = {}
+  options: FastQrPngGenerateOptions = {},
 ): Promise<Uint8Array> {
-  await ensureFastQrWasmInit()
+  await ensureFastQrWasmInit();
 
-  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, mode } = normalizePngGenerateOptions(options)
+  const { normalizedWidth, normalizedMargin, errorCorrectionLevel, mode } =
+    normalizePngGenerateOptions(options);
 
   const pngBytes = generate_qr_png(
     payload,
     normalizedWidth,
     normalizedMargin,
     errorCorrectionLevel,
-    mode
-  )
+    mode,
+  );
 
-  return pngBytes instanceof Uint8Array ? pngBytes : new Uint8Array(pngBytes)
+  return pngBytes instanceof Uint8Array ? pngBytes : new Uint8Array(pngBytes);
 }
 
 export async function generateFastQrSvgString(
   payload: Uint8Array,
-  options: FastQrSvgGenerateOptions = {}
+  options: FastQrSvgGenerateOptions = {},
 ): Promise<string> {
-  await ensureFastQrWasmInit()
+  await ensureFastQrWasmInit();
 
-  const { normalizedMargin, errorCorrectionLevel, mode, svgWidth, svgHeight } = normalizeSvgGenerateOptions(options)
+  const { normalizedMargin, errorCorrectionLevel, mode, svgWidth, svgHeight } =
+    normalizeSvgGenerateOptions(options);
 
   return generate_qr_svg(
     payload,
@@ -156,51 +171,53 @@ export async function generateFastQrSvgString(
     errorCorrectionLevel,
     mode,
     svgWidth,
-    svgHeight
-  )
+    svgHeight,
+  );
 }
 
 export async function generateFastQrModuleMatrix(
   payload: Uint8Array,
-  options: FastQrMatrixGenerateOptions = {}
+  options: FastQrMatrixGenerateOptions = {},
 ): Promise<FastQrModuleMatrix> {
-  await ensureFastQrWasmInit()
+  await ensureFastQrWasmInit();
 
   const { normalizedMargin, errorCorrectionLevel, mode } =
-    normalizeMatrixGenerateOptions(options)
+    normalizeMatrixGenerateOptions(options);
 
   const matrixBytes = generate_qr_matrix(
     payload,
     normalizedMargin,
     errorCorrectionLevel,
-    mode
-  )
+    mode,
+  );
   const normalizedBytes =
-    matrixBytes instanceof Uint8Array ? matrixBytes : new Uint8Array(matrixBytes)
+    matrixBytes instanceof Uint8Array
+      ? matrixBytes
+      : new Uint8Array(matrixBytes);
 
   if (normalizedBytes.length < 2) {
-    throw new Error('Invalid QR matrix payload: missing module count header')
+    throw new Error('Invalid QR matrix payload: missing module count header');
   }
 
-  const moduleCount = (normalizedBytes[0] << 8) | normalizedBytes[1]
+  const moduleCount = (normalizedBytes[0] << 8) | normalizedBytes[1];
   if (moduleCount <= 0) {
-    throw new Error('Invalid QR matrix payload: module count must be > 0')
+    throw new Error('Invalid QR matrix payload: module count must be > 0');
   }
 
-  const expectedLength = 2 + moduleCount * moduleCount
+  const expectedLength = 2 + moduleCount * moduleCount;
   if (normalizedBytes.length < expectedLength) {
     throw new Error(
-      `Invalid QR matrix payload: truncated module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`
-    )
+      `Invalid QR matrix payload: truncated module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`,
+    );
   }
   if (normalizedBytes.length > expectedLength) {
     throw new Error(
-      `Invalid QR matrix payload: unexpected trailing module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`
-    )
+      `Invalid QR matrix payload: unexpected trailing module data (actual length ${normalizedBytes.length}, expected ${expectedLength}, moduleCount ${moduleCount})`,
+    );
   }
 
   return {
     moduleCount,
     modules: normalizedBytes.slice(2, expectedLength),
-  }
+  };
 }

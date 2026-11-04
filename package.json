@@ -2,15 +2,17 @@
   "name": "qrcodesecureshare",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "bun@1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build:js": "biome check && tsc -b && vite build",
-    "build:wasm": "cd rust/fountain-wasm && wasm-pack build --release --target web",
-    "build": "npm run build:wasm && npm run build:js",
-    "build:cloud": "bash cloud_build.sh && npm run build:js",
-    "lint": "tsc --noEmit && biome check",
-    "test": "cd rust/fountain-wasm && cargo test --all --release",
+    "build:wasm": "cd wasm/fountain && wasm-pack build --release --target web --no-pack",
+    "build": "bun run build:wasm && tsc -b && vite build",
+    "build:cloud": "bash cloud_build.sh",
+    "lint": "biome check --reporter=rdjson",
+    "format": "biome check --write",
+    "test": "cd wasm/fountain && cargo test --release",
+    "clippy": "cd wasm/fountain && cargo clippy --all-targets -- -D warnings",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -42,11 +44,13 @@
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
-    "concurrently": "^9.2.1",
     "tw-animate-css": "^1.3.8",
-    "typescript": "~5.8.3",
+    "typescript": "~5.9.3",
     "vite": "^7.1.2",
     "vite-plugin-pwa": "^1.2.0",
-    "wasm-pack": "^0.15.0"
-  }
+    "wasm-pack": "0.15.0"
+  },
+  "trustedDependencies": [
+    "wasm-pack"
+  ]
 }

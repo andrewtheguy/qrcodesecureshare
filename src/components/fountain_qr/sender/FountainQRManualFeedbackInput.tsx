@@ -15,8 +15,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { FountainFeedback, SenderFeedbackAcknowledge } from '@/types/fountainFeedback';
-import { generateFeedbackConfirmationCode, normalizeConfirmationCode } from '@/utils/checksum';
+import type {
+  FountainFeedback,
+  SenderFeedbackAcknowledge,
+} from '@/types/fountainFeedback';
+import {
+  generateFeedbackConfirmationCode,
+  normalizeConfirmationCode,
+} from '@/utils/checksum';
 import type { FountainEncoder } from '@/utils/fountainCodeWasm';
 import { generateNonDataQR } from '@/utils/qrUtils';
 
@@ -32,11 +38,15 @@ interface FountainQRManualFeedbackInputProps {
   lastProcessedSequence: number;
   onFeedbackProcessed: (feedbackData: ProcessedFeedbackData) => void;
   onAckGenerated: (ackUrl: string, sequence: number, message?: string) => void;
-  onModeChange: (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => void;
+  onModeChange: (
+    mode: 'data-display' | 'feedback-scanning' | 'ack-display',
+  ) => void;
   onError: (error: string) => void;
 }
 
-export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInputProps> = ({
+export const FountainQRManualFeedbackInput: React.FC<
+  FountainQRManualFeedbackInputProps
+> = ({
   encoder,
   sessionId,
   lastProcessedSequence,
@@ -49,14 +59,18 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
   // Form field states
   const [inputSessionId] = useState(sessionId.toString());
-  const [inputSequence, setInputSequence] = useState((lastProcessedSequence + 1).toString());
+  const [inputSequence, setInputSequence] = useState(
+    (lastProcessedSequence + 1).toString(),
+  );
   // Note: User enters 1-indexed values (what they see on display), but we store as strings for UI
   // Conversion to 0-indexed happens in validateInputs before checksum generation
   const [inputCurrentPart, setInputCurrentPart] = useState('1');
   const [inputTotalParts, setInputTotalParts] = useState('1');
   const [inputConfirmationCode, setInputConfirmationCode] = useState('');
-  const [validationError, setValidationError] = useState('')
-  const validationErrorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [validationError, setValidationError] = useState('');
+  const validationErrorTimeoutRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
 
   // Reset sequence on session change
   // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger - body doesn't reference it directly
@@ -86,7 +100,6 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     };
   }, []);
 
-
   const showValidationError = useCallback((message: string) => {
     // Clear any existing timeout
     if (validationErrorTimeoutRef.current) {
@@ -115,22 +128,42 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setInputConfirmationCode('');
   }, [lastProcessedSequence, encoder]);
 
-  const validateInputs = useCallback(async (): Promise<{ valid: boolean; error: string; feedback: FountainFeedback | null }> => {
+  const validateInputs = useCallback((): {
+    valid: boolean;
+    error: string;
+    feedback: FountainFeedback | null;
+  } => {
     // Parse and validate sessionId
     const parsedSessionId = parseInt(inputSessionId, 10);
     if (Number.isNaN(parsedSessionId) || parsedSessionId !== sessionId) {
-      return { valid: false, error: `Session ID mismatch: Expected ${sessionId}, but got ${parsedSessionId}. Please verify you copied the correct Session ID from the receiver's feedback display.`, feedback: null };
+      return {
+        valid: false,
+        error: `Session ID mismatch: Expected ${sessionId}, but got ${parsedSessionId}. Please verify you copied the correct Session ID from the receiver's feedback display.`,
+        feedback: null,
+      };
     }
 
     // Parse and validate sequence
     const parsedSequence = parseInt(inputSequence, 10);
-    if (Number.isNaN(parsedSequence) || parsedSequence <= lastProcessedSequence) {
-      return { valid: false, error: `Invalid sequence: Must be greater than ${lastProcessedSequence} (last processed). Current value: ${parsedSequence}. Please check the Sequence field from receiver's feedback display.`, feedback: null };
+    if (
+      Number.isNaN(parsedSequence) ||
+      parsedSequence <= lastProcessedSequence
+    ) {
+      return {
+        valid: false,
+        error: `Invalid sequence: Must be greater than ${lastProcessedSequence} (last processed). Current value: ${parsedSequence}. Please check the Sequence field from receiver's feedback display.`,
+        feedback: null,
+      };
     }
 
     // Validate confirmation code
     if (!inputConfirmationCode.trim()) {
-      return { valid: false, error: 'Confirmation code required: Please enter the confirmation code shown in receiver\'s Feedback Details card to verify input accuracy.', feedback: null };
+      return {
+        valid: false,
+        error:
+          "Confirmation code required: Please enter the confirmation code shown in receiver's Feedback Details card to verify input accuracy.",
+        feedback: null,
+      };
     }
 
     // SYNC REQUIREMENT: These fields MUST match exactly with:
@@ -143,18 +176,33 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     // Parse and validate currentPart (user enters 1-indexed, convert to 0-indexed)
     const parsedCurrentPartDisplay = parseInt(inputCurrentPart, 10);
-    if (Number.isNaN(parsedCurrentPartDisplay) || parsedCurrentPartDisplay < 1) {
-      return { valid: false, error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`, feedback: null };
+    if (
+      Number.isNaN(parsedCurrentPartDisplay) ||
+      parsedCurrentPartDisplay < 1
+    ) {
+      return {
+        valid: false,
+        error: `Invalid current part: Must be at least 1. Current value: ${inputCurrentPart}. Please verify this field from receiver's feedback display.`,
+        feedback: null,
+      };
     }
 
     // Parse and validate totalParts
     const parsedTotalParts = parseInt(inputTotalParts, 10);
     if (Number.isNaN(parsedTotalParts) || parsedTotalParts < 1) {
-      return { valid: false, error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`, feedback: null };
+      return {
+        valid: false,
+        error: `Invalid total parts: Must be at least 1. Current value: ${inputTotalParts}. Please verify this field from receiver's feedback display.`,
+        feedback: null,
+      };
     }
 
     if (parsedCurrentPartDisplay > parsedTotalParts) {
-      return { valid: false, error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`, feedback: null };
+      return {
+        valid: false,
+        error: `Current part (${parsedCurrentPartDisplay}) cannot be greater than total parts (${parsedTotalParts}). Please verify these fields.`,
+        feedback: null,
+      };
     }
 
     // Convert currentPart from 1-indexed (display) to 0-indexed (internal)
@@ -170,7 +218,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     };
 
     // Validate confirmation code against expected value
-    const expectedCode = await generateFeedbackConfirmationCode(feedback);
+    const expectedCode = generateFeedbackConfirmationCode(feedback);
     const normalizedInput = normalizeConfirmationCode(inputConfirmationCode);
     const normalizedExpected = normalizeConfirmationCode(expectedCode);
 
@@ -178,26 +226,37 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       return {
         valid: false,
         error: `Confirmation code mismatch: The code you entered doesn't match the expected value for this feedback. This indicates a typo in one or more fields. Please double-check all fields (Session ID, Sequence, Current Part, Total Parts, and mode-specific fields) and try again. Expected: ${expectedCode}, Got: ${inputConfirmationCode}`,
-        feedback: null
+        feedback: null,
       };
     }
 
     return { valid: true, error: '', feedback };
-  }, [inputSessionId, inputSequence, inputCurrentPart, inputTotalParts, inputConfirmationCode, sessionId, lastProcessedSequence]);
+  }, [
+    inputSessionId,
+    inputSequence,
+    inputCurrentPart,
+    inputTotalParts,
+    inputConfirmationCode,
+    sessionId,
+    lastProcessedSequence,
+  ]);
 
-  const generateSenderFeedbackQR = useCallback(async (feedback: SenderFeedbackAcknowledge) => {
-    try {
-      const dataUrl = await generateNonDataQR(feedback);
-      setSenderFeedbackSequence(prev => prev + 1);
-      onAckGenerated(dataUrl, feedback.sequence, feedback.message);
-    } catch (error) {
-      console.error('Failed to generate ACK QR:', error);
-      onError('Failed to generate acknowledgment QR code');
-    }
-  }, [onAckGenerated, onError]);
+  const generateSenderFeedbackQR = useCallback(
+    async (feedback: SenderFeedbackAcknowledge) => {
+      try {
+        const dataUrl = await generateNonDataQR(feedback);
+        setSenderFeedbackSequence((prev) => prev + 1);
+        onAckGenerated(dataUrl, feedback.sequence, feedback.message);
+      } catch (error) {
+        console.error('Failed to generate ACK QR:', error);
+        onError('Failed to generate acknowledgment QR code');
+      }
+    },
+    [onAckGenerated, onError],
+  );
 
   const handleProcessFeedback = useCallback(async () => {
-    const { valid, error, feedback } = await validateInputs();
+    const { valid, error, feedback } = validateInputs();
     if (!valid || !feedback) {
       showValidationError(error);
       return;
@@ -205,7 +264,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
     // Validate encoder exists before processing
     if (!encoder) {
-      console.error('[FountainQRManualFeedbackInput] CRITICAL: Encoder is null when processing feedback');
+      console.error(
+        '[FountainQRManualFeedbackInput] CRITICAL: Encoder is null when processing feedback',
+      );
       showValidationError('Encoder not available. Cannot process feedback.');
       return;
     }
@@ -214,11 +275,15 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
     setValidationError('');
 
     if (feedback.mode === 'part-complete') {
-      console.log(`[FountainQRManualFeedbackInput] Processing part-complete feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`);
+      console.log(
+        `[FountainQRManualFeedbackInput] Processing part-complete feedback for part ${feedback.currentPart + 1}/${feedback.totalParts}`,
+      );
 
       // Receiving feedback means the part was completed successfully
       // (receiver aborts and doesn't send feedback if checksum is invalid)
-      console.log(`[FountainQRManualFeedbackInput] Part ${feedback.currentPart + 1}/${feedback.totalParts} completed successfully`);
+      console.log(
+        `[FountainQRManualFeedbackInput] Part ${feedback.currentPart + 1}/${feedback.totalParts} completed successfully`,
+      );
 
       let partTransition = false;
       let newPartIndex: number | undefined;
@@ -229,9 +294,13 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         partTransition = true;
         const partInfo = encoder?.getPartInfo();
         newPartIndex = partInfo?.currentPartIndex;
-        console.log(`[FountainQRManualFeedbackInput] Moved to part ${(newPartIndex ?? 0) + 1}`);
+        console.log(
+          `[FountainQRManualFeedbackInput] Moved to part ${(newPartIndex ?? 0) + 1}`,
+        );
       } else {
-        console.log('[FountainQRManualFeedbackInput] Part complete, but this was the last part');
+        console.log(
+          '[FountainQRManualFeedbackInput] Part complete, but this was the last part',
+        );
       }
 
       // Determine message based on part transition
@@ -247,7 +316,7 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         command: 'acknowledge',
         acknowledgedSequence: feedback.sequence,
         message: ackMessage,
-        ...(partTransition && { partTransition, newPartIndex })
+        ...(partTransition && { partTransition, newPartIndex }),
       };
 
       await generateSenderFeedbackQR(ackFeedback);
@@ -260,33 +329,46 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
       onModeChange('ack-display');
     }
-  }, [validateInputs, encoder, sessionId, senderFeedbackSequence, onFeedbackProcessed, onModeChange, resetInputFields, generateSenderFeedbackQR, showValidationError]);
+  }, [
+    validateInputs,
+    encoder,
+    sessionId,
+    senderFeedbackSequence,
+    onFeedbackProcessed,
+    onModeChange,
+    resetInputFields,
+    generateSenderFeedbackQR,
+    showValidationError,
+  ]);
 
-  const handleConfirmationCodeChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value;
+  const handleConfirmationCodeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const rawValue = e.target.value;
 
-    // 1. Get raw input value
-    // 2. Remove all non-hex characters and dashes using regex
-    let cleaned = rawValue.replace(/[^0-9A-Fa-f-]/g, '');
+      // 1. Get raw input value
+      // 2. Remove all non-hex characters and dashes using regex
+      let cleaned = rawValue.replace(/[^0-9A-Fa-f-]/g, '');
 
-    // 3. Remove existing dashes
-    cleaned = cleaned.replace(/-/g, '');
+      // 3. Remove existing dashes
+      cleaned = cleaned.replace(/-/g, '');
 
-    // 4. Convert to uppercase
-    cleaned = cleaned.toUpperCase();
+      // 4. Convert to uppercase
+      cleaned = cleaned.toUpperCase();
 
-    // 5. Limit to 4 characters (CRC16 is 4 hex digits)
-    cleaned = cleaned.slice(0, 4);
+      // 5. Limit to 4 characters (CRC16 is 4 hex digits)
+      cleaned = cleaned.slice(0, 4);
 
-    // 6. Auto-insert dash after 2nd character if length > 2
-    let formatted = cleaned;
-    if (cleaned.length > 2) {
-      formatted = `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
-    }
+      // 6. Auto-insert dash after 2nd character if length > 2
+      let formatted = cleaned;
+      if (cleaned.length > 2) {
+        formatted = `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
+      }
 
-    // 7. Set the formatted value to state
-    setInputConfirmationCode(formatted);
-  }, []);
+      // 7. Set the formatted value to state
+      setInputConfirmationCode(formatted);
+    },
+    [],
+  );
 
   return (
     <Card className="w-full max-w-md mx-auto">
@@ -296,7 +378,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="sessionId" className="text-xs">Session ID (Auto)</Label>
+            <Label htmlFor="sessionId" className="text-xs">
+              Session ID (Auto)
+            </Label>
             <Input
               id="sessionId"
               type="number"
@@ -306,7 +390,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             />
           </div>
           <div>
-            <Label htmlFor="sequence" className="text-xs">Feedback Sequence (Auto)</Label>
+            <Label htmlFor="sequence" className="text-xs">
+              Feedback Sequence (Auto)
+            </Label>
             <Input
               id="sequence"
               type="number"
@@ -327,7 +413,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label htmlFor="currentPart" className="text-xs">Current Part (Expected)</Label>
+            <Label htmlFor="currentPart" className="text-xs">
+              Current Part (Expected)
+            </Label>
             <Input
               id="currentPart"
               type="number"
@@ -340,7 +428,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
             </p>
           </div>
           <div>
-            <Label htmlFor="totalParts" className="text-xs">Total Parts (Auto)</Label>
+            <Label htmlFor="totalParts" className="text-xs">
+              Total Parts (Auto)
+            </Label>
             <Input
               id="totalParts"
               type="number"
@@ -352,7 +442,9 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
         </div>
 
         <div>
-          <Label htmlFor="confirmationCode" className="text-xs">Confirmation Code *</Label>
+          <Label htmlFor="confirmationCode" className="text-xs">
+            Confirmation Code *
+          </Label>
           <Input
             id="confirmationCode"
             type="text"
@@ -391,7 +483,14 @@ export const FountainQRManualFeedbackInput: React.FC<FountainQRManualFeedbackInp
 
         <Alert>
           <AlertDescription>
-            📋 Instructions: Copy the essential feedback details exactly as shown in the receiver's "Feedback Details" card below their QR code. Enter the Current Part number exactly as displayed (e.g., if it shows "Part 1", enter 1), Total Parts, and the Confirmation Code. The confirmation code acts as a checksum to verify all fields are entered correctly. If the code doesn't match, review all fields for typos. After processing, an ACK QR will be generated for the receiver to scan.
+            📋 Instructions: Copy the essential feedback details exactly as
+            shown in the receiver's "Feedback Details" card below their QR code.
+            Enter the Current Part number exactly as displayed (e.g., if it
+            shows "Part 1", enter 1), Total Parts, and the Confirmation Code.
+            The confirmation code acts as a checksum to verify all fields are
+            entered correctly. If the code doesn't match, review all fields for
+            typos. After processing, an ACK QR will be generated for the
+            receiver to scan.
           </AlertDescription>
         </Alert>
 

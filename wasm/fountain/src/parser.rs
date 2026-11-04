@@ -129,9 +129,7 @@ pub fn parse_binary_chunk(
 
             // Extract part checksum (4 bytes, big-endian)
             let mut part_checksum = [0u8; 4];
-            for i in 0..4 {
-                part_checksum[i] = bytes[offset + i];
-            }
+            part_checksum.copy_from_slice(&bytes[offset..offset + 4]);
             offset += 4;
 
             part_metadata = Some(PartMetadata {
@@ -156,7 +154,7 @@ pub fn parse_binary_chunk(
     }
 
     // Create the FountainChunk
-    let chunk = FountainChunk::new_unchecked(seed as u32, degree, indices, data);
+    let chunk = FountainChunk::new_unchecked(seed, degree, indices, data);
 
     Ok(ParsedChunk {
         chunk,
@@ -258,21 +256,18 @@ mod tests {
     use super::*;
 
     fn create_test_chunk_binary(seed: u16, degree: u8, indices: &[u16], data: &[u8]) -> Vec<u8> {
-        let mut binary = Vec::new();
-
-        // Magic bytes
-        binary.push(0xFF);
-        binary.push(0xFD);
-
-        // Seed (2 bytes, big-endian)
-        binary.push((seed >> 8) as u8);
-        binary.push(seed as u8);
-
-        // Degree
-        binary.push(degree);
-
-        // NumIndices
-        binary.push(indices.len() as u8);
+        let mut binary = vec![
+            // Magic bytes
+            0xFF,
+            0xFD,
+            // Seed (2 bytes, big-endian)
+            (seed >> 8) as u8,
+            seed as u8,
+            // Degree
+            degree,
+            // NumIndices
+            indices.len() as u8,
+        ];
 
         // Indices (2 bytes each, big-endian)
         for &idx in indices {
@@ -390,7 +385,7 @@ mod tests {
         binary.extend_from_slice(&[0x00, 0x00]); // currentPart = 0
         binary.extend_from_slice(&[0x00, 0x05]); // totalParts = 5
         binary.extend_from_slice(&[0xAA, 0xBB, 0xCC, 0xDD]); // partChecksum bytes
-                                                             // Data
+        // Data
         binary.extend_from_slice(&[0x42, 0x43]);
         // Checksum
         binary.extend_from_slice(&[0x00, 0x00, 0x00, 0x00]);

@@ -1,26 +1,26 @@
-import { execSync } from 'node:child_process'
-import path from 'node:path'
-import tailwindcss from "@tailwindcss/vite"
-import react from '@vitejs/plugin-react'
-import { defineConfig } from 'vite'
-import { VitePWA } from 'vite-plugin-pwa'
+import { execSync } from 'node:child_process';
+import path from 'node:path';
+import tailwindcss from '@tailwindcss/vite';
+import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 function git(command: string): string | null {
   try {
     return execSync(command, { stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()
-      .trim()
+      .trim();
   } catch {
-    return null
+    return null;
   }
 }
 
 function getGitCommitHash(): string {
   // Cloudflare Pages exposes the deployed commit via this env var. Local builds
   // fall back to `git`, then to a placeholder if that is unavailable too.
-  const cfSha = process.env.CF_PAGES_COMMIT_SHA
-  if (cfSha) return cfSha.slice(0, 7)
-  return git('git rev-parse --short HEAD') ?? 'local'
+  const cfSha = process.env.CF_PAGES_COMMIT_SHA;
+  if (cfSha) return cfSha.slice(0, 7);
+  return git('git rev-parse --short HEAD') ?? 'local';
 }
 
 // https://vite.dev/config/
@@ -30,10 +30,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    allowedHosts: [
-      'localhost',
-      '.trycloudflare.com'
-    ],
+    allowedHosts: ['localhost', '.trycloudflare.com'],
     // Disable HMR
     hmr: false,
   },
@@ -82,7 +79,8 @@ export default defineConfig({
       manifest: {
         name: 'QR Code Secure Share',
         short_name: 'QR Secure',
-        description: 'QR Scanner with secure file transfer via QR codes offline',
+        description:
+          'QR Scanner with secure file transfer via QR codes offline',
         theme_color: '#000000',
         background_color: '#000000',
         display: 'standalone',
@@ -111,9 +109,9 @@ export default defineConfig({
     }),
   ],
   // Testing Recommendations:
-  // 1. Run `npm run build` and check the `dist` directory for worker chunks
+  // 1. Run `bun run build` and check the `dist` directory for worker chunks
   // 2. Look for files like `fountainDecoder.worker-[hash].js` and `qrGenerator.worker-[hash].js`
-  // 3. Test in production build using `npm run preview`
+  // 3. Test in production build using `bun run preview`
   // 4. Verify workers load correctly in builds
   // 5. Check browser DevTools Network tab to confirm workers are loaded
-})
+});
