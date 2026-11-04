@@ -9,6 +9,13 @@ interface ScanMessage {
   options?: RxingReaderOptions;
 }
 
+/** A camera frame, transferred so the pixels are read here, off the page's thread. */
+interface ScanFrameMessage {
+  type: 'scanFrame';
+  frame: ImageBitmap;
+  options?: RxingReaderOptions;
+}
+
 interface ScanResult {
   type: 'result';
   data: Uint8Array[];
@@ -22,18 +29,47 @@ interface UnexpectedMessageResponse {
   originalMessage: unknown;
 }
 
-function isScanMessage(data: unknown): data is ScanMessage {
-  return (
-    typeof data === 'object' &&
-    data !== null &&
-    (data as { type?: unknown }).type === 'scan'
-  );
+function isScanMessage(data: unknown): data is ScanMessage | ScanFrameMessage {
+  if (typeof data !== 'object' || data === null) return false;
+  const type = (data as { type?: unknown }).type;
+  return type === 'scan' || type === 'scanFrame';
+}
+
+let frameCanvas: OffscreenCanvas | null = null;
+let frameContext: OffscreenCanvasRenderingContext2D | null = null;
+
+/** Reads a frame's pixels on a canvas kept across frames, resized only when the size changes. */
+function readFrame(frame: ImageBitmap): ImageData {
+  const { width, height } = frame;
+  if (!frameCanvas) {
+    frameCanvas = new OffscreenCanvas(width, height);
+    frameContext = frameCanvas.getContext('2d', { willReadFrequently: true });
+  } else if (frameCanvas.width !== width || frameCanvas.height !== height) {
+    frameCanvas.width = width;
+    frameCanvas.height = height;
+  }
+  if (!frameContext) {
+    throw new Error('OffscreenCanvas 2D context is unavailable in this worker');
+  }
+  frameContext.drawImage(frame, 0, 0);
+  return frameContext.getImageData(0, 0, width, height);
 }
 
 self.onmessage = async (e: MessageEvent<unknown>) => {
   if (isScanMessage(e.data)) {
+    const scan = e.data;
     try {
-      const { imageData, options } = e.data;
+      const { options } = scan;
+      let imageData: ImageData;
+      if (scan.type === 'scanFrame') {
+        try {
+          imageData = readFrame(scan.frame);
+        } finally {
+          scan.frame.close();
+        }
+      } else {
+        imageData = scan.imageData;
+      }
 
       const readerOptions: RxingReaderOptions = {
         // Defaults tuned for general-purpose QR scanning: skip the heavier

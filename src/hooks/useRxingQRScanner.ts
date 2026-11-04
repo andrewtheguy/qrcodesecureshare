@@ -42,6 +42,17 @@ function describeCameraError(err: unknown): string {
   }
 }
 
+/**
+ * Whether frames can go to the worker as ImageBitmaps for it to read on an
+ * OffscreenCanvas (Chrome 69+, Firefox 105+, Safari 16.4+).
+ */
+function canReadFramesInWorker(): boolean {
+  return (
+    typeof createImageBitmap === 'function' &&
+    typeof OffscreenCanvas !== 'undefined'
+  );
+}
+
 function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -76,6 +87,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   // busy is not queued behind it; it marks `pendingFrameRef` so the newest
   // frame is read the moment the worker is free.
   const scanInFlightRef = useRef<boolean>(false);
+  const readFramesInWorkerRef = useRef<boolean>(canReadFramesInWorker());
   const pendingFrameRef = useRef<boolean>(false);
   const lastFrameScanTimeRef = useRef<number>(Number.NEGATIVE_INFINITY);
   const lastScannedRef = useRef<Uint8Array>(new Uint8Array());
@@ -109,23 +121,64 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
   }, []);
 
-  /** Sends the video's current frame to the worker; false if none was sent. */
+  /**
+   * Sends the video's current frame to the worker; false if none was sent.
+   * Where the browser can, the frame goes over as an ImageBitmap and the
+   * worker reads its pixels, so the page's thread never waits on a readback.
+   * Otherwise the pixels are read here on a canvas.
+   */
   const scanVideoFrame = useCallback((): boolean => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
     const worker = workerRef.current;
-    if (!video || !canvas || !worker) return false;
+    if (!video || !worker) return false;
 
-    if (video.readyState !== video.HAVE_ENOUGH_DATA) {
+    if (
+      video.readyState !== video.HAVE_ENOUGH_DATA ||
+      video.videoWidth === 0 ||
+      video.videoHeight === 0
+    ) {
       return false;
     }
 
-    try {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+    if (readFramesInWorkerRef.current) {
+      scanInFlightRef.current = true;
+      createImageBitmap(video).then(
+        (frame) => {
+          // The worker was replaced while the bitmap was made (the scanner
+          // unmounted); its cleanup already cleared the in-flight flag.
+          if (workerRef.current !== worker) {
+            frame.close();
+            return;
+          }
+          worker.postMessage(
+            { type: 'scanFrame', frame, options: readerOptionsRef.current },
+            [frame],
+          );
+        },
+        (err: unknown) => {
+          console.warn(
+            'createImageBitmap failed; reading frames on the page instead:',
+            err,
+          );
+          readFramesInWorkerRef.current = false;
+          if (workerRef.current === worker) scanInFlightRef.current = false;
+        },
+      );
+      return true;
+    }
 
-      if (canvas.width === 0 || canvas.height === 0) {
-        return false;
+    const canvas = canvasRef.current;
+    if (!canvas) return false;
+
+    try {
+      // Setting a canvas's size clears and may reallocate it, so only do it
+      // when the video's size changes.
+      if (
+        canvas.width !== video.videoWidth ||
+        canvas.height !== video.videoHeight
+      ) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
       }
 
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
