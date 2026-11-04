@@ -533,6 +533,11 @@ export function FountainQRReceiver({
 
   // handleStartScan, handleStopScan moved to subcomponent
 
+  // Every block is decoded once the transfer completes. The live decodedBlocks
+  // can't be used here: in part-based mode it covers only the current part,
+  // because the decoder frees each part's blocks as the part completes.
+  const totalBlocks = fountainMetadata.totalSourceBlocks;
+
   const handleDownload = () => {
     if (!downloadUrl) return;
 
@@ -647,30 +652,23 @@ export function FountainQRReceiver({
                   </div>
                   <div>
                     <span className="font-semibold">Blocks decoded:</span>{' '}
-                    {decodedBlocks}
+                    {totalBlocks}
                   </div>
                   <div className="col-span-2">
                     <span className="font-semibold">Efficiency ratio:</span>{' '}
-                    {decodedBlocks > 0
-                      ? (receivedFountainChunks / decodedBlocks).toFixed(2)
-                      : 'N/A'}{' '}
-                    chunks per block
-                    <span className="text-xs ml-1">
-                      (
-                      {decodedBlocks > 0
-                        ? (
-                            (receivedFountainChunks / decodedBlocks - 1) *
-                            100
-                          ).toFixed(1)
-                        : '0'}
-                      % overhead)
-                    </span>
+                    {totalBlocks > 0
+                      ? `${(receivedFountainChunks / totalBlocks).toFixed(2)} chunks per block (${((receivedFountainChunks / totalBlocks - 1) * 100).toFixed(1)}% overhead)`
+                      : 'N/A'}
                   </div>
                 </div>
               </div>
-              <div>
+              <div className="space-y-2">
+                <p className="text-sm text-foreground break-all">
+                  <span className="font-medium">File:</span>{' '}
+                  {fountainMetadata.name}
+                </p>
                 <Button onClick={handleDownload} className="w-full">
-                  📥 Download {fountainMetadata.name}
+                  📥 Download file
                 </Button>
               </div>
             </div>
@@ -705,13 +703,9 @@ export function FountainQRReceiver({
           setError(error);
         }}
         onScanStart={() => {
+          // The decoder keeps its progress across scanner restarts, so the
+          // chunk counters do too; a new part resets the part counter.
           setIsScanning(true);
-          // Reset chunk counter when starting a new scan
-          chunkCounterRef.current = 0;
-          setReceivedFountainChunks(0);
-          currentPartChunkCountRef.current = 0;
-          setCurrentPartChunkCount(0);
-          lastUIUpdateRef.current = Date.now();
         }}
         onScanStop={() => {
           setIsScanning(false);

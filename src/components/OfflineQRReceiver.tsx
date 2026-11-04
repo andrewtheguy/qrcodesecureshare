@@ -130,8 +130,10 @@ export function OfflineQRReceiver() {
       <CardHeader>
         <CardTitle className="text-center">🔁 Fountain Code Receiver</CardTitle>
         <p className="text-sm text-muted-foreground text-center">
-          {detectedMetadata.name} • {(detectedMetadata.size / 1024).toFixed(2)}
-          KB
+          <span className="break-all">{detectedMetadata.name}</span> •{' '}
+          <span className="whitespace-nowrap">
+            {(detectedMetadata.size / 1024).toFixed(2)} KB
+          </span>
         </p>
       </CardHeader>
       <CardContent className="space-y-4">
