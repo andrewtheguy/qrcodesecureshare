@@ -1,10 +1,10 @@
-import type { RxingReaderOptions } from '@/utils/rxingWasm'
-import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker'
+import type { RxingReaderOptions } from '@/utils/rxingWasm';
+import RxingWorker from '@/workers/rxing-qr-scanner.worker?worker';
 
 interface ScanResult {
-  type: 'result'
-  data: Uint8Array[]
-  error?: string
+  type: 'result';
+  data: Uint8Array[];
+  error?: string;
 }
 
 // Default maximized detection options for one-shot image-upload decoding:
@@ -20,57 +20,61 @@ const MAXIMIZED_DETECTION_OPTIONS: RxingReaderOptions = {
   tryInvert: true,
   binarizer: 'hybrid',
   binarizerFallback: true,
-}
+};
 
 /**
  * Decode QR codes from an image file using a web worker.
  */
 export function decodeQRFromImage(
   file: File,
-  readerOptions?: RxingReaderOptions
+  readerOptions?: RxingReaderOptions,
 ): Promise<Uint8Array[]> {
   return new Promise((resolve, reject) => {
-    const imageUrl = URL.createObjectURL(file)
-    const img = new Image()
+    const imageUrl = URL.createObjectURL(file);
+    const img = new Image();
 
     img.onload = () => {
       try {
-        const canvas = document.createElement('canvas')
-        canvas.width = img.width
-        canvas.height = img.height
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
 
-        const ctx = canvas.getContext('2d')
+        const ctx = canvas.getContext('2d');
         if (!ctx) {
-          reject(new Error('Failed to get canvas context'))
-          return
+          reject(new Error('Failed to get canvas context'));
+          return;
         }
 
-        ctx.drawImage(img, 0, 0)
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        ctx.drawImage(img, 0, 0);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        const worker = new RxingWorker()
+        const worker = new RxingWorker();
 
         worker.onmessage = (event: MessageEvent<ScanResult>) => {
           if (event.data.type === 'result') {
-            worker.terminate()
-            worker.onmessage = null
+            worker.terminate();
+            worker.onmessage = null;
 
             if (event.data.error) {
-              reject(new Error(event.data.error))
+              reject(new Error(event.data.error));
             } else {
-              resolve(event.data.data)
+              resolve(event.data.data);
             }
           } else {
-            worker.terminate()
-            worker.onmessage = null
-            reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
+            worker.terminate();
+            worker.onmessage = null;
+            reject(
+              new Error(
+                `Unexpected message type from worker: ${event.data.type}`,
+              ),
+            );
           }
-        }
+        };
 
         worker.onerror = (err) => {
-          worker.terminate()
-          reject(err)
-        }
+          worker.terminate();
+          reject(err);
+        };
 
         worker.postMessage(
           {
@@ -78,22 +82,22 @@ export function decodeQRFromImage(
             imageData,
             options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
           },
-          [imageData.data.buffer]
-        )
+          [imageData.data.buffer],
+        );
       } catch (err) {
-        reject(err)
+        reject(err);
       } finally {
-        URL.revokeObjectURL(imageUrl)
+        URL.revokeObjectURL(imageUrl);
       }
-    }
+    };
 
     img.onerror = () => {
-      URL.revokeObjectURL(imageUrl)
-      reject(new Error('Failed to load image'))
-    }
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error('Failed to load image'));
+    };
 
-    img.src = imageUrl
-  })
+    img.src = imageUrl;
+  });
 }
 
 /**
@@ -101,32 +105,34 @@ export function decodeQRFromImage(
  */
 export function decodeQRFromImageData(
   imageData: ImageData,
-  readerOptions?: RxingReaderOptions
+  readerOptions?: RxingReaderOptions,
 ): Promise<Uint8Array[]> {
   return new Promise((resolve, reject) => {
-    const worker = new RxingWorker()
+    const worker = new RxingWorker();
 
     worker.onmessage = (event: MessageEvent<ScanResult>) => {
       if (event.data.type === 'result') {
-        worker.terminate()
-        worker.onmessage = null
+        worker.terminate();
+        worker.onmessage = null;
 
         if (event.data.error) {
-          reject(new Error(event.data.error))
+          reject(new Error(event.data.error));
         } else {
-          resolve(event.data.data)
+          resolve(event.data.data);
         }
       } else {
-        worker.terminate()
-        worker.onmessage = null
-        reject(new Error(`Unexpected message type from worker: ${event.data.type}`))
+        worker.terminate();
+        worker.onmessage = null;
+        reject(
+          new Error(`Unexpected message type from worker: ${event.data.type}`),
+        );
       }
-    }
+    };
 
     worker.onerror = (err) => {
-      worker.terminate()
-      reject(err)
-    }
+      worker.terminate();
+      reject(err);
+    };
 
     worker.postMessage(
       {
@@ -134,7 +140,7 @@ export function decodeQRFromImageData(
         imageData,
         options: readerOptions || MAXIMIZED_DETECTION_OPTIONS,
       },
-      [imageData.data.buffer]
-    )
-  })
+      [imageData.data.buffer],
+    );
+  });
 }

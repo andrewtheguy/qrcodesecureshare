@@ -5,406 +5,484 @@
  * decode files sent via fountain-coded QR streams.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import type { FountainMetadata } from '@/utils/fountainCodeWasm'
-import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig'
-import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker'
-import { FountainQRDataScanner } from './receiver/FountainQRDataScanner'
-import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import type { FountainMetadata } from '@/utils/fountainCodeWasm';
+import { DEFAULT_BLOCK_SIZE } from '@/utils/fountainConfig';
+import FountainDecoderWorker from '@/workers/fountainDecoder.worker?worker';
+import { FountainQRDataScanner } from './receiver/FountainQRDataScanner';
+import { FountainQRFeedbackDisplay } from './receiver/FountainQRFeedbackDisplay';
 
 interface FountainQRReceiverProps {
   initialMetadata: {
-    name: string
-    size: number
-    type: string
-    sessionId: number
-    totalSourceBlocks: number
-    blockSize?: number
-    checksum: string
-    checksumAlg: string
-    feedbackEnabled: boolean
-    partBasedMode?: boolean
-    partSize?: number
-  }
+    name: string;
+    size: number;
+    type: string;
+    sessionId: number;
+    totalSourceBlocks: number;
+    blockSize?: number;
+    checksum: string;
+    checksumAlg: string;
+    feedbackEnabled: boolean;
+    partBasedMode?: boolean;
+    partSize?: number;
+  };
 }
 
-export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps) {
-  const feedbackEnabled = initialMetadata.feedbackEnabled ?? true
+export function FountainQRReceiver({
+  initialMetadata,
+}: FountainQRReceiverProps) {
+  const feedbackEnabled = initialMetadata.feedbackEnabled ?? true;
 
   // Initialize metadata and decoder immediately (always provided by parent)
-  const initialMeta: FountainMetadata = useMemo(() => ({
-    name: initialMetadata.name,
-    size: initialMetadata.size,
-    fileType: initialMetadata.type,
-    timestamp: Date.now(),
-    totalSourceBlocks: initialMetadata.totalSourceBlocks,
-    blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
-    checksum: initialMetadata.checksum,
-    checksumAlg: initialMetadata.checksumAlg,
-    partBasedMode: initialMetadata.partBasedMode ?? false,
-    partSize: initialMetadata.partSize ?? 0,
-  }), [
-    initialMetadata.name,
-    initialMetadata.size,
-    initialMetadata.type,
-    initialMetadata.totalSourceBlocks,
-    initialMetadata.blockSize,
-    initialMetadata.checksum,
-    initialMetadata.checksumAlg,
-    initialMetadata.partBasedMode,
-    initialMetadata.partSize,
-  ])
+  const initialMeta: FountainMetadata = useMemo(
+    () => ({
+      name: initialMetadata.name,
+      size: initialMetadata.size,
+      fileType: initialMetadata.type,
+      timestamp: Date.now(),
+      totalSourceBlocks: initialMetadata.totalSourceBlocks,
+      blockSize: initialMetadata.blockSize || DEFAULT_BLOCK_SIZE,
+      checksum: initialMetadata.checksum,
+      checksumAlg: initialMetadata.checksumAlg,
+      partBasedMode: initialMetadata.partBasedMode ?? false,
+      partSize: initialMetadata.partSize ?? 0,
+    }),
+    [
+      initialMetadata.name,
+      initialMetadata.size,
+      initialMetadata.type,
+      initialMetadata.totalSourceBlocks,
+      initialMetadata.blockSize,
+      initialMetadata.checksum,
+      initialMetadata.checksumAlg,
+      initialMetadata.partBasedMode,
+      initialMetadata.partSize,
+    ],
+  );
 
   // Metadata is immutable for this mount (component remounted per file)
-  const fountainMetadata: FountainMetadata = initialMeta
-  const [decodedBlocks, setDecodedBlocks] = useState(0)
-  const [realDecodingStarted, setRealDecodingStarted] = useState(false)
-  const [success, setSuccess] = useState(false)
-  const [integrityOk, setIntegrityOk] = useState<boolean | null>(null)
-  const [actualChecksum, setActualChecksum] = useState<string>('')
-  const [downloadUrl, setDownloadUrl] = useState<string>('')
-  const [fileDownloaded, setFileDownloaded] = useState(false)
-  const [receiverMode, setReceiverMode] = useState<'data-scanning' | 'feedback-display' | 'ack-scanning'>('data-scanning')
-   const [invalidChecksumCount, setInvalidChecksumCount] = useState(0)
+  const fountainMetadata: FountainMetadata = initialMeta;
+  const [decodedBlocks, setDecodedBlocks] = useState(0);
+  const [realDecodingStarted, setRealDecodingStarted] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [integrityOk, setIntegrityOk] = useState<boolean | null>(null);
+  const [actualChecksum, setActualChecksum] = useState<string>('');
+  const [downloadUrl, setDownloadUrl] = useState<string>('');
+  const [fileDownloaded, setFileDownloaded] = useState(false);
+  const [receiverMode, setReceiverMode] = useState<
+    'data-scanning' | 'feedback-display' | 'ack-scanning'
+  >('data-scanning');
+  const [invalidChecksumCount, setInvalidChecksumCount] = useState(0);
 
   // Window mode removed - no window logic
 
-  const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false)
-  const [feedbackSequence, setFeedbackSequence] = useState<number>(0)
-  const feedbackSequenceRef = useRef<number>(0)
-  const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] = useState(-1)
-  const sessionId = initialMetadata.sessionId
-  const [error, setError] = useState<string>('')
-  const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] = useState<boolean>(true)
-  const [senderFeedbackMessage, setSenderFeedbackMessage] = useState<string>('')
+  const [isAwaitingFeedback, setIsAwaitingFeedback] = useState<boolean>(false);
+  const [feedbackSequence, setFeedbackSequence] = useState<number>(0);
+  const feedbackSequenceRef = useRef<number>(0);
+  const [lastSenderFeedbackSequence, setLastSenderFeedbackSequence] =
+    useState(-1);
+  const sessionId = initialMetadata.sessionId;
+  const [error, setError] = useState<string>('');
+  const [lastAckTransitionSuccessful, setLastAckTransitionSuccessful] =
+    useState<boolean>(true);
+  const [senderFeedbackMessage, setSenderFeedbackMessage] =
+    useState<string>('');
 
   // Part-based transfer state
   const [partCompleteInfo, setPartCompleteInfo] = useState<{
-    partComplete: boolean
-    isValid: boolean
-    expectedChecksum: string
-    actualChecksum: string
-    currentPart: number
-    totalParts: number
-  } | null>(null)
-  const [currentPartIndex, setCurrentPartIndex] = useState<number>(0)
-  const [totalParts, setTotalParts] = useState<number>(() => (
+    partComplete: boolean;
+    isValid: boolean;
+    expectedChecksum: string;
+    actualChecksum: string;
+    currentPart: number;
+    totalParts: number;
+  } | null>(null);
+  const [currentPartIndex, setCurrentPartIndex] = useState<number>(0);
+  const [totalParts, setTotalParts] = useState<number>(() =>
     initialMeta.partBasedMode && initialMeta.partSize
       ? Math.ceil(initialMeta.size / initialMeta.partSize)
-      : 1
-  ))
-  const [currentPartDecodedBlocks, setCurrentPartDecodedBlocks] = useState<number>(0)
-  const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(() => (
-    initialMeta.partBasedMode && initialMeta.partSize
-      ? Math.ceil(Math.min(initialMeta.partSize, initialMeta.size) / initialMeta.blockSize)
-      : initialMeta.totalSourceBlocks
-  ))
-  const [currentPartChunkCount, setCurrentPartChunkCount] = useState<number>(0)
-  const currentPartChunkCountRef = useRef<number>(0)
-  const lastPartIndexRef = useRef<number>(0)
+      : 1,
+  );
+  const [currentPartDecodedBlocks, setCurrentPartDecodedBlocks] =
+    useState<number>(0);
+  const [currentPartTotalBlocks, setCurrentPartTotalBlocks] = useState<number>(
+    () =>
+      initialMeta.partBasedMode && initialMeta.partSize
+        ? Math.ceil(
+            Math.min(initialMeta.partSize, initialMeta.size) /
+              initialMeta.blockSize,
+          )
+        : initialMeta.totalSourceBlocks,
+  );
+  const [currentPartChunkCount, setCurrentPartChunkCount] = useState<number>(0);
+  const currentPartChunkCountRef = useRef<number>(0);
+  const lastPartIndexRef = useRef<number>(0);
 
   // Subcomponent state
-  const [isScanning, setIsScanning] = useState(false)
+  const [isScanning, setIsScanning] = useState(false);
 
   // Chunk counter state (only counts non-duplicate chunks)
-  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0)
-  const chunkCounterRef = useRef<number>(0)
-  const lastUIUpdateRef = useRef<number>(Date.now())
+  const [receivedFountainChunks, setReceivedFountainChunks] = useState(0);
+  const chunkCounterRef = useRef<number>(0);
+  const lastUIUpdateRef = useRef<number>(Date.now());
 
-  const workerRef = useRef<Worker | null>(null)
-  const messageIdCounterRef = useRef<number>(0)
-  const decodedBlockIndicesRef = useRef<number[]>([])
+  const workerRef = useRef<Worker | null>(null);
+  const messageIdCounterRef = useRef<number>(0);
+  const decodedBlockIndicesRef = useRef<number[]>([]);
 
   // Refs for worker onmessage handler to avoid stale closures
-  const isAwaitingFeedbackRef = useRef(isAwaitingFeedback)
-  const triggeredFeedbackRef = useRef(false)
+  const isAwaitingFeedbackRef = useRef(isAwaitingFeedback);
+  const triggeredFeedbackRef = useRef(false);
 
   // Worker initialization and cleanup
   useEffect(() => {
-    let worker: Worker | null = null
+    let worker: Worker | null = null;
     try {
-      worker = new FountainDecoderWorker()
-      workerRef.current = worker
+      worker = new FountainDecoderWorker();
+      workerRef.current = worker;
 
       worker.onerror = () => {
-        setError('Worker runtime error')
+        setError('Worker runtime error');
         // Debug logging moved to subcomponent
-      }
+      };
 
       worker.onmessage = (event: MessageEvent) => {
-      const { type, ...data } = event.data
+        const { type, ...data } = event.data;
 
-      switch (type) {
-        case 'initialized':
-          // Debug logging moved to subcomponent
-          break
-
-        case 'chunkProcessed': {
-          const { duplicate, decodedBlockCount, realDecodingStarted, decodedBlockIndices, partCompleteInfo, currentPartIndex: partIndex, totalParts: numParts, currentPartDecodedBlocks: partDecodedBlocks, currentPartTotalBlocks: partTotalBlocks } = data
-
-          console.log('[FountainQRReceiver] chunkProcessed:', {
-            duplicate,
-            decodedBlockCount,
-            realDecodingStarted,
-            decodedBlockIndicesLength: decodedBlockIndices?.length,
-            partDecodedBlocks,
-            partTotalBlocks
-          })
-
-          if (partIndex !== undefined && partIndex !== lastPartIndexRef.current) {
-            lastPartIndexRef.current = partIndex
-            currentPartChunkCountRef.current = 0
-            setCurrentPartChunkCount(0)
-          }
-
-          // Increment chunk counter only for non-duplicate chunks
-          // Batch UI updates to every 500ms to avoid slowing down decoding
-          if (!duplicate) {
-            chunkCounterRef.current++
-            currentPartChunkCountRef.current++
-            const now = Date.now()
-            if (now - lastUIUpdateRef.current >= 500) {
-              setReceivedFountainChunks(chunkCounterRef.current)
-              setCurrentPartChunkCount(currentPartChunkCountRef.current)
-              lastUIUpdateRef.current = now
-            }
-          }
-
-          // Always update progress, even for duplicates, so UI shows current state
-          setDecodedBlocks(decodedBlockCount)
-          setRealDecodingStarted(realDecodingStarted)
-          decodedBlockIndicesRef.current = decodedBlockIndices
-
-          // Update part-specific state if in part-based mode
-          if (partIndex !== undefined && numParts !== undefined) {
-            setCurrentPartIndex(partIndex)
-            setTotalParts(numParts)
-          }
-          if (partDecodedBlocks !== undefined && partTotalBlocks !== undefined) {
-            setCurrentPartDecodedBlocks(partDecodedBlocks)
-            setCurrentPartTotalBlocks(partTotalBlocks)
-          }
-
-          // Skip further processing for duplicate chunks
-          if (duplicate) {
+        switch (type) {
+          case 'initialized':
             // Debug logging moved to subcomponent
-            break
-          }
+            break;
 
-          // Debug logging moved to subcomponent
+          case 'chunkProcessed': {
+            const {
+              duplicate,
+              decodedBlockCount,
+              realDecodingStarted,
+              decodedBlockIndices,
+              partCompleteInfo,
+              currentPartIndex: partIndex,
+              totalParts: numParts,
+              currentPartDecodedBlocks: partDecodedBlocks,
+              currentPartTotalBlocks: partTotalBlocks,
+            } = data;
 
-          // Handle part completion if in part-based mode (only for non-duplicate chunks)
-          if (partCompleteInfo?.partComplete) {
-            console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`)
+            console.log('[FountainQRReceiver] chunkProcessed:', {
+              duplicate,
+              decodedBlockCount,
+              realDecodingStarted,
+              decodedBlockIndicesLength: decodedBlockIndices?.length,
+              partDecodedBlocks,
+              partTotalBlocks,
+            });
 
-            // Store part completion info in state
-            setPartCompleteInfo(partCompleteInfo)
-
-            if (!partCompleteInfo.isValid) {
-              // Part checksum mismatch - fail the transfer
-              console.error(`[FountainQRReceiver] Part checksum mismatch! Expected: ${partCompleteInfo.expectedChecksum}, Actual: ${partCompleteInfo.actualChecksum}, partCompleteInfo:`, partCompleteInfo)
-              setError(`Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Expected: ${partCompleteInfo.expectedChecksum}, but got ${partCompleteInfo.actualChecksum}`)
-              setIsScanning(false)
-              return
+            if (
+              partIndex !== undefined &&
+              partIndex !== lastPartIndexRef.current
+            ) {
+              lastPartIndexRef.current = partIndex;
+              currentPartChunkCountRef.current = 0;
+              setCurrentPartChunkCount(0);
             }
 
-            // Check if this was the last part
-            const isLastPart = (partCompleteInfo.currentPart + 1) === partCompleteInfo.totalParts
+            // Increment chunk counter only for non-duplicate chunks
+            // Batch UI updates to every 500ms to avoid slowing down decoding
+            if (!duplicate) {
+              chunkCounterRef.current++;
+              currentPartChunkCountRef.current++;
+              const now = Date.now();
+              if (now - lastUIUpdateRef.current >= 500) {
+                setReceivedFountainChunks(chunkCounterRef.current);
+                setCurrentPartChunkCount(currentPartChunkCountRef.current);
+                lastUIUpdateRef.current = now;
+              }
+            }
 
-            if (isLastPart) {
-              // Last part completed - the transfer should be complete now
-              // The worker will send a 'complete' message when all parts are assembled
-              console.log('[FountainQRReceiver] Last part completed, waiting for final assembly...')
-              // Don't trigger feedback, just continue scanning to let the worker finish
+            // Always update progress, even for duplicates, so UI shows current state
+            setDecodedBlocks(decodedBlockCount);
+            setRealDecodingStarted(realDecodingStarted);
+            decodedBlockIndicesRef.current = decodedBlockIndices;
+
+            // Update part-specific state if in part-based mode
+            if (partIndex !== undefined && numParts !== undefined) {
+              setCurrentPartIndex(partIndex);
+              setTotalParts(numParts);
+            }
+            if (
+              partDecodedBlocks !== undefined &&
+              partTotalBlocks !== undefined
+            ) {
+              setCurrentPartDecodedBlocks(partDecodedBlocks);
+              setCurrentPartTotalBlocks(partTotalBlocks);
+            }
+
+            // Skip further processing for duplicate chunks
+            if (duplicate) {
+              // Debug logging moved to subcomponent
+              break;
+            }
+
+            // Debug logging moved to subcomponent
+
+            // Handle part completion if in part-based mode (only for non-duplicate chunks)
+            if (partCompleteInfo?.partComplete) {
+              console.log(
+                `[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} complete. Checksum valid: ${partCompleteInfo.isValid}`,
+              );
+
+              // Store part completion info in state
+              setPartCompleteInfo(partCompleteInfo);
+
+              if (!partCompleteInfo.isValid) {
+                // Part checksum mismatch - fail the transfer
+                console.error(
+                  `[FountainQRReceiver] Part checksum mismatch! Expected: ${partCompleteInfo.expectedChecksum}, Actual: ${partCompleteInfo.actualChecksum}, partCompleteInfo:`,
+                  partCompleteInfo,
+                );
+                setError(
+                  `Part ${partCompleteInfo.currentPart + 1} checksum mismatch. Expected: ${partCompleteInfo.expectedChecksum}, but got ${partCompleteInfo.actualChecksum}`,
+                );
+                setIsScanning(false);
+                return;
+              }
+
+              // Check if this was the last part
+              const isLastPart =
+                partCompleteInfo.currentPart + 1 ===
+                partCompleteInfo.totalParts;
+
+              if (isLastPart) {
+                // Last part completed - the transfer should be complete now
+                // The worker will send a 'complete' message when all parts are assembled
+                console.log(
+                  '[FountainQRReceiver] Last part completed, waiting for final assembly...',
+                );
+                // Don't trigger feedback, just continue scanning to let the worker finish
+              } else {
+                // Not the last part - trigger feedback to move to next part
+                console.log(
+                  `[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} completed, triggering feedback for next part`,
+                );
+                triggeredFeedbackRef.current = true;
+                setReceiverMode('feedback-display');
+                setIsScanning(false);
+                setIsAwaitingFeedback(true);
+              }
+              break;
+            }
+
+            // Window logic removed - no saturation checks
+            break;
+          }
+
+          case 'complete': {
+            const {
+              data: reconstructedData,
+              integrityOk,
+              calculatedChecksum,
+            } = data;
+            const blob = new Blob([reconstructedData], {
+              type: initialMeta.fileType || 'application/octet-stream',
+            });
+            const url = URL.createObjectURL(blob);
+
+            // Sync final chunk count to UI
+            setReceivedFountainChunks(chunkCounterRef.current);
+            setCurrentPartChunkCount(currentPartChunkCountRef.current);
+
+            setDownloadUrl(url);
+            setSuccess(true);
+            setIsScanning(false);
+            setReceiverMode('feedback-display'); // Change mode to stop scanner
+            setIntegrityOk(integrityOk);
+            setActualChecksum(calculatedChecksum);
+
+            console.log(
+              '[FountainQRReceiver] Transfer complete! File decoded successfully.',
+            );
+            break;
+          }
+
+          case 'partTransitioned': {
+            const { newPartIndex, totalParts } = data;
+            console.log(
+              `[FountainQRReceiver] Transitioned to part ${newPartIndex + 1}/${totalParts}`,
+            );
+            // Clear part completion info to allow new part processing
+            setPartCompleteInfo(null);
+            lastPartIndexRef.current = newPartIndex;
+            currentPartChunkCountRef.current = 0;
+            setCurrentPartChunkCount(0);
+            setDecodedBlocks(0);
+            setCurrentPartDecodedBlocks(0);
+            if (initialMeta.partBasedMode && initialMeta.partSize) {
+              const partStartByte = newPartIndex * initialMeta.partSize;
+              const partEndByte = Math.min(
+                (newPartIndex + 1) * initialMeta.partSize,
+                initialMeta.size,
+              );
+              const startBlock = Math.floor(
+                partStartByte / initialMeta.blockSize,
+              );
+              const endBlock = Math.ceil(partEndByte / initialMeta.blockSize);
+              setCurrentPartTotalBlocks(endBlock - startBlock);
+            }
+            decodedBlockIndicesRef.current = [];
+            setRealDecodingStarted(false);
+            break;
+          }
+
+          case 'error': {
+            const { error } = data;
+            if (error === 'Invalid checksum') {
+              setInvalidChecksumCount((prev) => prev + 1);
+              // Debug logging moved to subcomponent
             } else {
-              // Not the last part - trigger feedback to move to next part
-              console.log(`[FountainQRReceiver] Part ${partCompleteInfo.currentPart + 1}/${partCompleteInfo.totalParts} completed, triggering feedback for next part`)
-              triggeredFeedbackRef.current = true
-              setReceiverMode('feedback-display')
-              setIsScanning(false)
-              setIsAwaitingFeedback(true)
+              // Debug logging moved to subcomponent
+              setError(`Worker error: ${error}`);
             }
-            break
+            break;
           }
-
-          // Window logic removed - no saturation checks
-          break
         }
+      };
 
-        case 'complete': {
-          const { data: reconstructedData, integrityOk, calculatedChecksum } = data
-          const blob = new Blob([reconstructedData], { type: initialMeta.fileType || 'application/octet-stream' })
-          const url = URL.createObjectURL(blob)
-
-          // Sync final chunk count to UI
-          setReceivedFountainChunks(chunkCounterRef.current)
-          setCurrentPartChunkCount(currentPartChunkCountRef.current)
-
-          setDownloadUrl(url)
-          setSuccess(true)
-          setIsScanning(false)
-          setReceiverMode('feedback-display') // Change mode to stop scanner
-          setIntegrityOk(integrityOk)
-          setActualChecksum(calculatedChecksum)
-
-          console.log('[FountainQRReceiver] Transfer complete! File decoded successfully.')
-          break
-        }
-
-        case 'partTransitioned': {
-          const { newPartIndex, totalParts } = data
-          console.log(`[FountainQRReceiver] Transitioned to part ${newPartIndex + 1}/${totalParts}`)
-          // Clear part completion info to allow new part processing
-          setPartCompleteInfo(null)
-          lastPartIndexRef.current = newPartIndex
-          currentPartChunkCountRef.current = 0
-          setCurrentPartChunkCount(0)
-          setDecodedBlocks(0)
-          setCurrentPartDecodedBlocks(0)
-          if (initialMeta.partBasedMode && initialMeta.partSize) {
-            const partStartByte = newPartIndex * initialMeta.partSize
-            const partEndByte = Math.min((newPartIndex + 1) * initialMeta.partSize, initialMeta.size)
-            const startBlock = Math.floor(partStartByte / initialMeta.blockSize)
-            const endBlock = Math.ceil(partEndByte / initialMeta.blockSize)
-            setCurrentPartTotalBlocks(endBlock - startBlock)
-          }
-          decodedBlockIndicesRef.current = []
-          setRealDecodingStarted(false)
-          break
-        }
-
-        case 'error': {
-          const { error } = data
-          if (error === 'Invalid checksum') {
-            setInvalidChecksumCount(prev => prev + 1)
-            // Debug logging moved to subcomponent
-          } else {
-            // Debug logging moved to subcomponent
-            setError(`Worker error: ${error}`)
-          }
-          break
-        }
-
-      }
-    }
-
-    // Initialize worker
-    console.log('[FountainQRReceiver] Initializing worker with:', {
-      partBasedMode: initialMeta.partBasedMode,
-      partSize: initialMeta.partSize,
-      metadata: initialMeta
-    })
-    worker.postMessage({
-      type: 'initialize',
-      id: messageIdCounterRef.current++,
-      metadata: initialMeta,
-      partBasedMode: initialMeta.partBasedMode || false,
-      partSize: initialMeta.partSize || 0,
-      sessionId: sessionId
-    })
-    // Debug logging moved to subcomponent
-    } catch {
-      setError('Failed to initialize decoding worker')
+      // Initialize worker
+      console.log('[FountainQRReceiver] Initializing worker with:', {
+        partBasedMode: initialMeta.partBasedMode,
+        partSize: initialMeta.partSize,
+        metadata: initialMeta,
+      });
+      worker.postMessage({
+        type: 'initialize',
+        id: messageIdCounterRef.current++,
+        metadata: initialMeta,
+        partBasedMode: initialMeta.partBasedMode || false,
+        partSize: initialMeta.partSize || 0,
+        sessionId: sessionId,
+      });
       // Debug logging moved to subcomponent
-      return
+    } catch {
+      setError('Failed to initialize decoding worker');
+      // Debug logging moved to subcomponent
+      return;
     }
 
     // Cleanup
     return () => {
       if (worker) {
-        worker.terminate()
-        workerRef.current = null
+        worker.terminate();
+        workerRef.current = null;
       }
-    }
-  }, [initialMeta, sessionId]) // Initialize worker when metadata changes
+    };
+  }, [initialMeta, sessionId]); // Initialize worker when metadata changes
 
   // Warn user before navigating away if file is decoded but not downloaded
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       // Only show warning if file is successfully decoded, integrity is verified, and not downloaded yet
       if (success && integrityOk === true && !fileDownloaded) {
-        e.preventDefault()
+        e.preventDefault();
         // Modern browsers ignore custom messages, but setting returnValue is still required
-        e.returnValue = ''
-        return ''
+        e.returnValue = '';
+        return '';
       }
-    }
+    };
 
-    window.addEventListener('beforeunload', handleBeforeUnload)
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload)
-    }
-  }, [success, integrityOk, fileDownloaded])
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [success, integrityOk, fileDownloaded]);
 
   const handleFeedbackGenerated = useCallback(() => {
-    setReceiverMode('feedback-display')
-    setIsAwaitingFeedback(true)
-  }, [])
+    setReceiverMode('feedback-display');
+    setIsAwaitingFeedback(true);
+  }, []);
 
-  const handleAckReceived = useCallback((_acknowledgedSequence: number, message: string, partTransition?: boolean, newPartIndex?: number) => {
-    console.log(`[FountainQRReceiver] ACK received: ${message}, partTransition: ${partTransition}, newPartIndex: ${newPartIndex}`)
+  const handleAckReceived = useCallback(
+    (
+      _acknowledgedSequence: number,
+      message: string,
+      partTransition?: boolean,
+      newPartIndex?: number,
+    ) => {
+      console.log(
+        `[FountainQRReceiver] ACK received: ${message}, partTransition: ${partTransition}, newPartIndex: ${newPartIndex}`,
+      );
 
-    // If sender signals part transition, tell worker to move to next part
-    if (partTransition && newPartIndex !== undefined) {
-      const msgId = messageIdCounterRef.current++
-      workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId })
-      console.log(`[FountainQRReceiver] Moving to next part ${newPartIndex + 1} after sender ACK`)
-    }
+      // If sender signals part transition, tell worker to move to next part
+      if (partTransition && newPartIndex !== undefined) {
+        const msgId = messageIdCounterRef.current++;
+        workerRef.current?.postMessage({ type: 'moveToNextPart', id: msgId });
+        console.log(
+          `[FountainQRReceiver] Moving to next part ${newPartIndex + 1} after sender ACK`,
+        );
+      }
 
-    triggeredFeedbackRef.current = false
-    setIsAwaitingFeedback(false)
-    setIsScanning(true)
-    setSenderFeedbackMessage(message)
-  }, [])
+      triggeredFeedbackRef.current = false;
+      setIsAwaitingFeedback(false);
+      setIsScanning(true);
+      setSenderFeedbackMessage(message);
+    },
+    [],
+  );
 
-  const handleFeedbackModeChange = useCallback((mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
-    console.log('[FountainQRReceiver] handleFeedbackModeChange called with mode:', mode, 'current mode:', receiverMode)
-    setReceiverMode(mode)
-    if (mode === 'data-scanning') {
-      triggeredFeedbackRef.current = false
-      setIsAwaitingFeedback(false)
-      setIsScanning(true)
-      // setLastAckTransitionSuccessful(true) // Optimistically marking success is deprecated
-      console.log('[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true')
-    } else if (mode === 'feedback-display') {
-      setIsAwaitingFeedback(true)
-      setIsScanning(false)
-    } else if (mode === 'ack-scanning') {
-      setIsAwaitingFeedback(true)
-      setIsScanning(false)
-      setLastAckTransitionSuccessful(false) // Mark as not successful when entering ack-scanning
-      console.log('[FountainQRReceiver] Transitioned to ack-scanning mode, lastAckTransitionSuccessful set to false')
-    }
-  }, [receiverMode])
-
+  const handleFeedbackModeChange = useCallback(
+    (mode: 'data-scanning' | 'feedback-display' | 'ack-scanning') => {
+      console.log(
+        '[FountainQRReceiver] handleFeedbackModeChange called with mode:',
+        mode,
+        'current mode:',
+        receiverMode,
+      );
+      setReceiverMode(mode);
+      if (mode === 'data-scanning') {
+        triggeredFeedbackRef.current = false;
+        setIsAwaitingFeedback(false);
+        setIsScanning(true);
+        // setLastAckTransitionSuccessful(true) // Optimistically marking success is deprecated
+        console.log(
+          '[FountainQRReceiver] Transitioned to data-scanning mode, isScanning set to true',
+        );
+      } else if (mode === 'feedback-display') {
+        setIsAwaitingFeedback(true);
+        setIsScanning(false);
+      } else if (mode === 'ack-scanning') {
+        setIsAwaitingFeedback(true);
+        setIsScanning(false);
+        setLastAckTransitionSuccessful(false); // Mark as not successful when entering ack-scanning
+        console.log(
+          '[FountainQRReceiver] Transitioned to ack-scanning mode, lastAckTransitionSuccessful set to false',
+        );
+      }
+    },
+    [receiverMode],
+  );
 
   const handleFeedbackError = useCallback((error: string) => {
-    setError(error)
-  }, [])
+    setError(error);
+  }, []);
 
   const handleSequenceIncrement = useCallback(() => {
-    feedbackSequenceRef.current += 1
-    setFeedbackSequence(feedbackSequenceRef.current)
-  }, [])
+    feedbackSequenceRef.current += 1;
+    setFeedbackSequence(feedbackSequenceRef.current);
+  }, []);
 
   const handleSenderSequenceUpdate = useCallback((sequence: number) => {
-    setLastSenderFeedbackSequence(sequence)
-  }, [])
+    setLastSenderFeedbackSequence(sequence);
+  }, []);
 
   const handleAckTransitionStatus = useCallback((successful: boolean) => {
-    console.log(`[FountainQRReceiver] ACK transition status reported: ${successful}`)
-    setLastAckTransitionSuccessful(successful)
-  }, [])
+    console.log(
+      `[FountainQRReceiver] ACK transition status reported: ${successful}`,
+    );
+    setLastAckTransitionSuccessful(successful);
+  }, []);
 
-
-
-
-
- // handleBinaryFountainChunk moved to subcomponent
-
+  // handleBinaryFountainChunk moved to subcomponent
 
   // handleScan moved to subcomponent
 
@@ -412,8 +490,8 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
 
   // Keep refs in sync with state for worker onmessage handler
   useEffect(() => {
-    isAwaitingFeedbackRef.current = isAwaitingFeedback
-  }, [isAwaitingFeedback])
+    isAwaitingFeedbackRef.current = isAwaitingFeedback;
+  }, [isAwaitingFeedback]);
 
   // Auto-start scanning moved to subcomponent
 
@@ -456,21 +534,18 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
   // handleStartScan, handleStopScan moved to subcomponent
 
   const handleDownload = () => {
-    if (!downloadUrl) return
+    if (!downloadUrl) return;
 
-    const link = document.createElement('a')
-    link.href = downloadUrl
-    link.download = fountainMetadata.name
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = fountainMetadata.name;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
     // Mark file as downloaded to prevent navigation warning
-    setFileDownloaded(true)
-  }
-
-
-
+    setFileDownloaded(true);
+  };
 
   return (
     <div className="space-y-4">
@@ -478,8 +553,13 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       {!feedbackEnabled && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium">📱 No-feedback mode: Continue scanning until transfer completes</p>
-            <p className="text-sm">Sender cannot scan QR codes. Transfer will complete using random chunk generation only. No feedback QR codes will be generated.</p>
+            <p className="font-medium">
+              📱 No-feedback mode: Continue scanning until transfer completes
+            </p>
+            <p className="text-sm">
+              Sender cannot scan QR codes. Transfer will complete using random
+              chunk generation only. No feedback QR codes will be generated.
+            </p>
           </AlertDescription>
         </Alert>
       )}
@@ -495,7 +575,10 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           lastSenderFeedbackSequence={lastSenderFeedbackSequence}
           receiverMode={receiverMode}
           success={success}
-          isActive={receiverMode === 'feedback-display' || receiverMode === 'ack-scanning'}
+          isActive={
+            receiverMode === 'feedback-display' ||
+            receiverMode === 'ack-scanning'
+          }
           onFeedbackGenerated={handleFeedbackGenerated}
           onAckReceived={handleAckReceived}
           onModeChange={handleFeedbackModeChange}
@@ -511,7 +594,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
       {/* Progress moved to subcomponent */}
 
       {/* Metadata Info moved to subcomponent */}
-
 
       {/* Error Alert */}
       {error && (
@@ -531,30 +613,57 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
                   Decoded using fountain codes
                 </span>
               </p>
-              <div className={`text-sm font-medium space-y-2 ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}>
+              <div
+                className={`text-sm font-medium space-y-2 ${integrityOk === null ? 'text-yellow-600' : integrityOk ? 'text-green-600' : 'text-red-600'}`}
+              >
                 <p>
                   {integrityOk === null && '⏳ Verifying integrity...'}
                   {integrityOk === true && '🔐 Integrity verified'}
                   {integrityOk === false && '❌ Integrity check failed'}
                 </p>
                 <div className="space-y-1 text-xs">
-                  <p><span className="font-semibold">Expected checksum:</span> <span className="font-mono break-all">{initialMetadata.checksum}</span></p>
-                  <p><span className="font-semibold">Actual checksum:</span> <span className="font-mono break-all">{actualChecksum || '(calculating...)'}</span></p>
+                  <p>
+                    <span className="font-semibold">Expected checksum:</span>{' '}
+                    <span className="font-mono break-all">
+                      {initialMetadata.checksum}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-semibold">Actual checksum:</span>{' '}
+                    <span className="font-mono break-all">
+                      {actualChecksum || '(calculating...)'}
+                    </span>
+                  </p>
                 </div>
               </div>
               <div className="text-sm text-muted-foreground space-y-1 border-t pt-3">
-                <p className="font-medium text-foreground">Transfer Statistics:</p>
+                <p className="font-medium text-foreground">
+                  Transfer Statistics:
+                </p>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div>
-                    <span className="font-semibold">Chunks received:</span> {receivedFountainChunks}
+                    <span className="font-semibold">Chunks received:</span>{' '}
+                    {receivedFountainChunks}
                   </div>
                   <div>
-                    <span className="font-semibold">Blocks decoded:</span> {decodedBlocks}
+                    <span className="font-semibold">Blocks decoded:</span>{' '}
+                    {decodedBlocks}
                   </div>
                   <div className="col-span-2">
-                    <span className="font-semibold">Efficiency ratio:</span> {decodedBlocks > 0 ? (receivedFountainChunks / decodedBlocks).toFixed(2) : 'N/A'} chunks per block
+                    <span className="font-semibold">Efficiency ratio:</span>{' '}
+                    {decodedBlocks > 0
+                      ? (receivedFountainChunks / decodedBlocks).toFixed(2)
+                      : 'N/A'}{' '}
+                    chunks per block
                     <span className="text-xs ml-1">
-                      ({decodedBlocks > 0 ? ((receivedFountainChunks / decodedBlocks - 1) * 100).toFixed(1) : '0'}% overhead)
+                      (
+                      {decodedBlocks > 0
+                        ? (
+                            (receivedFountainChunks / decodedBlocks - 1) *
+                            100
+                          ).toFixed(1)
+                        : '0'}
+                      % overhead)
                     </span>
                   </div>
                 </div>
@@ -593,19 +702,19 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
           // Optional: handle chunk scanned callback if needed
         }}
         onScanError={(error) => {
-          setError(error)
+          setError(error);
         }}
         onScanStart={() => {
-          setIsScanning(true)
+          setIsScanning(true);
           // Reset chunk counter when starting a new scan
-          chunkCounterRef.current = 0
-          setReceivedFountainChunks(0)
-          currentPartChunkCountRef.current = 0
-          setCurrentPartChunkCount(0)
-          lastUIUpdateRef.current = Date.now()
+          chunkCounterRef.current = 0;
+          setReceivedFountainChunks(0);
+          currentPartChunkCountRef.current = 0;
+          setCurrentPartChunkCount(0);
+          lastUIUpdateRef.current = Date.now();
         }}
         onScanStop={() => {
-          setIsScanning(false)
+          setIsScanning(false);
         }}
         onToggleMetadataInfo={() => {
           // Optional: handle metadata info toggle if needed
@@ -613,7 +722,6 @@ export function FountainQRReceiver({ initialMetadata }: FountainQRReceiverProps)
         onModeChange={handleFeedbackModeChange}
         onAckTransitionStatus={handleAckTransitionStatus}
       />
-
     </div>
-  )
+  );
 }

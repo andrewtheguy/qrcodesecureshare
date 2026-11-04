@@ -15,18 +15,18 @@
 // QR Version 40 capacity in bytes for each error correction level (byte mode)
 // Source: ISO/IEC 18004:2015 QR Code specification
 export const QR_VERSION_40_CAPACITY = {
-  'L': 2953,  // Low ECC (7% recovery capability)
-  'M': 2331,  // Medium ECC (15% recovery capability)
-  'Q': 1663,  // Quartile ECC (25% recovery capability)
-  'H': 1273   // High ECC (30% recovery capability)
-} as const
+  L: 2953, // Low ECC (7% recovery capability)
+  M: 2331, // Medium ECC (15% recovery capability)
+  Q: 1663, // Quartile ECC (25% recovery capability)
+  H: 1273, // High ECC (30% recovery capability)
+} as const;
 
 // Safety margin applied to theoretical capacity to ensure reliable encoding
 // We use 60% of theoretical capacity to account for:
 // - Chunk overhead (magic bytes, seed, indices, checksum)
 // - Part metadata (when enabled)
 // - Encoding inefficiencies
-const SAFETY_MARGIN = 0.6
+const SAFETY_MARGIN = 0.6;
 
 /**
  * Calculate the safe usable capacity for a QR code based on error correction level.
@@ -44,10 +44,10 @@ const SAFETY_MARGIN = 0.6
  * ```
  */
 export function getQRCapacity(eccLevel: 'L' | 'M' | 'Q' | 'H'): number {
-  const theoreticalCapacity = QR_VERSION_40_CAPACITY[eccLevel]
-  const safeCapacity = Math.floor(theoreticalCapacity * SAFETY_MARGIN)
+  const theoreticalCapacity = QR_VERSION_40_CAPACITY[eccLevel];
+  const safeCapacity = Math.floor(theoreticalCapacity * SAFETY_MARGIN);
 
-  return safeCapacity
+  return safeCapacity;
 }
 
 /**
@@ -57,12 +57,12 @@ export function getQRCapacity(eccLevel: 'L' | 'M' | 'Q' | 'H'): number {
  * @returns Object with capacity info for each ECC level
  */
 export function getAllQRCapacities() {
-  const levels = ['L', 'M', 'Q', 'H'] as const
+  const levels = ['L', 'M', 'Q', 'H'] as const;
 
-  return levels.map(level => ({
+  return levels.map((level) => ({
     level,
     theoretical: QR_VERSION_40_CAPACITY[level],
     safe: getQRCapacity(level),
-    safetyMargin: SAFETY_MARGIN
-  }))
+    safetyMargin: SAFETY_MARGIN,
+  }));
 }

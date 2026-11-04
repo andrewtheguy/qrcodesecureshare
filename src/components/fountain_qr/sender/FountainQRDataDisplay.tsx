@@ -8,53 +8,53 @@
  *
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Slider } from '@/components/ui/slider'
-import { computeChecksum } from '@/utils/checksum'
-import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm'
-import type { FountainChunk, FountainEncoder } from '@/utils/fountainCodeWasm'
-import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer'
-import QRWorker from '@/workers/qrGenerator.worker?worker'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
+import { computeChecksum } from '@/utils/checksum';
+import { generateFastQrModuleMatrix } from '@/utils/fastQrWasm';
+import type { FountainChunk, FountainEncoder } from '@/utils/fountainCodeWasm';
+import { renderQrModulesToCanvas } from '@/utils/qrCanvasRenderer';
+import QRWorker from '@/workers/qrGenerator.worker?worker';
 
-const DEFAULT_PART_CHECKSUM = '00000000'
-const AUTO_PAUSE_PADDING = 2
-const AUTO_PAUSE_MIN_MS = 120000
-const FOUNTAIN_QR_DISPLAY_SIZE = 400
+const DEFAULT_PART_CHECKSUM = '00000000';
+const AUTO_PAUSE_PADDING = 2;
+const AUTO_PAUSE_MIN_MS = 120000;
+const FOUNTAIN_QR_DISPLAY_SIZE = 400;
 
 interface QrMatrixFrame {
-  moduleCount: number
-  modules: Uint8Array
+  moduleCount: number;
+  modules: Uint8Array;
 }
 
 interface BufferedChunkFrame {
-  chunk: FountainChunk
-  qrFrame: QrMatrixFrame
-  chunkNum: number
+  chunk: FountainChunk;
+  qrFrame: QrMatrixFrame;
+  chunkNum: number;
 }
 
 interface FountainQRDataDisplayProps {
-  encoder: FountainEncoder | null
-  sessionId: number
+  encoder: FountainEncoder | null;
+  sessionId: number;
   qrOptions: {
-    errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
-    margin: number
-  }
-  isActive: boolean
-  activationToken: number
-  onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void
-  onBufferUpdate: (bufferSize: number) => void
-  onError: (error: string) => void
-  maxQRDataSize: number
+    errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+    margin: number;
+  };
+  isActive: boolean;
+  activationToken: number;
+  onChunkGenerated: (chunkNum: number, chunk: FountainChunk) => void;
+  onBufferUpdate: (bufferSize: number) => void;
+  onError: (error: string) => void;
+  maxQRDataSize: number;
   /**
    * Optional token to externally reset the auto-pause timer.
    * Bump this numeric value when you want to restart the auto-pause timeout.
    */
-  autoPauseResetToken?: number
+  autoPauseResetToken?: number;
 }
 
-const DEFAULT_FPS = 25
+const DEFAULT_FPS = 25;
 
 export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   const {
@@ -67,122 +67,130 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     onBufferUpdate,
     onError,
     maxQRDataSize,
-    autoPauseResetToken = 0
-  } = props
-  const [hasRenderedFrame, setHasRenderedFrame] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [fps, setFps] = useState<number>(DEFAULT_FPS)
-  const [chunkCount, setChunkCount] = useState(0)
-  const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0)
-  const [bufferLength, setBufferLength] = useState(0) // Separate state for UI display
-  const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false)
-  const [workerFallbackHint, setWorkerFallbackHint] = useState('')
-  const [oversizedChunkCount, setOversizedChunkCount] = useState(0)
-  const autoPauseTimeoutRef = useRef<number | null>(null)
-  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null)
+    autoPauseResetToken = 0,
+  } = props;
+  const [hasRenderedFrame, setHasRenderedFrame] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [fps, setFps] = useState<number>(DEFAULT_FPS);
+  const [chunkCount, setChunkCount] = useState(0);
+  const [estimatedChunksNeeded, setEstimatedChunksNeeded] = useState(0);
+  const [bufferLength, setBufferLength] = useState(0); // Separate state for UI display
+  const [isGeneratingBuffer, setIsGeneratingBuffer] = useState(false);
+  const [workerFallbackHint, setWorkerFallbackHint] = useState('');
+  const [oversizedChunkCount, setOversizedChunkCount] = useState(0);
+  const autoPauseTimeoutRef = useRef<number | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  const bufferTargetSizeRef = useRef(5) // Dynamic buffer size based on FPS
-  const lastBufferGenerationRef = useRef(0) // Track last buffer generation time
-  const currentChunkRef = useRef<FountainChunk | null>(null)
-  const workerRef = useRef<Worker | null>(null)
-  const pendingRequests = useRef<Map<number, {resolve: (frame: QrMatrixFrame) => void, reject: (err: Error) => void}>>(new Map())
-  const requestIdRef = useRef(0)
-  const chunkBufferRef = useRef<BufferedChunkFrame[]>([])
-  const chunkCountRef = useRef(chunkCount)
-  const bufferLengthRef = useRef(bufferLength)
-  const fpsRef = useRef(fps)
-  const chunkCounterRef = useRef<number>(0) // Track actual chunk count, synced to state every 500ms
+  const bufferTargetSizeRef = useRef(5); // Dynamic buffer size based on FPS
+  const lastBufferGenerationRef = useRef(0); // Track last buffer generation time
+  const currentChunkRef = useRef<FountainChunk | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const pendingRequests = useRef<
+    Map<
+      number,
+      { resolve: (frame: QrMatrixFrame) => void; reject: (err: Error) => void }
+    >
+  >(new Map());
+  const requestIdRef = useRef(0);
+  const chunkBufferRef = useRef<BufferedChunkFrame[]>([]);
+  const chunkCountRef = useRef(chunkCount);
+  const bufferLengthRef = useRef(bufferLength);
+  const fpsRef = useRef(fps);
+  const chunkCounterRef = useRef<number>(0); // Track actual chunk count, synced to state every 500ms
   // Tracks whether the component has been unmounted. In-flight async chunk/QR generation
   // can outlive the component (e.g. when the sender switches to ack-display, which unmounts
   // this component). Once unmounted we must NOT call onError or otherwise propagate worker
   // timeouts to the parent, because the worker was terminated by our own cleanup.
-  const isUnmountedRef = useRef(false)
+  const isUnmountedRef = useRef(false);
   // Mirror of the isActive prop for use inside async loops. An in-flight generateBufferChunk
   // that started while active may await worker results across a transition to inactive; by
   // the time it resumes, the isActive-change effect below has already called clearBuffer().
   // Checking this ref before pushToBuffer prevents repopulating the just-cleared buffer with
   // chunks whose part metadata is now stale (encoder may have advanced parts via feedback).
-  const isActiveRef = useRef(isActive)
+  const isActiveRef = useRef(isActive);
 
   const renderQrFrame = useCallback((frame: QrMatrixFrame) => {
-    const canvas = qrCanvasRef.current
+    const canvas = qrCanvasRef.current;
     if (!canvas) {
-      throw new Error('Fountain QR canvas is unavailable')
+      throw new Error('Fountain QR canvas is unavailable');
     }
 
     renderQrModulesToCanvas(canvas, frame.moduleCount, frame.modules, {
       size: FOUNTAIN_QR_DISPLAY_SIZE,
       darkColor: '#000000',
       lightColor: '#FFFFFF',
-    })
-    setHasRenderedFrame(true)
-  }, [])
+    });
+    setHasRenderedFrame(true);
+  }, []);
 
   // Update refs when state changes
   useEffect(() => {
-    chunkCountRef.current = chunkCount
-  }, [chunkCount])
+    chunkCountRef.current = chunkCount;
+  }, [chunkCount]);
 
   useEffect(() => {
-    bufferLengthRef.current = bufferLength
-  }, [bufferLength])
+    bufferLengthRef.current = bufferLength;
+  }, [bufferLength]);
 
   useEffect(() => {
-    fpsRef.current = fps
-  }, [fps])
+    fpsRef.current = fps;
+  }, [fps]);
 
   useEffect(() => {
-    isActiveRef.current = isActive
-  }, [isActive])
+    isActiveRef.current = isActive;
+  }, [isActive]);
 
   // Worker failure tracking
-  const consecutiveWorkerFailuresRef = useRef(0)
-  const consecutiveWorkerSuccessesRef = useRef(0)
-  const workerSkipUntilChunkRef = useRef(0)
-  const originalFpsRef = useRef(fps)
-  const originalBufferTargetRef = useRef(5)
+  const consecutiveWorkerFailuresRef = useRef(0);
+  const consecutiveWorkerSuccessesRef = useRef(0);
+  const workerSkipUntilChunkRef = useRef(0);
+  const originalFpsRef = useRef(fps);
+  const originalBufferTargetRef = useRef(5);
 
   // Helper functions for atomic buffer mutations
-  const pushToBuffer = useCallback((items: BufferedChunkFrame[]) => {
-    chunkBufferRef.current.push(...items)
-    const newLength = chunkBufferRef.current.length
-    setBufferLength(newLength)
-    onBufferUpdate(newLength)
-  }, [onBufferUpdate])
+  const pushToBuffer = useCallback(
+    (items: BufferedChunkFrame[]) => {
+      chunkBufferRef.current.push(...items);
+      const newLength = chunkBufferRef.current.length;
+      setBufferLength(newLength);
+      onBufferUpdate(newLength);
+    },
+    [onBufferUpdate],
+  );
 
   const consumeFromBuffer = useCallback((): BufferedChunkFrame | undefined => {
-    const item = chunkBufferRef.current.shift()
-    const newLength = chunkBufferRef.current.length
-    setBufferLength(newLength)
-    onBufferUpdate(newLength)
-    return item
-  }, [onBufferUpdate])
+    const item = chunkBufferRef.current.shift();
+    const newLength = chunkBufferRef.current.length;
+    setBufferLength(newLength);
+    onBufferUpdate(newLength);
+    return item;
+  }, [onBufferUpdate]);
 
   const clearBuffer = useCallback(() => {
-    chunkBufferRef.current = []
-    setBufferLength(0)
-    onBufferUpdate(0)
-  }, [onBufferUpdate])
+    chunkBufferRef.current = [];
+    setBufferLength(0);
+    onBufferUpdate(0);
+  }, [onBufferUpdate]);
 
   // Helper function to calculate expected chunk size
-  const calculateExpectedChunkSize = useCallback((
-    chunk: FountainChunk,
-    partInfo: { partBasedMode: boolean }
-  ): number => {
-    const numIndices = chunk.indices.length
-    const partMetadataSize = partInfo.partBasedMode ? 8 : 0 // currentPart(2) + totalParts(2) + partChecksum(4)
+  const calculateExpectedChunkSize = useCallback(
+    (chunk: FountainChunk, partInfo: { partBasedMode: boolean }): number => {
+      const numIndices = chunk.indices.length;
+      const partMetadataSize = partInfo.partBasedMode ? 8 : 0; // currentPart(2) + totalParts(2) + partChecksum(4)
 
-    return (
-      2 + // magic bytes
-      2 + // seed
-      1 + // degree
-      1 + // numIndices
-      (numIndices * 2) + // indices (2 bytes each)
-      partMetadataSize + // part metadata (if enabled)
-      chunk.data.length + // chunk data
-      4 // CRC32 checksum (4 bytes)
-    )
-  }, [])
+      return (
+        2 + // magic bytes
+        2 + // seed
+        1 + // degree
+        1 + // numIndices
+        numIndices * 2 + // indices (2 bytes each)
+        partMetadataSize + // part metadata (if enabled)
+        chunk.data.length + // chunk data
+        4 // CRC32 checksum (4 bytes)
+      );
+    },
+    [],
+  );
 
   // Helper function to serialize a chunk into binary format for QR encoding
   // Binary format:
@@ -196,97 +204,105 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // [partChecksum(4 bytes)] - optional, only if part-based mode
   // [chunk data...]
   // [checksum(4 bytes)] - CRC32 checksum over seed+degree+numIndices+indices+partMetadata+data
-  const serializeChunkToBinary = useCallback(async (
-    chunk: FountainChunk,
-    partInfo: {
-      partBasedMode: boolean
-      currentPartIndex: number
-      totalParts: number
-      currentPartChecksum?: string
-    }
-  ): Promise<Uint8Array> => {
-    const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
-    const numIndices = chunk.indices.length
+  const serializeChunkToBinary = useCallback(
+    async (
+      chunk: FountainChunk,
+      partInfo: {
+        partBasedMode: boolean;
+        currentPartIndex: number;
+        totalParts: number;
+        currentPartChecksum?: string;
+      },
+    ): Promise<Uint8Array> => {
+      const expectedSize = calculateExpectedChunkSize(chunk, partInfo);
+      const numIndices = chunk.indices.length;
 
-    // Validate that degree and numIndices fit in a single byte (max 255)
-    // These are encoded as uint8, so values > 255 would be silently truncated
-    if (chunk.degree > 255) {
-      throw new Error(`Chunk degree ${chunk.degree} exceeds maximum allowed value of 255 (uint8 limit)`)
-    }
-    if (numIndices > 255) {
-      throw new Error(`Number of indices ${numIndices} exceeds maximum allowed value of 255 (uint8 limit)`)
-    }
-
-    const binaryData = new Uint8Array(expectedSize)
-
-    let offset = 0
-    binaryData[offset++] = 0xFF // Magic byte 1
-    binaryData[offset++] = 0xFD // Magic byte 2
-
-    // Seed (2 bytes)
-    binaryData[offset++] = (chunk.seed >> 8) & 0xFF
-    binaryData[offset++] = chunk.seed & 0xFF
-
-    // Degree (1 byte) - validated above to be <= 255
-    binaryData[offset++] = chunk.degree
-
-    // Number of indices (1 byte) - validated above to be <= 255
-    binaryData[offset++] = numIndices
-
-    // Indices (2 bytes each)
-    for (const idx of chunk.indices) {
-      binaryData[offset++] = (idx >> 8) & 0xFF
-      binaryData[offset++] = idx & 0xFF
-    }
-
-    // Part metadata (if part-based mode is enabled)
-    if (partInfo.partBasedMode) {
-      // Current part index (2 bytes)
-      binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xFF
-      binaryData[offset++] = partInfo.currentPartIndex & 0xFF
-
-      // Total parts (2 bytes)
-      binaryData[offset++] = (partInfo.totalParts >> 8) & 0xFF
-      binaryData[offset++] = partInfo.totalParts & 0xFF
-
-      // Part checksum (4 bytes) - stored as hex string, convert to bytes
-      const partChecksumHex = partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM
-      for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
-        const byte = parseInt(partChecksumHex.slice(i, i + 2), 16)
-        binaryData[offset++] = byte
+      // Validate that degree and numIndices fit in a single byte (max 255)
+      // These are encoded as uint8, so values > 255 would be silently truncated
+      if (chunk.degree > 255) {
+        throw new Error(
+          `Chunk degree ${chunk.degree} exceeds maximum allowed value of 255 (uint8 limit)`,
+        );
       }
-    }
+      if (numIndices > 255) {
+        throw new Error(
+          `Number of indices ${numIndices} exceeds maximum allowed value of 255 (uint8 limit)`,
+        );
+      }
 
-    // Chunk data
-    binaryData.set(chunk.data, offset)
-    offset += chunk.data.length
+      const binaryData = new Uint8Array(expectedSize);
 
-    // Compute and append CRC32 checksum over complete chunk metadata and data
-    // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
-    const checksumPayload = binaryData.slice(2, offset) // Everything except magic bytes
-    const checksumHex = await computeChecksum(checksumPayload, 'crc32')
-    for (let i = 0; i < 8; i += 2) {
-      const byte = parseInt(checksumHex.slice(i, i + 2), 16)
-      binaryData[offset++] = byte
-    }
+      let offset = 0;
+      binaryData[offset++] = 0xff; // Magic byte 1
+      binaryData[offset++] = 0xfd; // Magic byte 2
 
-    return binaryData
-  }, [calculateExpectedChunkSize])
+      // Seed (2 bytes)
+      binaryData[offset++] = (chunk.seed >> 8) & 0xff;
+      binaryData[offset++] = chunk.seed & 0xff;
+
+      // Degree (1 byte) - validated above to be <= 255
+      binaryData[offset++] = chunk.degree;
+
+      // Number of indices (1 byte) - validated above to be <= 255
+      binaryData[offset++] = numIndices;
+
+      // Indices (2 bytes each)
+      for (const idx of chunk.indices) {
+        binaryData[offset++] = (idx >> 8) & 0xff;
+        binaryData[offset++] = idx & 0xff;
+      }
+
+      // Part metadata (if part-based mode is enabled)
+      if (partInfo.partBasedMode) {
+        // Current part index (2 bytes)
+        binaryData[offset++] = (partInfo.currentPartIndex >> 8) & 0xff;
+        binaryData[offset++] = partInfo.currentPartIndex & 0xff;
+
+        // Total parts (2 bytes)
+        binaryData[offset++] = (partInfo.totalParts >> 8) & 0xff;
+        binaryData[offset++] = partInfo.totalParts & 0xff;
+
+        // Part checksum (4 bytes) - stored as hex string, convert to bytes
+        const partChecksumHex =
+          partInfo.currentPartChecksum || DEFAULT_PART_CHECKSUM;
+        for (let i = 0; i < 8 && i < partChecksumHex.length; i += 2) {
+          const byte = parseInt(partChecksumHex.slice(i, i + 2), 16);
+          binaryData[offset++] = byte;
+        }
+      }
+
+      // Chunk data
+      binaryData.set(chunk.data, offset);
+      offset += chunk.data.length;
+
+      // Compute and append CRC32 checksum over complete chunk metadata and data
+      // Checksum is computed over: seed(2) + degree(1) + numIndices(1) + indices(2N) + [partMetadata] + data
+      const checksumPayload = binaryData.slice(2, offset); // Everything except magic bytes
+      const checksumHex = await computeChecksum(checksumPayload, 'crc32');
+      for (let i = 0; i < 8; i += 2) {
+        const byte = parseInt(checksumHex.slice(i, i + 2), 16);
+        binaryData[offset++] = byte;
+      }
+
+      return binaryData;
+    },
+    [calculateExpectedChunkSize],
+  );
 
   // Sync the actual chunk count ref to state periodically (every 500ms / half second) to avoid excessive re-renders
   useEffect(() => {
     const interval = setInterval(() => {
       // Always update state with the latest count from ref
-      const latestCount = chunkCounterRef.current
+      const latestCount = chunkCounterRef.current;
       if (latestCount !== chunkCount) {
-        setChunkCount(latestCount)
+        setChunkCount(latestCount);
       }
-    }, 500)
+    }, 500);
 
-    return () => clearInterval(interval)
-  }, [chunkCount])
+    return () => clearInterval(interval);
+  }, [chunkCount]);
 
-  const currentQROptions = useMemo(() => qrOptions, [qrOptions])
+  const currentQROptions = useMemo(() => qrOptions, [qrOptions]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: autoPauseResetToken is a poke dependency used to restart the auto-pause timer when the parent signals a reset
   useEffect(() => {
@@ -294,45 +310,58 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
     // Otherwise the timer could fire mid-feedback and leave isPlaying=false on resume.
     if (!isPlaying || !isActive) {
       if (autoPauseTimeoutRef.current !== null) {
-        clearTimeout(autoPauseTimeoutRef.current)
-        autoPauseTimeoutRef.current = null
+        clearTimeout(autoPauseTimeoutRef.current);
+        autoPauseTimeoutRef.current = null;
       }
-      return
+      return;
     }
 
-    const baseChunks = estimatedChunksNeeded || encoder?.getMetadata().totalSourceBlocks || 0
+    const baseChunks =
+      estimatedChunksNeeded || encoder?.getMetadata().totalSourceBlocks || 0;
     if (!baseChunks || fps <= 0) {
-      return
+      return;
     }
 
-    const paddedChunks = Math.ceil(baseChunks * AUTO_PAUSE_PADDING)
-    const estimatedMs = Math.max(AUTO_PAUSE_MIN_MS, Math.ceil((paddedChunks / fps) * 1000))
+    const paddedChunks = Math.ceil(baseChunks * AUTO_PAUSE_PADDING);
+    const estimatedMs = Math.max(
+      AUTO_PAUSE_MIN_MS,
+      Math.ceil((paddedChunks / fps) * 1000),
+    );
 
     if (autoPauseTimeoutRef.current !== null) {
-      clearTimeout(autoPauseTimeoutRef.current)
+      clearTimeout(autoPauseTimeoutRef.current);
     }
 
     autoPauseTimeoutRef.current = window.setTimeout(() => {
-      console.log('[FountainQRDataDisplay] Auto-pausing playback after timeout')
-      setIsPlaying(false)
-    }, estimatedMs)
+      console.log(
+        '[FountainQRDataDisplay] Auto-pausing playback after timeout',
+      );
+      setIsPlaying(false);
+    }, estimatedMs);
 
     return () => {
       if (autoPauseTimeoutRef.current !== null) {
-        clearTimeout(autoPauseTimeoutRef.current)
-        autoPauseTimeoutRef.current = null
+        clearTimeout(autoPauseTimeoutRef.current);
+        autoPauseTimeoutRef.current = null;
       }
-    }
-  }, [isPlaying, isActive, estimatedChunksNeeded, encoder, fps, autoPauseResetToken])
+    };
+  }, [
+    isPlaying,
+    isActive,
+    estimatedChunksNeeded,
+    encoder,
+    fps,
+    autoPauseResetToken,
+  ]);
 
   // Initialize encoder state
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when QR sizing parameters change so the estimate stays accurate even though they're not referenced in the body
   useEffect(() => {
     if (encoder) {
-      const meta = encoder.getMetadata()
-      setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1))
+      const meta = encoder.getMetadata();
+      setEstimatedChunksNeeded(Math.ceil(meta.totalSourceBlocks * 1.1));
     }
-  }, [encoder, maxQRDataSize, currentQROptions.errorCorrectionLevel])
+  }, [encoder, maxQRDataSize, currentQROptions.errorCorrectionLevel]);
 
   // Resume playback when the parent signals activation (encoder ready + token bump).
   // The chunk counter is intentionally NOT reset here so progress is preserved when the
@@ -341,21 +370,21 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // biome-ignore lint/correctness/useExhaustiveDependencies: isPlaying is intentionally excluded to avoid restarting mid-session
   useEffect(() => {
     if (encoder && isActive && !isPlaying && activationToken > 0) {
-      setIsPlaying(true)
+      setIsPlaying(true);
     }
-  }, [encoder, isActive, activationToken])
+  }, [encoder, isActive, activationToken]);
 
   // Reset on session change (new file / new transfer). chunkCounterRef lives here, not in
   // the activation effect, so mode-switch toggles preserve progress while a real session
   // change starts from zero.
   // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId is the trigger - body doesn't reference it directly
   useEffect(() => {
-    chunkCounterRef.current = 0
-    setChunkCount(0)
-    setOversizedChunkCount(0)
-    setHasRenderedFrame(false)
-    clearBuffer()
-  }, [sessionId, clearBuffer])
+    chunkCounterRef.current = 0;
+    setChunkCount(0);
+    setOversizedChunkCount(0);
+    setHasRenderedFrame(false);
+    clearBuffer();
+  }, [sessionId, clearBuffer]);
 
   // Drop any pre-generated chunks the moment we go inactive. Buffered chunks have the
   // encoder's part metadata baked into their QR frame at generation time; if the sender
@@ -363,381 +392,443 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
   // buffered chunks for the previous part are now wrong to broadcast on resume.
   useEffect(() => {
     if (!isActive) {
-      clearBuffer()
+      clearBuffer();
     }
-  }, [isActive, clearBuffer])
+  }, [isActive, clearBuffer]);
 
   // Initialize QR generation worker
   useEffect(() => {
     // React Strict Mode replays effects in development. Reset this flag when the
     // replayed setup mounts a fresh worker after the intentional cleanup pass.
-    isUnmountedRef.current = false
+    isUnmountedRef.current = false;
 
     // Capture the Map instance up front so the cleanup closes over the same Map the effect
     // observed (also silences react-hooks/exhaustive-deps on ref access in cleanup — we only
     // mutate this Map, never reassign .current).
-    const pendingMap = pendingRequests.current
+    const pendingMap = pendingRequests.current;
     try {
-      workerRef.current = new QRWorker()
+      workerRef.current = new QRWorker();
       workerRef.current.onmessage = (e) => {
         const { type, id, moduleBuffer, moduleCount, error } = e.data as {
-          type: 'success' | 'error'
-          id: number
-          moduleBuffer?: ArrayBuffer
-          moduleCount?: number
-          error?: string
-        }
-        const resolver = pendingMap.get(id)
+          type: 'success' | 'error';
+          id: number;
+          moduleBuffer?: ArrayBuffer;
+          moduleCount?: number;
+          error?: string;
+        };
+        const resolver = pendingMap.get(id);
         if (resolver) {
-          if (type === 'success' && moduleBuffer instanceof ArrayBuffer && typeof moduleCount === 'number') {
+          if (
+            type === 'success' &&
+            moduleBuffer instanceof ArrayBuffer &&
+            typeof moduleCount === 'number'
+          ) {
             try {
               resolver.resolve({
                 moduleCount,
                 modules: new Uint8Array(moduleBuffer),
-              })
+              });
             } catch (err) {
-              resolver.reject(err as Error)
+              resolver.reject(err as Error);
             }
           } else {
-            resolver.reject(new Error(error || 'Worker error'))
+            resolver.reject(new Error(error || 'Worker error'));
           }
-          pendingMap.delete(id)
+          pendingMap.delete(id);
         }
-      }
+      };
     } catch (err) {
-      console.warn('QR worker initialization failed, falling back to main thread generation:', err)
-      workerRef.current = null
+      console.warn(
+        'QR worker initialization failed, falling back to main thread generation:',
+        err,
+      );
+      workerRef.current = null;
     }
 
     return () => {
-      isUnmountedRef.current = true
+      isUnmountedRef.current = true;
       // Reject pending QR requests immediately so awaiting callers fail fast
       // instead of waiting up to ~8s for the worker timeout (the worker is being terminated).
-      const pending = Array.from(pendingMap.values())
-      pendingMap.clear()
+      const pending = Array.from(pendingMap.values());
+      pendingMap.clear();
       for (const { reject } of pending) {
-        reject(new Error('Component unmounted'))
+        reject(new Error('Component unmounted'));
       }
-      workerRef.current?.terminate()
-    }
-  }, [])
+      workerRef.current?.terminate();
+    };
+  }, []);
 
   // Update buffer target size based on FPS
   useEffect(() => {
     // For low FPS (<=5), use smaller buffer to avoid over-generation
     // For high FPS, use larger buffer to ensure smooth playback
     if (fps <= 5) {
-      bufferTargetSizeRef.current = 2 // Small buffer for low FPS
+      bufferTargetSizeRef.current = 2; // Small buffer for low FPS
     } else if (fps <= 15) {
-      bufferTargetSizeRef.current = 3
+      bufferTargetSizeRef.current = 3;
     } else {
-      bufferTargetSizeRef.current = 5
+      bufferTargetSizeRef.current = 5;
     }
-  }, [fps])
+  }, [fps]);
 
   // Generate QR module matrix (prefer worker, fallback to main thread).
-  const generateQRInWorker = useCallback(async (binaryData: Uint8Array, options: { errorCorrectionLevel?: string; margin?: number }): Promise<QrMatrixFrame> => {
-    const currentChunkNum = chunkCountRef.current + bufferLengthRef.current
-    const shouldSkipWorker = currentChunkNum < workerSkipUntilChunkRef.current
+  const generateQRInWorker = useCallback(
+    (
+      binaryData: Uint8Array,
+      options: { errorCorrectionLevel?: string; margin?: number },
+    ): Promise<QrMatrixFrame> => {
+      const currentChunkNum = chunkCountRef.current + bufferLengthRef.current;
+      const shouldSkipWorker =
+        currentChunkNum < workerSkipUntilChunkRef.current;
 
-    if (shouldSkipWorker) {
-      throw new Error('QR worker temporarily paused after repeated failures')
-    }
-
-    const worker = workerRef.current
-    if (!worker) {
-      return generateFastQrModuleMatrix(binaryData, {
-        margin: options.margin ?? 1,
-        errorCorrectionLevel: (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') ?? 'M',
-        mode: 'byte',
-      })
-    }
-
-    const payload = binaryData.slice()
-
-    const workerPromise = new Promise<QrMatrixFrame>((resolve, reject) => {
-      const id = requestIdRef.current++
-      const adaptiveTimeout = consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000
-      const timeout = setTimeout(() => {
-        pendingRequests.current.delete(id)
-        reject(new Error('Worker timeout'))
-      }, adaptiveTimeout)
-
-      pendingRequests.current.set(id, {
-        resolve: (frame: QrMatrixFrame) => {
-          clearTimeout(timeout)
-          consecutiveWorkerFailuresRef.current = 0
-          consecutiveWorkerSuccessesRef.current++
-          setWorkerFallbackHint('')
-          resolve(frame)
-        },
-        reject: (err: Error) => {
-          clearTimeout(timeout)
-          reject(err)
-        }
-      })
-
-      try {
-        worker.postMessage(
-          { type: 'generate', id, binaryBuffer: payload.buffer, options },
-          [payload.buffer]
-        )
-      } catch (err) {
-        console.warn('Worker postMessage failed:', err)
-        clearTimeout(timeout)
-        pendingRequests.current.delete(id)
-        reject(err as Error)
-      }
-    })
-
-    return workerPromise.catch((err) => {
-      if (isUnmountedRef.current) {
-        throw err
-      }
-      console.warn('QR worker failed during generation:', err)
-
-      consecutiveWorkerFailuresRef.current++
-      consecutiveWorkerSuccessesRef.current = 0
-      const failures = consecutiveWorkerFailuresRef.current
-
-      if (failures >= 3) {
-        const skipChunks = Math.min(2 ** (failures - 2), 64)
-        workerSkipUntilChunkRef.current = currentChunkNum + skipChunks
-
-        console.warn(`${failures} consecutive worker failures. Pausing worker for next ${skipChunks} chunks.`)
-
-        if (failures >= 5) {
-          originalFpsRef.current = fpsRef.current
-          const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2)
-          setFps(reducedFps)
-          console.warn(`Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`)
-        }
-
-        if (failures >= 4) {
-          originalBufferTargetRef.current = bufferTargetSizeRef.current
-          bufferTargetSizeRef.current = Math.min(bufferTargetSizeRef.current + 2, 10)
-          console.warn(`Increasing buffer target to ${bufferTargetSizeRef.current}`)
-        }
-
-        if (failures >= 5) {
-          setWorkerFallbackHint(`QR worker repeatedly failed (${failures}). Try reducing FPS or restarting.`)
-        } else {
-          setWorkerFallbackHint('QR worker encountered repeated failures; retrying soon.')
-        }
+      if (shouldSkipWorker) {
+        throw new Error('QR worker temporarily paused after repeated failures');
       }
 
-      throw err
-    })
-  }, [])
+      const worker = workerRef.current;
+      if (!worker) {
+        return generateFastQrModuleMatrix(binaryData, {
+          margin: options.margin ?? 1,
+          errorCorrectionLevel:
+            (options.errorCorrectionLevel as 'L' | 'M' | 'Q' | 'H') ?? 'M',
+          mode: 'byte',
+        });
+      }
+
+      const payload = binaryData.slice();
+
+      const workerPromise = new Promise<QrMatrixFrame>((resolve, reject) => {
+        const id = requestIdRef.current++;
+        const adaptiveTimeout =
+          consecutiveWorkerSuccessesRef.current < 5 ? 8000 : 5000;
+        const timeout = setTimeout(() => {
+          pendingRequests.current.delete(id);
+          reject(new Error('Worker timeout'));
+        }, adaptiveTimeout);
+
+        pendingRequests.current.set(id, {
+          resolve: (frame: QrMatrixFrame) => {
+            clearTimeout(timeout);
+            consecutiveWorkerFailuresRef.current = 0;
+            consecutiveWorkerSuccessesRef.current++;
+            setWorkerFallbackHint('');
+            resolve(frame);
+          },
+          reject: (err: Error) => {
+            clearTimeout(timeout);
+            reject(err);
+          },
+        });
+
+        try {
+          worker.postMessage(
+            { type: 'generate', id, binaryBuffer: payload.buffer, options },
+            [payload.buffer],
+          );
+        } catch (err) {
+          console.warn('Worker postMessage failed:', err);
+          clearTimeout(timeout);
+          pendingRequests.current.delete(id);
+          reject(err as Error);
+        }
+      });
+
+      return workerPromise.catch((err) => {
+        if (isUnmountedRef.current) {
+          throw err;
+        }
+        console.warn('QR worker failed during generation:', err);
+
+        consecutiveWorkerFailuresRef.current++;
+        consecutiveWorkerSuccessesRef.current = 0;
+        const failures = consecutiveWorkerFailuresRef.current;
+
+        if (failures >= 3) {
+          const skipChunks = Math.min(2 ** (failures - 2), 64);
+          workerSkipUntilChunkRef.current = currentChunkNum + skipChunks;
+
+          console.warn(
+            `${failures} consecutive worker failures. Pausing worker for next ${skipChunks} chunks.`,
+          );
+
+          if (failures >= 5) {
+            originalFpsRef.current = fpsRef.current;
+            const reducedFps = Math.max(Math.floor(fpsRef.current * 0.7), 2);
+            setFps(reducedFps);
+            console.warn(
+              `Reducing FPS from ${fpsRef.current} to ${reducedFps} due to worker failures`,
+            );
+          }
+
+          if (failures >= 4) {
+            originalBufferTargetRef.current = bufferTargetSizeRef.current;
+            bufferTargetSizeRef.current = Math.min(
+              bufferTargetSizeRef.current + 2,
+              10,
+            );
+            console.warn(
+              `Increasing buffer target to ${bufferTargetSizeRef.current}`,
+            );
+          }
+
+          if (failures >= 5) {
+            setWorkerFallbackHint(
+              `QR worker repeatedly failed (${failures}). Try reducing FPS or restarting.`,
+            );
+          } else {
+            setWorkerFallbackHint(
+              'QR worker encountered repeated failures; retrying soon.',
+            );
+          }
+        }
+
+        throw err;
+      });
+    },
+    [],
+  );
 
   // Generate and display fountain-coded chunk in binary format
   // biome-ignore lint/correctness/useExhaustiveDependencies: chunkCount is intentionally a re-trigger; refs are stable and don't need to be listed
   useEffect(() => {
-    const bufferTargetSize = bufferTargetSizeRef.current
-    if (!isActive) return
-    if (!encoder || isGeneratingBuffer || bufferLength >= bufferTargetSize) return
+    const bufferTargetSize = bufferTargetSizeRef.current;
+    if (!isActive) return;
+    if (!encoder || isGeneratingBuffer || bufferLength >= bufferTargetSize)
+      return;
 
     // Throttle buffer generation based on FPS
     // Don't generate new chunks faster than the display rate
-    const minTimeBetweenGenerations = 1000 / fps / 2 // Generate at most 2x the display rate
-    const now = Date.now()
-    const timeSinceLastGeneration = now - lastBufferGenerationRef.current
+    const minTimeBetweenGenerations = 1000 / fps / 2; // Generate at most 2x the display rate
+    const now = Date.now();
+    const timeSinceLastGeneration = now - lastBufferGenerationRef.current;
 
-    if (timeSinceLastGeneration < minTimeBetweenGenerations && lastBufferGenerationRef.current > 0) {
+    if (
+      timeSinceLastGeneration < minTimeBetweenGenerations &&
+      lastBufferGenerationRef.current > 0
+    ) {
       // Too soon to generate another chunk, schedule for later
       const timeoutId = setTimeout(() => {
         // Trigger re-check by updating buffer length state
-        setBufferLength(chunkBufferRef.current.length)
-      }, minTimeBetweenGenerations - timeSinceLastGeneration)
-      return () => clearTimeout(timeoutId)
+        setBufferLength(chunkBufferRef.current.length);
+      }, minTimeBetweenGenerations - timeSinceLastGeneration);
+      return () => clearTimeout(timeoutId);
     }
 
     const generateBufferChunk = async () => {
-      setIsGeneratingBuffer(true)
-      lastBufferGenerationRef.current = Date.now()
+      setIsGeneratingBuffer(true);
+      lastBufferGenerationRef.current = Date.now();
 
       try {
-        const batch: BufferedChunkFrame[] = []
-        const maxRetries = 20
+        const batch: BufferedChunkFrame[] = [];
+        const maxRetries = 20;
 
         // Generate only one chunk at a time to respect FPS throttling
-        const chunksToGenerate = Math.min(1, bufferTargetSize - bufferLength)
+        const chunksToGenerate = Math.min(1, bufferTargetSize - bufferLength);
 
         while (batch.length < chunksToGenerate) {
-          let attempt = 0
-          let success = false
+          let attempt = 0;
+          let success = false;
 
           while (attempt < maxRetries && !success) {
-            if (isUnmountedRef.current) return
+            if (isUnmountedRef.current) return;
             try {
-              const chunk = encoder.generateChunk()
-              const partInfo = encoder.getPartInfo()
+              const chunk = encoder.generateChunk();
+              const partInfo = encoder.getPartInfo();
 
               // Calculate expected size and track oversized chunks
-              const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
+              const expectedSize = calculateExpectedChunkSize(chunk, partInfo);
               if (expectedSize > maxQRDataSize) {
-                setOversizedChunkCount(prev => prev + 1)
+                setOversizedChunkCount((prev) => prev + 1);
               }
 
               // Serialize chunk to binary format
-              const binaryData = await serializeChunkToBinary(chunk, partInfo)
+              const binaryData = await serializeChunkToBinary(chunk, partInfo);
 
               const qrFrame = await generateQRInWorker(binaryData, {
                 margin: currentQROptions.margin,
                 errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
-              })
+              });
 
-              const chunkNum = chunkCountRef.current + bufferLengthRef.current + batch.length + 1
-              batch.push({ chunk, qrFrame, chunkNum })
-              success = true
-
+              const chunkNum =
+                chunkCountRef.current +
+                bufferLengthRef.current +
+                batch.length +
+                1;
+              batch.push({ chunk, qrFrame, chunkNum });
+              success = true;
             } catch (err) {
-              attempt++
+              attempt++;
               if (attempt >= maxRetries) {
-                console.error('Failed to generate buffer chunk after max retries:', err)
+                console.error(
+                  'Failed to generate buffer chunk after max retries:',
+                  err,
+                );
               }
             }
           }
 
-          if (!success) break // Stop trying if we can't generate any more chunks
+          if (!success) break; // Stop trying if we can't generate any more chunks
         }
 
         // Single batched state update. Skip the push if we went inactive while awaiting the
         // worker — the isActive-change effect cleared the buffer for a reason (the encoder may
         // have advanced parts via feedback), and these chunks would carry stale part metadata.
         if (batch.length > 0 && isActiveRef.current) {
-          pushToBuffer(batch)
+          pushToBuffer(batch);
         }
       } finally {
-        setIsGeneratingBuffer(false)
+        setIsGeneratingBuffer(false);
       }
-    }
+    };
 
-    generateBufferChunk()
-  }, [encoder, isGeneratingBuffer, bufferLength, chunkCount, fps, currentQROptions.margin, currentQROptions.errorCorrectionLevel, maxQRDataSize, isActive, generateQRInWorker, pushToBuffer, calculateExpectedChunkSize, serializeChunkToBinary])
+    generateBufferChunk();
+  }, [
+    encoder,
+    isGeneratingBuffer,
+    bufferLength,
+    chunkCount,
+    fps,
+    currentQROptions.margin,
+    currentQROptions.errorCorrectionLevel,
+    maxQRDataSize,
+    isActive,
+    generateQRInWorker,
+    pushToBuffer,
+    calculateExpectedChunkSize,
+    serializeChunkToBinary,
+  ]);
 
   // Generate and display fountain-coded chunk in binary format
   const generateAndShowNextChunk = async () => {
-    if (!encoder) return
+    if (!encoder) return;
 
-    const maxRetries = 20 // Maximum attempts to find a chunk that fits
-    let attempt = 0
+    const maxRetries = 20; // Maximum attempts to find a chunk that fits
+    let attempt = 0;
 
     while (attempt < maxRetries) {
-      if (isUnmountedRef.current) return
+      if (isUnmountedRef.current) return;
       try {
         // Generate next fountain-coded chunk (internally tuned distribution + doping)
-        const chunk = encoder.generateChunk()
-        const partInfo = encoder.getPartInfo()
+        const chunk = encoder.generateChunk();
+        const partInfo = encoder.getPartInfo();
 
         // Calculate expected size and track oversized chunks
-        const expectedSize = calculateExpectedChunkSize(chunk, partInfo)
+        const expectedSize = calculateExpectedChunkSize(chunk, partInfo);
         if (expectedSize > maxQRDataSize) {
-          setOversizedChunkCount(prev => prev + 1)
+          setOversizedChunkCount((prev) => prev + 1);
         }
 
         // Serialize chunk to binary format
-        const binaryData = await serializeChunkToBinary(chunk, partInfo)
+        const binaryData = await serializeChunkToBinary(chunk, partInfo);
 
         const qrFrame = await generateQRInWorker(binaryData, {
           margin: currentQROptions.margin,
           errorCorrectionLevel: currentQROptions.errorCorrectionLevel,
-        })
+        });
 
         // Success! Update state and display
-        currentChunkRef.current = chunk
-        chunkCounterRef.current++
-        onChunkGenerated(chunkCounterRef.current, chunk)
-        renderQrFrame(qrFrame)
-        return // Exit successfully
-
+        currentChunkRef.current = chunk;
+        chunkCounterRef.current++;
+        onChunkGenerated(chunkCounterRef.current, chunk);
+        renderQrFrame(qrFrame);
+        return; // Exit successfully
       } catch (err) {
         // If we unmounted (e.g. sender switched to ack-display), the worker was terminated
         // by our cleanup and any in-flight request will reject. Swallow the error rather than
         // propagating a "Worker timeout" to the parent, which would otherwise render only the
         // destructive Alert and strand the user on an error screen.
         if (isUnmountedRef.current) {
-          return
+          return;
         }
 
-        const errorMsg = err instanceof Error ? err.message : String(err)
+        const errorMsg = err instanceof Error ? err.message : String(err);
 
         // Check if error is about data being too big
-        if (errorMsg.includes('too big') || errorMsg.includes('too large') || errorMsg.includes('too much')) {
-          console.warn(`Chunk too large for QR code (attempt ${attempt + 1}/${maxRetries}), generating new chunk...`)
-          attempt++
+        if (
+          errorMsg.includes('too big') ||
+          errorMsg.includes('too large') ||
+          errorMsg.includes('too much')
+        ) {
+          console.warn(
+            `Chunk too large for QR code (attempt ${attempt + 1}/${maxRetries}), generating new chunk...`,
+          );
+          attempt++;
         } else {
           // Other error, stop and report
-          console.error('QR generation error:', err)
-          onError(`Failed to generate QR code: ${errorMsg}`)
-          return
+          console.error('QR generation error:', err);
+          onError(`Failed to generate QR code: ${errorMsg}`);
+          return;
         }
       }
     }
 
     // If we exhausted all retries, show warning but keep last successful QR
-    console.error(`Failed to generate QR after ${maxRetries} attempts - data chunks too large`)
-    onError(`Warning: Some chunks are too large for QR codes`)
-  }
+    console.error(
+      `Failed to generate QR after ${maxRetries} attempts - data chunks too large`,
+    );
+    onError(`Warning: Some chunks are too large for QR codes`);
+  };
 
   // Animation loop
   // biome-ignore lint/correctness/useExhaustiveDependencies: generateAndShowNextChunk and consumeFromBuffer are intentionally omitted to prevent re-subscription churn
   useEffect(() => {
-    if (!isPlaying || !encoder || !isActive) return
+    if (!isPlaying || !encoder || !isActive) return;
 
     // Generate first chunk immediately (from buffer if available, otherwise generate)
-    const bufferedItem = consumeFromBuffer()
+    const bufferedItem = consumeFromBuffer();
     if (bufferedItem) {
-      currentChunkRef.current = bufferedItem.chunk
-      chunkCounterRef.current = bufferedItem.chunkNum
-      renderQrFrame(bufferedItem.qrFrame)
-      onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
+      currentChunkRef.current = bufferedItem.chunk;
+      chunkCounterRef.current = bufferedItem.chunkNum;
+      renderQrFrame(bufferedItem.qrFrame);
+      onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk);
     } else {
-      generateAndShowNextChunk()
+      generateAndShowNextChunk();
     }
 
     const interval = setInterval(() => {
-      const bufferedItem = consumeFromBuffer()
+      const bufferedItem = consumeFromBuffer();
       if (bufferedItem) {
-        currentChunkRef.current = bufferedItem.chunk
-        chunkCounterRef.current = bufferedItem.chunkNum
-        renderQrFrame(bufferedItem.qrFrame)
-        onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk)
+        currentChunkRef.current = bufferedItem.chunk;
+        chunkCounterRef.current = bufferedItem.chunkNum;
+        renderQrFrame(bufferedItem.qrFrame);
+        onChunkGenerated(bufferedItem.chunkNum, bufferedItem.chunk);
       } else {
-        generateAndShowNextChunk()
+        generateAndShowNextChunk();
       }
-    }, 1000 / fps)
+    }, 1000 / fps);
 
-    return () => clearInterval(interval)
-  }, [isPlaying, encoder, fps, isActive, onChunkGenerated, renderQrFrame])
+    return () => clearInterval(interval);
+  }, [isPlaying, encoder, fps, isActive, onChunkGenerated, renderQrFrame]);
 
   const handlePlayPause = () => {
     if (!isPlaying && encoder) {
-      chunkCounterRef.current = 0
-      setChunkCount(0)
-      setHasRenderedFrame(false)
-      clearBuffer() // Clear buffer on restart
+      chunkCounterRef.current = 0;
+      setChunkCount(0);
+      setHasRenderedFrame(false);
+      clearBuffer(); // Clear buffer on restart
     }
-    setIsPlaying(!isPlaying)
-  }
+    setIsPlaying(!isPlaying);
+  };
 
   const handleSpeedChange = (newFps: number) => {
     // Snap to common frame rates
-    const snapPoints = [1, 2, 5, 10, 15, 20, 24, 25, 30, 45, 60]
-    const threshold = 2 // pixels of "stickiness"
+    const snapPoints = [1, 2, 5, 10, 15, 20, 24, 25, 30, 45, 60];
+    const threshold = 2; // pixels of "stickiness"
 
     const closestSnap = snapPoints.reduce((closest, snap) => {
-      return Math.abs(snap - newFps) < Math.abs(closest - newFps) ? snap : closest
-    })
+      return Math.abs(snap - newFps) < Math.abs(closest - newFps)
+        ? snap
+        : closest;
+    });
 
     if (Math.abs(closestSnap - newFps) <= threshold) {
-      setFps(closestSnap)
+      setFps(closestSnap);
     } else {
-      setFps(newFps)
+      setFps(newFps);
     }
-  }
+  };
 
-  const partInfo = encoder?.getPartInfo()
+  const partInfo = encoder?.getPartInfo();
 
   return (
     <div className="space-y-4">
@@ -756,13 +847,15 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             }`}
           />
           {!hasRenderedFrame && (
-            <div
-              className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm"
-            >
+            <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-sky-400/30 bg-sky-500/10 text-sky-100/80 backdrop-blur-sm">
               <p className="text-center text-sm font-medium">
-                {encoder ? 'Generating fountain-coded QR stream…' : 'Processing file...'}
+                {encoder
+                  ? 'Generating fountain-coded QR stream…'
+                  : 'Processing file...'}
               </p>
-              <p className="mt-2 text-xs text-sky-200/70">Keep the display steady for best scan quality.</p>
+              <p className="mt-2 text-xs text-sky-200/70">
+                Keep the display steady for best scan quality.
+              </p>
             </div>
           )}
         </div>
@@ -770,10 +863,17 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
 
       {/* Caption / Status outside the QR container */}
       <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
-        <span className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold min-w-[60px] justify-center ${
-          isPlaying ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/40' : 'bg-sky-200 text-sky-700'
-        }`}>
-          <span className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse shadow-[0_0_6px_theme(colors.white/70%)]' : 'bg-sky-500'}`} /> LIVE
+        <span
+          className={`px-2 py-0.5 rounded flex items-center gap-1 font-semibold min-w-[60px] justify-center ${
+            isPlaying
+              ? 'bg-sky-600 text-white shadow-sm shadow-sky-500/40'
+              : 'bg-sky-200 text-sky-700'
+          }`}
+        >
+          <span
+            className={`w-2 h-2 rounded-full ${isPlaying ? 'bg-white animate-pulse shadow-[0_0_6px_theme(colors.white/70%)]' : 'bg-sky-500'}`}
+          />{' '}
+          LIVE
         </span>
       </div>
 
@@ -790,8 +890,12 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       {chunkCount > 0 && (
         <div className="space-y-1 text-sm">
           <div className="flex flex-wrap justify-center gap-2 text-center">
-            <span className="font-medium">Sent {chunkCount} chunk{chunkCount === 1 ? '' : 's'}</span>
-            <span className="opacity-70">(~{estimatedChunksNeeded} typically needed)</span>
+            <span className="font-medium">
+              Sent {chunkCount} chunk{chunkCount === 1 ? '' : 's'}
+            </span>
+            <span className="opacity-70">
+              (~{estimatedChunksNeeded} typically needed)
+            </span>
             {partInfo?.partBasedMode && (
               <span className="rounded-full border border-sky-200/70 bg-sky-400/70 px-2.5 py-0.5 text-[11px] font-semibold text-slate-950 shadow-sm">
                 Part {partInfo.currentPartIndex + 1}/{partInfo.totalParts}
@@ -806,7 +910,9 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
             </p>
             {oversizedChunkCount > 0 && (
               <p className="text-muted-foreground">
-                ℹ️ {oversizedChunkCount} chunk{oversizedChunkCount === 1 ? '' : 's'} exceeded theoretical size limit
+                ℹ️ {oversizedChunkCount} chunk
+                {oversizedChunkCount === 1 ? '' : 's'} exceeded theoretical size
+                limit
               </p>
             )}
           </div>
@@ -816,11 +922,7 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
       {/* Controls */}
       <div className="space-y-3">
         <div className="flex gap-2 justify-center">
-          <Button
-            size="sm"
-            onClick={handlePlayPause}
-            disabled={!encoder}
-          >
+          <Button size="sm" onClick={handlePlayPause} disabled={!encoder}>
             {isPlaying ? '⏸ Pause' : '▶ Play'}
           </Button>
         </div>
@@ -860,5 +962,5 @@ export function FountainQRDataDisplay(props: FountainQRDataDisplayProps) {
         </AlertDescription>
       </Alert>
     </div>
-  )
+  );
 }

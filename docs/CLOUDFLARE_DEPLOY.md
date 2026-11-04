@@ -1,73 +1,52 @@
 # Cloudflare Pages Deployment Setup
 
-This project uses Rust WASM, which requires special build configuration for Cloudflare Pages.
+The app ships one WebAssembly module built from this repository,
+`wasm/fountain`, so a Cloudflare Pages build needs a Rust toolchain. The QR
+reader (`@andrewtheguy/rxing-wasm`) and QR generator (`@andrewtheguy/fast-qr-wasm`)
+are prebuilt release tarballs that `bun install` fetches like any other
+dependency.
 
 ## Cloudflare Pages Configuration
 
-When setting up your Cloudflare Pages project, use these settings:
-
 ### Build Settings
 
-- **Build command**: `npm run build:cloud`
+- **Build command**: `bun run build:cloud`
 - **Build output directory**: `dist`
 - **Root directory**: `/` (project root)
 
-### Environment Variables
+Pages installs dependencies with Bun because the repository has a `bun.lock`.
+Set the `BUN_VERSION` environment variable to the version in `packageManager`
+in `package.json` so the build uses the same Bun as local development.
 
-Configure npm auth for GitHub Packages so Cloudflare can install
-`@andrewtheguy/rxing-wasm`. The repository `.npmrc` reads:
+## What `build:cloud` does
 
-- `NODE_AUTH_TOKEN`: a token that can read packages from `andrewtheguy`.
+`cloud_build.sh`:
 
-## What the build:cloud script does
-
-The `build:cloud` script (`cloud_build.sh`) performs the following:
-
-1. **Installs Rust toolchain** via rustup
-2. **Builds the in-repo WASM modules** using wasm-pack
-3. **Builds the Vite app** with TypeScript compilation
+1. Installs rustup, with no default toolchain.
+2. Runs `rustup toolchain install` in `wasm/fountain`, which installs the
+   toolchain and the `wasm32-unknown-unknown` target that
+   `wasm/fountain/rust-toolchain.toml` pins.
+3. Runs `bun run build`: the wasm module through the pinned `wasm-pack`
+   devDependency, then `tsc -b` and `vite build`.
 
 ## Local Development
 
-For local development, you don't need to use `build:cloud`. Instead:
-
 ```bash
-# Install dependencies, including the published QR reader package
-npm install
-
-# Run dev server (uses pre-built WASM or rebuild with build:wasm if needed)
-npm run dev
-
-# Rebuild WASM locally
-npm run build:wasm
-
-# Full local build
-npm run build
+bun install
+bun run build:wasm   # once, and after every change under wasm/
+bun run dev
+bun run build        # the full production build
 ```
 
 ## Troubleshooting
 
-### Build fails on Cloudflare Pages
+### WASM module not found
 
-1. Check that `cloud_build.sh` has the executable bit set:
-   ```bash
-   chmod +x cloud_build.sh
-   git add cloud_build.sh
-   git commit -m "Make cloud_build.sh executable"
-   ```
+`wasm/fountain/pkg/` is a build output and is not committed. Run
+`bun run build:wasm` to create it.
 
-2. Verify the build command is exactly: `npm run build:cloud`
+### `wasm-pack` has no binary
 
-3. Check build logs for Rust installation errors
-
-### WASM module not found errors
-
-If you get errors about missing WASM modules, rebuild locally:
-```bash
-npm run build:wasm
-```
-
-The generated `rust/fountain-wasm/pkg/` directory should be committed to git
-for Cloudflare Pages to work properly. The QR reader (`@andrewtheguy/rxing-wasm`)
-and QR generator (`@andrewtheguy/fast-qr-wasm`) packages are installed from
-GitHub release tarballs instead of being built inside this repository.
+The `wasm-pack` package downloads its binary in a postinstall script, which Bun
+runs only because `package.json` lists it in `trustedDependencies`. Reinstall
+with `bun install` if the binary is missing.

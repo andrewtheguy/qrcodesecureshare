@@ -1,16 +1,16 @@
-import { useRegisterSW } from 'virtual:pwa-register/react'
-import { RefreshCw } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
+import { useRegisterSW } from 'virtual:pwa-register/react';
+import { RefreshCw } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 
 export function PwaUpdatePrompt() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
-  } = useRegisterSW()
+  } = useRegisterSW();
 
   if (!needRefresh) {
-    return null
+    return null;
   }
 
   return (
@@ -35,5 +35,5 @@ export function PwaUpdatePrompt() {
         </div>
       </Alert>
     </div>
-  )
+  );
 }

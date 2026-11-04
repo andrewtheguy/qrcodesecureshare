@@ -1,9 +1,14 @@
-import init, { WasmFountainDecoder, WasmFountainEncoder } from '../../rust/fountain-wasm/pkg/fountain_wasm'
-import { DEFAULT_BLOCK_SIZE } from './fountainConfig'
+import init, {
+  crc32,
+  WasmFountainDecoder,
+  WasmFountainEncoder,
+} from '../../wasm/fountain/pkg/fountain_wasm.js';
+import fountainWasmUrl from '../../wasm/fountain/pkg/fountain_wasm_bg.wasm?url';
+import { DEFAULT_BLOCK_SIZE } from './fountainConfig';
 
 // WASM initialization state
-let wasmInitialized = false
-let wasmInitPromise: Promise<void> | null = null
+let wasmInitialized = false;
+let wasmInitPromise: Promise<void> | null = null;
 
 /**
  * Ensures WASM module is initialized before use
@@ -11,48 +16,51 @@ let wasmInitPromise: Promise<void> | null = null
  * @throws Error with code 'WASM_INIT_FAILED' if initialization fails
  */
 export async function ensureWasmInit(): Promise<void> {
-  if (wasmInitialized) return
+  if (wasmInitialized) return;
 
   if (!wasmInitPromise) {
     wasmInitPromise = (async () => {
-      const MAX_RETRIES = 2
-      const RETRY_DELAY_MS = 100
+      const MAX_RETRIES = 2;
+      const RETRY_DELAY_MS = 100;
 
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         try {
-          await init()
-          wasmInitialized = true
-          return
+          await init({ module_or_path: fountainWasmUrl });
+          wasmInitialized = true;
+          return;
         } catch (err) {
-          console.error(`[WASM Init] Attempt ${attempt}/${MAX_RETRIES} failed:`, err)
+          console.error(
+            `[WASM Init] Attempt ${attempt}/${MAX_RETRIES} failed:`,
+            err,
+          );
 
           if (attempt === MAX_RETRIES) {
             // Final attempt failed - reset promise cache before throwing so future retries can be attempted
-            wasmInitPromise = null
+            wasmInitPromise = null;
             const error = new Error(
               `WASM_INIT_FAILED: Failed to initialize WASM module after ${MAX_RETRIES} attempts. ` +
-              `The WASM bundle may not be loaded. Please refresh the page and try again. ` +
-              `Original error: ${err instanceof Error ? err.message : String(err)}`
-            )
-            throw error
+                `The WASM bundle may not be loaded. Please refresh the page and try again. ` +
+                `Original error: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            throw error;
           }
 
           // Wait before retry
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+          await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
         }
       }
-    })()
+    })();
   }
 
-  await wasmInitPromise
+  await wasmInitPromise;
 }
 
 // Re-export types for convenience
 export interface FountainChunk {
-  seed: number
-  degree: number
-  indices: number[]
-  data: Uint8Array
+  seed: number;
+  degree: number;
+  indices: number[];
+  data: Uint8Array;
 }
 
 /**
@@ -61,12 +69,12 @@ export interface FountainChunk {
  * Note: fileType (not type), no checksum fields
  */
 export interface WasmFountainMetadata {
-  name: string
-  size: number
-  fileType: string
-  timestamp: number
-  totalSourceBlocks: number
-  blockSize: number
+  name: string;
+  size: number;
+  fileType: string;
+  timestamp: number;
+  totalSourceBlocks: number;
+  blockSize: number;
 }
 
 /**
@@ -75,10 +83,10 @@ export interface WasmFountainMetadata {
  * All fields are required
  */
 export interface FountainMetadata extends WasmFountainMetadata {
-  partBasedMode: boolean
-  partSize: number
-  checksum: string
-  checksumAlg: string
+  partBasedMode: boolean;
+  partSize: number;
+  checksum: string;
+  checksumAlg: string;
 }
 
 /**
@@ -86,8 +94,8 @@ export interface FountainMetadata extends WasmFountainMetadata {
  * Separate from encoding algorithm parameters
  */
 export interface PartBasedModeConfig {
-  enabled: boolean
-  partSize: number
+  enabled: boolean;
+  partSize: number;
 }
 
 /**
@@ -97,19 +105,19 @@ export interface PartBasedModeConfig {
  */
 export type PartInfo =
   | {
-      partBasedMode: false
-      currentPartIndex: number
-      totalParts: number
-      partSize: number
+      partBasedMode: false;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
     }
   | {
-      partBasedMode: true
-      currentPartIndex: number
-      totalParts: number
-      partSize: number
-      currentPartChecksum: string | undefined
-      partChecksums: string[]
-    }
+      partBasedMode: true;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
+      currentPartChecksum: string | undefined;
+      partChecksums: string[];
+    };
 
 /**
  * Fountain encoder options (all fields required)
@@ -117,15 +125,15 @@ export type PartInfo =
  * Matches the Rust FountainEncoderOptions structure
  */
 export interface FountainEncoderOptions {
-  blockSize: number
-  c: number
-  delta: number
-  maxDegree: number | null
-  degree1Rate: number
-  lowDegreeRate: number
-  maxQrDataSize: number  // camelCase to match Rust serde
-  fixedOverhead: number
-  partOverhead: number
+  blockSize: number;
+  c: number;
+  delta: number;
+  maxDegree: number | null;
+  degree1Rate: number;
+  lowDegreeRate: number;
+  maxQrDataSize: number; // camelCase to match Rust serde
+  fixedOverhead: number;
+  partOverhead: number;
 }
 
 /**
@@ -133,16 +141,16 @@ export interface FountainEncoderOptions {
  * Single source of truth for default values
  */
 export const DEFAULT_FOUNTAIN_ENCODER_OPTIONS: FountainEncoderOptions = {
-  blockSize: DEFAULT_BLOCK_SIZE,  // Use system default (1000 bytes)
+  blockSize: DEFAULT_BLOCK_SIZE, // Use system default (1000 bytes)
   c: 0.2,
   delta: 0.01,
   maxDegree: null,
   degree1Rate: 0.08,
   lowDegreeRate: 0.18,
-  maxQrDataSize: 1000,  // camelCase to match Rust serde
+  maxQrDataSize: 1000, // camelCase to match Rust serde
   fixedOverhead: 10,
   partOverhead: 0,
-}
+};
 
 /**
  * TypeScript wrapper for Rust WASM Fountain Encoder
@@ -154,14 +162,14 @@ export class FountainWasmEncoder {
    * Direct access to the underlying WASM encoder
    * Use this to call any WASM methods directly without delegation boilerplate
    */
-  readonly wasm: WasmFountainEncoder
+  readonly wasm: WasmFountainEncoder;
 
   private constructor(
     data: Uint8Array,
     metadata: { name: string; fileType: string; timestamp?: number },
     options: FountainEncoderOptions,
     partConfig: PartBasedModeConfig,
-    seedOffset?: number
+    seedOffset?: number,
   ) {
     this.wasm = new WasmFountainEncoder(
       data,
@@ -171,8 +179,8 @@ export class FountainWasmEncoder {
       options,
       partConfig.enabled,
       partConfig.partSize,
-      seedOffset
-    )
+      seedOffset,
+    );
   }
 
   /**
@@ -189,10 +197,16 @@ export class FountainWasmEncoder {
     metadata: { name: string; fileType: string; timestamp?: number },
     options: FountainEncoderOptions = DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
     partConfig: PartBasedModeConfig = { enabled: false, partSize: 0 },
-    seedOffset?: number
+    seedOffset?: number,
   ): Promise<FountainWasmEncoder> {
-    await ensureWasmInit()
-    return new FountainWasmEncoder(data, metadata, options, partConfig, seedOffset)
+    await ensureWasmInit();
+    return new FountainWasmEncoder(
+      data,
+      metadata,
+      options,
+      partConfig,
+      seedOffset,
+    );
   }
 
   /**
@@ -200,7 +214,7 @@ export class FountainWasmEncoder {
    * Same as encoder.wasm.generateChunk()
    */
   generateChunk(): FountainChunk {
-    return this.wasm.generateChunk() as FountainChunk
+    return this.wasm.generateChunk() as FountainChunk;
   }
 
   /**
@@ -208,7 +222,7 @@ export class FountainWasmEncoder {
    * Same as encoder.wasm.getMetadata()
    */
   getMetadata(): WasmFountainMetadata {
-    return this.wasm.getMetadata() as WasmFountainMetadata
+    return this.wasm.getMetadata() as WasmFountainMetadata;
   }
 
   /**
@@ -217,13 +231,13 @@ export class FountainWasmEncoder {
    */
   getPartInfo(): PartInfo {
     const info = this.wasm.getPartInfo() as {
-      partBasedMode: boolean
-      currentPartIndex: number
-      totalParts: number
-      partSize: number
-      currentPartChecksum?: string
-      partChecksums?: string[]
-    }
+      partBasedMode: boolean;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
+      currentPartChecksum?: string;
+      partChecksums?: string[];
+    };
 
     // Ensure checksums are always arrays in part-based mode
     if (info.partBasedMode) {
@@ -233,16 +247,16 @@ export class FountainWasmEncoder {
         totalParts: info.totalParts,
         partSize: info.partSize,
         currentPartChecksum: info.currentPartChecksum,
-        partChecksums: info.partChecksums || []
-      }
+        partChecksums: info.partChecksums || [],
+      };
     }
 
     return {
       partBasedMode: false,
       currentPartIndex: info.currentPartIndex,
       totalParts: info.totalParts,
-      partSize: info.partSize
-    }
+      partSize: info.partSize,
+    };
   }
 
   /**
@@ -250,7 +264,7 @@ export class FountainWasmEncoder {
    * Same as encoder.wasm.moveToNextPart()
    */
   moveToNextPart(): boolean {
-    return this.wasm.moveToNextPart()
+    return this.wasm.moveToNextPart();
   }
 
   /**
@@ -258,34 +272,33 @@ export class FountainWasmEncoder {
    * Same as encoder.wasm.markPartCompleted()
    */
   markPartCompleted(partIndex: number): void {
-    this.wasm.markPartCompleted(partIndex)
+    this.wasm.markPartCompleted(partIndex);
   }
 
   /**
-   * Compute checksums for all parts asynchronously
+   * Compute checksums for all parts
    * Stores checksums in the encoder and returns them
    * Returns array of CRC32 checksums (one per part)
    */
-  async computePartChecksums(originalData: Uint8Array): Promise<string[]> {
-    const { crc32 } = await import('../../rust/fountain-wasm/pkg/fountain_wasm')
-    const { partBasedMode, totalParts, partSize } = this.getPartInfo()
+  computePartChecksums(originalData: Uint8Array): string[] {
+    const { partBasedMode, totalParts, partSize } = this.getPartInfo();
 
     if (!partBasedMode || totalParts === 0) {
-      return []
+      return [];
     }
 
-    const checksums: string[] = []
+    const checksums: string[] = [];
     for (let i = 0; i < totalParts; i++) {
-      const partStartByte = i * partSize
-      const partEndByte = Math.min((i + 1) * partSize, originalData.length)
-      const partData = originalData.slice(partStartByte, partEndByte)
-      checksums.push(crc32(partData))
+      const partStartByte = i * partSize;
+      const partEndByte = Math.min((i + 1) * partSize, originalData.length);
+      const partData = originalData.slice(partStartByte, partEndByte);
+      checksums.push(crc32(partData));
     }
 
     // Store checksums in the WASM encoder
-    this.wasm.setPartChecksums(checksums)
+    this.wasm.setPartChecksums(checksums);
 
-    return checksums
+    return checksums;
   }
 }
 
@@ -299,22 +312,30 @@ export class FountainWasmDecoder {
    * Direct access to the underlying WASM decoder
    * Use this to call any WASM methods directly without delegation boilerplate
    */
-  readonly wasm: WasmFountainDecoder
+  readonly wasm: WasmFountainDecoder;
 
-  private constructor(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0) {
+  private constructor(
+    metadata: WasmFountainMetadata,
+    partBasedMode: boolean = false,
+    partSize: number = 0,
+  ) {
     this.wasm = new WasmFountainDecoder(
       metadata,
       partBasedMode || undefined,
-      partBasedMode && partSize > 0 ? partSize : undefined
-    )
+      partBasedMode && partSize > 0 ? partSize : undefined,
+    );
   }
 
   /**
    * Create a new decoder (ensures WASM is initialized first)
    */
-  static async create(metadata: WasmFountainMetadata, partBasedMode: boolean = false, partSize: number = 0): Promise<FountainWasmDecoder> {
-    await ensureWasmInit()
-    return new FountainWasmDecoder(metadata, partBasedMode, partSize)
+  static async create(
+    metadata: WasmFountainMetadata,
+    partBasedMode: boolean = false,
+    partSize: number = 0,
+  ): Promise<FountainWasmDecoder> {
+    await ensureWasmInit();
+    return new FountainWasmDecoder(metadata, partBasedMode, partSize);
   }
 
   /**
@@ -322,7 +343,7 @@ export class FountainWasmDecoder {
    * Same as decoder.wasm.addChunk(chunk)
    */
   addChunk(chunk: FountainChunk): boolean {
-    return this.wasm.addChunk(chunk)
+    return this.wasm.addChunk(chunk);
   }
 
   /**
@@ -330,7 +351,7 @@ export class FountainWasmDecoder {
    * Same as decoder.wasm.isComplete()
    */
   isComplete(): boolean {
-    return this.wasm.isComplete()
+    return this.wasm.isComplete();
   }
 
   /**
@@ -338,7 +359,7 @@ export class FountainWasmDecoder {
    * Same as decoder.wasm.getDecodedData()
    */
   getDecodedData(): Uint8Array | null {
-    return this.wasm.getDecodedData() || null
+    return this.wasm.getDecodedData() || null;
   }
 
   /**
@@ -346,7 +367,7 @@ export class FountainWasmDecoder {
    * Same as decoder.wasm.getMetadata()
    */
   getMetadata(): WasmFountainMetadata {
-    return this.wasm.getMetadata() as WasmFountainMetadata
+    return this.wasm.getMetadata() as WasmFountainMetadata;
   }
 
   /**
@@ -355,11 +376,11 @@ export class FountainWasmDecoder {
    */
   getPartInfo(): PartInfo {
     const info = this.wasm.getPartInfo() as {
-      partBasedMode: boolean
-      currentPartIndex: number
-      totalParts: number
-      partSize: number
-    }
+      partBasedMode: boolean;
+      currentPartIndex: number;
+      totalParts: number;
+      partSize: number;
+    };
 
     // Decoder doesn't have checksums, only encoder does
     if (info.partBasedMode) {
@@ -369,16 +390,16 @@ export class FountainWasmDecoder {
         totalParts: info.totalParts,
         partSize: info.partSize,
         currentPartChecksum: undefined,
-        partChecksums: []
-      }
+        partChecksums: [],
+      };
     }
 
     return {
       partBasedMode: false,
       currentPartIndex: info.currentPartIndex,
       totalParts: info.totalParts,
-      partSize: info.partSize
-    }
+      partSize: info.partSize,
+    };
   }
 
   /**
@@ -396,4 +417,7 @@ export class FountainWasmDecoder {
 }
 
 // Re-export with simplified names for backward compatibility with fountainCodeHybrid
-export { FountainWasmDecoder as FountainDecoder, FountainWasmEncoder as FountainEncoder }
+export {
+  FountainWasmDecoder as FountainDecoder,
+  FountainWasmEncoder as FountainEncoder,
+};

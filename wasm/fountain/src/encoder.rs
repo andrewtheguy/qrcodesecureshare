@@ -38,6 +38,8 @@ pub struct FountainEncoder {
 }
 
 impl FountainEncoder {
+    // Mirrors the positional arguments of the JS constructor (WasmFountainEncoder::new).
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data: Vec<u8>,
         name: String,
@@ -109,7 +111,7 @@ impl FountainEncoder {
             if part_size == 0 {
                 panic!("part_size must be greater than 0 when part_based_mode is enabled");
             }
-            let total = (total_size + part_size - 1) / part_size;
+            let total = total_size.div_ceil(part_size);
             (total, 0)
         } else {
             (0, 0)
@@ -217,8 +219,7 @@ impl FountainEncoder {
                 self.original_data.as_ref().map(|d| d.len()).unwrap_or(0),
             );
             let start_block_index = part_start_byte / self.metadata.block_size;
-            let end_block_index =
-                (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+            let end_block_index = part_end_byte.div_ceil(self.metadata.block_size);
 
             // Filter out empty blocks (blocks cleared via mark_part_completed)
             (start_block_index..end_block_index.min(self.blocks.len()))
@@ -338,8 +339,7 @@ impl FountainEncoder {
         );
 
         let start_block_index = part_start_byte / self.metadata.block_size;
-        let end_block_index =
-            (part_end_byte + self.metadata.block_size - 1) / self.metadata.block_size;
+        let end_block_index = part_end_byte.div_ceil(self.metadata.block_size);
 
         // Clear source blocks for this part to save memory
         for i in start_block_index..end_block_index.min(self.blocks.len()) {
@@ -371,9 +371,10 @@ mod tests {
     use super::*;
 
     fn options_with_block_size(block_size: usize) -> FountainEncoderOptions {
-        let mut options = FountainEncoderOptions::default();
-        options.block_size = block_size;
-        options
+        FountainEncoderOptions {
+            block_size,
+            ..FountainEncoderOptions::default()
+        }
     }
 
     #[test]
@@ -619,7 +620,7 @@ mod tests {
             // All indices should be 2 or 3 (blocks in part 1)
             for &idx in &chunk.indices {
                 assert!(
-                    idx >= 2 && idx < 4,
+                    (2..4).contains(&idx),
                     "Index {} is outside part 1 range [2, 3]",
                     idx
                 );
@@ -697,7 +698,7 @@ mod tests {
         for part_idx in 0..5 {
             let chunk = encoder
                 .generate_chunk()
-                .expect(&format!("Should generate chunk for part {}", part_idx));
+                .unwrap_or_else(|| panic!("Should generate chunk for part {}", part_idx));
             assert_eq!(
                 chunk.indices.len(),
                 1,
@@ -743,7 +744,7 @@ mod tests {
             // Should be able to generate chunks from this part
             let chunk = encoder
                 .generate_chunk()
-                .expect(&format!("Should generate chunk for part {}", part_idx));
+                .unwrap_or_else(|| panic!("Should generate chunk for part {}", part_idx));
             assert!(!chunk.data.is_empty(), "Part {} should have data", part_idx);
 
             // Move to next part if not the last

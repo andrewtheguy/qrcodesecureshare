@@ -1,4 +1,8 @@
-export default function Logo({ className = "w-12 h-12" }: { className?: string }) {
+export default function Logo({
+  className = 'w-12 h-12',
+}: {
+  className?: string;
+}) {
   return (
     <svg
       className={className}
@@ -59,31 +63,12 @@ export default function Logo({ className = "w-12 h-12" }: { className?: string }
         />
 
         {/* Lock Body */}
-        <rect
-          x="-12"
-          y="-5"
-          width="24"
-          height="18"
-          rx="3"
-          fill="#ffffff"
-        />
+        <rect x="-12" y="-5" width="24" height="18" rx="3" fill="#ffffff" />
 
         {/* Keyhole */}
-        <circle
-          cx="0"
-          cy="2"
-          r="3"
-          fill="#000000"
-        />
-        <rect
-          x="-1.5"
-          y="2"
-          width="3"
-          height="5"
-          rx="1.5"
-          fill="#000000"
-        />
+        <circle cx="0" cy="2" r="3" fill="#000000" />
+        <rect x="-1.5" y="2" width="3" height="5" rx="1.5" fill="#000000" />
       </g>
     </svg>
-  )
+  );
 }

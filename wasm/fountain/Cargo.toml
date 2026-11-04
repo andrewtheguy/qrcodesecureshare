@@ -1,7 +1,16 @@
+# The page's LT fountain encoder and decoder, and the CRC32 the transfer checks
+# parts with, as a WebAssembly module of its own.
+#
+# Built by `bun run build:wasm` at the repo root, into pkg/, which the app
+# imports by path (src/utils/fountainCodeWasm.ts). It builds for
+# `wasm32-unknown-unknown` alone, with the profile, the lockfile and the
+# toolchain here.
 [package]
 name = "fountain-wasm"
-version = "0.1.0"
+version = "0.0.0"
+license = "MIT"
 edition = "2021"
+publish = false
 
 [lib]
 crate-type = ["cdylib"]

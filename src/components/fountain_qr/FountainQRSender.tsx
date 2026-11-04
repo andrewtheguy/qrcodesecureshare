@@ -5,59 +5,83 @@
  * transmit files via fountain-coded QR streams.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { DEFAULT_FOUNTAIN_ENCODER_OPTIONS, FountainEncoder, type PartBasedModeConfig } from '@/utils/fountainCodeWasm'
-import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
-import { getQRCapacity } from '@/utils/qrCapacity'
-import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay'
-import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner'
-import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput'
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import {
+  DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
+  FountainEncoder,
+  type PartBasedModeConfig,
+} from '@/utils/fountainCodeWasm';
+import {
+  DEFAULT_BLOCK_SIZE,
+  PART_SIZE_OPTIONS,
+  type PartSizeOption,
+} from '@/utils/fountainConfig';
+import { getQRCapacity } from '@/utils/qrCapacity';
+import { FountainQRDataDisplay } from './sender/FountainQRDataDisplay';
+import { FountainQRFeedbackScanner } from './sender/FountainQRFeedbackScanner';
+import { FountainQRManualFeedbackInput } from './sender/FountainQRManualFeedbackInput';
 
 interface FountainQRSenderProps {
-  file: File
-  sessionId: number
-  feedbackEnabled?: boolean
-  checksum: string
-  checksumAlg: string
-  partSizeOption?: PartSizeOption
+  file: File;
+  sessionId: number;
+  feedbackEnabled?: boolean;
+  checksum: string;
+  checksumAlg: string;
+  partSizeOption?: PartSizeOption;
   qrOptions?: {
-    errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H'
-    margin: number
-  }
+    errorCorrectionLevel: 'L' | 'M' | 'Q' | 'H';
+    margin: number;
+  };
 }
 
-
-export function FountainQRSender({ file, sessionId, feedbackEnabled = true, checksum, checksumAlg, partSizeOption = 'LARGE', qrOptions = { errorCorrectionLevel: 'L', margin: 1 } }: FountainQRSenderProps) {
-  const [encoder, setEncoder] = useState<FountainEncoder | null>(null)
-  const [error, setError] = useState<string>('')
-  const [lastProcessedSequence, setLastProcessedSequence] = useState<number>(-1)
-  const [senderMode, setSenderMode] = useState<'data-display' | 'feedback-scanning' | 'ack-display'>('data-display')
-  const [activationToken, setActivationToken] = useState<number>(0)
-  const [feedbackInputMode, setFeedbackInputMode] = useState<'camera' | 'manual'>('camera')
-  const [ackPayload, setAckPayload] = useState<{ qrUrl: string; sequence: number; message?: string } | null>(null)
-  const [autoPauseResetToken, setAutoPauseResetToken] = useState(0)
-  const lastSenderModeRef = useRef(senderMode)
-  const currentQROptions = useMemo(() => qrOptions, [qrOptions])
+export function FountainQRSender({
+  file,
+  sessionId,
+  feedbackEnabled = true,
+  checksum,
+  checksumAlg,
+  partSizeOption = 'LARGE',
+  qrOptions = { errorCorrectionLevel: 'L', margin: 1 },
+}: FountainQRSenderProps) {
+  const [encoder, setEncoder] = useState<FountainEncoder | null>(null);
+  const [error, setError] = useState<string>('');
+  const [lastProcessedSequence, setLastProcessedSequence] =
+    useState<number>(-1);
+  const [senderMode, setSenderMode] = useState<
+    'data-display' | 'feedback-scanning' | 'ack-display'
+  >('data-display');
+  const [activationToken, setActivationToken] = useState<number>(0);
+  const [feedbackInputMode, setFeedbackInputMode] = useState<
+    'camera' | 'manual'
+  >('camera');
+  const [ackPayload, setAckPayload] = useState<{
+    qrUrl: string;
+    sequence: number;
+    message?: string;
+  } | null>(null);
+  const [autoPauseResetToken, setAutoPauseResetToken] = useState(0);
+  const lastSenderModeRef = useRef(senderMode);
+  const currentQROptions = useMemo(() => qrOptions, [qrOptions]);
 
   // Calculate max QR data size once - used by both encoder and display component
   const maxQRDataSize = useMemo(() => {
-    return getQRCapacity(currentQROptions.errorCorrectionLevel)
-  }, [currentQROptions.errorCorrectionLevel])
+    return getQRCapacity(currentQROptions.errorCorrectionLevel);
+  }, [currentQROptions.errorCorrectionLevel]);
 
   // Initialize fountain encoder when file is loaded
   // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when QR sizing parameters change so the encoder reflects them
   useEffect(() => {
-    const reader = new FileReader()
+    const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const arrayBuffer = e.target?.result as ArrayBuffer
-        const bytes = new Uint8Array(arrayBuffer)
+        const arrayBuffer = e.target?.result as ArrayBuffer;
+        const bytes = new Uint8Array(arrayBuffer);
 
         const metadata = {
           name: file.name,
@@ -65,75 +89,95 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
           fileType: file.type,
           timestamp: Date.now(),
           checksum,
-          checksumAlg
-        }
+          checksumAlg,
+        };
 
         // Enable part-based mode for feedback-enabled transfers
-        const partSize = feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : 0
+        const partSize = feedbackEnabled
+          ? PART_SIZE_OPTIONS[partSizeOption]
+          : 0;
 
         // Part-based mode configuration (session-level settings)
         const partConfig: PartBasedModeConfig = {
           enabled: feedbackEnabled,
-          partSize
-        }
+          partSize,
+        };
 
         // Use default options with maxQrDataSize override for degree tuning
         const encoderOptions = {
           ...DEFAULT_FOUNTAIN_ENCODER_OPTIONS,
-          maxQrDataSize: maxQRDataSize // Pass QR capacity to encoder for degree tuning (camelCase)
+          maxQrDataSize: maxQRDataSize, // Pass QR capacity to encoder for degree tuning (camelCase)
+        };
+
+        const fountainEncoder = await FountainEncoder.create(
+          bytes,
+          metadata,
+          encoderOptions,
+          partConfig,
+        );
+
+        // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
+        const encoderBlockSize = fountainEncoder.getMetadata().blockSize;
+        if (encoderBlockSize !== DEFAULT_BLOCK_SIZE) {
+          setError(
+            `Block size mismatch: encoder has ${encoderBlockSize} bytes, expected ${DEFAULT_BLOCK_SIZE} bytes`,
+          );
+          console.warn(
+            `Block size mismatch detected: encoder=${encoderBlockSize}, DEFAULT_BLOCK_SIZE=${DEFAULT_BLOCK_SIZE}`,
+          );
+          return;
         }
-
-        const fountainEncoder = await FountainEncoder.create(bytes, metadata, encoderOptions, partConfig)
-
-         // Runtime sanity check: compare fountainEncoder.getMetadata().blockSize with DEFAULT_BLOCK_SIZE
-         const encoderBlockSize = fountainEncoder.getMetadata().blockSize
-         if (encoderBlockSize !== DEFAULT_BLOCK_SIZE) {
-           setError(`Block size mismatch: encoder has ${encoderBlockSize} bytes, expected ${DEFAULT_BLOCK_SIZE} bytes`)
-           console.warn(`Block size mismatch detected: encoder=${encoderBlockSize}, DEFAULT_BLOCK_SIZE=${DEFAULT_BLOCK_SIZE}`)
-           return
-         }
 
         // Compute part checksums if in part-based mode
         if (feedbackEnabled) {
-          console.log('[FountainQRSender] Computing part checksums...')
-          await fountainEncoder.computePartChecksums(bytes)
-          const partInfo = fountainEncoder.getPartInfo()
+          console.log('[FountainQRSender] Computing part checksums...');
+          fountainEncoder.computePartChecksums(bytes);
+          const partInfo = fountainEncoder.getPartInfo();
           if (partInfo.partBasedMode) {
-            console.log('[FountainQRSender] Part checksums computed:', partInfo.partChecksums)
+            console.log(
+              '[FountainQRSender] Part checksums computed:',
+              partInfo.partChecksums,
+            );
           }
         }
 
-        setEncoder(fountainEncoder)
-        setError('')
+        setEncoder(fountainEncoder);
+        setError('');
       } catch (err) {
         // Check for WASM initialization failure
-        const errorMessage = err instanceof Error ? err.message : String(err)
+        const errorMessage = err instanceof Error ? err.message : String(err);
         if (errorMessage.includes('WASM_INIT_FAILED')) {
-          setError('⚠️ Failed to load WASM module. The fountain code engine could not be initialized. Please refresh the page and try again. If the problem persists, the WASM bundle may not be properly loaded.')
-          console.error('[FountainQRSender] WASM initialization failed:', err)
+          setError(
+            '⚠️ Failed to load WASM module. The fountain code engine could not be initialized. Please refresh the page and try again. If the problem persists, the WASM bundle may not be properly loaded.',
+          );
+          console.error('[FountainQRSender] WASM initialization failed:', err);
         } else {
-          setError('Failed to process file')
-          console.error('[FountainQRSender] File processing error:', err)
+          setError('Failed to process file');
+          console.error('[FountainQRSender] File processing error:', err);
         }
       }
-    }
+    };
 
     reader.onerror = () => {
-      setError('Failed to read file')
-    }
+      setError('Failed to read file');
+    };
 
-    reader.readAsArrayBuffer(file)
-  }, [file, checksum, checksumAlg, feedbackEnabled, currentQROptions.errorCorrectionLevel, partSizeOption, maxQRDataSize])
+    reader.readAsArrayBuffer(file);
+  }, [
+    file,
+    checksum,
+    checksumAlg,
+    feedbackEnabled,
+    currentQROptions.errorCorrectionLevel,
+    partSizeOption,
+    maxQRDataSize,
+  ]);
 
   // Reset lastProcessedSequence on new session or file to avoid stale UI/state carryover
   // biome-ignore lint/correctness/useExhaustiveDependencies: sessionId/file are triggers, not referenced in body
   useEffect(() => {
-      setLastProcessedSequence(-1)
-   }, [sessionId, file])
-
-
-
-
+    setLastProcessedSequence(-1);
+  }, [sessionId, file]);
 
   useEffect(() => {
     if (encoder && senderMode === 'data-display' && activationToken === 0) {
@@ -142,17 +186,20 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   }, [encoder, senderMode, activationToken]);
 
   useEffect(() => {
-    if (senderMode === 'data-display' && lastSenderModeRef.current === 'ack-display') {
-      setAutoPauseResetToken((token) => token + 1)
+    if (
+      senderMode === 'data-display' &&
+      lastSenderModeRef.current === 'ack-display'
+    ) {
+      setAutoPauseResetToken((token) => token + 1);
     }
-    lastSenderModeRef.current = senderMode
-  }, [senderMode])
+    lastSenderModeRef.current = senderMode;
+  }, [senderMode]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: file/sessionId are triggers, not referenced in body
   useEffect(() => {
-    setAckPayload(null)
-    setSenderMode('data-display')
-  }, [file, sessionId])
+    setAckPayload(null);
+    setSenderMode('data-display');
+  }, [file, sessionId]);
 
   const handleFeedbackProcessed = (feedbackData: {
     sequence: number;
@@ -162,16 +209,22 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
     console.log('Feedback processed:', feedbackData);
   };
 
-  const handleAckGenerated = (ackUrl: string, sequence: number, message?: string) => {
-    setAckPayload({ qrUrl: ackUrl, sequence, message })
+  const handleAckGenerated = (
+    ackUrl: string,
+    sequence: number,
+    message?: string,
+  ) => {
+    setAckPayload({ qrUrl: ackUrl, sequence, message });
     console.log('ACK generated', { sequence, message });
   };
 
-  const handleFeedbackModeChange = (mode: 'data-display' | 'feedback-scanning' | 'ack-display') => {
+  const handleFeedbackModeChange = (
+    mode: 'data-display' | 'feedback-scanning' | 'ack-display',
+  ) => {
     // Increment activation token when switching TO data-display mode
     // This ensures the child component only auto-starts on explicit activation
     if (mode === 'data-display') {
-      setActivationToken(prev => prev + 1);
+      setActivationToken((prev) => prev + 1);
     }
     setSenderMode(mode);
     console.log('Mode changed to:', mode);
@@ -184,24 +237,23 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
   const handleChunkGenerated = () => {
     // Optional: Log chunk generation for debugging
     //console.log('Chunk generated')
-  }
-
+  };
 
   const handleBufferUpdate = () => {
     // Optional: Monitor buffer status
     //console.log(`Buffer size: ${bufferSize}`)
-  }
+  };
 
   const handleDataDisplayError = (error: string) => {
-    setError(error)
-  }
+    setError(error);
+  };
 
   if (error) {
     return (
       <Alert variant="destructive">
         <AlertDescription>{error}</AlertDescription>
       </Alert>
-    )
+    );
   }
 
   return (
@@ -210,8 +262,13 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       {!feedbackEnabled && (
         <Alert>
           <AlertDescription>
-            <p className="font-medium">📱 No-feedback mode: Receiver will not generate feedback QR codes</p>
-            <p className="text-sm">Transfer will complete using random chunk generation only. The receiver should continue scanning until 100% complete.</p>
+            <p className="font-medium">
+              📱 No-feedback mode: Receiver will not generate feedback QR codes
+            </p>
+            <p className="text-sm">
+              Transfer will complete using random chunk generation only. The
+              receiver should continue scanning until 100% complete.
+            </p>
           </AlertDescription>
         </Alert>
       )}
@@ -247,9 +304,12 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 >
                   Ack Confirmation
                 </Badge>
-                <CardTitle className="text-xl font-semibold text-emerald-50">Show This QR to the Receiver</CardTitle>
+                <CardTitle className="text-xl font-semibold text-emerald-50">
+                  Show This QR to the Receiver
+                </CardTitle>
                 <p className="text-sm text-emerald-200/70">
-                  Hold the code steady while the receiver scans. This confirms their feedback and allows the transfer to continue.
+                  Hold the code steady while the receiver scans. This confirms
+                  their feedback and allows the transfer to continue.
                 </p>
               </div>
               <Button
@@ -277,13 +337,24 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
               {ackPayload.message && (
                 <Alert className="border border-emerald-500/50 bg-emerald-500/10 text-emerald-100">
                   <AlertDescription>
-                    <p className="text-sm font-medium">Message: {ackPayload.message}</p>
+                    <p className="text-sm font-medium">
+                      Message: {ackPayload.message}
+                    </p>
                   </AlertDescription>
                 </Alert>
               )}
               <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-xs text-emerald-100/80 space-y-1">
-                <p>• Confirm the receiver sees their scanner banner before proceeding.</p>
-                <p>• Once they acknowledge the scan, tap <span className="font-semibold text-emerald-100">Resume Data</span> to restart the stream.</p>
+                <p>
+                  • Confirm the receiver sees their scanner banner before
+                  proceeding.
+                </p>
+                <p>
+                  • Once they acknowledge the scan, tap{' '}
+                  <span className="font-semibold text-emerald-100">
+                    Resume Data
+                  </span>{' '}
+                  to restart the stream.
+                </p>
               </div>
               <p className="text-center text-xs text-emerald-200/60">
                 Sequence #{ackPayload.sequence} • Session {sessionId}
@@ -297,8 +368,13 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         <Alert className="border border-amber-500/40 bg-amber-500/10 text-amber-900">
           <AlertDescription>
             <div className="space-y-1 text-sm">
-              <p className="font-medium text-amber-900">Feedback scanning is active.</p>
-              <p>Point your camera at the receiver&apos;s amber feedback card to sync progress.</p>
+              <p className="font-medium text-amber-900">
+                Feedback scanning is active.
+              </p>
+              <p>
+                Point your camera at the receiver&apos;s amber feedback card to
+                sync progress.
+              </p>
               <p>The data stream is paused until you finish scanning.</p>
             </div>
           </AlertDescription>
@@ -312,16 +388,30 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             <CardTitle className="text-lg">Feedback Input Method</CardTitle>
           </CardHeader>
           <CardContent>
-            <RadioGroup value={feedbackInputMode} onValueChange={(value: 'camera' | 'manual') => setFeedbackInputMode(value)} className="space-y-4">
+            <RadioGroup
+              value={feedbackInputMode}
+              onValueChange={(value: 'camera' | 'manual') =>
+                setFeedbackInputMode(value)
+              }
+              className="space-y-4"
+            >
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="camera" id="camera-mode" />
-                <Label htmlFor="camera-mode" className="text-sm font-medium">Camera Scanning</Label>
-                <p className="text-xs text-muted-foreground">Scan receiver's feedback QR with camera</p>
+                <Label htmlFor="camera-mode" className="text-sm font-medium">
+                  Camera Scanning
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Scan receiver's feedback QR with camera
+                </p>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="manual" id="manual-mode" />
-                <Label htmlFor="manual-mode" className="text-sm font-medium">Manual Input (No Camera)</Label>
-                <p className="text-xs text-muted-foreground">Type feedback details manually</p>
+                <Label htmlFor="manual-mode" className="text-sm font-medium">
+                  Manual Input (No Camera)
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Type feedback details manually
+                </p>
               </div>
             </RadioGroup>
           </CardContent>
@@ -332,14 +422,17 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       {feedbackEnabled && feedbackInputMode === 'manual' && (
         <Alert className="mb-4">
           <AlertDescription>
-            Manual mode is designed for senders without cameras. Copy the feedback details from the receiver's feedback QR display. All fields must match exactly for successful processing. An ACK QR will be generated after processing.
+            Manual mode is designed for senders without cameras. Copy the
+            feedback details from the receiver's feedback QR display. All fields
+            must match exactly for successful processing. An ACK QR will be
+            generated after processing.
           </AlertDescription>
         </Alert>
       )}
 
       {/* Feedback Input Component */}
-      {feedbackEnabled && (
-        feedbackInputMode === 'camera' ? (
+      {feedbackEnabled &&
+        (feedbackInputMode === 'camera' ? (
           <FountainQRFeedbackScanner
             encoder={encoder}
             sessionId={sessionId}
@@ -361,8 +454,7 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
             onModeChange={handleFeedbackModeChange}
             onError={handleFeedbackError}
           />
-        )
-      )}
+        ))}
 
       {feedbackEnabled && ackPayload && senderMode !== 'ack-display' && (
         <Button
@@ -378,14 +470,17 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
       {senderMode !== 'data-display' && (
         <div className="flex items-center justify-center gap-2 flex-wrap text-xs text-muted-foreground">
           {senderMode === 'feedback-scanning' && (
-            <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">MODE: Scanning Feedback</span>
+            <span className="px-2 py-0.5 rounded bg-amber-500 text-white font-semibold">
+              MODE: Scanning Feedback
+            </span>
           )}
           {senderMode === 'ack-display' && (
-            <span className="px-2 py-0.5 rounded bg-green-500 text-white font-semibold">MODE: ACK Display - Show to receiver</span>
+            <span className="px-2 py-0.5 rounded bg-green-500 text-white font-semibold">
+              MODE: ACK Display - Show to receiver
+            </span>
           )}
         </div>
       )}
-
 
       {/* Instructions */}
       <Alert>
@@ -399,13 +494,31 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
                 <li>Can skip/miss chunks and still decode successfully</li>
                 <li>Keep playing until receiver shows 100% decoded</li>
                 <li>More robust than ordered chunk transfer</li>
-                <li>Use 'Scan Feedback QR' button to switch to feedback scanning mode</li>
-                <li>After scanning feedback, sender will display ACK QR automatically</li>
-                <li>Show ACK QR to receiver, then click 'Resume Data Display' to continue transfer</li>
-                <li>If you resume data display accidentally, use 'Show Last ACK QR' button to return to ACK display</li>
+                <li>
+                  Use 'Scan Feedback QR' button to switch to feedback scanning
+                  mode
+                </li>
+                <li>
+                  After scanning feedback, sender will display ACK QR
+                  automatically
+                </li>
+                <li>
+                  Show ACK QR to receiver, then click 'Resume Data Display' to
+                  continue transfer
+                </li>
+                <li>
+                  If you resume data display accidentally, use 'Show Last ACK
+                  QR' button to return to ACK display
+                </li>
                 <li>Receiver must scan ACK before resuming data scanning</li>
-                <li>If you don't have a camera, use 'Manual Input' mode to type feedback details from the receiver's display</li>
-                  <li className="text-blue-600 dark:text-blue-400">For part-based transfers, feedback QR signals part completion with checksum validation</li>
+                <li>
+                  If you don't have a camera, use 'Manual Input' mode to type
+                  feedback details from the receiver's display
+                </li>
+                <li className="text-blue-600 dark:text-blue-400">
+                  For part-based transfers, feedback QR signals part completion
+                  with checksum validation
+                </li>
               </>
             ) : (
               <>
@@ -420,5 +533,5 @@ export function FountainQRSender({ file, sessionId, feedbackEnabled = true, chec
         </AlertDescription>
       </Alert>
     </div>
-  )
+  );
 }

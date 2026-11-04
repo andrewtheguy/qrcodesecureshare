@@ -1,19 +1,12 @@
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
 dist
 dist-ssr
 *.local
-
-# WASM files (copied from node_modules via postinstall)
-public/*.wasm
 
 # Editor directories and files
 .vscode/*
@@ -32,8 +25,5 @@ PRIVATE_KEY.md
 *.pem
 tmp/
 
-# Rust/WASM build artifacts
-rust/**/target/
-target/
-
-.claude/
+CLAUDE.local.md
+.claude/settings.local.json

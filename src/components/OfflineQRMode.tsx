@@ -1,23 +1,34 @@
-import { 
-  ArrowRight, 
-  CheckCircle2, 
+import {
+  ArrowRight,
+  CheckCircle2,
   FileDigit,
-  Maximize2, 
+  Maximize2,
   Play,
   QrCode,
-  RefreshCw, 
+  RefreshCw,
   Settings,
-  ShieldCheck, 
-  Smartphone, 
+  ShieldCheck,
+  Smartphone,
   TriangleAlert,
-  Zap
-} from 'lucide-react'
-import { useEffect, useState } from 'react'
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
+  Zap,
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -25,88 +36,102 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { OFFLINE_METADATA_MAGIC } from '@/constants'
-import { computeChecksum } from '@/utils/checksum'
-import { DEFAULT_BLOCK_SIZE, PART_SIZE_OPTIONS, type PartSizeOption } from '@/utils/fountainConfig'
-import { generateQRTextDataURL } from '@/utils/qrUtils'
-import { FountainQRSender } from './fountain_qr/FountainQRSender'
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { OFFLINE_METADATA_MAGIC } from '@/constants';
+import { computeChecksum } from '@/utils/checksum';
+import {
+  DEFAULT_BLOCK_SIZE,
+  PART_SIZE_OPTIONS,
+  type PartSizeOption,
+} from '@/utils/fountainConfig';
+import { generateQRTextDataURL } from '@/utils/qrUtils';
+import { FountainQRSender } from './fountain_qr/FountainQRSender';
 
-const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`
-const ADVANCED_PART_SIZES_ACCORDION_VALUE = 'advanced-part-sizes'
-
+const mb = (n: number) => `${Math.round(n / 1024 / 1024)}MB`;
+const ADVANCED_PART_SIZES_ACCORDION_VALUE = 'advanced-part-sizes';
 
 interface OfflineQRModeProps {
-  file: File | null
-  onReset?: () => void
+  file: File | null;
+  onReset?: () => void;
 }
 
-export const MAX_FILE_SIZE_FOUNTAIN_FEEDBACK = 5 * 1024 * 1024  // 5MB for feedback mode
-export const MAX_FILE_SIZE_FOUNTAIN_SIMPLE = 2 * 1024 * 1024    // 2MB for simple mode
+export const MAX_FILE_SIZE_FOUNTAIN_FEEDBACK = 5 * 1024 * 1024; // 5MB for feedback mode
+export const MAX_FILE_SIZE_FOUNTAIN_SIMPLE = 2 * 1024 * 1024; // 2MB for simple mode
 
-type TransferMode = 'fountain-feedback' | 'fountain-simple'
+type TransferMode = 'fountain-feedback' | 'fountain-simple';
 
 interface FountainMetadata {
-  type: 'METADATA'
-  mode: 'fountain'
-  version: 1
-  sessionId: number
-  fileName: string
-  fileType: string
-  fileSize: number
-  timestamp: number
-  totalSourceBlocks: number
-  blockSize: number
-  chunkSize: number
-  checksumAlg: 'crc32'
-  checksum: string
-  feedbackEnabled: boolean
-  partBasedMode?: boolean
-  partSize?: number
+  type: 'METADATA';
+  mode: 'fountain';
+  version: 1;
+  sessionId: number;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  timestamp: number;
+  totalSourceBlocks: number;
+  blockSize: number;
+  chunkSize: number;
+  checksumAlg: 'crc32';
+  checksum: string;
+  feedbackEnabled: boolean;
+  partBasedMode?: boolean;
+  partSize?: number;
 }
 
-type MetadataJson = FountainMetadata | null
+type MetadataJson = FountainMetadata | null;
 
 export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
-   const [transferMode, setTransferMode] = useState<TransferMode | null>(null)
-   const [step, setStep] = useState<'mode' | 'partSize' | 'metadata' | 'transfer'>('mode')
-   const [metadataQR, setMetadataQR] = useState<string>('')
-   const [metadataJson, setMetadataJson] = useState<MetadataJson>(null)
-  const [metadataLoading, setMetadataLoading] = useState(false)
-  const [metadataError, setMetadataError] = useState<string>('')
-  const [senderRemountKey, setSenderRemountKey] = useState(0) // force remount of sender components when restarting
-  const [currentSessionId, setCurrentSessionId] = useState<number>(0)
-  const [modeSizeError, setModeSizeError] = useState<string>('')
-  const [feedbackEnabled, setFeedbackEnabled] = useState(true)
-  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('LARGE')
-  const [partSizeAccordionValue, setPartSizeAccordionValue] = useState<string>('')
-  const [exitDialogOpen, setExitDialogOpen] = useState(false)
-  const [pendingExitAction, setPendingExitAction] = useState<'metadata' | 'mode' | 'reset' | null>(null)
-  const isCustomPartSizeSelected = partSizeOption !== 'LARGE'
+  const [transferMode, setTransferMode] = useState<TransferMode | null>(null);
+  const [step, setStep] = useState<
+    'mode' | 'partSize' | 'metadata' | 'transfer'
+  >('mode');
+  const [metadataQR, setMetadataQR] = useState<string>('');
+  const [metadataJson, setMetadataJson] = useState<MetadataJson>(null);
+  const [metadataLoading, setMetadataLoading] = useState(false);
+  const [metadataError, setMetadataError] = useState<string>('');
+  const [senderRemountKey, setSenderRemountKey] = useState(0); // force remount of sender components when restarting
+  const [currentSessionId, setCurrentSessionId] = useState<number>(0);
+  const [modeSizeError, setModeSizeError] = useState<string>('');
+  const [feedbackEnabled, setFeedbackEnabled] = useState(true);
+  const [partSizeOption, setPartSizeOption] = useState<PartSizeOption>('LARGE');
+  const [partSizeAccordionValue, setPartSizeAccordionValue] =
+    useState<string>('');
+  const [exitDialogOpen, setExitDialogOpen] = useState(false);
+  const [pendingExitAction, setPendingExitAction] = useState<
+    'metadata' | 'mode' | 'reset' | null
+  >(null);
+  const isCustomPartSizeSelected = partSizeOption !== 'LARGE';
 
   // ------------------------------------------------------------------
   // Metadata Preparation Logic (now centralized here per requirement)
   // ------------------------------------------------------------------
   useEffect(() => {
-    if (!file || !transferMode || step !== 'metadata') return
+    if (!file || !transferMode || step !== 'metadata') return;
 
-    let cancelled = false
+    let cancelled = false;
     const prepare = async () => {
       try {
-        setMetadataLoading(true)
-        setMetadataError('')
-        setMetadataQR('')
+        setMetadataLoading(true);
+        setMetadataError('');
+        setMetadataQR('');
 
-        if (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') {
+        if (
+          transferMode === 'fountain-feedback' ||
+          transferMode === 'fountain-simple'
+        ) {
           // Fountain metadata requires computing totalSourceBlocks using blockSize (600) logic similar to FountainQRSender
-          const arrayBuffer = await file.arrayBuffer()
-          const size = arrayBuffer.byteLength
-          const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE)
-          const checksum = await computeChecksum(new Uint8Array(arrayBuffer), 'crc32')
-          const sessionId = Math.floor(Math.random() * 65536)
-          setCurrentSessionId(sessionId)
+          const arrayBuffer = await file.arrayBuffer();
+          const size = arrayBuffer.byteLength;
+          const totalSourceBlocks = Math.ceil(size / DEFAULT_BLOCK_SIZE);
+          const checksum = await computeChecksum(
+            new Uint8Array(arrayBuffer),
+            'crc32',
+          );
+          const sessionId = Math.floor(Math.random() * 65536);
+          setCurrentSessionId(sessionId);
 
           // Window mode removed - always disabled
 
@@ -126,163 +151,176 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             checksum,
             feedbackEnabled,
             partBasedMode: feedbackEnabled, // Enable part-based mode for feedback transfers
-            partSize: feedbackEnabled ? PART_SIZE_OPTIONS[partSizeOption] : undefined
-          }
-          if (cancelled) return
-          const qrUrl = await generateQRTextDataURL(OFFLINE_METADATA_MAGIC + JSON.stringify(meta), {
-            margin: 1,
-            errorCorrectionLevel: 'M'
-          })
-          if (cancelled) return
-          setMetadataJson(meta)
-          setMetadataQR(qrUrl)
+            partSize: feedbackEnabled
+              ? PART_SIZE_OPTIONS[partSizeOption]
+              : undefined,
+          };
+          if (cancelled) return;
+          const qrUrl = await generateQRTextDataURL(
+            OFFLINE_METADATA_MAGIC + JSON.stringify(meta),
+            {
+              margin: 1,
+              errorCorrectionLevel: 'M',
+            },
+          );
+          if (cancelled) return;
+          setMetadataJson(meta);
+          setMetadataQR(qrUrl);
         }
       } catch (e) {
         if (!cancelled) {
-          setMetadataError('Failed to prepare metadata QR')
-          console.error('Metadata preparation error:', e)
+          setMetadataError('Failed to prepare metadata QR');
+          console.error('Metadata preparation error:', e);
         }
       } finally {
-        if (!cancelled) setMetadataLoading(false)
+        if (!cancelled) setMetadataLoading(false);
       }
-    }
-    prepare()
-    return () => { cancelled = true }
-  }, [file, transferMode, step, feedbackEnabled, partSizeOption])
+    };
+    prepare();
+    return () => {
+      cancelled = true;
+    };
+  }, [file, transferMode, step, feedbackEnabled, partSizeOption]);
 
   const handleSelectMode = (mode: TransferMode) => {
-     if (!file) return
+    if (!file) return;
 
-     let maxSize: number
-     let modeName: string
-
-     if (mode === 'fountain-feedback') {
-       maxSize = MAX_FILE_SIZE_FOUNTAIN_FEEDBACK
-       modeName = 'Fountain (Recommended)'
-     } else {
-       maxSize = MAX_FILE_SIZE_FOUNTAIN_SIMPLE
-       modeName = 'Fountain (Basic)'
-     }
-
-     if (file.size > maxSize) {
-       setModeSizeError(`${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`)
-       return
-     }
-
-     setModeSizeError('')
-     setTransferMode(mode)
+    let maxSize: number;
+    let modeName: string;
 
     if (mode === 'fountain-feedback') {
-      setFeedbackEnabled(true)
-      setPartSizeOption('LARGE')
-      setPartSizeAccordionValue('')
-      // Go to part size configuration step instead of metadata
-      setStep('partSize')
-    } else if (mode === 'fountain-simple') {
-      setFeedbackEnabled(false)
-      setStep('metadata')
+      maxSize = MAX_FILE_SIZE_FOUNTAIN_FEEDBACK;
+      modeName = 'Fountain (Recommended)';
+    } else {
+      maxSize = MAX_FILE_SIZE_FOUNTAIN_SIMPLE;
+      modeName = 'Fountain (Basic)';
     }
 
-     setMetadataQR('')
-     setMetadataJson(null)
-   }
+    if (file.size > maxSize) {
+      setModeSizeError(
+        `${modeName} mode supports files up to ${(maxSize / (maxSize >= 1024 * 1024 ? 1024 * 1024 : 1024)).toFixed(0)}${maxSize >= 1024 * 1024 ? 'MB' : 'KB'}. Your file is ${(file.size / 1024).toFixed(2)}KB. Please select a different mode or choose a smaller file.`,
+      );
+      return;
+    }
+
+    setModeSizeError('');
+    setTransferMode(mode);
+
+    if (mode === 'fountain-feedback') {
+      setFeedbackEnabled(true);
+      setPartSizeOption('LARGE');
+      setPartSizeAccordionValue('');
+      // Go to part size configuration step instead of metadata
+      setStep('partSize');
+    } else if (mode === 'fountain-simple') {
+      setFeedbackEnabled(false);
+      setStep('metadata');
+    }
+
+    setMetadataQR('');
+    setMetadataJson(null);
+  };
 
   const handleContinueToMetadata = () => {
-    setStep('metadata')
-  }
+    setStep('metadata');
+  };
 
   const handleStartTransfer = () => {
-    setStep('transfer')
+    setStep('transfer');
     // Force remount of sender by incrementing sender remount key (so internal state like metadata chunk is fresh)
-    setSenderRemountKey(id => id + 1)
-  }
+    setSenderRemountKey((id) => id + 1);
+  };
 
   const handlePartSizeOptionChange = (value: PartSizeOption) => {
-    setPartSizeOption(value)
-    setPartSizeAccordionValue(value === 'LARGE' ? '' : ADVANCED_PART_SIZES_ACCORDION_VALUE)
-  }
+    setPartSizeOption(value);
+    setPartSizeAccordionValue(
+      value === 'LARGE' ? '' : ADVANCED_PART_SIZES_ACCORDION_VALUE,
+    );
+  };
 
   const handlePartSizeAccordionChange = (value: string) => {
     if (!value && isCustomPartSizeSelected) {
-      return
+      return;
     }
-    setPartSizeAccordionValue(value)
-  }
+    setPartSizeAccordionValue(value);
+  };
 
   const handleResetSession = () => {
-    setTransferMode(null)
-    setStep('mode')
-    setMetadataQR('')
-    setMetadataJson(null)
-    setMetadataError('')
-    setMetadataLoading(false)
-    setSenderRemountKey(id => id + 1)
-    setCurrentSessionId(0)
-    setModeSizeError('')
-    setFeedbackEnabled(true)
-    setPartSizeOption('LARGE')
-    setPartSizeAccordionValue('')
-    if (onReset) onReset()
-  }
+    setTransferMode(null);
+    setStep('mode');
+    setMetadataQR('');
+    setMetadataJson(null);
+    setMetadataError('');
+    setMetadataLoading(false);
+    setSenderRemountKey((id) => id + 1);
+    setCurrentSessionId(0);
+    setModeSizeError('');
+    setFeedbackEnabled(true);
+    setPartSizeOption('LARGE');
+    setPartSizeAccordionValue('');
+    if (onReset) onReset();
+  };
 
   const exitActionContent = {
     metadata: {
       title: 'Leave Transfer?',
-      description: 'Going back to the metadata screen will stop the current QR playback and reset progress. Continue?',
-      confirmLabel: 'Yes, Go to Metadata'
+      description:
+        'Going back to the metadata screen will stop the current QR playback and reset progress. Continue?',
+      confirmLabel: 'Yes, Go to Metadata',
     },
     mode: {
       title: 'Change Mode?',
-      description: 'Switching transfer mode will discard the current session settings and QR codes.',
-      confirmLabel: 'Yes, Change Mode'
+      description:
+        'Switching transfer mode will discard the current session settings and QR codes.',
+      confirmLabel: 'Yes, Change Mode',
     },
     reset: {
       title: 'Reset Session?',
-      description: 'Resetting will clear the current transfer and return to file selection. This cannot be undone.',
-      confirmLabel: 'Yes, Reset Session'
-    }
-  } as const
+      description:
+        'Resetting will clear the current transfer and return to file selection. This cannot be undone.',
+      confirmLabel: 'Yes, Reset Session',
+    },
+  } as const;
 
   const requestExitAction = (action: 'metadata' | 'mode' | 'reset') => {
-    setPendingExitAction(action)
-    setExitDialogOpen(true)
-  }
+    setPendingExitAction(action);
+    setExitDialogOpen(true);
+  };
 
   const handleConfirmExitAction = () => {
     if (!pendingExitAction) {
-      setExitDialogOpen(false)
-      return
+      setExitDialogOpen(false);
+      return;
     }
 
     if (pendingExitAction === 'metadata') {
-      setStep('metadata')
-      setSenderRemountKey(id => id + 1)
-      setMetadataQR('')
-      setMetadataJson(null)
-      setMetadataError('')
-      setMetadataLoading(false)
+      setStep('metadata');
+      setSenderRemountKey((id) => id + 1);
+      setMetadataQR('');
+      setMetadataJson(null);
+      setMetadataError('');
+      setMetadataLoading(false);
     } else if (pendingExitAction === 'mode') {
-      setTransferMode(null)
-      setStep('mode')
-      setMetadataQR('')
-      setMetadataJson(null)
-      setMetadataError('')
-      setMetadataLoading(false)
-      setSenderRemountKey(id => id + 1)
-      setFeedbackEnabled(true)
+      setTransferMode(null);
+      setStep('mode');
+      setMetadataQR('');
+      setMetadataJson(null);
+      setMetadataError('');
+      setMetadataLoading(false);
+      setSenderRemountKey((id) => id + 1);
+      setFeedbackEnabled(true);
     } else if (pendingExitAction === 'reset') {
-      handleResetSession()
+      handleResetSession();
     }
 
-    setPendingExitAction(null)
-    setExitDialogOpen(false)
-  }
+    setPendingExitAction(null);
+    setExitDialogOpen(false);
+  };
 
   const handleCancelExitAction = () => {
-    setPendingExitAction(null)
-    setExitDialogOpen(false)
-  }
-
+    setPendingExitAction(null);
+    setExitDialogOpen(false);
+  };
 
   if (!file) {
     return (
@@ -291,7 +329,7 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           <p className="text-muted-foreground">No file selected</p>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   // -----------------------------------------------------------
@@ -302,115 +340,130 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
       <Card className="border-none shadow-none bg-transparent">
         <div className="space-y-6">
           <div className="text-center space-y-1">
-             <h3 className="text-lg font-semibold">Select Transfer Mode</h3>
-             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground flex-wrap">
-                <FileDigit className="w-4 h-4 shrink-0" />
-                <span className="font-medium break-all">{file.name}</span>
-                <span className="opacity-50">|</span>
-                <span className="shrink-0">{(file.size / 1024).toFixed(2)} KB</span>
-             </div>
+            <h3 className="text-lg font-semibold">Select Transfer Mode</h3>
+            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground flex-wrap">
+              <FileDigit className="w-4 h-4 shrink-0" />
+              <span className="font-medium break-all">{file.name}</span>
+              <span className="opacity-50">|</span>
+              <span className="shrink-0">
+                {(file.size / 1024).toFixed(2)} KB
+              </span>
+            </div>
           </div>
 
           {modeSizeError && (
             <Alert variant="destructive">
-               <TriangleAlert className="h-4 w-4" />
+              <TriangleAlert className="h-4 w-4" />
               <AlertDescription>{modeSizeError}</AlertDescription>
             </Alert>
           )}
 
           <div className="grid md:grid-cols-2 gap-4">
-             {/* Interactive Mode (Recommended) */}
-             <button
-                type="button"
-                className="relative group cursor-pointer text-left"
-                onClick={() => handleSelectMode('fountain-feedback')}
-             >
-                <div className="absolute inset-0 bg-primary/5 rounded-xl border-2 border-primary/20 group-hover:border-primary transition-colors" />
-                <div className="relative p-6 space-y-4">
-                   <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-primary/10 text-primary">
-                         <RefreshCw className="w-6 h-6" />
-                      </div>
-                      <div className="flex-1">
-                         <h4 className="font-bold text-base">Interactive</h4>
-                         <p className="text-xs text-primary font-medium">Recommended</p>
-                      </div>
-                   </div>
-                   
-                   <ul className="space-y-2 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2">
-                         <ShieldCheck className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
-                         <span>Receiver tells sender what parts are missing</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                         <Smartphone className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                         <span>Works with or without camera on sender</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                         <Settings className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
-                         <span>Supports QR scan or manual code feedback</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                         <Maximize2 className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
-                         <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}</span>
-                      </li>
-                   </ul>
+            {/* Interactive Mode (Recommended) */}
+            <button
+              type="button"
+              className="relative group cursor-pointer text-left"
+              onClick={() => handleSelectMode('fountain-feedback')}
+            >
+              <div className="absolute inset-0 bg-primary/5 rounded-xl border-2 border-primary/20 group-hover:border-primary transition-colors" />
+              <div className="relative p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-primary/10 text-primary">
+                    <RefreshCw className="w-6 h-6" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-bold text-base">Interactive</h4>
+                    <p className="text-xs text-primary font-medium">
+                      Recommended
+                    </p>
+                  </div>
                 </div>
-             </button>
 
-             {/* Basic Mode */}
-             <button
-                type="button"
-                className="relative group cursor-pointer text-left"
-                onClick={() => handleSelectMode('fountain-simple')}
-             >
-                <div className="absolute inset-0 bg-muted/30 rounded-xl border-2 border-transparent group-hover:border-muted-foreground/30 transition-colors" />
-                <div className="relative p-6 space-y-4">
-                   <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-full bg-muted text-muted-foreground">
-                         <ArrowRight className="w-6 h-6" />
-                      </div>
-                      <div>
-                         <h4 className="font-bold text-base">One-Way</h4>
-                         <p className="text-xs text-muted-foreground font-medium">Basic</p>
-                      </div>
-                   </div>
-                   
-                   <ul className="space-y-2 text-sm text-muted-foreground">
-                      <li className="flex items-start gap-2">
-                         <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">1</span>
-                         <span>No sender interaction required during transfer</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                         <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">2</span>
-                         <span>Continuous data stream until completion</span>
-                      </li>
-                      <li className="flex items-start gap-2">
-                         <Maximize2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                         <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_SIMPLE)}</span>
-                      </li>
-                   </ul>
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-green-500 mt-0.5 shrink-0" />
+                    <span>Receiver tells sender what parts are missing</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Smartphone className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                    <span>Works with or without camera on sender</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Settings className="w-4 h-4 text-purple-500 mt-0.5 shrink-0" />
+                    <span>Supports QR scan or manual code feedback</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Maximize2 className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                    <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_FEEDBACK)}</span>
+                  </li>
+                </ul>
+              </div>
+            </button>
+
+            {/* Basic Mode */}
+            <button
+              type="button"
+              className="relative group cursor-pointer text-left"
+              onClick={() => handleSelectMode('fountain-simple')}
+            >
+              <div className="absolute inset-0 bg-muted/30 rounded-xl border-2 border-transparent group-hover:border-muted-foreground/30 transition-colors" />
+              <div className="relative p-6 space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-full bg-muted text-muted-foreground">
+                    <ArrowRight className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-base">One-Way</h4>
+                    <p className="text-xs text-muted-foreground font-medium">
+                      Basic
+                    </p>
+                  </div>
                 </div>
-             </button>
+
+                <ul className="space-y-2 text-sm text-muted-foreground">
+                  <li className="flex items-start gap-2">
+                    <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">
+                      1
+                    </span>
+                    <span>No sender interaction required during transfer</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <span className="w-4 h-4 flex items-center justify-center font-bold text-muted-foreground/50">
+                      2
+                    </span>
+                    <span>Continuous data stream until completion</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Maximize2 className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+                    <span>Up to {mb(MAX_FILE_SIZE_FOUNTAIN_SIMPLE)}</span>
+                  </li>
+                </ul>
+              </div>
+            </button>
           </div>
 
           <div className="flex justify-center pt-2">
             {onReset && (
-               <Button onClick={onReset} variant="ghost" size="sm" className="text-muted-foreground">
-                  Select Different File
-               </Button>
+              <Button
+                onClick={onReset}
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+              >
+                Select Different File
+              </Button>
             )}
           </div>
         </div>
       </Card>
-    )
+    );
   }
 
   // -----------------------------------------------------------
   // STEP 2: PART SIZE CONFIG
   // -----------------------------------------------------------
   if (step === 'partSize' && transferMode === 'fountain-feedback') {
-    const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`
+    const originalFileSizeLabel = `${(file.size / 1024).toFixed(2)} KB`;
 
     return (
       <Card>
@@ -421,7 +474,9 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             </div>
             <div>
               <CardTitle>Transfer Configuration</CardTitle>
-              <p className="text-sm text-muted-foreground">Optimize for your device</p>
+              <p className="text-sm text-muted-foreground">
+                Optimize for your device
+              </p>
             </div>
           </div>
         </CardHeader>
@@ -437,17 +492,22 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             <div>
               <Label className="text-base font-medium">Part Size</Label>
               <p className="text-sm text-muted-foreground mt-1">
-                Optimize how your file is split for transfer. Smaller parts are more reliable for older cameras or slow devices.
+                Optimize how your file is split for transfer. Smaller parts are
+                more reliable for older cameras or slow devices.
               </p>
             </div>
-            
-            <RadioGroup 
-              value={partSizeOption} 
-              onValueChange={handlePartSizeOptionChange} 
+
+            <RadioGroup
+              value={partSizeOption}
+              onValueChange={handlePartSizeOptionChange}
               className="space-y-3"
             >
               <div className="relative">
-                <RadioGroupItem value="LARGE" id="opt-LARGE" className="peer sr-only" />
+                <RadioGroupItem
+                  value="LARGE"
+                  id="opt-LARGE"
+                  className="peer sr-only"
+                />
                 <Label
                   htmlFor="opt-LARGE"
                   className="group flex items-center justify-between rounded-xl border-2 border-muted bg-popover p-5 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 peer-data-[state=checked]:shadow-md relative overflow-hidden"
@@ -458,15 +518,22 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                     </div>
                     <div>
                       <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-2">
-                        <p className="font-bold text-lg leading-none sm:leading-normal">1 MB</p>
-                        <Badge variant="secondary" className="mb-1 w-fit bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold sm:mb-0">
+                        <p className="font-bold text-lg leading-none sm:leading-normal">
+                          1 MB
+                        </p>
+                        <Badge
+                          variant="secondary"
+                          className="mb-1 w-fit bg-primary/10 text-primary border-none text-[10px] uppercase tracking-wider font-bold sm:mb-0"
+                        >
                           Recommended
                         </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground font-medium">Fastest transfer speed</p>
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Fastest transfer speed
+                      </p>
                     </div>
                   </div>
-                  
+
                   <div className="relative z-10">
                     <CheckCircle2 className="h-4 w-4 text-primary scale-0 group-data-[state=checked]:scale-100 transition-transform" />
                   </div>
@@ -483,7 +550,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                 onValueChange={handlePartSizeAccordionChange}
                 className="w-full"
               >
-                <AccordionItem value={ADVANCED_PART_SIZES_ACCORDION_VALUE} className="border-none">
+                <AccordionItem
+                  value={ADVANCED_PART_SIZES_ACCORDION_VALUE}
+                  className="border-none"
+                >
                   <AccordionTrigger className="py-2 text-sm text-muted-foreground hover:text-foreground hover:no-underline flex justify-center gap-2">
                     <Settings className="w-4 h-4" />
                     Custom Part Sizes
@@ -493,15 +563,21 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                       {[
                         { val: 'MEDIUM', label: '512 KB' },
                         { val: 'SMALL', label: '256 KB' },
-                        { val: 'TINY', label: '32 KB' }
+                        { val: 'TINY', label: '32 KB' },
                       ].map((opt) => (
                         <div key={opt.val} className="relative">
-                          <RadioGroupItem value={opt.val} id={`opt-${opt.val}`} className="peer sr-only" />
+                          <RadioGroupItem
+                            value={opt.val}
+                            id={`opt-${opt.val}`}
+                            className="peer sr-only"
+                          />
                           <Label
                             htmlFor={`opt-${opt.val}`}
                             className="flex flex-col items-center justify-center rounded-xl border-2 border-muted bg-popover p-3 hover:bg-accent/50 cursor-pointer transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 h-full text-center"
                           >
-                            <span className="font-bold text-sm">{opt.label}</span>
+                            <span className="font-bold text-sm">
+                              {opt.label}
+                            </span>
                           </Label>
                         </div>
                       ))}
@@ -516,12 +592,10 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           <Button onClick={() => setStep('mode')} variant="outline">
             Back
           </Button>
-          <Button onClick={handleContinueToMetadata}>
-            Continue
-          </Button>
+          <Button onClick={handleContinueToMetadata}>Continue</Button>
         </CardFooter>
       </Card>
-    )
+    );
   }
 
   // -----------------------------------------------------------
@@ -531,12 +605,12 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
     return (
       <Card className="overflow-hidden">
         <div className="bg-muted/30 border-b p-4 text-center">
-           <h3 className="font-semibold flex items-center justify-center gap-2">
-              <QrCode className="w-4 h-4" />
-              Scan on Receiver
-           </h3>
+          <h3 className="font-semibold flex items-center justify-center gap-2">
+            <QrCode className="w-4 h-4" />
+            Scan on Receiver
+          </h3>
         </div>
-        
+
         <CardContent className="p-6 space-y-6">
           {metadataError && (
             <Alert variant="destructive">
@@ -561,68 +635,69 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
                 </div>
                 {/* Scan indicator */}
                 <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground text-xs font-bold px-3 py-1 rounded-full shadow-lg">
-                   SCAN ME
+                  SCAN ME
                 </div>
               </div>
 
               <div className="space-y-4 w-full max-w-sm text-center">
-                 <p className="text-sm text-muted-foreground">
-                    {metadataLoading 
-                       ? 'Generating secure metadata...' 
-                       : 'Scan this code with the receiver device to initialize the secure channel.'}
-                 </p>
-                 
-                 {(transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') && !feedbackEnabled && (
+                <p className="text-sm text-muted-foreground">
+                  {metadataLoading
+                    ? 'Generating secure metadata...'
+                    : 'Scan this code with the receiver device to initialize the secure channel.'}
+                </p>
+
+                {(transferMode === 'fountain-feedback' ||
+                  transferMode === 'fountain-simple') &&
+                  !feedbackEnabled && (
                     <div className="bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200 text-xs p-3 rounded-md text-left flex gap-2">
-                       <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
-                       <p>Receiver will operate in basic (no-feedback) mode.</p>
+                      <TriangleAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                      <p>Receiver will operate in basic (no-feedback) mode.</p>
                     </div>
-                 )}
+                  )}
               </div>
             </div>
           )}
-
         </CardContent>
 
         <CardFooter className="flex flex-col gap-3 bg-muted/10 p-6 pt-2">
-           <Button
-              onClick={handleStartTransfer}
-              size="lg"
-              className="w-full text-lg shadow-lg shadow-primary/20"
-              disabled={!metadataQR || metadataLoading}
+          <Button
+            onClick={handleStartTransfer}
+            size="lg"
+            className="w-full text-lg shadow-lg shadow-primary/20"
+            disabled={!metadataQR || metadataLoading}
+          >
+            <Play className="w-5 h-5 mr-2 fill-current" />
+            Start Transfer
+          </Button>
+
+          <div className="flex gap-2 w-full">
+            <Button
+              onClick={() => {
+                setStep('mode');
+                setFeedbackEnabled(true);
+              }}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+              disabled={metadataLoading}
             >
-              <Play className="w-5 h-5 mr-2 fill-current" />
-              Start Transfer
+              Change Mode
             </Button>
-            
-            <div className="flex gap-2 w-full">
-               <Button
-                  onClick={() => {
-                     setStep('mode')
-                     setFeedbackEnabled(true)
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  disabled={metadataLoading}
-               >
-                  Change Mode
-               </Button>
-               {onReset && (
-                  <Button
-                     onClick={handleResetSession}
-                     variant="ghost"
-                     size="sm"
-                     className="flex-1"
-                     disabled={metadataLoading}
-                  >
-                     Cancel
-                  </Button>
-               )}
-            </div>
+            {onReset && (
+              <Button
+                onClick={handleResetSession}
+                variant="ghost"
+                size="sm"
+                className="flex-1"
+                disabled={metadataLoading}
+              >
+                Cancel
+              </Button>
+            )}
+          </div>
         </CardFooter>
       </Card>
-    )
+    );
   }
 
   // -----------------------------------------------------------
@@ -658,7 +733,12 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
             Change Mode
           </Button>
           {onReset && (
-            <Button onClick={() => requestExitAction('reset')} variant="outline" size="sm" className="flex-1">
+            <Button
+              onClick={() => requestExitAction('reset')}
+              variant="outline"
+              size="sm"
+              className="flex-1"
+            >
               Reset Session
             </Button>
           )}
@@ -666,7 +746,8 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
 
         {/* Render appropriate sender component */}
         {metadataJson &&
-          (transferMode === 'fountain-feedback' || transferMode === 'fountain-simple') &&
+          (transferMode === 'fountain-feedback' ||
+            transferMode === 'fountain-simple') &&
           metadataJson.mode === 'fountain' && (
             <FountainQRSender
               key={`fount-${senderRemountKey}`}
@@ -682,14 +763,16 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
           open={exitDialogOpen}
           onOpenChange={(open) => {
             if (!open) {
-              handleCancelExitAction()
+              handleCancelExitAction();
             }
           }}
         >
           {pendingExitAction && (
             <DialogContent showCloseButton={false}>
               <DialogHeader>
-                <DialogTitle>{exitActionContent[pendingExitAction].title}</DialogTitle>
+                <DialogTitle>
+                  {exitActionContent[pendingExitAction].title}
+                </DialogTitle>
                 <DialogDescription>
                   {exitActionContent[pendingExitAction].description}
                 </DialogDescription>
@@ -707,5 +790,5 @@ export function OfflineQRMode({ file, onReset }: OfflineQRModeProps) {
         </Dialog>
       </CardContent>
     </Card>
-  )
+  );
 }

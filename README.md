@@ -30,9 +30,10 @@ Offline file transfer and QR code generation. Share files between devices using 
 
 ## Prerequisites
 
-- Node.js 18+
-- Rust toolchain with `wasm-pack` (for building the in-repo WASM crates)
-- GitHub Packages npm access for `@andrewtheguy/rxing-wasm`
+- [Bun](https://bun.sh) (the version in `packageManager` in `package.json`)
+- [rustup](https://rustup.rs); `wasm/fountain/rust-toolchain.toml` pins the
+  toolchain and the `wasm32-unknown-unknown` target, and `wasm-pack` comes from
+  the devDependencies
 
 ## Installation
 
@@ -40,13 +41,16 @@ Offline file transfer and QR code generation. Share files between devices using 
 # Clone and install
 git clone <repository-url>
 cd qrcodesecureshare
-npm install
+bun install
 
-# Development (uses pre-built WASM)
-npm run dev
+# Build the fountain WASM module (once, and after every change under wasm/)
+bun run build:wasm
 
-# Production build (rebuilds WASM)
-npm run build
+# Development
+bun run dev
+
+# Production build (builds the WASM module first)
+bun run build
 ```
 
 ## Usage
@@ -83,11 +87,11 @@ src/
 │   ├── OfflineTransfer.tsx # File transfer workflow
 │   ├── fountain_qr/        # Fountain code transfer UI
 │   └── ui/                 # Shared UI components (shadcn)
-├── workers/                # Web Workers (QR scanning, decoding)
-└── wasm/                   # WASM bindings
+├── utils/                  # WASM bindings and helpers
+└── workers/                # Web Workers (QR scanning, decoding)
 
-rust/
-└── fountain-wasm/          # LT fountain codes implementation
+wasm/
+└── fountain/               # LT fountain codes implementation (Rust → WASM)
 ```
 
 ## Performance
@@ -108,34 +112,39 @@ Mobile-optimized scanning:
 
 ```bash
 # Run development server
-npm run dev
+bun run dev
 
-# Run tests (Rust)
-npm run test
+# Rust tests and clippy for wasm/fountain
+bun run test
+bun run clippy
 
-# Lint
-npm run lint
+# Lint (Biome) and type-check
+bun run lint
+bunx tsc -b
+
+# Format and apply safe fixes
+bun run format
 
 # Build WASM only
-npm run build:wasm
+bun run build:wasm
 ```
 
 The QR reader WASM is built and published from
 [andrewtheguy/rxing-reader](https://github.com/andrewtheguy/rxing-reader); this
-app consumes it as the pinned npm package `@andrewtheguy/rxing-wasm`. The QR
+app consumes it as the pinned package `@andrewtheguy/rxing-wasm`. The QR
 generator WASM is built and published from
 [andrewtheguy/fast_qr](https://github.com/andrewtheguy/fast_qr); this app
-consumes it as the pinned npm package `@andrewtheguy/fast-qr-wasm`. Both are
+consumes it as the pinned package `@andrewtheguy/fast-qr-wasm`. Both are
 pulled in as GitHub release tarball URLs declared in `package.json`.
 
 ## Deployment
 
 ```bash
 # Build for production
-npm run build
+bun run build
 
 # Preview build locally
-npm run preview
+bun run preview
 
 # Deploy dist/ folder to any static hosting
 ```

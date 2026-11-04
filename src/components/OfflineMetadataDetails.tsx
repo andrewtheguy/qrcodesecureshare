@@ -1,18 +1,22 @@
-import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
-const REDUNDANCY_FACTOR = 1.1
+const REDUNDANCY_FACTOR = 1.1;
 
 interface OfflineMetadataDetailsProps {
   metadata: {
-    fileName: string
-    fileSize: number
-    totalSourceBlocks: number
-  }
+    fileName: string;
+    fileSize: number;
+    totalSourceBlocks: number;
+  };
 }
 
-export function OfflineMetadataDetails({ metadata }: OfflineMetadataDetailsProps) {
-  const estimatedChunks = Math.ceil(metadata.totalSourceBlocks * REDUNDANCY_FACTOR)
-  const redundancyPercent = Math.round(REDUNDANCY_FACTOR * 100)
+export function OfflineMetadataDetails({
+  metadata,
+}: OfflineMetadataDetailsProps) {
+  const estimatedChunks = Math.ceil(
+    metadata.totalSourceBlocks * REDUNDANCY_FACTOR,
+  );
+  const redundancyPercent = Math.round(REDUNDANCY_FACTOR * 100);
 
   return (
     <div className="space-y-3">
@@ -42,5 +46,5 @@ export function OfflineMetadataDetails({ metadata }: OfflineMetadataDetailsProps
         </AlertDescription>
       </Alert>
     </div>
-  )
+  );
 }

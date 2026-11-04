@@ -183,7 +183,7 @@ mod tests {
 
         for _ in 0..100 {
             let degree = sample_degree_with_doping_lcg(&mut rng, &dist, 0.08, 0.18);
-            assert!(degree >= 1 && degree <= 20);
+            assert!((1..=20).contains(&degree));
         }
     }
 
@@ -223,7 +223,7 @@ mod tests {
         // Available: 1000 - 10 - 8 - 400 = 582, degree = 582 / 2 = 291
         // For k=100, adaptive ~25, so result should be 25
         let degree = calculate_max_degree(100, 1000, 400, fixed_overhead, part_overhead);
-        assert!(degree >= 1 && degree <= 100);
+        assert!((1..=100).contains(&degree));
 
         // Verify formula: degree * 2 + block_size + fixed + part <= maxQR
         let total_size = (degree * 2) + 400 + fixed_overhead + part_overhead;

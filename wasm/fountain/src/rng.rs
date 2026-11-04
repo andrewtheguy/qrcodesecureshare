@@ -198,7 +198,7 @@ mod tests {
         let mut rng2 = LcgRandom::new(999);
         for _ in 0..100 {
             let val = rng2.gen_range(50..100);
-            assert!(val >= 50 && val < 100);
+            assert!((50..100).contains(&val));
         }
     }
 
