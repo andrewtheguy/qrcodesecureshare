@@ -38,6 +38,11 @@
   system-wide `cargo install`ed binary. It is in `trustedDependencies` so that
   `bun install` runs the postinstall that downloads its binary.
 
+## Git
+
+- Never squash-merge a pull request. Merge it with a merge commit
+  (`gh pr merge --merge`) so each branch commit stays in `main`'s history.
+
 ## Tools
 
 - For one-off Python scripts, always run them with `uv`.
