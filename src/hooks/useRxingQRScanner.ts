@@ -18,6 +18,26 @@ interface UseRxingQRScannerOptions {
 // Wait briefly before requesting camera access so React refs and recently stopped streams can settle.
 const DELAY_BEFORE_START_MS = 100;
 
+/** A message a person can act on, for why the camera did not start. */
+function describeCameraError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : '';
+  switch (name) {
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found on this device. Connect a camera, or upload an image of the QR code instead.';
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Camera access was blocked. Allow camera access for this site in your browser settings, or upload an image of the QR code instead.';
+    case 'NotSupportedError':
+      return 'This browser does not allow camera access on this page. Open it over HTTPS in an up-to-date browser, or upload an image of the QR code instead.';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'The camera could not be started. It may be in use by another app; close it and try again, or upload an image of the QR code instead.';
+    default:
+      return `The camera could not be started${err instanceof Error && err.message ? ` (${err.message})` : ''}. Try again, or upload an image of the QR code instead.`;
+  }
+}
+
 function isSameScan(a: Uint8Array, b: Uint8Array): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
@@ -216,6 +236,12 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
             },
       };
 
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new DOMException(
+          'getUserMedia is unavailable',
+          'NotSupportedError',
+        );
+      }
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       if (startTokenRef.current !== startToken || !desiredScanningRef.current) {
         stream.getTracks().forEach((track) => {
@@ -252,16 +278,13 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
         startScanLoop();
       }
     } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : 'Failed to access camera';
+      console.error('Failed to start camera:', err);
       if (
         onError &&
         desiredScanningRef.current &&
         startTokenRef.current === startToken
       ) {
-        onError(
-          `Camera access denied or unavailable. Please check your permissions. ${errorMessage}`,
-        );
+        onError(describeCameraError(err));
       }
       stopCameraScanning();
     }

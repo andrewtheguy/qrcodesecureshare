@@ -319,6 +319,21 @@ const Scan = ({ onGenerateQR, defaultMode = 'camera' }: ScanProps) => {
 
               {uploadMode === 'camera' ? (
                 <div className="space-y-4">
+                  {cameraError && (
+                    <Alert variant="destructive" className="text-left">
+                      <AlertDescription className="space-y-3">
+                        <p>{cameraError}</p>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => navigate('/scan/upload')}
+                        >
+                          🖼️ Upload Image
+                        </Button>
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <button
                     type="button"
                     onClick={startScanning}
