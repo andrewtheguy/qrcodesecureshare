@@ -15,6 +15,10 @@ interface UseRxingQRScannerOptions {
   preferLowRes?: boolean;
 }
 
+type ScanLoopHandle =
+  | { kind: 'video'; video: HTMLVideoElement; id: number }
+  | { kind: 'animation'; id: number };
+
 // Wait briefly before requesting camera access so React refs and recently stopped streams can settle.
 const DELAY_BEFORE_START_MS = 100;
 
@@ -62,17 +66,36 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const scanLoopRef = useRef<number | null>(null);
+  const scanLoopRef = useRef<ScanLoopHandle | null>(null);
   const isScanningRef = useRef<boolean>(false);
   const desiredScanningRef = useRef<boolean>(false);
   const startTokenRef = useRef<number>(0);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const workerRef = useRef<Worker | null>(null);
+  // The worker holds one frame at a time. A frame that arrives while it is
+  // busy is not queued behind it; it marks `pendingFrameRef` so the newest
+  // frame is read the moment the worker is free.
+  const scanInFlightRef = useRef<boolean>(false);
+  const pendingFrameRef = useRef<boolean>(false);
+  const lastFrameScanTimeRef = useRef<number>(Number.NEGATIVE_INFINITY);
   const lastScannedRef = useRef<Uint8Array>(new Uint8Array());
   const lastScanTimeRef = useRef<number>(0);
   const [availableCameras, setAvailableCameras] = useState<MediaDeviceInfo[]>(
     [],
   );
+
+  // Callers pass fresh callbacks and options on most renders. Reading them
+  // through refs keeps the worker and scan loop alive across those renders.
+  const onScanRef = useRef(onScan);
+  const debounceMsRef = useRef(debounceMs);
+  const readerOptionsRef = useRef(readerOptions);
+  const scanIntervalRef = useRef(scanInterval);
+  useEffect(() => {
+    onScanRef.current = onScan;
+    debounceMsRef.current = debounceMs;
+    readerOptionsRef.current = readerOptions;
+    scanIntervalRef.current = scanInterval;
+  });
 
   const enumerateCameras = useCallback(async () => {
     try {
@@ -86,51 +109,15 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     }
   }, []);
 
-  useEffect(() => {
-    const worker = new RxingWorker();
-    workerRef.current = worker;
-
-    worker.onmessage = (e: MessageEvent) => {
-      if (e.data.type === 'result') {
-        if (e.data.data.length > 0) {
-          const scannedData = e.data.data[0] as Uint8Array;
-          const now = Date.now();
-          if (
-            debounceMs > 0 &&
-            isSameScan(scannedData, lastScannedRef.current) &&
-            now - lastScanTimeRef.current < debounceMs
-          ) {
-            return;
-          }
-          lastScannedRef.current = scannedData;
-          lastScanTimeRef.current = now;
-
-          onScan(e.data.data);
-        }
-        if (e.data.error) {
-          console.error('Worker decode error:', e.data.error);
-        }
-      }
-    };
-
-    worker.onerror = (err) => {
-      console.error('Worker error:', err);
-    };
-
-    return () => {
-      worker.terminate();
-      workerRef.current = null;
-    };
-  }, [onScan, debounceMs]);
-
-  const scanVideoFrame = useCallback(() => {
-    if (!videoRef.current || !canvasRef.current || !workerRef.current) return;
-
+  /** Sends the video's current frame to the worker; false if none was sent. */
+  const scanVideoFrame = useCallback((): boolean => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
+    const worker = workerRef.current;
+    if (!video || !canvas || !worker) return false;
 
     if (video.readyState !== video.HAVE_ENOUGH_DATA) {
-      return;
+      return false;
     }
 
     try {
@@ -138,55 +125,146 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
       canvas.height = video.videoHeight;
 
       if (canvas.width === 0 || canvas.height === 0) {
-        return;
+        return false;
       }
 
       const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      if (!ctx) return;
+      if (!ctx) return false;
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      workerRef.current.postMessage(
+      worker.postMessage(
         {
           type: 'scan',
           imageData,
-          options: readerOptions,
+          options: readerOptionsRef.current,
         },
         [imageData.data.buffer],
       );
+      scanInFlightRef.current = true;
+      return true;
     } catch (err) {
       console.error('Error scanning frame:', err);
+      return false;
     }
-  }, [readerOptions]);
+  }, []);
 
-  const startScanLoop = useCallback(() => {
-    let lastScanTime = 0;
-
-    const scanFrame = () => {
-      if (!isScanningRef.current) {
+  /** Scans a frame if the interval has passed and the worker is free. */
+  const offerFrame = useCallback(
+    (now: number) => {
+      if (now - lastFrameScanTimeRef.current < scanIntervalRef.current) return;
+      if (scanInFlightRef.current) {
+        pendingFrameRef.current = true;
         return;
       }
-
-      const now = Date.now();
-      if (now - lastScanTime >= scanInterval) {
-        scanVideoFrame();
-        lastScanTime = now;
+      pendingFrameRef.current = false;
+      if (scanVideoFrame()) {
+        lastFrameScanTimeRef.current = now;
       }
+    },
+    [scanVideoFrame],
+  );
 
-      if (isScanningRef.current) {
-        scanLoopRef.current = requestAnimationFrame(scanFrame);
+  useEffect(() => {
+    const worker = new RxingWorker();
+    workerRef.current = worker;
+
+    const onWorkerFree = () => {
+      scanInFlightRef.current = false;
+      if (pendingFrameRef.current && isScanningRef.current) {
+        offerFrame(performance.now());
       }
     };
 
+    worker.onmessage = (e: MessageEvent) => {
+      if (e.data.type === 'result') {
+        if (e.data.data.length > 0) {
+          const scannedData = e.data.data[0] as Uint8Array;
+          const now = Date.now();
+          const debounce = debounceMsRef.current;
+          if (
+            debounce > 0 &&
+            isSameScan(scannedData, lastScannedRef.current) &&
+            now - lastScanTimeRef.current < debounce
+          ) {
+            onWorkerFree();
+            return;
+          }
+          lastScannedRef.current = scannedData;
+          lastScanTimeRef.current = now;
+
+          onScanRef.current(e.data.data);
+        }
+        if (e.data.error) {
+          console.error('Worker decode error:', e.data.error);
+        }
+      }
+      onWorkerFree();
+    };
+
+    worker.onerror = (err) => {
+      console.error('Worker error:', err);
+      onWorkerFree();
+    };
+
+    return () => {
+      worker.terminate();
+      workerRef.current = null;
+      scanInFlightRef.current = false;
+      pendingFrameRef.current = false;
+    };
+  }, [offerFrame]);
+
+  const cancelScanLoop = useCallback(() => {
+    const handle = scanLoopRef.current;
+    if (!handle) return;
+    scanLoopRef.current = null;
+    if (handle.kind === 'video') {
+      handle.video.cancelVideoFrameCallback(handle.id);
+    } else {
+      cancelAnimationFrame(handle.id);
+    }
+  }, []);
+
+  const startScanLoop = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // requestVideoFrameCallback fires once per new camera frame, so no frame
+    // is read twice and none is skipped by a display refresh that is out of
+    // step with the camera. Browsers without it fall back to animation frames.
+    const useVideoFrames = 'requestVideoFrameCallback' in video;
+
+    const scheduleNext = () => {
+      if (!isScanningRef.current) return;
+      scanLoopRef.current = useVideoFrames
+        ? {
+            kind: 'video',
+            video,
+            id: video.requestVideoFrameCallback(onFrame),
+          }
+        : { kind: 'animation', id: requestAnimationFrame(onFrame) };
+    };
+
+    const onFrame = (now: DOMHighResTimeStamp) => {
+      if (!isScanningRef.current) return;
+      offerFrame(now);
+      scheduleNext();
+    };
+
+    cancelScanLoop();
+    lastFrameScanTimeRef.current = Number.NEGATIVE_INFINITY;
+    pendingFrameRef.current = false;
     isScanningRef.current = true;
-    scanFrame();
-  }, [scanInterval, scanVideoFrame]);
+    scheduleNext();
+  }, [offerFrame, cancelScanLoop]);
 
   const stopCameraScanning = useCallback(() => {
     isScanningRef.current = false;
     desiredScanningRef.current = false;
+    pendingFrameRef.current = false;
     startTokenRef.current += 1;
 
     if (cameraStreamRef.current) {
@@ -200,11 +278,8 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
       videoRef.current.srcObject = null;
     }
 
-    if (scanLoopRef.current !== null) {
-      cancelAnimationFrame(scanLoopRef.current);
-      scanLoopRef.current = null;
-    }
-  }, []);
+    cancelScanLoop();
+  }, [cancelScanLoop]);
 
   const startCameraScanning = useCallback(async () => {
     const startToken = startTokenRef.current + 1;
@@ -299,10 +374,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
   ]);
 
   const switchCamera = useCallback(async () => {
-    if (scanLoopRef.current !== null) {
-      cancelAnimationFrame(scanLoopRef.current);
-      scanLoopRef.current = null;
-    }
+    cancelScanLoop();
 
     if (cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => {
@@ -318,7 +390,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
     await new Promise((resolve) => setTimeout(resolve, DELAY_BEFORE_START_MS));
 
     await startCameraScanning();
-  }, [startCameraScanning]);
+  }, [startCameraScanning, cancelScanLoop]);
 
   const switchCameraRef = useRef(switchCamera);
   useEffect(() => {
@@ -358,9 +430,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
           track.stop();
         });
       }
-      if (scanLoopRef.current !== null) {
-        cancelAnimationFrame(scanLoopRef.current);
-      }
+      cancelScanLoop();
       // Small delay to ensure the camera is fully released before a new instance
       // tries to access it; prevents "media was removed from the document" errors
       // when rapidly switching components.
@@ -370,7 +440,7 @@ export function useRxingQRScanner(options: UseRxingQRScannerOptions) {
         }, 50);
       }
     };
-  }, []);
+  }, [cancelScanLoop]);
 
   return {
     videoRef,

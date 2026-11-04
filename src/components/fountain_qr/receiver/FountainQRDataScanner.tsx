@@ -186,8 +186,10 @@ export function FountainQRDataScanner({
     [onScanError],
   );
 
-  // Continuous data scanning is the most battery-critical operation.
-  // Use 30 fps (33ms interval) and low-res mode on mobile for better performance.
+  // Continuous data scanning sets the transfer's throughput. Offer every new
+  // camera frame (scanInterval 0): the scanner reads one at a time and skips
+  // to the newest when the worker frees up, so decode speed sets the pace.
+  // Low-res mode on mobile keeps each decode short.
   const { videoRef, canvasRef } = useRxingQRScanner({
     onScan: handleScan,
     isScanning:
@@ -200,7 +202,7 @@ export function FountainQRDataScanner({
       addDebugLog('✅ Data scanner started');
       onAckTransitionStatus(true);
     },
-    scanInterval: 33, // ~30 fps
+    scanInterval: 0,
     preferLowRes: true, // Use lower resolution on mobile for better performance and battery life
     readerOptions: { tryHarder: false, binarizer: 'global' },
   });

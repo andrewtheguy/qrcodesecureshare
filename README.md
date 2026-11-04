@@ -96,10 +96,13 @@ wasm/
 
 ## Performance
 
-Mobile-optimized scanning:
-- Reduced scan rates (8 fps mobile, 15+ fps desktop)
-- Resolution limiting to reduce processing overhead
-- Smart throttling for battery preservation
+- QR decoding runs in a Web Worker that reads one camera frame at a time and
+  skips to the newest frame when it frees up.
+- The file-transfer receiver offers every new camera frame; the other scanners
+  read at most 8 to 10 frames per second.
+- Phones ask the camera for a lower resolution while receiving a file.
+
+Planned work is in [docs/roadmap.md](docs/roadmap.md).
 
 ## Security
 
@@ -135,7 +138,9 @@ app consumes it as the pinned package `@andrewtheguy/rxing-wasm`. The QR
 generator WASM is built and published from
 [andrewtheguy/fast_qr](https://github.com/andrewtheguy/fast_qr); this app
 consumes it as the pinned package `@andrewtheguy/fast-qr-wasm`. Both are
-pulled in as GitHub release tarball URLs declared in `package.json`.
+pulled in as GitHub release tarball URLs declared in `package.json`; to move to
+a new release, run `bun add <release tarball URL>`. `bun run build:wasm` builds
+only the in-repo `wasm/fountain` crate.
 
 ## Deployment
 
@@ -149,7 +154,15 @@ bun run preview
 # Deploy dist/ folder to any static hosting
 ```
 
-See [CLOUDFLARE_DEPLOY.md](docs/CLOUDFLARE_DEPLOY.md) for Cloudflare Pages deployment.
+### Cloudflare Pages
+
+- Build command `bun run build:cloud`, output directory `dist`, root directory
+  `/`. Set `BUN_VERSION` to the version in `packageManager` in `package.json`.
+- `cloud_build.sh` installs rustup with no default toolchain, runs
+  `rustup toolchain install` in `wasm/fountain` to get the toolchain and target
+  its `rust-toolchain.toml` pins, then runs `bun run build`.
+- `wasm-pack` downloads its binary in a postinstall script, which Bun runs only
+  because `package.json` lists it in `trustedDependencies`.
 
 ## License
 
