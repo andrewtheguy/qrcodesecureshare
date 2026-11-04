@@ -33,8 +33,10 @@ Checked on a real phone:
 - **Camera resolution.** A 1 KB fountain chunk at the sender's error
   correction L and 1-module margin is about a version-23 QR (111 modules with
   the margin), about 3.5 pixels per module at 640×480. On a phone, 480p
-  (640×480) did best of 480p, 720p and 1080p, so the receiver keeps asking
-  phones for 640×480 (`preferLowRes`).
+  (640×480) and 720p read about the same; 480p uses slightly less energy, so
+  the receiver keeps asking phones for 640×480 (`preferLowRes`) while the
+  QRs stay this size. 720p is an option if larger QRs pay off (see block size
+  below).
 
 Skipped: comparing chunks read per second on a real phone against the commit
 before these changes (`2c7cafe`). The changes above were measured only in
@@ -50,7 +52,8 @@ Reading the QR codes, not fountain decoding, is what limits a transfer now, so
 the codes themselves come next. Throughput is bytes per QR times QRs read per
 second. The finished screen shows the time from the first chunk and the
 chunks read per second; multiply by the block size for bytes per second.
-Measure each change on a phone at 480p.
+Measure each change on a phone at 480p, or at 720p for the larger blocks
+below.
 
 - **Sender frame rate.** When the screen changes QR while the camera is
   capturing a frame, that frame shows a blend of two codes and does not
@@ -64,12 +67,30 @@ Measure each change on a phone at 480p.
   tall. A 750-byte block is version 19 (about 4.0), and a 500-byte block
   version 15–16 (about 4.6–4.9). Smaller QRs should read more reliably,
   especially farther away, but carry less: 500 bytes only wins if 1,000-byte
-  QRs fail on more than half their frames. Larger blocks would fall below 3
-  pixels per module at 480p. The
-  block size is fixed at `DEFAULT_BLOCK_SIZE` (1,000), and `FountainQRSender`
-  stops with an error if the encoder's differs, so trying 500 and 750 needs
-  that made configurable. The receiver already takes the block size from the
-  metadata.
+  QRs fail on more than half their frames.
+
+  Larger blocks carry more per QR but need more pixels per module than 480p
+  gives, so they go with asking the camera for 720p, which read about as well
+  as 480p on a phone:
+
+  | Block size | QR version | Pixels per module at 480p | At 720p |
+  |---|---|---|---|
+  | 1,000 bytes (now) | 23 | 3.5 | 5.2 |
+  | 1,250 bytes | 26 | 3.1 | 4.7 |
+  | 1,500 bytes | 28 | 2.9 | 4.4 |
+
+  (With the QR 80% of the frame's height: 384 pixels at 480p, 576 at 720p.)
+  At 720p, a 1,500-byte block has about the pixels per module a 500-byte block
+  has at 480p, with three times the data. Each decode at 720p takes about 1.4×
+  as long, which the two decoding workers should absorb, and the camera uses a
+  little more energy. Blocks much above 1,500 bytes would exceed the sender's
+  QR capacity limit (`getQRCapacity('L')`, 1,771 bytes with the chunk header).
+
+  The block size is fixed at `DEFAULT_BLOCK_SIZE` (1,000), and
+  `FountainQRSender` stops with an error if the encoder's differs, so trying
+  other sizes needs that made configurable. The receiver already takes the
+  block size from the metadata; asking for 720p means changing `preferLowRes`
+  in `FountainQRDataScanner`.
 - **Rendering on the sender's screen.** Draw each module as a whole number of
   screen pixels with no smoothing (`image-rendering: pixelated`), pure black on
   white, and with a wider margin than 1 module (the QR standard asks for 4); a
