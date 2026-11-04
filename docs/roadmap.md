@@ -2,17 +2,21 @@
 
 ## File transfer scanning throughput
 
-Done so far, in `src/hooks/useRxingQRScanner.ts`: the rxing worker is created
-once per scanner rather than on every receiver re-render, it holds one frame at a
-time and reads the newest frame as soon as it is free, and frames come from
-`requestVideoFrameCallback` so each camera frame is offered once. Still to do:
+Done so far, in `src/hooks/useRxingQRScanner.ts`:
 
-- **Read frames off the main thread.** Every scan resizes the canvas (setting
-  `canvas.width` and `canvas.height` even when unchanged) and then reads the
-  pixels back synchronously with `getImageData`, on the thread React renders
-  on. At least set the size only when it changes; better, transfer a
-  `createImageBitmap(video)` or a `VideoFrame` to the worker and read it there
-  with an `OffscreenCanvas`.
+- The rxing worker is created once per scanner rather than on every receiver
+  re-render. It holds one frame at a time and reads the newest frame as soon
+  as it is free, and frames come from `requestVideoFrameCallback` so each
+  camera frame is offered once.
+- Frames go to the worker as `ImageBitmap`s, and the worker reads the pixels on
+  its own `OffscreenCanvas`, so the page's thread no longer waits on a
+  `getImageData` readback. Browsers without `OffscreenCanvas` read on a page
+  canvas that is resized only when the video's size changes. With the page's
+  thread slowed 6× in headless Chrome, a transfer went from 16–18 to about 22
+  frames read per second.
+
+Still to do:
+
 - **Decode in more than one worker.** If decoding on phones is slower than the
   camera's frame rate, two workers taking turns would use a second core.
 - **Check the camera resolution against the QR size.** A 1 KB fountain chunk
