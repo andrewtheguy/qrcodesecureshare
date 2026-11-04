@@ -126,6 +126,10 @@ export function FountainQRReceiver({
   // Chunk counter state (only counts non-duplicate chunks)
   const [receivedFountainChunks, setReceivedFountainChunks] = useState(0);
   const chunkCounterRef = useRef<number>(0);
+  // When the first new chunk arrived, and the time from then to completion,
+  // shown with the transfer statistics. State is set only at completion.
+  const firstChunkTimeRef = useRef<number | null>(null);
+  const [transferMs, setTransferMs] = useState<number | null>(null);
   const lastUIUpdateRef = useRef<number>(Date.now());
 
   const workerRef = useRef<Worker | null>(null);
@@ -182,6 +186,7 @@ export function FountainQRReceiver({
             // Batch UI updates to every 500ms to avoid slowing down decoding
             if (!duplicate) {
               chunkCounterRef.current++;
+              firstChunkTimeRef.current ??= performance.now();
               currentPartChunkCountRef.current++;
               const now = Date.now();
               if (now - lastUIUpdateRef.current >= 500) {
@@ -289,6 +294,9 @@ export function FountainQRReceiver({
             setReceiverMode('feedback-display'); // Change mode to stop scanner
             setIntegrityOk(integrityOk);
             setActualChecksum(calculatedChecksum);
+            if (firstChunkTimeRef.current !== null) {
+              setTransferMs(performance.now() - firstChunkTimeRef.current);
+            }
 
             console.log(
               '[FountainQRReceiver] Transfer complete! File decoded successfully.',
@@ -645,6 +653,21 @@ export function FountainQRReceiver({
                     <span className="font-semibold">Blocks decoded:</span>{' '}
                     {totalBlocks}
                   </div>
+                  {transferMs !== null && (
+                    <div className="col-span-2">
+                      <span className="font-semibold">
+                        Time from first chunk:
+                      </span>{' '}
+                      {/* The clock starts at the first chunk, so the time
+                          covers the gaps before the other chunks. */}
+                      {(transferMs / 1000).toFixed(1)} s (
+                      {(
+                        (receivedFountainChunks - 1) /
+                        (transferMs / 1000)
+                      ).toFixed(1)}{' '}
+                      chunks per second)
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <span className="font-semibold">Efficiency ratio:</span>{' '}
                     {totalBlocks > 0
