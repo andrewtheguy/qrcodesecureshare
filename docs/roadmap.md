@@ -28,17 +28,16 @@ Done so far, in `src/hooks/useRxingQRScanner.ts`:
 - Per-read and per-chunk logging is gone from `FountainQRDataScanner`,
   `FountainQRReceiver` and `fountainDecoder.worker.ts`.
 
-Still to do, both of which need a real phone; a synthetic test would only
-measure the blur and noise it assumed:
+Checked on a real phone:
 
-- **Check the camera resolution against the QR size.** A 1 KB fountain chunk
-  is a version-26 QR (121 modules). Phones ask for 640×480 (`preferLowRes`),
-  about 3 pixels per module, which is at the edge for real camera images;
-  desktop asks for nothing and usually gets 640×480 too. 1280×720 costs about
-  1.4× the decode time; measure on a phone whether fewer failed reads make up
-  for it.
-- **Measure on a real phone.** Count chunks read per second, from a sender at
-  25 fps and higher, against the commit before these changes.
+- **Camera resolution.** A 1 KB fountain chunk is a version-26 QR (121
+  modules), about 3 pixels per module at 640×480. On a phone, 480p (640×480)
+  did best of 480p, 720p and 1080p, so the receiver keeps asking phones for
+  640×480 (`preferLowRes`).
+
+Skipped: comparing chunks read per second on a real phone against the commit
+before these changes (`2c7cafe`). The changes above were measured only in
+headless Chrome with simulated slowness.
 
 A phone camera delivers about 30 frames per second, so the receiver cannot
 read more than about 30 QR codes per second. Above that, the sender's frames
