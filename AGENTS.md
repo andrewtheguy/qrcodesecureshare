@@ -21,7 +21,10 @@
   `src/utils/checksum.ts` import the glue from there by path. `bun run build`
   builds it first. The crate keeps its own `Cargo.lock` and
   `rust-toolchain.toml` (stable, `wasm32-unknown-unknown`), which rustup reads
-  wherever the app is built.
+  wherever the app is built. Rustup finds that file from the working directory,
+  not from a manifest path, so every cargo and wasm-pack script `cd`s into
+  `wasm/fountain` first; Cloudflare Pages has no default toolchain to fall back
+  on.
 - Initialise every wasm-bindgen module with its binary's URL from a Vite `?url`
   import (`init({ module_or_path: url })`), never with the glue's default
   `new URL(..., import.meta.url)` lookup.
