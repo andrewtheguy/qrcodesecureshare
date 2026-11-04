@@ -10,7 +10,7 @@
   `bunx tsc -b`, and fix what they report. `bun run format` applies Biome's
   formatting and safe fixes.
 - After Rust changes under `wasm/**`, run `bun run clippy` and `bun run test`.
-- No `cargo fmt`.
+- for codex no `cargo fmt` because when it does git diff, it gets stuck after cargo fmt.
 
 ## WebAssembly
 
