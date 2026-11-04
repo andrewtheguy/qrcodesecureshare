@@ -48,7 +48,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.1.2",
     "vite-plugin-pwa": "^1.2.0",
-    "wasm-pack": "0.15.0"
+    "wasm-pack": "0.15.1"
   },
   "trustedDependencies": [
     "wasm-pack"
